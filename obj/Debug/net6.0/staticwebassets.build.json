@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "HhyKro8OfNA/E1tM0aRoaLNmBQoqWa+m4aj9N2U/l/g=",
+  "Source": "QrScanApi",
+  "BasePath": "_content/QrScanApi",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

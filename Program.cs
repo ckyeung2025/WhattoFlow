@@ -1,0 +1,92 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.EntityFrameworkCore;
+using System.Text;
+using PurpleRice.Data;
+using PurpleRice.Services;
+using PurpleRice.Models;
+
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+
+builder.Services.AddDbContext<PurpleRiceDbContext>(options =>
+    options.UseSqlServer("Server=127.0.0.1;Database=PurpleRice;User Id=sa;Password=sql!Q@W3e;TrustServerCertificate=true;"));
+
+builder.Services.AddDbContext<ErpDbContext>(options =>
+    options.UseSqlServer("Server=127.0.0.1;Database=erp_awh;User Id=sa;Password=sql!Q@W3e;TrustServerCertificate=true;"));
+    
+    // JWT 驗證設定
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("YourSuperSecretKey1234567890!@#$%^&*()")) // 32字元以上
+    };
+});
+
+builder.Services.AddAuthorization();
+builder.Services.AddScoped<PdfService>();
+builder.Services.AddScoped<DeliveryService>();
+builder.Services.AddScoped<DocumentConverterService>();
+builder.Services.AddScoped<UserSessionService>();
+builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
+builder.Services.AddScoped<WhatsAppWorkflowService>();
+builder.Services.AddScoped<WorkflowEngine>();
+
+// 註冊 LoggingService 工廠
+builder.Services.AddScoped<Func<string, LoggingService>>(provider =>
+{
+    return serviceName =>
+    {
+        var configuration = provider.GetRequiredService<IConfiguration>();
+        var logger = provider.GetRequiredService<ILogger<LoggingService>>();
+        return new LoggingService(configuration, logger, serviceName);
+    };
+});
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+// 啟用靜態檔案服務
+app.UseStaticFiles();
+
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Customer")),
+    RequestPath = "/Customer"
+});
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "Uploads")),
+    RequestPath = "/Uploads"
+});
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "FormsFiles", "Documents")),
+    RequestPath = "/Documents",
+    ServeUnknownFileTypes = true
+});
+
+
+app.MapControllers();
+
+app.Run(); 

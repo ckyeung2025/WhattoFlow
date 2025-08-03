@@ -1,0 +1,41 @@
+{
+  "Files": [
+    {
+      "Id": "C:\\Users\\ckyeu\\source\\repos\\PurpleRice\\wwwroot\\uploads\\avatars\\30b88802-089c-4ec8-bd35-01b7039533ff.png",
+      "PackagePath": "staticwebassets\\uploads\\avatars\\30b88802-089c-4ec8-bd35-01b7039533ff.png"
+    },
+    {
+      "Id": "C:\\Users\\ckyeu\\source\\repos\\PurpleRice\\wwwroot\\uploads\\avatars\\3c20932a-13ed-43b1-96a6-d123d69130f5.png",
+      "PackagePath": "staticwebassets\\uploads\\avatars\\3c20932a-13ed-43b1-96a6-d123d69130f5.png"
+    },
+    {
+      "Id": "C:\\Users\\ckyeu\\source\\repos\\PurpleRice\\wwwroot\\uploads\\avatars\\59d0ef90-ed0e-461e-aaa1-b9a92f491114.png",
+      "PackagePath": "staticwebassets\\uploads\\avatars\\59d0ef90-ed0e-461e-aaa1-b9a92f491114.png"
+    },
+    {
+      "Id": "C:\\Users\\ckyeu\\source\\repos\\PurpleRice\\wwwroot\\uploads\\avatars\\7abc327c-3f86-4372-81fe-8e3fdf332092.png",
+      "PackagePath": "staticwebassets\\uploads\\avatars\\7abc327c-3f86-4372-81fe-8e3fdf332092.png"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.PurpleRice.Microsoft.AspNetCore.StaticWebAssetEndpoints.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssetEndpoints.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.PurpleRice.Microsoft.AspNetCore.StaticWebAssets.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.build.PurpleRice.props",
+      "PackagePath": "build\\PurpleRice.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildMultiTargeting.PurpleRice.props",
+      "PackagePath": "buildMultiTargeting\\PurpleRice.props"
+    },
+    {
+      "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.buildTransitive.PurpleRice.props",
+      "PackagePath": "buildTransitive\\PurpleRice.props"
+    }
+  ],
+  "ElementsToRemove": []
+}
