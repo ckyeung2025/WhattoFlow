@@ -1,0 +1,3 @@
+System.Collections.Generic.KeyNotFoundException: The given key was not present in the dictionary.
+   at System.Text.Json.JsonElement.GetProperty(String propertyName)
+   at QrScanApi.Controllers.WhatsAppQrScanController.WhatsAppWebhook(Object payload) in C:\Users\ckyeu\source\repos\QrScanApi\Controllers\WhatsAppQrScanController.cs:line 213

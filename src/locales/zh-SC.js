@@ -1,0 +1,138 @@
+const zhSC = {
+  // 登录相关
+  login: {
+    title: 'SS.AI 客服',
+    platformTitle: 'Whatto Flow - 你的聊天机器人流程平台',
+    userId: '用户 ID',
+    password: '密码',
+    loginButton: '登录',
+    loginSuccess: '登录成功！',
+    loginFailed: '登录失败',
+    userIdRequired: '请输入用户 ID！',
+    passwordRequired: '请输入密码！',
+    accountPasswordError: '账号或密码错误',
+    networkError: '登录失败，请检查网络连接',
+    welcome: '欢迎使用 SS.AI 客服，{name}！',
+    userIdLabel: '用户 ID',
+    logout: '登出',
+    logoutSuccess: '已登出'
+  },
+  
+  // 菜单项目
+  menu: {
+    dashboard: '仪表板',
+    unsigned: '已送货未签收',
+    customerSigned: '客户已签收',
+    signedPending: '已签收待确认',
+    logout: '登出',
+    dashboardRecentActivity: '最近活动',
+    whatsappWorkflow: 'WhatsApp 工作流',
+  },
+  
+  // 未签收管理
+  unsigned: {
+    title: '已送货未签收',
+    totalRecords: '总记录数',
+    totalProcessed: '总处理量',
+    currentPageRecords: '当前页记录数',
+    search: '搜索',
+    searchPlaceholder: '搜索发票号、客户名称、电话...',
+    filterAll: '全部',
+    filterUnconfirmed: '未确定',
+    filterConfirmed: '已确定',
+    confirm: '确认',
+    confirmSelected: '确认选中',
+    confirmSuccess: '确认成功',
+    confirmFailed: '确认失败',
+    downloadPdf: '下载 PDF',
+    previewImage: '预览图片',
+    customerTel: '客户电话',
+    invoiceNo: '发票号',
+    customerNo: '客户编号',
+    customerName: '客户名称',
+    orderLines: '订单明细',
+    noData: '暂无数据',
+    loading: '加载中...',
+    pageSize: '每页笔数',
+    receiptDate: '收据日期',
+    uploadDate: '上传日期',
+    remarks: '备注',
+    status: '状态',
+    confirmed: '已确认',
+    unconfirmed: '未确认',
+    action: '操作',
+    customerSignedPending: '已签收待确认',
+    customerSignedConfirmed: '已确认',
+    manualReview: '人工复核',
+  },
+  
+  // Workflow
+  workflow: {
+    title: '流程管理',
+    add: '新增流程',
+    name: '流程名称',
+    createdBy: '建立人',
+    createdAt: '建立日期',
+    updatedAt: '最后修改',
+    status: '状态',
+    action: '操作',
+    design: '设计',
+    copy: '复制',
+    delete: '删除',
+    confirmDeleteTitle: '确定要删除此流程吗？',
+    confirmDeleteContent: '流程名称：{name}',
+    confirmDeleteOk: '删除',
+    confirmDeleteCancel: '取消',
+    copySuccess: '已复制流程',
+    deleteSuccess: '已删除流程',
+    deleteFailed: '删除失败',
+    copyFailed: '复制失败',
+    save: '保存流程',
+    saveSuccess: '流程已保存！',
+    saveFailed: '保存失败',
+    nameRequired: '请输入流程名称',
+    mustHaveStartEnd: '流程必须包含 Start 和 End 节点',
+    mustHaveEdge: '请建立节点连线',
+    description: '描述（可选）',
+    back: '返回列表',
+    new: '新增流程',
+    edit: '编辑流程',
+    searchPlaceholder: '搜索流程名称、建立人...',
+    search: '搜索'
+  },
+  
+  // 通用
+  common: {
+    loading: '加载中...',
+    error: '错误',
+    success: '成功',
+    cancel: '取消',
+    confirm: '确认',
+    save: '保存',
+    delete: '删除',
+    edit: '编辑',
+    add: '添加',
+    search: '搜索',
+    refresh: '刷新',
+    clear: '清除',
+    submit: '提交',
+    back: '返回',
+    next: '下一步',
+    previous: '上一步',
+    close: '关闭',
+    open: '打开',
+    yes: '是',
+    no: '否',
+    ok: '确定'
+  },
+  
+  // 语言切换
+  language: {
+    zhTC: '繁體中文',
+    zhSC: '简体中文', 
+    en: 'English',
+    language: '语言'
+  }
+};
+
+export default zhSC; 
