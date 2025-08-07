@@ -16,6 +16,7 @@ import WhatsAppTemplateList from './pages/WhatsAppTemplateList';
 
 import EFormListPage from './pages/EFormListPage';
 import EFormInstancePage from './pages/EFormInstancePage';
+import StudioTest from './pages/StudioTest';
 import './App.css';
 
 const { Content } = Layout;
@@ -82,6 +83,7 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/eform-list" element={<EFormListPage />} />
             <Route path="/eform-instance/:id" element={<EFormInstancePage />} />
             <Route path="/whatsapp-templates" element={<WhatsAppTemplateList />} />
+            <Route path="/studio-test" element={<StudioTest />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -221,6 +223,7 @@ function AppContent() {
               <Route path="/eform-list" element={<EFormListPage />} />
               <Route path="/eform-instance/:id" element={<EFormInstancePage />} />
               <Route path="/whatsapp-templates" element={<WhatsAppTemplateList />} />
+              <Route path="/studio-test" element={<StudioTest />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </Content>

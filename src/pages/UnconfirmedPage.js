@@ -776,8 +776,7 @@ const UnconfirmedPage = () => {
                       pageSize={pagination.pageSize}
                       total={pagination.total}
                       showSizeChanger
-                      showQuickJumper
-                      showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                      showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                       onChange={(page, pageSize) => fetchData(page, pageSize, searchText, '', '')}
                       onShowSizeChange={(current, size) => fetchData(1, size, searchText, '', '')}
                     />
@@ -841,8 +840,7 @@ const UnconfirmedPage = () => {
                       pageSize={confirmedPagination.pageSize}
                       total={confirmedPagination.total}
                       showSizeChanger
-                      showQuickJumper
-                      showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                      showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                       onChange={(page, pageSize) => fetchConfirmedData(page, pageSize, confirmedSearchText)}
                       onShowSizeChange={(current, size) => fetchConfirmedData(1, size, confirmedSearchText)}
                     />

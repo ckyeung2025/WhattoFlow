@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Input, Button, Space, Tag, message, Pagination, Card, Typography, Tooltip, Modal, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, SortAscendingOutlined, FormOutlined, CheckCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { Table, Input, Button, Space, Tag, message, Pagination, Card, Typography, Tooltip, Modal, Popconfirm, Form } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, SortAscendingOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, CopyOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { Resizable } from 'react-resizable';
@@ -8,9 +8,109 @@ import 'react-resizable/css/styles.css';
 // 新增 EFormDesigner 引入
 import EFormDesigner from './EFormDesigner';
 // 移除: import SideMenu from '../components/SideMenu';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const { Title } = Typography;
 const { confirm } = Modal;
+const { TextArea } = Input;
+
+// 複製表單 Modal 組件
+const CopyFormModal = ({ copyingForm, onCopy, onCancel, t }) => {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (copyingForm) {
+      form.setFieldsValue({
+        name: `${copyingForm.name} (複製)`,
+        description: copyingForm.description || ''
+      });
+    }
+  }, [copyingForm, form]);
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      const values = await form.validateFields();
+      await onCopy(values.name, values.description);
+    } catch (error) {
+      console.error('表單驗證失敗:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!copyingForm) return null;
+
+  return (
+    <div style={{ padding: '20px 0' }}>
+      <div style={{ 
+        marginBottom: '20px', 
+        padding: '16px', 
+        backgroundColor: '#f0f8ff', 
+        border: '1px solid #b3d8ff', 
+        borderRadius: '6px' 
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <CopyOutlined style={{ color: '#1890ff' }} />
+          <strong style={{ color: '#1890ff' }}>📋 {t('eform.copyFormInfo')}</strong>
+        </div>
+        <div style={{ color: '#666' }}>
+          {t('eform.copyFormContent')} <strong>"{copyingForm.name}"</strong> {t('eform.copyFormContent2')}
+        </div>
+      </div>
+
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+      >
+        <Form.Item
+          name="name"
+          label={t('eform.newFormName')}
+          rules={[
+            { required: true, message: t('eform.pleaseEnterFormName') },
+            { max: 100, message: t('eform.formNameTooLong') }
+          ]}
+        >
+          <Input 
+            placeholder={t('eform.enterNewFormName')}
+            maxLength={100}
+            showCount
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label={t('eform.newFormDescription')}
+        >
+          <TextArea 
+            placeholder={t('eform.enterNewFormDescription')}
+            rows={3}
+            maxLength={500}
+            showCount
+          />
+        </Form.Item>
+
+        <div style={{ textAlign: 'right', marginTop: '24px' }}>
+          <Space>
+            <Button onClick={onCancel}>
+              {t('eform.cancel')}
+            </Button>
+            <Button 
+              type="primary" 
+              onClick={handleSubmit}
+              loading={loading}
+              icon={<CopyOutlined />}
+            >
+              {t('eform.copyForm')}
+            </Button>
+          </Space>
+        </div>
+      </Form>
+    </div>
+  );
+};
 
 const ResizableTitle = (props) => {
   const { onResize, width, ...restProps } = props;
@@ -51,46 +151,50 @@ const EFormListPage = () => {
   const [isBatchDeleteModalVisible, setIsBatchDeleteModalVisible] = useState(false);
   const [isBatchStatusModalVisible, setIsBatchStatusModalVisible] = useState(false);
   const [batchStatusAction, setBatchStatusAction] = useState(''); // 'enable' 或 'disable'
+  const [isCopyModalVisible, setIsCopyModalVisible] = useState(false);
+  const [copyingForm, setCopyingForm] = useState(null);
+
+  const { t } = useLanguage();
 
   const baseColumns = [
-    { title: '名稱', dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: true },
-    { title: '描述', dataIndex: 'description', key: 'description', width: 200, ellipsis: true },
-    { title: '狀態', dataIndex: 'status', key: 'status', width: 100, sorter: true, render: v => {
-      if (v === 'A') return <Tag color="green">啟用</Tag>;
-      if (v === 'I') return <Tag color="orange">停用</Tag>;
-      if (v === 'D') return <Tag color="red">刪除</Tag>;
+    { title: t('eform.name'), dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: true },
+    { title: t('eform.description'), dataIndex: 'description', key: 'description', width: 200, ellipsis: true },
+    { title: t('eform.status'), dataIndex: 'status', key: 'status', width: 100, sorter: true, render: v => {
+      if (v === 'A') return <Tag color="green">{t('eform.enabled')}</Tag>;
+      if (v === 'I') return <Tag color="orange">{t('eform.disabled')}</Tag>;
+      if (v === 'D') return <Tag color="red">{t('eform.deleted')}</Tag>;
       return v;
     } },
-    { title: '建立時間', dataIndex: 'created_at', key: 'created_at', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
-    { title: '更新時間', dataIndex: 'updated_at', key: 'updated_at', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
+    { title: t('eform.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
+    { title: t('eform.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
     {
-      title: '操作',
+      title: t('eform.action'),
       key: 'action',
-      width: 100,
+      width: 140,
       render: (_, record) => (
         <Space size="small">
-          <Tooltip title="編輯">
+          <Tooltip title={t('eform.edit')}>
             <Button 
               type="text" 
               icon={<EditOutlined />} 
               onClick={() => handleEdit(record)}
             />
           </Tooltip>
-          <Popconfirm
-            title="確定要刪除這個表單嗎？"
-            description="此操作無法撤銷"
-            onConfirm={() => handleDelete(record)}
-            okText="確定"
-            cancelText="取消"
-          >
-            <Tooltip title="刪除">
-              <Button 
-                type="text" 
-                danger 
-                icon={<DeleteOutlined />}
-              />
-            </Tooltip>
-          </Popconfirm>
+          <Tooltip title={t('eform.copy')}>
+            <Button 
+              type="text" 
+              icon={<CopyOutlined />} 
+              onClick={() => handleCopy(record)}
+            />
+          </Tooltip>
+          <Tooltip title={t('eform.delete')}>
+            <Button 
+              type="text" 
+              danger 
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(record)}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -230,12 +334,12 @@ const EFormListPage = () => {
 
   const handleDelete = (record) => {
     confirm({
-      title: '確定要刪除這個 e-Form 嗎？',
+      title: t('eform.confirmDeleteTitle'),
       icon: <ExclamationCircleOutlined />,
-      content: `名稱：${record.name}`,
-      okText: '刪除',
+      content: `${t('eform.confirmDeleteContent')}${record.name}`,
+      okText: t('eform.confirmDeleteOk'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('eform.confirmDeleteCancel'),
       async onOk() {
         try {
           const token = localStorage.getItem('token');
@@ -247,13 +351,13 @@ const EFormListPage = () => {
           });
           
           if (response.ok) {
-            message.success('刪除成功');
+            message.success(t('eform.deleteSuccess'));
             fetchData(pagination.current, pagination.pageSize, searchText);
           } else {
-            message.error('刪除失敗');
+            message.error(t('eform.deleteFailed'));
           }
         } catch {
-          message.error('刪除失敗');
+          message.error(t('eform.deleteFailed'));
         }
       },
     });
@@ -264,10 +368,15 @@ const EFormListPage = () => {
     setDesignerOpen(true);
   };
 
+  const handleCopy = (record) => {
+    setCopyingForm(record);
+    setIsCopyModalVisible(true);
+  };
+
   // 批量刪除表單
   const handleBatchDelete = async () => {
     if (selectedForms.length === 0) {
-      message.warning('請選擇要刪除的表單');
+      message.warning(t('eform.pleaseSelectForms'));
       return;
     }
 
@@ -285,30 +394,30 @@ const EFormListPage = () => {
       const result = await response.json();
 
       if (result.success) {
-        message.success(`✅ 成功刪除 ${result.deletedCount} 個表單`);
+        message.success(`✅ ${t('eform.batchDeleteSuccess')}${result.deletedCount}${t('eform.forms')}`);
         setSelectedForms([]);
         setIsBatchDeleteModalVisible(false);
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
-        message.error('❌ 批量刪除失敗: ' + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eform.batchDeleteFailed')}: ${result.error || t('eform.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 批量刪除錯誤:', error);
-      message.error('❌ 批量刪除失敗: ' + error.message);
+      message.error(`❌ ${t('eform.batchDeleteFailed')}: ${error.message}`);
     }
   };
 
   // 批量設定表單狀態
   const handleBatchStatus = async () => {
     if (selectedForms.length === 0) {
-      message.warning('請選擇要操作的表單');
+      message.warning(t('eform.pleaseSelectForms'));
       return;
     }
 
     try {
       const token = localStorage.getItem('token');
       const newStatus = batchStatusAction === 'enable' ? 'A' : 'I';
-      const actionText = batchStatusAction === 'enable' ? '啟用' : '停用';
+      const actionText = batchStatusAction === 'enable' ? t('eform.enable') : t('eform.disable');
       
       const response = await fetch('/api/eforms/batch-status', {
         method: 'PUT',
@@ -325,28 +434,81 @@ const EFormListPage = () => {
       const result = await response.json();
 
       if (result.success) {
-        message.success(`✅ 成功${actionText} ${result.updatedCount} 個表單`);
+        message.success(`✅ ${t('eform.batchStatusSuccess')}${actionText}${result.updatedCount}${t('eform.forms')}`);
         setSelectedForms([]);
         setIsBatchStatusModalVisible(false);
         setBatchStatusAction('');
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
-        message.error(`❌ 批量${actionText}失敗: ` + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eform.batchStatusFailed')}: ${result.error || t('eform.unknownError')}`);
       }
     } catch (error) {
-      console.error(`❌ 批量${batchStatusAction === 'enable' ? '啟用' : '停用'}錯誤:`, error);
-      message.error(`❌ 批量${batchStatusAction === 'enable' ? '啟用' : '停用'}失敗: ` + error.message);
+      console.error(`❌ ${batchStatusAction === 'enable' ? t('eform.enable') : t('eform.disable')}錯誤:`, error);
+      message.error(`❌ ${batchStatusAction === 'enable' ? t('eform.enable') : t('eform.disable')}失敗: ${error.message}`);
     }
   };
 
   // 打開批量狀態設定 Modal
   const openBatchStatusModal = (action) => {
     if (selectedForms.length === 0) {
-      message.warning('請選擇要操作的表單');
+      message.warning(t('eform.pleaseSelectForms'));
       return;
     }
     setBatchStatusAction(action);
     setIsBatchStatusModalVisible(true);
+  };
+
+  // 複製表單
+  const handleCopyForm = async (newName, newDescription) => {
+    if (!copyingForm) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      // 從用戶信息中獲取 company_id
+      const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+      let companyId = userInfo.company_id;
+      
+      if (!companyId) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            companyId = payload.company_id || payload.companyId;
+          } catch (e) {
+            console.error('解析 JWT token 失敗:', e);
+          }
+        }
+      }
+
+      const response = await fetch('/api/eforms', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: newName,
+          description: newDescription,
+          htmlCode: copyingForm.htmlCode || copyingForm.html,
+          status: 'A',
+          rStatus: 'A'
+        })
+      });
+
+      if (response.ok) {
+        message.success(`✅ ${t('eform.copySuccess')}`);
+        setIsCopyModalVisible(false);
+        setCopyingForm(null);
+        fetchData(pagination.current, pagination.pageSize, searchText);
+      } else {
+        const errorText = await response.text();
+        throw new Error(`${t('eform.copyFailed')}: ${errorText}`);
+      }
+    } catch (error) {
+      console.error('複製失敗:', error);
+      message.error(`❌ ${t('eform.copyFailed')}: ${error.message}`);
+    }
   };
 
   // 處理表格排序
@@ -381,94 +543,10 @@ const EFormListPage = () => {
         >
           <EFormDesigner
             initialSchema={editingId ? data.find(d => d.id === editingId) : null}
-            onSave={async (schema) => { 
-              try {
-                console.log('Saving schema:', schema);
-                
-                // 從用戶信息中獲取 company_id
-                const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
-                console.log('用戶信息:', userInfo);
-                
-                let companyId = userInfo.company_id;
-                
-                // 如果從 userInfo 中獲取不到，嘗試從 JWT token 中解析
-                if (!companyId) {
-                  const token = localStorage.getItem('token');
-                  if (token) {
-                    try {
-                      const payload = JSON.parse(atob(token.split('.')[1]));
-                      console.log('JWT payload:', payload);
-                      companyId = payload.company_id || payload.companyId;
-                    } catch (e) {
-                      console.error('解析 JWT token 失敗:', e);
-                    }
-                  }
-                }
-                
-                console.log('最終使用的 company_id:', companyId);
-                
-                if (!companyId) {
-                  message.error('無法獲取用戶的公司信息');
-                  return;
-                }
-                
-                const token = localStorage.getItem('token');
-                
-                if (editingId) {
-                  // 更新現有表單
-                  const response = await fetch(`/api/eforms/${editingId}`, {
-                    method: 'PUT',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                      id: editingId,
-                      name: schema.name,
-                      description: schema.description || '',
-                      htmlCode: schema.html,
-                      status: 'A',
-                      rStatus: 'A'
-                    })
-                  });
-                  
-                  if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`更新失敗: ${errorText}`);
-                  }
-                  
-                  message.success('✅ 表單更新成功');
-                } else {
-                  // 創建新表單
-                  const response = await fetch('/api/eforms', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                      name: schema.name,
-                      description: schema.description || '',
-                      htmlCode: schema.html,
-                      status: 'A',
-                      rStatus: 'A'
-                    })
-                  });
-                  
-                  if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`創建失敗: ${errorText}`);
-                  }
-                  
-                  message.success('✅ 表單創建成功');
-                }
-                
-                setDesignerOpen(false); 
-                fetchData(pagination.current, pagination.pageSize, searchText); 
-              } catch (error) {
-                console.error('保存失敗:', error);
-                message.error('❌ 保存失敗: ' + error.message);
-              }
+            onSave={() => { 
+              // EFormDesigner 內部已經處理了保存邏輯，這裡只需要更新 UI
+              setDesignerOpen(false); 
+              fetchData(pagination.current, pagination.pageSize, searchText); 
             }}
             onBack={() => { setDesignerOpen(false); }}
           />
@@ -480,37 +558,37 @@ const EFormListPage = () => {
             <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Space>
                 <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} style={{ padding: '0 12px' }}>
-                  新增
+                  {t('eform.add')}
                 </Button>
                 <Button 
                   type="default" 
                   icon={<CheckCircleOutlined />} 
                   onClick={() => openBatchStatusModal('enable')}
                   disabled={selectedForms.length === 0}
-                  title="批量啟用"
+                  title={t('eform.batchEnable')}
                   style={{ color: '#52c41a', borderColor: '#52c41a' }}
                 >
-                  批量啟用 ({selectedForms.length})
+                  {t('eform.batchEnable')}({selectedForms.length})
                 </Button>
                 <Button 
                   type="default" 
                   icon={<StopOutlined />} 
                   onClick={() => openBatchStatusModal('disable')}
                   disabled={selectedForms.length === 0}
-                  title="批量停用"
+                  title={t('eform.batchDisable')}
                   style={{ color: '#faad14', borderColor: '#faad14' }}
                 >
-                  批量停用 ({selectedForms.length})
+                  {t('eform.batchDisable')}({selectedForms.length})
                 </Button>
                 <Button 
                   type="default" 
                   icon={<DeleteOutlined />} 
                   onClick={() => setIsBatchDeleteModalVisible(true)}
                   disabled={selectedForms.length === 0}
-                  title="批量刪除"
+                  title={t('eform.batchDelete')}
                   danger
                 >
-                  批量刪除 ({selectedForms.length})
+                  {t('eform.batchDelete')}({selectedForms.length})
                 </Button>
                 <Button 
                   type="default" 
@@ -519,16 +597,16 @@ const EFormListPage = () => {
                     // 觸發重新載入以應用排序
                     fetchData(pagination.current, pagination.pageSize, searchText);
                   }}
-                  title="刷新排序"
+                  title={t('eform.refresh')}
                 >
-                  刷新
+                  {t('eform.refresh')}
                 </Button>
               </Space>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <h2 style={{ margin: 0 }}>
                   <FormOutlined style={{ marginRight: '8px' }} />
-                  e-Form 管理
+                  {t('eform.eformManagement')}
                 </h2>
               </div>
             </div>
@@ -537,7 +615,7 @@ const EFormListPage = () => {
             <Card style={{ marginBottom: '16px' }}>
               <Space wrap>
                 <Input.Search
-                  placeholder="搜尋名稱、描述..."
+                  placeholder={t('eform.searchNameDescription')}
                   allowClear
                   style={{ width: 300 }}
                   onSearch={handleSearch}
@@ -551,7 +629,7 @@ const EFormListPage = () => {
                     setPagination(prev => ({ ...prev, current: 1 }));
                   }}
                 >
-                  清除篩選
+                  {t('eform.clearFilter')}
                 </Button>
               </Space>
             </Card>
@@ -579,9 +657,8 @@ const EFormListPage = () => {
                 pageSize={pagination.pageSize || 10}
                 total={pagination.total || 0}
                 showSizeChanger
-                showQuickJumper
                 pageSizeOptions={['10', '20', '50', '100']}
-                showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                 onChange={(page, pageSize) => fetchData(page, pageSize, searchText)}
                 onShowSizeChange={(current, size) => fetchData(1, size, searchText)}
               />
@@ -595,14 +672,14 @@ const EFormListPage = () => {
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <DeleteOutlined style={{ color: '#ff4d4f' }} />
-            批量刪除表單
+            {t('eform.batchDeleteForms')}
           </div>
         }
         open={isBatchDeleteModalVisible}
         onCancel={() => setIsBatchDeleteModalVisible(false)}
         footer={[
           <Button key="cancel" onClick={() => setIsBatchDeleteModalVisible(false)}>
-            取消
+            {t('eform.cancel')}
           </Button>,
           <Button
             key="delete"
@@ -611,7 +688,7 @@ const EFormListPage = () => {
             onClick={handleBatchDelete}
             loading={loading}
           >
-            確定刪除 ({selectedForms.length} 個)
+            {t('eform.confirmDelete')}({selectedForms.length} {t('eform.forms')})
           </Button>,
         ]}
         width={800}
@@ -620,10 +697,10 @@ const EFormListPage = () => {
           <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#fff2f0', border: '1px solid #ffccc7', borderRadius: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
-              <strong>⚠️ 批量刪除警告</strong>
+              <strong>⚠️ {t('eform.batchDeleteWarning')}</strong>
             </div>
             <div style={{ color: '#666' }}>
-              您即將刪除 {selectedForms.length} 個表單，此操作無法撤銷。請確認要刪除的表單。
+              {t('eform.batchDeleteWarningContent')}{selectedForms.length}{t('eform.forms')}{t('eform.cannotBeUndone')}{t('eform.pleaseConfirm')}.
             </div>
           </div>
           
@@ -647,14 +724,14 @@ const EFormListPage = () => {
             ) : (
               <StopOutlined style={{ color: '#faad14' }} />
             )}
-            批量{batchStatusAction === 'enable' ? '啟用' : '停用'}表單
+            {batchStatusAction === 'enable' ? t('eform.batchEnableForms') : t('eform.batchDisableForms')}
           </div>
         }
         open={isBatchStatusModalVisible}
         onCancel={() => setIsBatchStatusModalVisible(false)}
         footer={[
           <Button key="cancel" onClick={() => setIsBatchStatusModalVisible(false)}>
-            取消
+            {t('eform.cancel')}
           </Button>,
           <Button
             key="confirm"
@@ -666,7 +743,7 @@ const EFormListPage = () => {
             onClick={handleBatchStatus}
             loading={loading}
           >
-            確定{batchStatusAction === 'enable' ? '啟用' : '停用'} ({selectedForms.length} 個)
+            {t('eform.confirm')}{batchStatusAction === 'enable' ? t('eform.enable') : t('eform.disable')}({selectedForms.length} {t('eform.forms')})
           </Button>,
         ]}
         width={800}
@@ -686,12 +763,11 @@ const EFormListPage = () => {
                 <StopOutlined style={{ color: '#faad14' }} />
               )}
               <strong style={{ color: batchStatusAction === 'enable' ? '#52c41a' : '#faad14' }}>
-                {batchStatusAction === 'enable' ? '✅ 批量啟用' : '⚠️ 批量停用'}
+                {batchStatusAction === 'enable' ? '✅ ' + t('eform.batchEnable') : '⚠️ ' + t('eform.batchDisable')}
               </strong>
             </div>
             <div style={{ color: '#666' }}>
-              您即將{batchStatusAction === 'enable' ? '啟用' : '停用'} {selectedForms.length} 個表單。
-              {batchStatusAction === 'enable' ? '啟用後表單將可以正常使用。' : '停用後表單將無法使用，但可以重新啟用。'}
+              {t('eform.batchStatusContent')}{selectedForms.length}{t('eform.forms')}{batchStatusAction === 'enable' ? t('eform.enableAfter') : t('eform.disableAfter')}.
             </div>
           </div>
           
@@ -704,6 +780,33 @@ const EFormListPage = () => {
             scroll={{ y: 300 }}
           />
         </div>
+      </Modal>
+
+      {/* 複製表單 Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CopyOutlined style={{ color: '#1890ff' }} />
+            {t('eform.copyForm')}
+          </div>
+        }
+        open={isCopyModalVisible}
+        onCancel={() => {
+          setIsCopyModalVisible(false);
+          setCopyingForm(null);
+        }}
+        footer={null}
+        width={600}
+      >
+        <CopyFormModal 
+          copyingForm={copyingForm}
+          onCopy={handleCopyForm}
+          onCancel={() => {
+            setIsCopyModalVisible(false);
+            setCopyingForm(null);
+          }}
+          t={t}
+        />
       </Modal>
       
       {/* 自定義 CSS 來響應 SideMenu 折疊狀態 */}

@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import ReactFlow, {
   MiniMap, Controls, Background, addEdge, useNodesState, useEdgesState, Handle, Position, useReactFlow, getBezierPath
 } from 'react-flow-renderer';
-import { Button, Drawer, Form, Input, Select, message, Tooltip, Modal, Card, Tag, Space } from 'antd';
-import { SaveOutlined, ArrowLeftOutlined, MessageOutlined, SendOutlined, ClockCircleOutlined, DatabaseOutlined, ApiOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { Button, Drawer, Form, Input, Select, message, Tooltip, Modal, Card, Tag, Space, Typography } from 'antd';
+import { SaveOutlined, ArrowLeftOutlined, MessageOutlined, SendOutlined, ClockCircleOutlined, DatabaseOutlined, ApiOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined, UpOutlined } from '@ant-design/icons';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
+
+const { Title } = Typography;
 
 // 添加紫色返回按鈕的 hover 樣式
 const purpleButtonStyle = `
@@ -389,6 +391,7 @@ const WhatsAppWorkflowDesigner = () => {
   const [selectedEForm, setSelectedEForm] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   
   // 從後端獲取節點類型定義
   const [nodeTypeDefinitions, setNodeTypeDefinitions] = useState([]);
@@ -397,6 +400,11 @@ const WhatsAppWorkflowDesigner = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const reactFlowInstanceRef = useRef();
+  
+  // 工具欄收合切換
+  const toggleToolbar = () => {
+    setIsToolbarCollapsed(!isToolbarCollapsed);
+  };
   
   // 創建動態的節點標籤函數
   const getNodeTypeLabel = useCallback((type) => {
@@ -1107,125 +1115,168 @@ const WhatsAppWorkflowDesigner = () => {
   }, [selectedNode, form]);
 
   return (
-    <div style={{ display: 'flex', height: '100%', flexDirection: 'column', position: 'relative' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <style>{purpleButtonStyle}</style>
-      <div style={{ padding: 12, background: '#f7f7f7', borderBottom: '1px solid #eee', display: 'flex', gap: 12, alignItems: 'center' }}>
-        {/* 左上角返回按鈕 */}
-        <Button
-          type="primary"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/workflow-list')}
-          title={t('workflow.back')}
-          style={{ 
-            marginRight: 8, 
-            backgroundColor: '#722ed1', 
-            borderColor: '#722ed1'
-          }}
-          className="purple-back-button"
-        />
-        <Tooltip title={t('workflow.save')} placement="bottom">
-          <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} style={{ marginRight: 8 }} />
-        </Tooltip>
-        <Input style={{ width: 220 }} placeholder={t('workflow.name')} value={name} onChange={e => setName(e.target.value)} />
-        <Input style={{ width: 320 }} placeholder={t('workflow.description')} value={description} onChange={e => setDescription(e.target.value)} />
-        <Tooltip title="簡化連接點設計：綠色=接出，橙色=接入" placement="bottom">
-          <Tag color="purple" style={{ marginLeft: 'auto', cursor: 'help' }}>
-                          🎯 簡化連接
-          </Tag>
-        </Tooltip>
-      </div>
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* 左側節點清單 */}
-        <div style={{ width: 180, background: '#f7f7f7', padding: 12 }}>
-          <h4>{t('workflow.nodeTypes')}</h4>
-          <div style={{ 
-            marginBottom: '12px', 
-            padding: '8px', 
-            backgroundColor: '#f6ffed', 
-            borderRadius: '4px', 
-            fontSize: '11px',
-            border: '1px solid #b7eb8f'
-          }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>💡 簡化連接點設計：</div>
-            <div>• 🟢 綠色：所有接出點（source handles）</div>
-            <div>• 🟠 橙色：所有接入點（target handles）</div>
-            <div>• 動畫連接線顯示流程方向</div>
-          </div>
-          {loadingNodeTypes ? (
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <div>載入節點類型中...</div>
-            </div>
-          ) : (
-            <>
-              {/* 按類別分組顯示節點類型 */}
-              {Object.entries(
-                nodeTypeDefinitions.reduce((acc, nodeType) => {
-                  const category = nodeType.category || 'Other';
-                  if (!acc[category]) acc[category] = [];
-                  acc[category].push(nodeType);
-                  return acc;
-                }, {})
-              ).map(([category, types]) => (
-                <div key={category} style={{ marginBottom: '16px' }}>
-                  <h5 style={{ margin: '8px 0', fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
-                    {category}
-                  </h5>
-                  {types.map(nodeType => {
-                    const iconComponent = nodeTypes.find(n => n.type === nodeType.type)?.icon;
-                    const isDisabled = nodeType.type === 'start' && nodes.some(nd => nd.data.type === 'start');
-                    
-                    return (
-                      <div
-                        key={nodeType.type}
-                        style={{ 
-                          margin: '4px 0', 
-                          padding: 8, 
-                          background: nodeType.isImplemented ? '#fff' : '#f5f5f5', 
-                          border: `1px solid ${nodeType.isImplemented ? '#ddd' : '#ccc'}`, 
-                          borderRadius: 4, 
-                          cursor: isDisabled ? 'not-allowed' : 'grab', 
-                          opacity: isDisabled ? 0.5 : (nodeType.isImplemented ? 1 : 0.6),
-                          position: 'relative'
-                        }}
-                        draggable={nodeType.isImplemented && !isDisabled}
-                        onDragStart={e => nodeType.isImplemented && !isDisabled ? onDragStart(e, nodeType.type) : null}
-                        title={nodeType.description}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {iconComponent && React.createElement(iconComponent, { 
-                            style: { fontSize: '16px', color: nodeType.isImplemented ? '#666' : '#999' } 
-                          })}
-                          <span style={{ 
-                            fontSize: '12px', 
-                            color: nodeType.isImplemented ? '#333' : '#999' 
-                          }}>
-                            {nodeType.label}
-                          </span>
-                        </div>
-                        {!nodeType.isImplemented && (
-                          <div style={{
-                            position: 'absolute',
-                            top: 2,
-                            right: 2,
-                            fontSize: '10px',
-                            color: '#999',
-                            backgroundColor: '#f0f0f0',
-                            padding: '1px 4px',
-                            borderRadius: '2px'
-                          }}>
-                            開發中
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </>
-          )}
+      
+      {/* 頂部工具欄 */}
+      <div style={{
+        padding: '16px', 
+        borderBottom: '1px solid #e8e8e8',
+        backgroundColor: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <Button 
+            icon={<ArrowLeftOutlined />} 
+            onClick={() => navigate('/workflow-list')} 
+            className="purple-back-button"
+            style={{ 
+              backgroundColor: '#722ed1', 
+              borderColor: '#722ed1',
+              color: 'white',
+              height: '32px',
+              width: '32px',
+              padding: '0'
+            }}
+          />
+          <Button
+            icon={<SaveOutlined />}
+            type="primary"
+            onClick={handleSave}
+            style={{
+              height: '32px',
+              width: '32px',
+              padding: '0'
+            }}
+          />
         </div>
-        {/* 中間流程畫布 */}
-        <div style={{ flex: 1, background: '#fafbfc', position: 'relative', height: '100%' }}>
+        
+        <Title level={4} style={{ margin: 0 }}>{t('workflowDesigner.title')}</Title>
+      </div>
+
+      {/* 主要內容區域 */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* 左側工具欄 */}
+        <div style={{ 
+          width: isToolbarCollapsed ? '0px' : '250px', 
+          borderRight: isToolbarCollapsed ? 'none' : '1px solid #e8e8e8',
+          backgroundColor: '#fafafa',
+          padding: isToolbarCollapsed ? '0px' : '16px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          transition: 'all 0.3s ease',
+          opacity: isToolbarCollapsed ? 0 : 1,
+          visibility: isToolbarCollapsed ? 'hidden' : 'visible',
+          height: '100%'
+        }}>
+          <div style={{ marginBottom: '20px' }}>
+            <h4>{t('workflowDesigner.workflowInfo')}</h4>
+            <div style={{ marginBottom: '12px' }}>
+              <label>{t('workflowDesigner.workflowName')}:</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('workflowDesigner.workflowNamePlaceholder')}
+                style={{ marginTop: '4px' }}
+              />
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label>{t('workflowDesigner.workflowDescription')}:</label>
+              <Input.TextArea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('workflowDesigner.workflowDescriptionPlaceholder')}
+                rows={3}
+                style={{ marginTop: '4px' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <h4>{t('workflow.nodeTypes')}</h4>
+
+            {loadingNodeTypes ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <div>{t('workflowDesigner.loadingNodeTypes')}</div>
+              </div>
+            ) : (
+              <>
+                {/* 按類別分組顯示節點類型 */}
+                {Object.entries(
+                  nodeTypeDefinitions.reduce((acc, nodeType) => {
+                    const category = nodeType.category || 'Other';
+                    if (!acc[category]) acc[category] = [];
+                    acc[category].push(nodeType);
+                    return acc;
+                  }, {})
+                ).map(([category, types]) => (
+                  <div key={category} style={{ marginBottom: '16px' }}>
+                    <h5 style={{ margin: '8px 0', fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
+                      {category}
+                    </h5>
+                    {types.map(nodeType => {
+                      const iconComponent = nodeTypes.find(n => n.type === nodeType.type)?.icon;
+                      const isDisabled = nodeType.type === 'start' && nodes.some(nd => nd.data.type === 'start');
+                      
+                      return (
+                        <div
+                          key={nodeType.type}
+                          style={{ 
+                            margin: '4px 0', 
+                            padding: 8, 
+                            background: nodeType.isImplemented ? '#fff' : '#f5f5f5', 
+                            border: `1px solid ${nodeType.isImplemented ? '#ddd' : '#ccc'}`, 
+                            borderRadius: 4, 
+                            cursor: isDisabled ? 'not-allowed' : 'grab', 
+                            opacity: isDisabled ? 0.5 : (nodeType.isImplemented ? 1 : 0.6),
+                            position: 'relative'
+                          }}
+                          draggable={nodeType.isImplemented && !isDisabled}
+                          onDragStart={e => nodeType.isImplemented && !isDisabled ? onDragStart(e, nodeType.type) : null}
+                          title={nodeType.description}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {iconComponent && React.createElement(iconComponent, { 
+                              style: { fontSize: '16px', color: nodeType.isImplemented ? '#666' : '#999' } 
+                            })}
+                            <span style={{ 
+                              fontSize: '12px', 
+                              color: nodeType.isImplemented ? '#333' : '#999' 
+                            }}>
+                              {nodeType.label}
+                            </span>
+                          </div>
+                          {!nodeType.isImplemented && (
+                            <div style={{
+                              position: 'absolute',
+                              top: 2,
+                              right: 2,
+                              fontSize: '10px',
+                              color: '#999',
+                              backgroundColor: '#f0f0f0',
+                              padding: '1px 4px',
+                              borderRadius: '2px'
+                            }}>
+                              開發中
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+
+
+        
+        {/* 編輯器區域 */}
+        <div style={{ flex: 1, position: 'relative' }}>
           <ReactFlow
             onInit={handleInit}
             nodes={nodes}
