@@ -329,8 +329,7 @@ const CompanyUserAdminPage = () => {
                     pageSize={companyPagination.pageSize}
                     total={companyPagination.total}
                     showSizeChanger
-                    showQuickJumper
-                    showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                    showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                     onChange={(page, pageSize) => fetchCompanies(page, pageSize, companySearch)}
                     onShowSizeChange={(current, size) => fetchCompanies(1, size, companySearch)}
                   />
@@ -378,8 +377,7 @@ const CompanyUserAdminPage = () => {
                     pageSize={userPagination.pageSize}
                     total={userPagination.total}
                     showSizeChanger
-                    showQuickJumper
-                    showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                    showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                     onChange={(page, pageSize) => fetchUsers(page, pageSize, userSearch)}
                     onShowSizeChange={(current, size) => fetchUsers(1, size, userSearch)}
                   />

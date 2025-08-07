@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Space, message, Modal, Input, Tag, Spin, Alert } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const { TextArea } = Input;
 
@@ -17,6 +18,8 @@ const EFormInstancePage = () => {
   const [approvalNote, setApprovalNote] = useState('');
   const [rejectNote, setRejectNote] = useState('');
 
+  const { t } = useLanguage();
+
   // 檢查用戶是否已登入
   useEffect(() => {
     console.log('EFormInstancePage useEffect 被調用，id:', id);
@@ -27,7 +30,7 @@ const EFormInstancePage = () => {
     console.log('UserInfo 存在:', !!userInfo);
     
     if (!token || !userInfo) {
-      message.error('請先登入');
+      message.error(t('eformInstance.loginRequired'));
       navigate('/');
       return;
     }
@@ -55,7 +58,7 @@ const EFormInstancePage = () => {
         layout.style.marginLeft = '';
       }
     };
-  }, [id, navigate]);
+  }, [id, navigate, t]);
 
   const fetchInstance = async () => {
     try {
@@ -65,7 +68,7 @@ const EFormInstancePage = () => {
       console.log('fetchInstance 被調用，id:', id);
       
       if (!token) {
-        message.error('請先登入');
+        message.error(t('eformInstance.loginRequired'));
         navigate('/');
         return;
       }
@@ -79,7 +82,7 @@ const EFormInstancePage = () => {
       console.log('獲取實例響應狀態:', response.status);
 
       if (response.status === 401) {
-        message.error('登入已過期，請重新登入');
+        message.error(t('eformInstance.loginExpired'));
         localStorage.removeItem('token');
         localStorage.removeItem('userInfo');
         navigate('/');
@@ -87,7 +90,7 @@ const EFormInstancePage = () => {
       }
 
       if (!response.ok) {
-        throw new Error('獲取表單實例失敗');
+        throw new Error(t('eformInstance.fetchFailed'));
       }
 
       const data = await response.json();
@@ -95,7 +98,7 @@ const EFormInstancePage = () => {
       setInstance(data);
     } catch (error) {
       console.error('獲取表單實例錯誤:', error);
-      message.error('獲取表單實例失敗: ' + error.message);
+      message.error(t('eformInstance.fetchFailed') + ': ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -110,7 +113,7 @@ const EFormInstancePage = () => {
       console.log('Token:', token ? '存在' : '不存在');
       
       if (!token) {
-        message.error('請先登入');
+        message.error(t('eformInstance.loginRequired'));
         navigate('/');
         return;
       }
@@ -134,7 +137,7 @@ const EFormInstancePage = () => {
       console.log('響應狀態文本:', response.statusText);
 
       if (response.status === 401) {
-        message.error('登入已過期，請重新登入');
+        message.error(t('eformInstance.loginExpired'));
         localStorage.removeItem('token');
         localStorage.removeItem('userInfo');
         navigate('/');
@@ -149,7 +152,7 @@ const EFormInstancePage = () => {
 
       const result = await response.json();
       console.log('批准成功，響應:', result);
-      message.success('表單已批准');
+      message.success(t('eformInstance.formApproved'));
       
       // 關閉 Modal
       setApprovalModalVisible(false);
@@ -161,7 +164,7 @@ const EFormInstancePage = () => {
       console.log('批准操作完成，界面已更新');
     } catch (error) {
       console.error('批准表單錯誤:', error);
-      message.error('批准表單失敗: ' + error.message);
+      message.error(t('eformInstance.approveFailed') + ': ' + error.message);
     } finally {
       setApproving(false);
     }
@@ -176,7 +179,7 @@ const EFormInstancePage = () => {
       console.log('Token:', token ? '存在' : '不存在');
       
       if (!token) {
-        message.error('請先登入');
+        message.error(t('eformInstance.loginRequired'));
         navigate('/');
         return;
       }
@@ -200,7 +203,7 @@ const EFormInstancePage = () => {
       console.log('響應狀態文本:', response.statusText);
 
       if (response.status === 401) {
-        message.error('登入已過期，請重新登入');
+        message.error(t('eformInstance.loginExpired'));
         localStorage.removeItem('token');
         localStorage.removeItem('userInfo');
         navigate('/');
@@ -215,7 +218,7 @@ const EFormInstancePage = () => {
 
       const result = await response.json();
       console.log('拒絕成功，響應:', result);
-      message.success('表單已拒絕');
+      message.success(t('eformInstance.formRejected'));
       
       // 關閉 Modal
       setRejectModalVisible(false);
@@ -227,7 +230,7 @@ const EFormInstancePage = () => {
       console.log('拒絕操作完成，界面已更新');
     } catch (error) {
       console.error('拒絕表單錯誤:', error);
-      message.error('拒絕表單失敗: ' + error.message);
+      message.error(t('eformInstance.rejectFailed') + ': ' + error.message);
     } finally {
       setRejecting(false);
     }
@@ -244,9 +247,9 @@ const EFormInstancePage = () => {
 
   const getStatusText = (status) => {
     switch (status) {
-      case 'Pending': return '待審批';
-      case 'Approved': return '已批准';
-      case 'Rejected': return '已拒絕';
+      case 'Pending': return t('eformInstance.pendingApproval');
+      case 'Approved': return t('eformInstance.approved');
+      case 'Rejected': return t('eformInstance.rejected');
       default: return status;
     }
   };
@@ -285,8 +288,8 @@ const EFormInstancePage = () => {
         backgroundColor: '#f5f5f5'
       }}>
         <Alert
-          message="錯誤"
-          description="找不到表單實例"
+          message={t('eformInstance.error')}
+          description={t('eformInstance.formInstanceNotFound')}
           type="error"
           showIcon
         />
@@ -369,7 +372,7 @@ const EFormInstancePage = () => {
                     fontWeight: '500'
                   }}
                 >
-                  批准
+                  {t('eformInstance.approve')}
                 </Button>
                 <Button
                   danger
@@ -385,7 +388,7 @@ const EFormInstancePage = () => {
                     fontWeight: '500'
                   }}
                 >
-                  拒絕
+                  {t('eformInstance.reject')}
                 </Button>
               </Space>
             )}
@@ -408,7 +411,7 @@ const EFormInstancePage = () => {
             {/* 表單信息卡片 */}
             <Card 
               className="form-info-card"
-              title="表單信息" 
+              title={t('eformInstance.formInfo')} 
               style={{ 
                 height: 'fit-content',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
@@ -438,7 +441,7 @@ const EFormInstancePage = () => {
                   flexDirection: 'column', 
                   gap: '8px'
                 }}>
-                  <strong style={{ color: '#595959', fontSize: '14px' }}>實例名稱</strong>
+                  <strong style={{ color: '#595959', fontSize: '14px' }}>{t('eformInstance.instanceName')}</strong>
                   <span style={{ 
                     color: '#262626', 
                     wordBreak: 'break-word',
@@ -457,7 +460,7 @@ const EFormInstancePage = () => {
                   flexDirection: 'column', 
                   gap: '8px'
                 }}>
-                  <strong style={{ color: '#595959', fontSize: '14px' }}>創建時間</strong>
+                  <strong style={{ color: '#595959', fontSize: '14px' }}>{t('eformInstance.createdAt')}</strong>
                   <span style={{ 
                     color: '#262626',
                     fontSize: '16px',
@@ -483,7 +486,7 @@ const EFormInstancePage = () => {
                       marginBottom: '8px',
                       fontSize: '14px'
                     }}>
-                      用戶輸入
+                      {t('eformInstance.userInput')}
                     </strong>
                     <span style={{ 
                       color: '#262626', 
@@ -502,7 +505,7 @@ const EFormInstancePage = () => {
                     flexDirection: 'column', 
                     gap: '8px'
                   }}>
-                    <strong style={{ color: '#595959', fontSize: '14px' }}>審批人</strong>
+                    <strong style={{ color: '#595959', fontSize: '14px' }}>{t('eformInstance.approver')}</strong>
                     <span style={{ 
                       color: '#262626',
                       fontSize: '16px',
@@ -522,7 +525,7 @@ const EFormInstancePage = () => {
                     flexDirection: 'column', 
                     gap: '8px'
                   }}>
-                    <strong style={{ color: '#595959', fontSize: '14px' }}>審批時間</strong>
+                    <strong style={{ color: '#595959', fontSize: '14px' }}>{t('eformInstance.approvalTime')}</strong>
                     <span style={{ 
                       color: '#262626',
                       fontSize: '16px',
@@ -549,7 +552,7 @@ const EFormInstancePage = () => {
                       marginBottom: '8px',
                       fontSize: '14px'
                     }}>
-                      審批備註
+                      {t('eformInstance.approvalNote')}
                     </strong>
                     <span style={{ 
                       color: '#262626', 
@@ -567,7 +570,7 @@ const EFormInstancePage = () => {
                          {/* 表單內容卡片 */}
              <Card 
                className="form-content-card"
-               title="表單內容" 
+               title={t('eformInstance.formContent')} 
                style={{ 
                  height: 'fit-content',
                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
@@ -614,7 +617,7 @@ const EFormInstancePage = () => {
 
         {/* 批准 Modal */}
         <Modal
-          title="批准表單"
+          title={t('eformInstance.approveForm')}
           open={approvalModalVisible}
           onCancel={() => {
             console.log('批准 Modal 被取消');
@@ -625,7 +628,7 @@ const EFormInstancePage = () => {
               console.log('批准 Modal 取消按鈕被點擊');
               setApprovalModalVisible(false);
             }}>
-              取消
+              {t('eformInstance.cancel')}
             </Button>,
             <Button
               key="approve"
@@ -637,7 +640,7 @@ const EFormInstancePage = () => {
               }}
               style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
             >
-              確定批准
+              {t('eformInstance.confirmApprove')}
             </Button>,
           ]}
           styles={{
@@ -646,10 +649,10 @@ const EFormInstancePage = () => {
           }}
         >
           <div>
-            <p>您確定要批准這個表單嗎？</p>
+            <p>{t('eformInstance.confirmApproveForm')}</p>
             <TextArea
               rows={4}
-              placeholder="審批備註（可選）"
+              placeholder={t('eformInstance.approvalNotePlaceholder')}
               value={approvalNote}
               onChange={(e) => setApprovalNote(e.target.value)}
             />
@@ -658,7 +661,7 @@ const EFormInstancePage = () => {
 
         {/* 拒絕 Modal */}
         <Modal
-          title="拒絕表單"
+          title={t('eformInstance.rejectForm')}
           open={rejectModalVisible}
           onCancel={() => {
             console.log('拒絕 Modal 被取消');
@@ -669,7 +672,7 @@ const EFormInstancePage = () => {
               console.log('拒絕 Modal 取消按鈕被點擊');
               setRejectModalVisible(false);
             }}>
-              取消
+              {t('eformInstance.cancel')}
             </Button>,
             <Button
               key="reject"
@@ -680,7 +683,7 @@ const EFormInstancePage = () => {
                 handleReject();
               }}
             >
-              確定拒絕
+              {t('eformInstance.confirmReject')}
             </Button>,
           ]}
           styles={{
@@ -689,10 +692,10 @@ const EFormInstancePage = () => {
           }}
         >
           <div>
-            <p>您確定要拒絕這個表單嗎？</p>
+            <p>{t('eformInstance.confirmRejectForm')}</p>
             <TextArea
               rows={4}
-              placeholder="拒絕原因（可選）"
+              placeholder={t('eformInstance.rejectReasonPlaceholder')}
               value={rejectNote}
               onChange={(e) => setRejectNote(e.target.value)}
             />

@@ -40,14 +40,14 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
     {
       key: 'eformList',
       icon: <FileTextOutlined />,
-      label: 'e-Form 管理',
+      label: t('menu.eformList'),
       url: '/eform-list',
     },
     // WhatsApp 訊息模版
     {
       key: 'whatsappTemplates',
       icon: <MessageOutlined />,
-      label: 'WhatsApp 訊息模版',
+      label: t('menu.whatsappTemplates'),
       url: '/whatsapp-templates',
     },
     // 新增 Elsa Dashboard 選單

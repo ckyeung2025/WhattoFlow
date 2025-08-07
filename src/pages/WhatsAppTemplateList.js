@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Button, Input, Space, Modal, message, Popconfirm, 
   Drawer, Form, Select, Card, Tag, Tooltip, Badge,
-  Radio, Checkbox, Divider, Row, Col
+  Radio, Checkbox, Divider, Row, Col, Pagination
 } from 'antd';
 import { 
   PlusOutlined, DeleteOutlined, EditOutlined, 
@@ -10,6 +10,7 @@ import {
   PictureOutlined, VideoCameraOutlined, AudioOutlined, FileOutlined,
   EnvironmentOutlined, UserOutlined, LinkOutlined
 } from '@ant-design/icons';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const { Option } = Select;
 
@@ -43,6 +44,8 @@ const WhatsAppTemplateList = () => {
   const [isMetaTemplatesModalVisible, setIsMetaTemplatesModalVisible] = useState(false);
   const [metaTemplatesLoading, setMetaTemplatesLoading] = useState(false);
 
+  const { t } = useLanguage();
+
   // 獲取 Meta 模板列表
   const fetchMetaTemplates = async () => {
     setMetaTemplatesLoading(true);
@@ -59,11 +62,11 @@ const WhatsAppTemplateList = () => {
       if (result.success) {
         setMetaTemplates(result.data);
       } else {
-        message.error(result.error || '獲取 Meta 模板失敗');
+        message.error(result.error || t('whatsappTemplate.templateGetMetaTemplatesFailed'));
       }
     } catch (error) {
       console.error('獲取 Meta 模板錯誤:', error);
-      message.error('獲取 Meta 模板失敗');
+      message.error(t('whatsappTemplate.templateGetMetaTemplatesFailed'));
     } finally {
       setMetaTemplatesLoading(false);
     }
@@ -90,15 +93,15 @@ const WhatsAppTemplateList = () => {
       const result = await response.json();
       
       if (result.success) {
-        message.success('模板導入成功');
+        message.success(t('whatsappTemplate.templateImportSuccess'));
         setIsMetaTemplatesModalVisible(false);
         fetchTemplates();
       } else {
-        message.error(result.error || '導入失敗');
+        message.error(result.error || t('whatsappTemplate.templateImportFailed'));
       }
     } catch (error) {
       console.error('導入 Meta 模板錯誤:', error);
-      message.error('導入失敗');
+      message.error(t('whatsappTemplate.templateImportFailed'));
     }
   };
 
@@ -124,16 +127,16 @@ const WhatsAppTemplateList = () => {
       const result = await response.json();
       
       if (result.success) {
-        message.success('Meta 模板創建成功');
+        message.success(t('whatsappTemplate.templateCreateMetaTemplateSuccess'));
         setIsTemplateModalVisible(false);
         form.resetFields();
         fetchTemplates();
       } else {
-        message.error(result.error || '創建失敗');
+        message.error(result.error || t('whatsappTemplate.templateCreateFailed'));
       }
     } catch (error) {
       console.error('創建 Meta 模板錯誤:', error);
-      message.error('創建失敗');
+      message.error(t('whatsappTemplate.templateCreateFailed'));
     }
   };
 
@@ -152,14 +155,14 @@ const WhatsAppTemplateList = () => {
       const result = await response.json();
       
       if (result.success) {
-        message.success('Meta 模板刪除成功');
+        message.success(t('whatsappTemplate.templateDeleteMetaTemplateSuccess'));
         fetchTemplates();
       } else {
-        message.error(result.error || '刪除失敗');
+        message.error(result.error || t('whatsappTemplate.templateDeleteFailed'));
       }
     } catch (error) {
       console.error('刪除 Meta 模板錯誤:', error);
-      message.error('刪除失敗');
+      message.error(t('whatsappTemplate.templateDeleteFailed'));
     }
   };
 
@@ -189,12 +192,12 @@ const WhatsAppTemplateList = () => {
       if (result.success) {
         setTemplates(result.data);
         setTotal(result.total);
-      } else {
-        message.error('獲取模板列表失敗');
-      }
-    } catch (error) {
-      console.error('獲取模板列表錯誤:', error);
-      message.error('獲取模板列表失敗');
+              } else {
+          message.error(t('whatsappTemplate.templateGetTemplateListFailed'));
+        }
+      } catch (error) {
+        console.error('獲取模板列表錯誤:', error);
+        message.error(t('whatsappTemplate.templateGetTemplateListFailed'));
     } finally {
       setLoading(false);
     }
@@ -226,8 +229,6 @@ const WhatsAppTemplateList = () => {
 
   // 表格變化處理
   const handleTableChange = (pagination, filters, sorter) => {
-    setCurrentPage(pagination.current);
-    setPageSize(pagination.pageSize);
     if (sorter.field) {
       setSortField(sorter.field);
       setSortOrder(sorter.order === 'ascend' ? 'asc' : 'desc');
@@ -242,10 +243,10 @@ const WhatsAppTemplateList = () => {
 
   // 批量刪除
   const handleBatchDelete = async () => {
-    if (selectedTemplates.length === 0) {
-      message.warning('請選擇要刪除的模板');
-      return;
-    }
+          if (selectedTemplates.length === 0) {
+        message.warning(t('whatsappTemplate.templatePleaseSelectTemplates'));
+        return;
+      }
 
     try {
       const token = localStorage.getItem('token');
@@ -260,16 +261,16 @@ const WhatsAppTemplateList = () => {
 
       const result = await response.json();
       if (result.success) {
-        message.success(`成功刪除 ${result.deletedCount} 個模板`);
+        message.success(`${t('whatsappTemplate.templateSuccessDelete')} ${result.deletedCount} ${t('whatsappTemplate.templateTemplates')}`);
         setSelectedTemplates([]);
         setIsBatchDeleteModalVisible(false);
         fetchTemplates();
       } else {
-        message.error(result.error || '刪除失敗');
+        message.error(result.error || t('whatsappTemplate.templateDeleteFailed'));
       }
     } catch (error) {
       console.error('批量刪除錯誤:', error);
-      message.error('刪除失敗');
+      message.error(t('whatsappTemplate.templateDeleteFailed'));
     }
   };
 
@@ -287,14 +288,14 @@ const WhatsAppTemplateList = () => {
 
       const result = await response.json();
       if (result.success) {
-        message.success('模板刪除成功');
+        message.success(t('whatsappTemplate.templateDeleteSuccess'));
         fetchTemplates();
       } else {
-        message.error(result.error || '刪除失敗');
+        message.error(result.error || t('whatsappTemplate.templateDeleteFailed'));
       }
     } catch (error) {
       console.error('刪除錯誤:', error);
-      message.error('刪除失敗');
+      message.error(t('whatsappTemplate.templateDeleteFailed'));
     }
   };
 
@@ -424,7 +425,7 @@ const WhatsAppTemplateList = () => {
         const result = await response.json();
         
         if (result.success) {
-          message.success('模板更新成功');
+          message.success(t('whatsappTemplate.templateUpdateSuccess'));
           setIsTemplateModalVisible(false);
           setEditingTemplate(null);
           form.resetFields();
@@ -432,7 +433,7 @@ const WhatsAppTemplateList = () => {
           setPendingTemplateData(null);
           fetchTemplates();
         } else {
-          message.error(result.message || result.error || '更新失敗');
+          message.error(result.message || result.error || t('whatsappTemplate.templateUpdateFailed'));
         }
       } else {
         // 創建模式 - 使用 WhatsAppTemplateCreateRequest 結構
@@ -465,7 +466,7 @@ const WhatsAppTemplateList = () => {
         const result = await response.json();
         
         if (result.success) {
-          message.success('模板創建成功');
+          message.success(t('whatsappTemplate.templateCreateSuccess'));
           setIsTemplateModalVisible(false);
           setEditingTemplate(null);
           form.resetFields();
@@ -473,12 +474,12 @@ const WhatsAppTemplateList = () => {
           setPendingTemplateData(null);
           fetchTemplates();
         } else {
-          message.error(result.message || result.error || '創建失敗');
+          message.error(result.message || result.error || t('whatsappTemplate.templateCreateFailed'));
         }
       }
     } catch (error) {
       console.error('保存模板錯誤:', error);
-      message.error('保存模板失敗');
+      message.error(t('whatsappTemplate.templateSaveFailed'));
     }
   };
 
@@ -542,7 +543,7 @@ const WhatsAppTemplateList = () => {
     } catch (error) {
       console.error('解析模板內容錯誤:', error);
       console.log('模板數據:', template);
-      message.error('解析模板內容失敗');
+      message.error(t('whatsappTemplate.templateParseContentFailed'));
       
       // 設置默認值
       setVariables([]);
@@ -621,7 +622,7 @@ const WhatsAppTemplateList = () => {
     } catch (error) {
       console.error('解析模板內容錯誤:', error);
       console.log('模板數據:', template);
-      message.error('解析模板內容失敗');
+      message.error(t('whatsappTemplate.templateParseContentFailed'));
       
       // 設置默認值
       setVariables([]);
@@ -672,7 +673,7 @@ const WhatsAppTemplateList = () => {
   // 表格列定義
   const columns = [
     {
-      title: '模板名稱',
+      title: t('whatsappTemplate.templateName'),
       dataIndex: 'name',
       key: 'name',
       sorter: true,
@@ -684,14 +685,14 @@ const WhatsAppTemplateList = () => {
       )
     },
     {
-      title: '分類',
+      title: t('whatsappTemplate.category'),
       dataIndex: 'category',
       key: 'category',
       sorter: true,
       render: (text) => <Tag color="blue">{text}</Tag>
     },
     {
-      title: '類型',
+      title: t('whatsappTemplate.type'),
       dataIndex: 'templateType',
       key: 'templateType',
       render: (text) => {
@@ -717,7 +718,7 @@ const WhatsAppTemplateList = () => {
       }
     },
     {
-      title: '狀態',
+      title: t('whatsappTemplate.status'),
       dataIndex: 'status',
       key: 'status',
       sorter: true,
@@ -731,45 +732,45 @@ const WhatsAppTemplateList = () => {
       }
     },
     {
-      title: '語言',
+      title: t('whatsappTemplate.templateLanguage'),
       dataIndex: 'language',
       key: 'language',
       render: (text) => <Tag>{text}</Tag>
     },
     {
-      title: '版本',
+      title: t('whatsappTemplate.templateVersion'),
       dataIndex: 'version',
       key: 'version',
       render: (text) => <Tag color="geekblue">v{text}</Tag>
     },
     {
-      title: '更新時間',
+      title: t('whatsappTemplate.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       sorter: true,
       render: (text) => new Date(text).toLocaleString('zh-TW')
     },
     {
-      title: '操作',
+      title: t('whatsappTemplate.action'),
       key: 'action',
       width: 250,
       render: (_, record) => (
         <Space size="small">
-          <Tooltip title="預覽">
+          <Tooltip title={t('whatsappTemplate.preview')}>
             <Button 
               type="text" 
               icon={<EyeOutlined />} 
               onClick={() => handlePreview(record)}
             />
           </Tooltip>
-          <Tooltip title="編輯">
+          <Tooltip title={t('whatsappTemplate.edit')}>
             <Button 
               type="text" 
               icon={<EditOutlined />} 
               onClick={() => handleEditTemplate(record)}
             />
           </Tooltip>
-          <Tooltip title="複製">
+          <Tooltip title={t('whatsappTemplate.copy')}>
             <Button 
               type="text" 
               icon={<CopyOutlined />} 
@@ -777,12 +778,12 @@ const WhatsAppTemplateList = () => {
             />
           </Tooltip>
           {record.metaTemplateId && (
-            <Tooltip title="刪除 Meta 模板">
+            <Tooltip title={t('whatsappTemplate.deleteMetaTemplate')}>
               <Popconfirm
-                title="確定要從 Meta 刪除這個模板嗎？"
+                title={t('whatsappTemplate.templateDeleteConfirm')}
                 onConfirm={() => handleDeleteMetaTemplate(record.id)}
-                okText="確定"
-                cancelText="取消"
+                okText={t('whatsappTemplate.confirm')}
+                cancelText={t('whatsappTemplate.cancel')}
               >
                 <Button type="text" danger icon={<DeleteOutlined />} />
               </Popconfirm>
@@ -790,12 +791,12 @@ const WhatsAppTemplateList = () => {
           )}
           {!record.metaTemplateId && (
             <Popconfirm
-              title="確定要刪除這個模板嗎？"
+              title={t('whatsappTemplate.templateDeleteConfirmLocal')}
               onConfirm={() => handleDelete(record.id)}
-              okText="確定"
-              cancelText="取消"
+              okText={t('whatsappTemplate.confirm')}
+              cancelText={t('whatsappTemplate.cancel')}
             >
-              <Tooltip title="刪除">
+              <Tooltip title={t('whatsappTemplate.delete')}>
                 <Button type="text" danger icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
@@ -814,12 +815,12 @@ const WhatsAppTemplateList = () => {
         return (
           <Form.Item
             name="content"
-            label="訊息內容"
-            rules={[{ required: true, message: '請輸入訊息內容' }]}
+            label={t('訊息內容')}
+            rules={[{ required: true, message: t('請輸入訊息內容') }]}
           >
             <Input.TextArea 
               rows={4} 
-              placeholder="請輸入訊息內容，可使用 {{變數名}} 格式插入變數"
+              placeholder={t('請輸入訊息內容，可使用 {{變數名}} 格式插入變數')}
             />
           </Form.Item>
         );
@@ -829,32 +830,32 @@ const WhatsAppTemplateList = () => {
           <>
             <Form.Item
               name="mediaType"
-              label="媒體類型"
-              rules={[{ required: true, message: '請選擇媒體類型' }]}
+              label={t('媒體類型')}
+              rules={[{ required: true, message: t('請選擇媒體類型') }]}
             >
               <Radio.Group onChange={(e) => setMediaType(e.target.value)} value={mediaType}>
-                <Radio.Button value="image"><PictureOutlined /> 圖片</Radio.Button>
-                <Radio.Button value="video"><VideoCameraOutlined /> 影片</Radio.Button>
-                <Radio.Button value="audio"><AudioOutlined /> 音訊</Radio.Button>
-                <Radio.Button value="document"><FileOutlined /> 文件</Radio.Button>
+                <Radio.Button value="image"><PictureOutlined /> {t('圖片')}</Radio.Button>
+                <Radio.Button value="video"><VideoCameraOutlined /> {t('影片')}</Radio.Button>
+                <Radio.Button value="audio"><AudioOutlined /> {t('音訊')}</Radio.Button>
+                <Radio.Button value="document"><FileOutlined /> {t('文件')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
             
             <Form.Item
               name="mediaUrl"
-              label="媒體檔案 URL"
-              rules={[{ required: true, message: '請輸入媒體檔案 URL' }]}
+              label={t('媒體檔案 URL')}
+              rules={[{ required: true, message: t('請輸入媒體檔案 URL') }]}
             >
-              <Input placeholder="請輸入媒體檔案 URL" />
+              <Input placeholder={t('請輸入媒體檔案 URL')} />
             </Form.Item>
             
             <Form.Item
               name="mediaCaption"
-              label="媒體說明"
+              label={t('媒體說明')}
             >
               <Input.TextArea 
                 rows={3} 
-                placeholder="請輸入媒體說明（可選）"
+                placeholder={t('請輸入媒體說明（可選）')}
               />
             </Form.Item>
           </>
@@ -865,39 +866,39 @@ const WhatsAppTemplateList = () => {
           <>
             <Form.Item
               name="interactiveType"
-              label="互動類型"
-              rules={[{ required: true, message: '請選擇互動類型' }]}
+              label={t('互動類型')}
+              rules={[{ required: true, message: t('請選擇互動類型') }]}
             >
               <Radio.Group onChange={(e) => setInteractiveType(e.target.value)} value={interactiveType}>
-                <Radio.Button value="button">按鈕</Radio.Button>
-                <Radio.Button value="list">選單</Radio.Button>
-                <Radio.Button value="product">商品</Radio.Button>
+                <Radio.Button value="button">{t('按鈕')}</Radio.Button>
+                <Radio.Button value="list">{t('選單')}</Radio.Button>
+                <Radio.Button value="product">{t('商品')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
             
             <Form.Item
               name="header"
-              label="標題"
+              label={t('標題')}
             >
-              <Input placeholder="請輸入標題（可選）" />
+              <Input placeholder={t('請輸入標題（可選）')} />
             </Form.Item>
             
             <Form.Item
               name="body"
-              label="主要內容"
-              rules={[{ required: true, message: '請輸入主要內容' }]}
+              label={t('主要內容')}
+              rules={[{ required: true, message: t('請輸入主要內容') }]}
             >
               <Input.TextArea 
                 rows={4} 
-                placeholder="請輸入主要內容"
+                placeholder={t('請輸入主要內容')}
               />
             </Form.Item>
             
             <Form.Item
               name="footer"
-              label="底部文字"
+              label={t('底部文字')}
             >
-              <Input placeholder="請輸入底部文字（可選）" />
+              <Input placeholder={t('請輸入底部文字（可選）')} />
             </Form.Item>
           </>
         );
@@ -909,39 +910,39 @@ const WhatsAppTemplateList = () => {
               <Col span={12}>
                 <Form.Item
                   name="latitude"
-                  label="緯度"
-                  rules={[{ required: true, message: '請輸入緯度' }]}
+                  label={t('緯度')}
+                  rules={[{ required: true, message: t('請輸入緯度') }]}
                 >
-                  <Input placeholder="請輸入緯度" />
+                  <Input placeholder={t('請輸入緯度')} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
                   name="longitude"
-                  label="經度"
-                  rules={[{ required: true, message: '請輸入經度' }]}
+                  label={t('經度')}
+                  rules={[{ required: true, message: t('請輸入經度') }]}
                 >
-                  <Input placeholder="請輸入經度" />
+                  <Input placeholder={t('請輸入經度')} />
                 </Form.Item>
               </Col>
             </Row>
             
             <Form.Item
               name="locationName"
-              label="位置名稱"
-              rules={[{ required: true, message: '請輸入位置名稱' }]}
+              label={t('位置名稱')}
+              rules={[{ required: true, message: t('請輸入位置名稱') }]}
             >
-              <Input placeholder="請輸入位置名稱" />
+              <Input placeholder={t('請輸入位置名稱')} />
             </Form.Item>
             
             <Form.Item
               name="locationAddress"
-              label="地址"
-              rules={[{ required: true, message: '請輸入地址' }]}
+              label={t('地址')}
+              rules={[{ required: true, message: t('請輸入地址') }]}
             >
               <Input.TextArea 
                 rows={3} 
-                placeholder="請輸入完整地址"
+                placeholder={t('請輸入完整地址')}
               />
             </Form.Item>
           </>
@@ -952,25 +953,25 @@ const WhatsAppTemplateList = () => {
           <>
             <Form.Item
               name="contactName"
-              label="聯絡人姓名"
-              rules={[{ required: true, message: '請輸入聯絡人姓名' }]}
+              label={t('聯絡人姓名')}
+              rules={[{ required: true, message: t('請輸入聯絡人姓名') }]}
             >
-              <Input placeholder="請輸入聯絡人姓名" />
+              <Input placeholder={t('請輸入聯絡人姓名')} />
             </Form.Item>
             
             <Form.Item
               name="contactPhone"
-              label="聯絡人電話"
-              rules={[{ required: true, message: '請輸入聯絡人電話' }]}
+              label={t('聯絡人電話')}
+              rules={[{ required: true, message: t('請輸入聯絡人電話') }]}
             >
-              <Input placeholder="請輸入聯絡人電話" />
+              <Input placeholder={t('請輸入聯絡人電話')} />
             </Form.Item>
             
             <Form.Item
               name="contactEmail"
-              label="聯絡人 Email"
+              label={t('聯絡人 Email')}
             >
-              <Input placeholder="請輸入聯絡人 Email（可選）" />
+              <Input placeholder={t('請輸入聯絡人 Email（可選）')} />
             </Form.Item>
           </>
         );
@@ -984,32 +985,32 @@ const WhatsAppTemplateList = () => {
   const renderVariablesSection = () => {
     return (
       <>
-        <Divider orientation="left">變數設定</Divider>
+        <Divider orientation="left">{t('變數設定')}</Divider>
         
         {variables.map((variable, index) => (
           <Card key={index} size="small" style={{ marginBottom: '8px' }}>
             <Row gutter={16}>
               <Col span={6}>
                 <Input
-                  placeholder="變數名稱"
+                  placeholder={t('變數名稱')}
                   value={variable.name}
                   onChange={(e) => updateVariable(index, 'name', e.target.value)}
                 />
               </Col>
               <Col span={4}>
                 <Select
-                  placeholder="類型"
+                  placeholder={t('類型')}
                   value={variable.type}
                   onChange={(value) => updateVariable(index, 'type', value)}
                 >
-                  <Option value="string">文字</Option>
-                  <Option value="number">數字</Option>
-                  <Option value="date">日期</Option>
+                  <Option value="string">{t('文字')}</Option>
+                  <Option value="number">{t('數字')}</Option>
+                  <Option value="date">{t('日期')}</Option>
                 </Select>
               </Col>
               <Col span={8}>
                 <Input
-                  placeholder="描述"
+                  placeholder={t('描述')}
                   value={variable.description}
                   onChange={(e) => updateVariable(index, 'description', e.target.value)}
                 />
@@ -1019,7 +1020,7 @@ const WhatsAppTemplateList = () => {
                   checked={variable.required}
                   onChange={(e) => updateVariable(index, 'required', e.target.checked)}
                 >
-                  必填
+                  {t('必填')}
                 </Checkbox>
               </Col>
               <Col span={2}>
@@ -1040,14 +1041,15 @@ const WhatsAppTemplateList = () => {
           icon={<PlusOutlined />}
           style={{ width: '100%' }}
         >
-          添加變數
+          {t('添加變數')}
         </Button>
       </>
     );
   };
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '8px' }}>
+      <Card bodyStyle={{ padding: '12px 12px 8px 12px' }} style={{ boxShadow: 'none', borderRadius: 8, margin: 0 }}>
       
       {/* 標題和操作按鈕 */}
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1064,7 +1066,7 @@ const WhatsAppTemplateList = () => {
               setIsTemplateModalVisible(true);
             }}
           >
-            新增模板
+            {t('whatsappTemplate.add')}
           </Button>
           <Button
             type="default"
@@ -1074,7 +1076,7 @@ const WhatsAppTemplateList = () => {
               setIsMetaTemplatesModalVisible(true);
             }}
           >
-            從 Meta 導入
+            {t('whatsappTemplate.importFromMeta')}
           </Button>
           <Button
             danger
@@ -1082,14 +1084,14 @@ const WhatsAppTemplateList = () => {
             disabled={selectedTemplates.length === 0}
             onClick={() => setIsBatchDeleteModalVisible(true)}
           >
-            批量刪除 ({selectedTemplates.length})
+            {t('eform.batchDelete')} ({selectedTemplates.length})
           </Button>
         </Space>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <h2 style={{ margin: 0 }}>
             <MessageOutlined style={{ marginRight: '8px' }} />
-            WhatsApp 訊息模板管理
+            {t('whatsappTemplate.title')}
           </h2>
         </div>
       </div>
@@ -1098,7 +1100,7 @@ const WhatsAppTemplateList = () => {
       <Card style={{ marginBottom: '16px' }}>
         <Space wrap>
           <Input.Search
-            placeholder="搜索模板名稱、描述或分類"
+            placeholder={t('whatsappTemplate.searchPlaceholder')}
             allowClear
             style={{ width: 300 }}
             onSearch={handleSearch}
@@ -1107,7 +1109,7 @@ const WhatsAppTemplateList = () => {
             onChange={(e) => setSearchText(e.target.value)}
           />
           <Select
-            placeholder="選擇分類"
+            placeholder={t('whatsappTemplate.categorySelect')}
             allowClear
             style={{ width: 150 }}
             value={categoryFilter}
@@ -1118,15 +1120,15 @@ const WhatsAppTemplateList = () => {
             ))}
           </Select>
           <Select
-            placeholder="選擇狀態"
+            placeholder={t('whatsappTemplate.statusSelect')}
             allowClear
             style={{ width: 120 }}
             value={statusFilter}
             onChange={setStatusFilter}
           >
-            <Option value="Active">啟用</Option>
-            <Option value="Inactive">停用</Option>
-            <Option value="Draft">草稿</Option>
+            <Option value="Active">{t('whatsappTemplate.enabled')}</Option>
+            <Option value="Inactive">{t('whatsappTemplate.disabled')}</Option>
+            <Option value="Draft">{t('whatsappTemplate.draft')}</Option>
           </Select>
           <Button
             onClick={() => {
@@ -1136,7 +1138,7 @@ const WhatsAppTemplateList = () => {
               setCurrentPage(1);
             }}
           >
-            清除篩選
+            {t('eform.clearFilter')}
           </Button>
         </Space>
       </Card>
@@ -1147,35 +1149,50 @@ const WhatsAppTemplateList = () => {
         dataSource={templates}
         rowKey="id"
         loading={loading}
-        pagination={{
-          current: currentPage,
-          pageSize: pageSize,
-          total: total,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`
-        }}
+        pagination={false}
+        size="small"
+        style={{ width: '100%' }}
         onChange={handleTableChange}
         rowSelection={rowSelection}
         scroll={{ x: 1200 }}
       />
+      <div style={{ marginTop: 16, textAlign: 'right' }}>
+        <Pagination
+          current={currentPage || 1}
+          pageSize={pageSize || 10}
+          total={total || 0}
+          showSizeChanger
+          pageSizeOptions={['10', '20', '50', '100']}
+          showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
+          onChange={(page, pageSize) => {
+            setCurrentPage(page);
+            setPageSize(pageSize);
+            fetchTemplates();
+          }}
+          onShowSizeChange={(current, size) => {
+            setCurrentPage(1);
+            setPageSize(size);
+            fetchTemplates();
+          }}
+        />
+      </div>
 
       {/* 批量刪除確認 Modal */}
       <Modal
-        title="批量刪除模板"
+        title={t('whatsappTemplate.batchDeleteTitle')}
         open={isBatchDeleteModalVisible}
         onOk={handleBatchDelete}
         onCancel={() => setIsBatchDeleteModalVisible(false)}
-        okText="確定刪除"
-        cancelText="取消"
+        okText={t('whatsappTemplate.confirmDelete')}
+        cancelText={t('whatsappTemplate.cancel')}
         okButtonProps={{ danger: true }}
       >
-        <p>確定要刪除選中的 {selectedTemplates.length} 個模板嗎？此操作無法撤銷。</p>
+        <p>{t('whatsappTemplate.templateConfirmDeleteSelected')} {selectedTemplates.length} {t('whatsappTemplate.templateConfirmDeleteSelectedSuffix')}</p>
       </Modal>
 
       {/* 模板編輯 Modal */}
       <Drawer
-        title={editingTemplate ? '編輯模板' : '新增模板'}
+        title={editingTemplate ? t('whatsappTemplate.editTitle') : t('whatsappTemplate.addTitle')}
         open={isTemplateModalVisible}
         onClose={() => {
           setIsTemplateModalVisible(false);
@@ -1194,10 +1211,10 @@ const WhatsAppTemplateList = () => {
               setVariables([]);
               setPendingTemplateData(null);
             }}>
-              取消
+              {t('whatsappTemplate.cancel')}
             </Button>
             <Button type="primary" onClick={() => form.submit()}>
-              保存
+              {t('whatsappTemplate.save')}
             </Button>
           </Space>
         }
@@ -1209,56 +1226,56 @@ const WhatsAppTemplateList = () => {
         >
           <Form.Item
             name="name"
-            label="模板名稱"
-            rules={[{ required: true, message: '請輸入模板名稱' }]}
+            label={t('whatsappTemplate.name')}
+            rules={[{ required: true, message: t('whatsappTemplate.nameRequired') }]}
           >
-            <Input placeholder="請輸入模板名稱" />
+            <Input placeholder={t('whatsappTemplate.namePlaceholder')} />
           </Form.Item>
 
           <Form.Item
             name="description"
-            label="模板描述"
+            label={t('whatsappTemplate.description')}
           >
-            <Input.TextArea rows={3} placeholder="請輸入模板描述" />
+            <Input.TextArea rows={3} placeholder={t('whatsappTemplate.descriptionPlaceholder')} />
           </Form.Item>
 
           <Form.Item
             name="category"
-            label="分類"
-            rules={[{ required: true, message: '請選擇分類' }]}
+            label={t('whatsappTemplate.category')}
+            rules={[{ required: true, message: t('whatsappTemplate.categoryRequired') }]}
           >
-            <Select placeholder="請選擇分類">
-              <Option value="Welcome">歡迎</Option>
-              <Option value="Order">訂單</Option>
-              <Option value="Marketing">行銷</Option>
-              <Option value="Support">客服</Option>
-              <Option value="General">一般</Option>
+            <Select placeholder={t('whatsappTemplate.categoryPlaceholder')}>
+              <Option value="Welcome">{t('whatsappTemplate.welcome')}</Option>
+              <Option value="Order">{t('whatsappTemplate.order')}</Option>
+              <Option value="Marketing">{t('whatsappTemplate.marketing')}</Option>
+              <Option value="Support">{t('whatsappTemplate.support')}</Option>
+              <Option value="General">{t('whatsappTemplate.general')}</Option>
             </Select>
           </Form.Item>
 
           <Form.Item
             name="templateType"
-            label="模板類型"
-            rules={[{ required: true, message: '請選擇模板類型' }]}
+            label={t('whatsappTemplate.type')}
+            rules={[{ required: true, message: t('whatsappTemplate.typeRequired') }]}
           >
             <Select 
-              placeholder="請選擇模板類型"
+              placeholder={t('whatsappTemplate.typePlaceholder')}
               onChange={handleTemplateTypeChange}
             >
               <Option value="Text">
-                <Space><MessageOutlined />文字</Space>
+                <Space><MessageOutlined /> {t('whatsappTemplate.text')}</Space>
               </Option>
               <Option value="Media">
-                <Space><PictureOutlined />媒體</Space>
+                <Space><PictureOutlined /> {t('whatsappTemplate.media')}</Space>
               </Option>
               <Option value="Interactive">
-                <Space><LinkOutlined />互動</Space>
+                <Space><LinkOutlined /> {t('whatsappTemplate.interactive')}</Space>
               </Option>
               <Option value="Location">
-                <Space><EnvironmentOutlined />位置</Space>
+                <Space><EnvironmentOutlined /> {t('whatsappTemplate.location')}</Space>
               </Option>
               <Option value="Contact">
-                <Space><UserOutlined />聯絡人</Space>
+                <Space><UserOutlined /> {t('whatsappTemplate.contact')}</Space>
               </Option>
             </Select>
           </Form.Item>
@@ -1271,25 +1288,25 @@ const WhatsAppTemplateList = () => {
 
           <Form.Item
             name="status"
-            label="狀態"
-            rules={[{ required: true, message: '請選擇狀態' }]}
+            label={t('whatsappTemplate.status')}
+            rules={[{ required: true, message: t('whatsappTemplate.statusRequired') }]}
           >
-            <Select placeholder="請選擇狀態">
-              <Option value="Active">啟用</Option>
-              <Option value="Inactive">停用</Option>
-              <Option value="Draft">草稿</Option>
+            <Select placeholder={t('whatsappTemplate.statusPlaceholder')}>
+              <Option value="Active">{t('whatsappTemplate.enabled')}</Option>
+              <Option value="Inactive">{t('whatsappTemplate.disabled')}</Option>
+              <Option value="Draft">{t('whatsappTemplate.draft')}</Option>
             </Select>
           </Form.Item>
 
           <Form.Item
             name="language"
-            label="語言"
-            rules={[{ required: true, message: '請選擇語言' }]}
+            label={t('whatsappTemplate.language')}
+            rules={[{ required: true, message: t('whatsappTemplate.languageRequired') }]}
           >
-            <Select placeholder="請選擇語言">
-              <Option value="zh-TW">繁體中文</Option>
-              <Option value="zh-CN">簡體中文</Option>
-              <Option value="en-US">English</Option>
+            <Select placeholder={t('whatsappTemplate.languagePlaceholder')}>
+              <Option value="zh-TW">{t('whatsappTemplate.traditionalChinese')}</Option>
+              <Option value="zh-CN">{t('whatsappTemplate.simplifiedChinese')}</Option>
+              <Option value="en-US">{t('whatsappTemplate.english')}</Option>
             </Select>
           </Form.Item>
         </Form>
@@ -1297,7 +1314,7 @@ const WhatsAppTemplateList = () => {
 
       {/* Meta 模板列表 Modal */}
       <Modal
-        title="從 Meta 導入模板"
+        title={t('whatsappTemplate.importFromMeta')}
         open={isMetaTemplatesModalVisible}
         onCancel={() => setIsMetaTemplatesModalVisible(false)}
         footer={null}
@@ -1310,7 +1327,7 @@ const WhatsAppTemplateList = () => {
             onClick={fetchMetaTemplates}
             loading={metaTemplatesLoading}
           >
-            刷新 Meta 模板
+            {t('whatsappTemplate.refreshMetaTemplates')}
           </Button>
         </div>
         
@@ -1325,18 +1342,18 @@ const WhatsAppTemplateList = () => {
           }}
           columns={[
             {
-              title: '模板名稱',
+              title: t('whatsappTemplate.name'),
               dataIndex: 'name',
               key: 'name',
               render: (text, record) => (
                 <div>
                   <div style={{ fontWeight: 'bold' }}>{text}</div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>ID: {record.id}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>{t('whatsappTemplate.id')}: {record.id}</div>
                 </div>
               )
             },
             {
-              title: '狀態',
+              title: t('whatsappTemplate.status'),
               dataIndex: 'status',
               key: 'status',
               render: (text) => {
@@ -1349,19 +1366,19 @@ const WhatsAppTemplateList = () => {
               }
             },
             {
-              title: '分類',
+              title: t('whatsappTemplate.category'),
               dataIndex: 'category',
               key: 'category',
               render: (text) => <Tag color="blue">{text}</Tag>
             },
             {
-              title: '語言',
+              title: t('whatsappTemplate.language'),
               dataIndex: 'language',
               key: 'language',
               render: (text) => <Tag>{text}</Tag>
             },
             {
-              title: '操作',
+              title: t('whatsappTemplate.action'),
               key: 'action',
               render: (_, record) => (
                 <Button
@@ -1370,7 +1387,7 @@ const WhatsAppTemplateList = () => {
                   onClick={() => handleImportMetaTemplate(record)}
                   disabled={record.status !== 'APPROVED'}
                 >
-                  導入
+                  {t('whatsappTemplate.import')}
                 </Button>
               )
             }
@@ -1380,7 +1397,7 @@ const WhatsAppTemplateList = () => {
 
       {/* 模板預覽 Modal */}
       <Modal
-        title="模板預覽"
+        title={t('whatsappTemplate.preview')}
         open={isPreviewModalVisible}
         onCancel={() => setIsPreviewModalVisible(false)}
         footer={null}
@@ -1388,15 +1405,15 @@ const WhatsAppTemplateList = () => {
       >
         {previewTemplate && (
           <div>
-            <Card title="基本信息" style={{ marginBottom: '16px' }}>
-              <p><strong>名稱：</strong>{previewTemplate.name}</p>
-              <p><strong>描述：</strong>{previewTemplate.description}</p>
-              <p><strong>分類：</strong><Tag color="blue">{previewTemplate.category}</Tag></p>
-              <p><strong>類型：</strong><Tag color="green">{previewTemplate.templateType}</Tag></p>
-              <p><strong>狀態：</strong><Badge status="success" text={previewTemplate.status} /></p>
+            <Card title={t('whatsappTemplate.basicInfo')} style={{ marginBottom: '16px' }}>
+              <p><strong>{t('whatsappTemplate.name')}:</strong>{previewTemplate.name}</p>
+              <p><strong>{t('whatsappTemplate.description')}:</strong>{previewTemplate.description}</p>
+              <p><strong>{t('whatsappTemplate.category')}:</strong><Tag color="blue">{previewTemplate.category}</Tag></p>
+              <p><strong>{t('whatsappTemplate.type')}:</strong><Tag color="green">{previewTemplate.templateType}</Tag></p>
+              <p><strong>{t('whatsappTemplate.status')}:</strong><Badge status="success" text={previewTemplate.status} /></p>
             </Card>
             
-            <Card title="模板內容" style={{ marginBottom: '16px' }}>
+            <Card title={t('whatsappTemplate.content')} style={{ marginBottom: '16px' }}>
               <pre style={{ 
                 backgroundColor: '#f5f5f5', 
                 padding: '12px', 
@@ -1410,7 +1427,7 @@ const WhatsAppTemplateList = () => {
             </Card>
             
             {previewTemplate.variables && (
-              <Card title="變數定義">
+              <Card title={t('whatsappTemplate.variableDefinition')}>
                 <pre style={{ 
                   backgroundColor: '#f5f5f5', 
                   padding: '12px', 
@@ -1426,6 +1443,7 @@ const WhatsAppTemplateList = () => {
           </div>
         )}
       </Modal>
+      </Card>
     </div>
   );
 };

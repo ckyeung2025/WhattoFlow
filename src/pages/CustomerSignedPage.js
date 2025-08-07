@@ -557,8 +557,7 @@ const CustomerSignedPage = () => {
                       pageSize={pendingPagination.pageSize}
                       total={pendingPagination.total}
                       showSizeChanger
-                      showQuickJumper
-                      showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                      showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                       onChange={(page, pageSize) => fetchPendingData(page, pageSize, pendingSearchText, pendingSort.sortBy, pendingSort.sortOrder)}
                       onShowSizeChange={(current, size) => fetchPendingData(1, size, pendingSearchText, pendingSort.sortBy, pendingSort.sortOrder)}
                     />
@@ -619,8 +618,7 @@ const CustomerSignedPage = () => {
                       pageSize={confirmedPagination.pageSize}
                       total={confirmedPagination.total}
                       showSizeChanger
-                      showQuickJumper
-                      showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+                      showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
                       onChange={(page, pageSize) => fetchConfirmedData(page, pageSize, confirmedSearchText, confirmedSort.sortBy, confirmedSort.sortOrder)}
                       onShowSizeChange={(current, size) => fetchConfirmedData(1, size, confirmedSearchText, confirmedSort.sortBy, confirmedSort.sortOrder)}
                     />

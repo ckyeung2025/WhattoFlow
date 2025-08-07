@@ -44,7 +44,7 @@ export const LanguageProvider = ({ children }) => {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
       } else {
-        console.warn(`Translation key not found: ${key}`);
+        console.warn(`Translation key not found: ${key} at step "${k}"`);
         return key;
       }
     }

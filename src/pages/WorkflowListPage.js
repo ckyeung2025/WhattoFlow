@@ -424,9 +424,8 @@ const WorkflowListPage = () => {
             pageSize={pagination.pageSize || 10}
             total={pagination.total || 0}
             showSizeChanger
-            showQuickJumper
             pageSizeOptions={['10', '20', '50', '100']}
-            showTotal={(total, range) => `第 ${range[0]}-${range[1]} 項，共 ${total} 項`}
+            showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
             onChange={(page, pageSize) => fetchData(page, pageSize, searchText)}
             onShowSizeChange={(current, size) => fetchData(1, size, searchText)}
           />

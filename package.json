@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
+    "@grapesjs/studio-sdk": "^1.0.55",
     "antd": "^5.26.4",
     "axios": "^1.10.0",
     "echarts": "^5.6.0",
