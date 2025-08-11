@@ -743,6 +743,41 @@ const useGrapesJS = (containerRef, initialHtmlContent, onEditorReady) => {
         addCustomBlocks(grapesEditor);
         addEditFunctionality(grapesEditor);
         addDeselectFunctionality(grapesEditor);
+        
+        // 隱藏 Style Manager、Settings 和 Layer Manager 按鈕，並默認打開 blocks 面板
+        setTimeout(() => {
+          try {
+            const styleManagerBtn = document.querySelector('.gjs-pn-btn[title="Open Style Manager"]');
+            const settingsBtn = document.querySelector('.gjs-pn-btn[title="Settings"]');
+            const layerManagerBtn = document.querySelector('.gjs-pn-btn[title="Open Layer Manager"]');
+            
+            if (styleManagerBtn) {
+              styleManagerBtn.style.display = 'none';
+              console.log('✅ Style Manager 按鈕已隱藏');
+            }
+            
+            if (settingsBtn) {
+              settingsBtn.style.display = 'none';
+              console.log('✅ Settings 按鈕已隱藏');
+            }
+            
+            if (layerManagerBtn) {
+              layerManagerBtn.style.display = 'none';
+              console.log('✅ Layer Manager 按鈕已隱藏');
+            }
+            
+            // 默認打開 blocks 面板
+            const blocksBtn = document.querySelector('.gjs-pn-btn[title="Open Blocks"]');
+            if (blocksBtn) {
+              blocksBtn.click();
+              console.log('✅ 默認打開 blocks 面板');
+            } else {
+              console.log('⚠️ 未找到 blocks 按鈕');
+            }
+          } catch (error) {
+            console.warn('⚠️ 隱藏按鈕或打開 blocks 面板時出錯:', error);
+          }
+        }, 100);
 
         console.log('🔧 設置編輯器狀態...');
         setEditor(grapesEditor);
