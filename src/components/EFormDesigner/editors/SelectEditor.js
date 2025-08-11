@@ -2,6 +2,11 @@ import React from 'react';
 import { Input, Button } from 'antd';
 
 const SelectEditor = ({ formData, onFormChange }) => {
+  // 添加調試日誌
+  console.log('🔍 SelectEditor 接收到的 formData:', formData);
+  console.log('🔍 SelectEditor 選項數量:', formData.options ? formData.options.length : 0);
+  console.log('🔍 SelectEditor 選項詳情:', formData.options);
+  
   return (
     <div>
       <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>編輯下拉選單</h3>
