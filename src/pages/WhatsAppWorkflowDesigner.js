@@ -436,29 +436,7 @@ const WhatsAppWorkflowDesigner = () => {
     }
   };
 
-  // 獲取 Meta 模板列表
-  const fetchMetaTemplates = async () => {
-    try {
-      const response = await fetch('/api/whatsapptemplates/meta-templates');
-      const result = await response.json();
-      if (result.success) {
-        // 將 Meta 模板轉換為本地格式
-        const metaTemplates = result.data.map(template => ({
-          id: template.id,
-          name: template.name,
-          description: `Meta 模板: ${template.name}`,
-          category: template.category || 'Meta',
-          templateType: 'Text',
-          status: template.status,
-          language: template.language,
-          isMetaTemplate: true
-        }));
-        setTemplates(prev => [...prev, ...metaTemplates]);
-      }
-    } catch (error) {
-      console.error('獲取 Meta 模板列表錯誤:', error);
-    }
-  };
+
 
   // 獲取用戶列表
   const fetchUsers = async () => {
@@ -583,7 +561,6 @@ const WhatsAppWorkflowDesigner = () => {
   useEffect(() => {
     fetchNodeTypeDefinitions();
     fetchTemplates();
-    fetchMetaTemplates();
     fetchUsers();
     fetchEForms();
     

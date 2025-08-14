@@ -8,7 +8,8 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
-  MessageOutlined
+  MessageOutlined,
+  BarChartOutlined
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
@@ -56,6 +57,13 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
       icon: <CheckCircleOutlined />,
       label: t('menu.whatsappWorkflow'),
       url: '/workflow-list',
+    },
+    // 新增流程實例監控選單
+    {
+      key: 'workflowMonitor',
+      icon: <BarChartOutlined />,
+      label: t('menu.workflowMonitor'),
+      url: '/workflow-monitor',
     },
     {
       key: 'companyUserAdmin',

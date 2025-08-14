@@ -128,7 +128,7 @@ namespace PurpleRice.Services
                     {
                         WriteLog($"參數完整，開始發送 WhatsApp 消息到 {nodeData.To}");
                         WriteLog($"消息內容: {nodeData.Message}");
-                        await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution);
+                        await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution, _db);
                         WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}");
                     }
                     else
@@ -142,7 +142,7 @@ namespace PurpleRice.Services
                 case "sendWhatsAppTemplate":
                     if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.TemplateName))
                     {
-                        await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateName, execution);
+                        await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateId, execution, _db);
                     }
                     else
                     {

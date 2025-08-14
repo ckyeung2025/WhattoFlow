@@ -24,7 +24,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Start", activationType = "manual" }
             },
             
-            ["sendWhatsApp"] = new WorkflowNodeTypeDefinition
+            ["sendwhatsapp"] = new WorkflowNodeTypeDefinition
             {
                 Type = "sendWhatsApp",
                 Label = "Send WhatsApp Message",
@@ -35,7 +35,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Send WhatsApp Message", message = "", to = "" }
             },
             
-            ["sendWhatsAppTemplate"] = new WorkflowNodeTypeDefinition
+            ["sendwhatsapptemplate"] = new WorkflowNodeTypeDefinition
             {
                 Type = "sendWhatsAppTemplate",
                 Label = "Send WhatsApp Template",
@@ -46,7 +46,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Send WhatsApp Template", templateId = "", templateName = "", variables = new { } }
             },
             
-            ["waitReply"] = new WorkflowNodeTypeDefinition
+            ["waitreply"] = new WorkflowNodeTypeDefinition
             {
                 Type = "waitReply",
                 Label = "Wait for User Reply",
@@ -63,7 +63,7 @@ namespace PurpleRice.Models
                 }
             },
             
-            ["dbQuery"] = new WorkflowNodeTypeDefinition
+            ["dbquery"] = new WorkflowNodeTypeDefinition
             {
                 Type = "dbQuery",
                 Label = "Database Query/Update",
@@ -74,7 +74,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Database Query/Update", sql = "" }
             },
             
-            ["callApi"] = new WorkflowNodeTypeDefinition
+            ["callapi"] = new WorkflowNodeTypeDefinition
             {
                 Type = "callApi",
                 Label = "Trigger External API",
@@ -85,7 +85,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Trigger External API", url = "" }
             },
             
-            ["sendEForm"] = new WorkflowNodeTypeDefinition
+            ["sendeform"] = new WorkflowNodeTypeDefinition
             {
                 Type = "sendEForm",
                 Label = "Send eForm",
@@ -96,7 +96,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Send eForm", formName = "", formId = "", formDescription = "", to = "" }
             },
             
-            ["eFormResult"] = new WorkflowNodeTypeDefinition
+            ["eformresult"] = new WorkflowNodeTypeDefinition
             {
                 Type = "eFormResult",
                 Label = "eForm Approved/Rejected",

@@ -74,17 +74,32 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
     try {
       const values = await form.validateFields();
       const token = localStorage.getItem('token');
-      const payload = { ...values, avatarUrl: avatarUrl };
-      // 無論有無填寫都傳 PasswordHash，若沒填則為空字串
-      payload.PasswordHash = payload.password_hash || '';
-      delete payload.password_hash;
-      await axios.put('/api/users/me', payload, {
+      
+      // 構建與 AuthController UpdateMe 端點匹配的 payload
+      const payload = {
+        name: values.name,
+        email: values.email,
+        phone: values.phone,
+        language: values.language,
+        timezone: values.timezone,
+        avatarUrl: avatarUrl
+      };
+      
+      // 如果密碼有填寫，則添加到 payload
+      if (values.password_hash) {
+        payload.PasswordHash = values.password_hash;
+      }
+      
+      // 使用 /api/auth/me 端點更新用戶信息
+      await axios.put('/api/auth/me', payload, {
         headers: { Authorization: 'Bearer ' + token }
       });
+      
       // 重新取得最新 userInfo
-      const res = await axios.get('/api/users/me', {
+      const res = await axios.get('/api/auth/me', {
         headers: { Authorization: 'Bearer ' + token }
       });
+      
       if (res.data) {
         if (typeof onUserInfoUpdate === 'function') {
           onUserInfoUpdate(res.data);
@@ -108,6 +123,8 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
       }, 100);
     } catch (e) {
       // 驗證失敗或 API 失敗
+      console.error('更新用戶信息失敗:', e);
+      message.error('更新用戶信息失敗');
     }
   };
 

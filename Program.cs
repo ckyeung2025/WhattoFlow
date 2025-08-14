@@ -41,7 +41,7 @@ builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<DocumentConverterService>();
 builder.Services.AddScoped<UserSessionService>();
 builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
-builder.Services.AddScoped<WhatsAppWorkflowService>();
+builder.Services.AddTransient<WhatsAppWorkflowService>();
 builder.Services.AddScoped<WorkflowEngine>();
 
 // 註冊 LoggingService 工廠

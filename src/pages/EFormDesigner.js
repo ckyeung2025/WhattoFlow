@@ -379,7 +379,7 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
         description: formDescription,
         htmlCode: htmlContent,
         status: 'A', // Active
-        rStatus: 'A' // Active
+        RStatus: 'A' // Active - 修正字段名以匹配後端模型
       };
 
       // 如果是編輯模式，添加 updatedAt

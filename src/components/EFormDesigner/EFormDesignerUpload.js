@@ -140,9 +140,11 @@ const EFormDesignerUpload = ({
       clearTimeout(timeoutId);
       const result = await response.json();
 
-      if (result.uploaded) {
+      if (result.success) {
         message.success('✅ 圖片已成功上傳！');
-        const imageHtml = `<img src="${result.url}" alt="${file.name}" style="max-width: 100%; height: auto;" />`;
+        // 使用 filePath 構建圖片 URL，因為後端返回的是 filePath
+        const imageUrl = `/Uploads/FormsFiles/${result.fileName}`;
+        const imageHtml = `<img src="${imageUrl}" alt="${file.name}" style="max-width: 100%; height: auto;" />`;
         onSuccess(imageHtml, null, true); // 第三個參數表示是圖片插入
         onClose();
       } else {

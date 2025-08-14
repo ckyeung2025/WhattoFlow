@@ -46,9 +46,6 @@ namespace PurpleRice.Models
         public bool IsDeleted { get; set; } = false;
         
         public int Version { get; set; } = 1;
-        
-        [MaxLength(200)]
-        public string MetaTemplateId { get; set; } // Meta WhatsApp 模板 ID
     }
 
     public class WhatsAppTemplateUsage

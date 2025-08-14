@@ -57,153 +57,247 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                _loggingService.LogInformation($"獲取表單定義列表 - 頁面: {page}, 每頁: {pageSize}, 排序: {sortField} {sortOrder}");
+
                 var companyId = GetCurrentUserCompanyId();
                 if (!companyId.HasValue)
                 {
+                    _loggingService.LogWarning("無法識別用戶公司");
                     return Unauthorized(new { error = "無法識別用戶公司" });
                 }
 
                 var query = _context.eFormDefinitions
-                    .Where(f => f.CompanyId == companyId.Value)
+                    .Where(x => x.CompanyId == companyId.Value)
                     .AsQueryable();
 
-                // 處理排序
-                switch (sortField?.ToLower())
+                // 排序
+                switch (sortField.ToLower())
                 {
                     case "name":
-                        query = sortOrder?.ToLower() == "asc" 
-                            ? query.OrderBy(x => x.Name) 
-                            : query.OrderByDescending(x => x.Name);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(x => x.Name) : query.OrderByDescending(x => x.Name);
                         break;
                     case "status":
-                        query = sortOrder?.ToLower() == "asc" 
-                            ? query.OrderBy(x => x.Status) 
-                            : query.OrderByDescending(x => x.Status);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(x => x.Status) : query.OrderByDescending(x => x.Status);
                         break;
                     case "created_at":
-                    case "createdat":
-                        query = sortOrder?.ToLower() == "asc" 
-                            ? query.OrderBy(x => x.CreatedAt) 
-                            : query.OrderByDescending(x => x.CreatedAt);
-                        break;
-                    case "updated_at":
-                    case "updatedat":
-                        query = sortOrder?.ToLower() == "asc" 
-                            ? query.OrderBy(x => x.UpdatedAt) 
-                            : query.OrderByDescending(x => x.UpdatedAt);
-                        break;
                     default:
-                        query = query.OrderByDescending(x => x.CreatedAt);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(x => x.CreatedAt) : query.OrderByDescending(x => x.CreatedAt);
                         break;
                 }
 
-                // 計算總數
                 var total = await query.CountAsync();
-
-                // 分頁
-                var items = await query
+                var forms = await query
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .ToListAsync();
 
+                _loggingService.LogInformation($"成功獲取 {forms.Count} 個表單定義，總計 {total} 個");
+
                 return Ok(new
                 {
-                    data = items,
+                    data = forms,
                     total = total,
                     page = page,
                     pageSize = pageSize,
-                    sortField = sortField,
-                    sortOrder = sortOrder
+                    totalPages = (int)Math.Ceiling((double)total / pageSize)
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = $"獲取表單列表失敗: {ex.Message}" });
+                _loggingService.LogError($"獲取表單定義列表失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取表單定義列表失敗" });
             }
         }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)
         {
-            var companyId = GetCurrentUserCompanyId();
-            if (!companyId.HasValue)
+            try
             {
-                return Unauthorized(new { error = "無法識別用戶公司" });
-            }
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
 
-            var form = await _context.eFormDefinitions
-                .Where(f => f.Id == id && f.CompanyId == companyId.Value)
-                .FirstOrDefaultAsync();
-            
-            return form == null ? NotFound() : Ok(form);
+                var form = await _context.eFormDefinitions
+                    .FirstOrDefaultAsync(x => x.Id == id && x.CompanyId == companyId.Value);
+
+                if (form == null)
+                {
+                    _loggingService.LogWarning($"找不到表單定義，ID: {id}");
+                    return NotFound();
+                }
+
+                _loggingService.LogInformation($"成功獲取表單定義: {form.Name}");
+                return Ok(form);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取表單定義詳情失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取表單定義詳情失敗" });
+            }
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] eFormDefinition form)
         {
-            var companyId = GetCurrentUserCompanyId();
-            if (!companyId.HasValue)
+            try
             {
-                return Unauthorized(new { error = "無法識別用戶公司" });
-            }
+                _loggingService.LogInformation($"開始創建表單定義，名稱: {form?.Name}, 描述: {form?.Description}");
+                
+                // 驗證輸入
+                if (form == null)
+                {
+                    _loggingService.LogWarning("表單定義對象為空");
+                    return BadRequest(new { error = "表單定義對象不能為空" });
+                }
+                
+                if (string.IsNullOrWhiteSpace(form.Name))
+                {
+                    _loggingService.LogWarning("表單名稱為空");
+                    return BadRequest(new { error = "表單名稱不能為空" });
+                }
+                
+                if (string.IsNullOrWhiteSpace(form.HtmlCode))
+                {
+                    _loggingService.LogWarning("表單 HTML 代碼為空");
+                    return BadRequest(new { error = "表單 HTML 代碼不能為空" });
+                }
 
-            form.Id = Guid.NewGuid();
-            form.CompanyId = companyId.Value; // 設置為當前用戶的公司ID
-            if (form.CreatedAt == null) form.CreatedAt = DateTime.UtcNow;
-            if (form.CreatedUserId == null) form.CreatedUserId = Guid.NewGuid(); // 臨時處理
-            if (form.UpdatedUserId == null) form.UpdatedUserId = form.CreatedUserId;
-            if (string.IsNullOrEmpty(form.Status)) form.Status = "A";
-            if (string.IsNullOrEmpty(form.RStatus)) form.RStatus = "A";
-            _context.eFormDefinitions.Add(form);
-            await _context.SaveChangesAsync();
-            return Ok(form);
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 獲取當前用戶ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+                {
+                    _loggingService.LogWarning("無法識別當前用戶");
+                    return Unauthorized(new { error = "無法識別當前用戶" });
+                }
+
+                _loggingService.LogInformation($"用戶公司 ID: {companyId.Value}, 用戶 ID: {userId}");
+
+                form.Id = Guid.NewGuid();
+                form.CompanyId = companyId.Value;
+                form.CreatedAt = DateTime.UtcNow;
+                form.UpdatedAt = DateTime.UtcNow;
+                form.CreatedUserId = userId;        // 新增：設置創建用戶ID
+                form.UpdatedUserId = userId;        // 新增：設置更新用戶ID
+                form.Status = "A"; // Active
+                form.RStatus = "A"; // Active
+
+                _loggingService.LogInformation($"準備保存表單定義: ID={form.Id}, CompanyId={form.CompanyId}, CreatedUserId={form.CreatedUserId}, Name={form.Name}");
+
+                _context.eFormDefinitions.Add(form);
+                
+                _loggingService.LogInformation("表單定義已添加到 DbContext，準備保存到數據庫");
+                
+                await _context.SaveChangesAsync();
+
+                _loggingService.LogInformation($"成功創建表單定義: {form.Name}, ID: {form.Id}");
+                return CreatedAtAction(nameof(Get), new { id = form.Id }, form);
+            }
+            catch (DbUpdateException dbEx)
+            {
+                _loggingService.LogError($"數據庫更新錯誤: {dbEx.Message}", dbEx);
+                _loggingService.LogError($"內部錯誤: {dbEx.InnerException?.Message}");
+                return StatusCode(500, new { error = "數據庫保存失敗: " + dbEx.Message });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"創建表單定義失敗: {ex.Message}", ex);
+                _loggingService.LogError($"異常類型: {ex.GetType().Name}");
+                _loggingService.LogError($"堆疊追蹤: {ex.StackTrace}");
+                return StatusCode(500, new { error = "創建表單定義失敗: " + ex.Message });
+            }
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] eFormDefinition form)
         {
-            var companyId = GetCurrentUserCompanyId();
-            if (!companyId.HasValue)
+            try
             {
-                return Unauthorized(new { error = "無法識別用戶公司" });
-            }
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
 
-            var dbForm = await _context.eFormDefinitions
-                .Where(f => f.Id == id && f.CompanyId == companyId.Value)
-                .FirstOrDefaultAsync();
-            
-            if (dbForm == null) return NotFound();
-            
-            // 添加 null 檢查
-            if (!string.IsNullOrEmpty(form.Name)) dbForm.Name = form.Name;
-            if (!string.IsNullOrEmpty(form.Description)) dbForm.Description = form.Description;
-            if (!string.IsNullOrEmpty(form.HtmlCode)) dbForm.HtmlCode = form.HtmlCode;
-            if (!string.IsNullOrEmpty(form.Status)) dbForm.Status = form.Status;
-            if (!string.IsNullOrEmpty(form.RStatus)) dbForm.RStatus = form.RStatus;
-            dbForm.UpdatedAt = form.UpdatedAt ?? DateTime.UtcNow;
-            if (form.UpdatedUserId.HasValue) dbForm.UpdatedUserId = form.UpdatedUserId;
-            
-            await _context.SaveChangesAsync();
-            return Ok(dbForm);
+                // 獲取當前用戶ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+                {
+                    _loggingService.LogWarning("無法識別當前用戶");
+                    return Unauthorized(new { error = "無法識別當前用戶" });
+                }
+
+                var existingForm = await _context.eFormDefinitions
+                    .FirstOrDefaultAsync(x => x.Id == id && x.CompanyId == companyId.Value);
+
+                if (existingForm == null)
+                {
+                    _loggingService.LogWarning($"找不到要更新的表單定義，ID: {id}");
+                    return NotFound();
+                }
+
+                existingForm.Name = form.Name;
+                existingForm.Description = form.Description;
+                existingForm.HtmlCode = form.HtmlCode;
+                existingForm.Status = form.Status;
+                existingForm.UpdatedAt = DateTime.UtcNow;
+                existingForm.UpdatedUserId = userId;    // 新增：設置更新用戶ID
+
+                await _context.SaveChangesAsync();
+
+                _loggingService.LogInformation($"成功更新表單定義: {existingForm.Name}");
+                return Ok(existingForm);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"更新表單定義失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "更新表單定義失敗" });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var companyId = GetCurrentUserCompanyId();
-            if (!companyId.HasValue)
+            try
             {
-                return Unauthorized(new { error = "無法識別用戶公司" });
-            }
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
 
-            var dbForm = await _context.eFormDefinitions
-                .Where(f => f.Id == id && f.CompanyId == companyId.Value)
-                .FirstOrDefaultAsync();
-            
-            if (dbForm == null) return NotFound();
-            _context.eFormDefinitions.Remove(dbForm);
-            await _context.SaveChangesAsync();
-            return Ok();
+                var form = await _context.eFormDefinitions
+                    .FirstOrDefaultAsync(x => x.Id == id && x.CompanyId == companyId.Value);
+
+                if (form == null)
+                {
+                    _loggingService.LogWarning($"找不到要刪除的表單定義，ID: {id}");
+                    return NotFound();
+                }
+
+                _context.eFormDefinitions.Remove(form);
+                await _context.SaveChangesAsync();
+
+                _loggingService.LogInformation($"成功刪除表單定義: {form.Name}");
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"刪除表單定義失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "刪除表單定義失敗" });
+            }
         }
 
         [HttpDelete("batch-delete")]

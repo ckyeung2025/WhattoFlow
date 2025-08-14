@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
+using PurpleRice.Services;
 
 namespace PurpleRice.Controllers
 {
@@ -10,69 +11,159 @@ namespace PurpleRice.Controllers
     public class UsersController : ControllerBase
     {
         private readonly PurpleRiceDbContext _context;
-        public UsersController(PurpleRiceDbContext context) { _context = context; }
+        private readonly LoggingService _loggingService;
+        
+        public UsersController(PurpleRiceDbContext context, Func<string, LoggingService> loggingServiceFactory)
+        {
+            _context = context;
+            _loggingService = loggingServiceFactory("UsersController");
+        }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll() => Ok(await _context.Users.ToListAsync());
+        public async Task<IActionResult> GetAll()
+        {
+            try
+            {
+                var users = await _context.Users.ToListAsync();
+                _loggingService.LogInformation($"成功獲取 {users.Count} 個用戶");
+                return Ok(users);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取用戶列表失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取用戶列表失敗" });
+            }
+        }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)
         {
-            var user = await _context.Users.FindAsync(id);
-            return user == null ? NotFound() : Ok(user);
+            try
+            {
+                var user = await _context.Users.FindAsync(id);
+                if (user == null)
+                {
+                    _loggingService.LogWarning($"找不到用戶，ID: {id}");
+                    return NotFound();
+                }
+                
+                _loggingService.LogInformation($"成功獲取用戶: {user.Name}");
+                return Ok(user);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取用戶詳情失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取用戶詳情失敗" });
+            }
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] User user)
         {
-            user.Id = Guid.NewGuid();
-            user.CreatedAt = DateTime.UtcNow;
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-            return Ok(user);
+            try
+            {
+                user.Id = Guid.NewGuid();
+                user.CreatedAt = DateTime.UtcNow;
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功創建用戶: {user.Name}");
+                return Ok(user);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"創建用戶失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "創建用戶失敗" });
+            }
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] User user)
         {
-            var dbUser = await _context.Users.FindAsync(id);
-            if (dbUser == null) return NotFound();
-            dbUser.CompanyId = user.CompanyId;
-            dbUser.Account = user.Account;
-            dbUser.Email = user.Email;
-            dbUser.GoogleId = user.GoogleId;
-            dbUser.PasswordHash = user.PasswordHash;
-            dbUser.IsActive = user.IsActive;
-            dbUser.IsOwner = user.IsOwner;
-            dbUser.AvatarUrl = user.AvatarUrl;
-            dbUser.Timezone = user.Timezone;
-            dbUser.Name = user.Name;
-            dbUser.Phone = user.Phone;
-            dbUser.Language = user.Language;
-            dbUser.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            return Ok(dbUser);
+            try
+            {
+                var existingUser = await _context.Users.FindAsync(id);
+                if (existingUser == null)
+                {
+                    _loggingService.LogWarning($"找不到要更新的用戶，ID: {id}");
+                    return NotFound();
+                }
+
+                existingUser.CompanyId = user.CompanyId;
+                existingUser.Account = user.Account;
+                existingUser.Email = user.Email;
+                existingUser.GoogleId = user.GoogleId;
+                existingUser.PasswordHash = user.PasswordHash;
+                existingUser.IsActive = user.IsActive;
+                existingUser.IsOwner = user.IsOwner;
+                existingUser.AvatarUrl = user.AvatarUrl;
+                existingUser.Timezone = user.Timezone;
+                existingUser.Name = user.Name;
+                existingUser.Phone = user.Phone;
+                existingUser.Language = user.Language;
+                existingUser.UpdatedAt = DateTime.UtcNow;
+                
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功更新用戶: {existingUser.Name}");
+                return Ok(existingUser);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"更新用戶失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "更新用戶失敗" });
+            }
         }
 
         [HttpPatch("{id}/active")]
         public async Task<IActionResult> UpdateActive(Guid id, [FromBody] bool isActive)
         {
-            var dbUser = await _context.Users.FindAsync(id);
-            if (dbUser == null) return NotFound();
-            dbUser.IsActive = isActive;
-            dbUser.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            return Ok(new { id = dbUser.Id, is_active = dbUser.IsActive });
+            try
+            {
+                var user = await _context.Users.FindAsync(id);
+                if (user == null)
+                {
+                    _loggingService.LogWarning($"找不到要更新狀態的用戶，ID: {id}");
+                    return NotFound();
+                }
+
+                user.IsActive = isActive;
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功更新用戶 {user.Name} 的狀態為: {(isActive ? "啟用" : "停用")}");
+                return Ok(new { success = true, message = $"用戶狀態已更新為 {(isActive ? "啟用" : "停用")}" });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"更新用戶狀態失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "更新用戶狀態失敗" });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var dbUser = await _context.Users.FindAsync(id);
-            if (dbUser == null) return NotFound();
-            _context.Users.Remove(dbUser);
-            await _context.SaveChangesAsync();
-            return Ok();
+            try
+            {
+                var user = await _context.Users.FindAsync(id);
+                if (user == null)
+                {
+                    _loggingService.LogWarning($"找不到要刪除的用戶，ID: {id}");
+                    return NotFound();
+                }
+
+                _context.Users.Remove(user);
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功刪除用戶: {user.Name}");
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"刪除用戶失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "刪除用戶失敗" });
+            }
         }
     }
 } 

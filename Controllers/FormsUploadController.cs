@@ -41,35 +41,26 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                // 檢查文件是否存在
                 if (file == null || file.Length == 0)
                 {
                     return BadRequest(new { error = "沒有選擇文件" });
                 }
 
                 // 檢查文件類型
-                var allowedTypes = new[] { "image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp", "image/tiff" };
-                if (!allowedTypes.Contains(file.ContentType.ToLower()))
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
                 {
-                    return BadRequest(new { error = "不支持的文件類型" });
-                }
-
-                // 檢查文件大小 (限制為 10MB)
-                if (file.Length > 10 * 1024 * 1024)
-                {
-                    return BadRequest(new { error = "文件大小不能超過 10MB" });
-                }
-
-                // 確保上傳目錄存在
-                var uploadDir = Path.Combine(Directory.GetCurrentDirectory(), _uploadPath);
-                if (!Directory.Exists(uploadDir))
-                {
-                    Directory.CreateDirectory(uploadDir);
+                    return BadRequest(new { error = "不支持的文件類型，只允許圖片文件" });
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-                var filePath = Path.Combine(uploadDir, fileName);
+                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(_uploadPath, fileName);
+
+                // 確保目錄存在
+                Directory.CreateDirectory(_uploadPath);
 
                 // 保存文件
                 using (var stream = new FileStream(filePath, FileMode.Create))
@@ -77,603 +68,385 @@ namespace PurpleRice.Controllers
                     await file.CopyToAsync(stream);
                 }
 
-                // 返回成功響應
-                var imageUrl = $"/Uploads/FormsFiles/{fileName}";
+                _loggingService.LogInformation($"圖片文件上傳成功: {fileName}");
+
                 return Ok(new { 
-                    url = imageUrl,
-                    uploaded = true,
-                    fileName = fileName
+                    success = true, 
+                    fileName = fileName,
+                    filePath = filePath,
+                    message = "圖片上傳成功" 
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = $"上傳失敗: {ex.Message}" });
+                _loggingService.LogError($"圖片文件上傳失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "圖片上傳失敗" });
+            }
+        }
+
+        [HttpPost("word")]
+        public async Task<IActionResult> UploadWord(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { error = "沒有選擇文件" });
+                }
+
+                // 檢查文件類型
+                var allowedExtensions = new[] { ".doc", ".docx" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new { error = "不支持的文件類型，只允許 Word 文檔 (.doc, .docx)" });
+                }
+
+                // 生成唯一文件名
+                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(_uploadPath, "Documents", fileName);
+
+                // 確保目錄存在
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+
+                // 保存文件
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                _loggingService.LogInformation($"Word 文件上傳成功: {fileName}");
+
+                // 轉換為 HTML
+                string htmlContent = null;
+                string formName = null;
+                try
+                {
+                    htmlContent = await _documentConverter.ConvertToHtml(filePath);
+                    formName = Path.GetFileNameWithoutExtension(file.FileName);
+                    _loggingService.LogInformation($"Word 文件轉換為 HTML 成功: {fileName}");
+                }
+                catch (Exception convertEx)
+                {
+                    _loggingService.LogWarning($"Word 文件轉換為 HTML 失敗: {convertEx.Message}");
+                    return StatusCode(500, new { error = "Word 文件轉換失敗: " + convertEx.Message });
+                }
+
+                return Ok(new { 
+                    success = true, 
+                    fileName = fileName,
+                    filePath = filePath,
+                    htmlContent = htmlContent,
+                    formName = formName,
+                    message = "Word 文件上傳並轉換成功" 
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"Word 文件上傳失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "Word 文件上傳失敗" });
+            }
+        }
+
+        [HttpPost("excel")]
+        public async Task<IActionResult> UploadExcel(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { error = "沒有選擇文件" });
+                }
+
+                // 檢查文件類型
+                var allowedExtensions = new[] { ".xls", ".xlsx" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new { error = "不支持的文件類型，只允許 Excel 文件 (.xls, .xlsx)" });
+                }
+
+                // 生成唯一文件名
+                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(_uploadPath, "Documents", fileName);
+
+                // 確保目錄存在
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+
+                // 保存文件
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                _loggingService.LogInformation($"Excel 文件上傳成功: {fileName}");
+
+                // 轉換為 HTML
+                string htmlContent = null;
+                string formName = null;
+                try
+                {
+                    htmlContent = await _documentConverter.ConvertToHtml(filePath);
+                    formName = Path.GetFileNameWithoutExtension(file.FileName);
+                    _loggingService.LogInformation($"Excel 文件轉換為 HTML 成功: {fileName}");
+                }
+                catch (Exception convertEx)
+                {
+                    _loggingService.LogWarning($"Excel 文件轉換為 HTML 失敗: {convertEx.Message}");
+                    return StatusCode(500, new { error = "Excel 文件轉換失敗: " + convertEx.Message });
+                }
+
+                return Ok(new { 
+                    success = true, 
+                    fileName = fileName,
+                    filePath = filePath,
+                    htmlContent = htmlContent,
+                    formName = formName,
+                    message = "Excel 文件上傳並轉換成功" 
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"Excel 文件上傳失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "Excel 文件上傳失敗" });
+            }
+        }
+
+        [HttpPost("pdf")]
+        public async Task<IActionResult> UploadPdf(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { error = "沒有選擇文件" });
+                }
+
+                // 檢查文件類型
+                var allowedExtensions = new[] { ".pdf" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new { error = "不支持的文件類型，只允許 PDF 文件 (.pdf)" });
+                }
+
+                // 生成唯一文件名
+                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(_uploadPath, "Documents", fileName);
+
+                // 確保目錄存在
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+
+                // 保存文件
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                _loggingService.LogInformation($"PDF 文件上傳成功: {fileName}");
+
+                // 轉換為 HTML
+                string htmlContent = null;
+                string formName = null;
+                try
+                {
+                    htmlContent = await _documentConverter.ConvertToHtml(filePath);
+                    formName = Path.GetFileNameWithoutExtension(file.FileName);
+                    _loggingService.LogInformation($"PDF 文件轉換為 HTML 成功: {fileName}");
+                }
+                catch (Exception convertEx)
+                {
+                    _loggingService.LogWarning($"PDF 文件轉換為 HTML 失敗: {convertEx.Message}");
+                    return StatusCode(500, new { error = "PDF 文件轉換失敗: " + convertEx.Message });
+                }
+
+                return Ok(new { 
+                    success = true, 
+                    fileName = fileName,
+                    filePath = filePath,
+                    htmlContent = htmlContent,
+                    formName = formName,
+                    message = "PDF 文件上傳並轉換成功" 
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"PDF 文件上傳失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "PDF 文件上傳失敗" });
             }
         }
 
         [HttpPost("document")]
         public async Task<IActionResult> UploadDocument(IFormFile file)
         {
-            _loggingService.LogInformation($"📤 [UploadDocument] 開始處理文檔上傳");
-            _loggingService.LogInformation($"📤 [UploadDocument] 文件名: {file?.FileName}");
-            _loggingService.LogInformation($"📤 [UploadDocument] 文件大小: {file?.Length} bytes");
-            _loggingService.LogInformation($"📤 [UploadDocument] 內容類型: {file?.ContentType}");
-            
             try
             {
-                            // 檢查文件是否存在
-            if (file == null || file.Length == 0)
-            {
-                _loggingService.LogWarning($"❌ [UploadDocument] 文件為空或不存在");
-                return BadRequest(new { error = "沒有選擇文件" });
-            }
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { error = "沒有選擇文件" });
+                }
 
                 // 檢查文件類型
-                var allowedTypes = new[] { 
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-                    "application/msword", // .doc
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-                    "application/vnd.ms-excel", // .xls
-                    "application/pdf", // .pdf
-                    "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
-                    "application/vnd.ms-powerpoint", // .ppt
-                    "application/rtf", // .rtf
-                    "text/plain" // .txt
-                };
+                var allowedExtensions = new[] { ".doc", ".docx", ".pdf", ".txt", ".rtf" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
                 
-                _loggingService.LogInformation($"🔍 [UploadDocument] 檢查文件類型: {file.ContentType}");
-                if (!allowedTypes.Contains(file.ContentType.ToLower()))
+                if (!allowedExtensions.Contains(fileExtension))
                 {
-                    _loggingService.LogWarning($"❌ [UploadDocument] 不支持的文件類型: {file.ContentType}");
-                    return BadRequest(new { error = "不支持的文件類型。支持格式：Word (.doc, .docx), Excel (.xls, .xlsx), PDF, PowerPoint (.ppt, .pptx), RTF, TXT" });
-                }
-
-                // 檢查文件大小 (限制為 50MB)
-                if (file.Length > 50 * 1024 * 1024)
-                {
-                    _loggingService.LogWarning($"❌ [UploadDocument] 文件太大: {file.Length} bytes");
-                    return BadRequest(new { error = "文件大小不能超過 50MB" });
-                }
-
-                _loggingService.LogInformation($"✅ [UploadDocument] 文件驗證通過");
-
-                // 生成 e-form ID
-                var eFormId = Guid.NewGuid().ToString();
-                _loggingService.LogInformation($"🆔 [UploadDocument] 生成 e-form ID: {eFormId}");
-
-                // 確保上傳目錄存在（基於 e-form ID 的目錄結構）
-                var uploadDir = Path.Combine(Directory.GetCurrentDirectory(), _uploadPath, "Documents", eFormId);
-                _loggingService.LogInformation($"📁 [UploadDocument] 上傳目錄: {uploadDir}");
-                
-                if (!Directory.Exists(uploadDir))
-                {
-                    Directory.CreateDirectory(uploadDir);
-                    _loggingService.LogInformation($"📁 [UploadDocument] 創建 e-form 目錄: {eFormId}");
+                    return BadRequest(new { error = "不支持的文件類型，只允許文檔文件" });
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-                var filePath = Path.Combine(uploadDir, fileName);
-                _loggingService.LogInformation($"📁 [UploadDocument] 保存路徑: {filePath}");
+                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(_uploadPath, "Documents", fileName);
+
+                // 確保目錄存在
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
 
                 // 保存文件
-                _loggingService.LogInformation($"💾 [UploadDocument] 開始保存文件...");
                 using (var stream = new FileStream(filePath, FileMode.Create))
                 {
                     await file.CopyToAsync(stream);
                 }
-                _loggingService.LogInformation($"✅ [UploadDocument] 文件保存成功");
 
-                // 檢查是否支持該格式
-                if (!_documentConverter.IsSupportedFormat(filePath))
+                _loggingService.LogInformation($"文檔文件上傳成功: {fileName}");
+
+                // 如果是 Word 文檔，嘗試轉換為 HTML
+                string htmlContent = null;
+                if (fileExtension == ".docx" || fileExtension == ".doc")
                 {
-                    _loggingService.LogWarning($"❌ [UploadDocument] 不支持的文件格式: {Path.GetExtension(filePath)}");
-                    return BadRequest(new { error = "不支持的文件格式" });
+                    try
+                    {
+                        htmlContent = await _documentConverter.ConvertToHtml(filePath);
+                        _loggingService.LogInformation($"文檔轉換為 HTML 成功: {fileName}");
+                    }
+                    catch (Exception convertEx)
+                    {
+                        _loggingService.LogWarning($"文檔轉換為 HTML 失敗: {convertEx.Message}");
+                        // 轉換失敗不影響上傳
+                    }
                 }
-
-                // 使用 LibreOffice 轉換文檔為 HTML
-                _loggingService.LogInformation($"🔄 [UploadDocument] 開始使用 LibreOffice 轉換文檔為 HTML...");
-                var htmlContent = await _documentConverter.ConvertToHtml(filePath, eFormId);
-                
-                _loggingService.LogInformation($"📄 [UploadDocument] 轉換結果長度: {htmlContent?.Length ?? 0}");
-                
-                if (string.IsNullOrEmpty(htmlContent))
-                {
-                    _loggingService.LogWarning($"❌ [UploadDocument] HTML 內容為空");
-                    return BadRequest(new { error = "文檔轉換失敗，無法提取內容" });
-                }
-
-                _loggingService.LogInformation($"✅ [UploadDocument] 文檔轉換成功");
-
-                // 創建新的 eFormDefinition
-                var formName = Path.GetFileNameWithoutExtension(file.FileName) ?? "未命名表單";
-                _loggingService.LogInformation($"📝 [UploadDocument] 創建表單: {formName}");
-                
-                var eFormGuid = Guid.Parse(eFormId);
-                var eForm = new eFormDefinition
-                {
-                    Id = eFormGuid,
-                    CompanyId = Guid.NewGuid(), // 臨時處理
-                    Name = formName,
-                    Description = $"從文檔創建: {file.FileName}",
-                    HtmlCode = htmlContent,
-                    SourceFilePath = $"Documents/{eFormId}/{fileName}",
-                    Status = "A",
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                    CreatedUserId = Guid.NewGuid(), // 臨時處理
-                    UpdatedUserId = Guid.NewGuid() // 臨時處理
-                };
-
-                _loggingService.LogInformation($"💾 [UploadDocument] 保存到資料庫...");
-                _context.eFormDefinitions.Add(eForm);
-                await _context.SaveChangesAsync();
-                _loggingService.LogInformation($"✅ [UploadDocument] 資料庫保存成功，表單 ID: {eForm.Id}");
 
                 return Ok(new { 
-                    success = true,
-                    formId = eForm.Id,
+                    success = true, 
+                    fileName = fileName,
+                    filePath = filePath,
                     htmlContent = htmlContent,
-                    formName = eForm.Name,
-                    sourceFilePath = eForm.SourceFilePath,
-                    message = "文檔已成功轉換並創建表單"
+                    message = "文檔上傳成功" 
                 });
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"❌ [UploadDocument] 處理失敗: {ex.Message}", ex);
-                return StatusCode(500, new { error = $"處理失敗: {ex.Message}" });
+                _loggingService.LogError($"文檔上傳失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "文檔上傳失敗" });
             }
         }
 
-        [HttpPost("word")]
-        public async Task<IActionResult> UploadWordFile(IFormFile file)
+        [HttpPost("convert")]
+        public async Task<IActionResult> ConvertDocument([FromBody] ConvertRequest request)
         {
-            // 重定向到新的通用文檔上傳端點
-            return await UploadDocument(file);
-        }
-
-        [HttpPost("excel")]
-        public async Task<IActionResult> UploadExcelFile(IFormFile file)
-        {
-            // 重定向到新的通用文檔上傳端點
-            return await UploadDocument(file);
-        }
-
-        [HttpPost("pdf")]
-        public async Task<IActionResult> UploadPdfFile(IFormFile file)
-        {
-            // 重定向到新的通用文檔上傳端點
-            return await UploadDocument(file);
-        }
-
-        private async Task<string> ConvertWordToHtml(string filePath)
-        {
-            Console.WriteLine($"🔍 [ConvertWordToHtml] 開始轉換文件: {filePath}");
-            
-            var htmlBuilder = new StringBuilder();
-            htmlBuilder.AppendLine("<!DOCTYPE html>");
-            htmlBuilder.AppendLine("<html>");
-            htmlBuilder.AppendLine("<head>");
-            htmlBuilder.AppendLine("<meta charset=\"utf-8\">");
-            htmlBuilder.AppendLine("<style>");
-            htmlBuilder.AppendLine("body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }");
-            htmlBuilder.AppendLine("table { border-collapse: collapse; width: 100%; margin: 10px 0; }");
-            htmlBuilder.AppendLine("table, th, td { border: 1px solid #ddd; }");
-            htmlBuilder.AppendLine("th, td { padding: 8px; text-align: left; }");
-            htmlBuilder.AppendLine("th { background-color: #f2f2f2; }");
-            htmlBuilder.AppendLine("img { max-width: 100%; height: auto; }");
-            htmlBuilder.AppendLine("</style>");
-            htmlBuilder.AppendLine("</head>");
-            htmlBuilder.AppendLine("<body>");
-
             try
             {
-                Console.WriteLine($"📄 [ConvertWordToHtml] 嘗試打開 Word 文件...");
-                using (var document = WordprocessingDocument.Open(filePath, false))
+                if (string.IsNullOrEmpty(request.FilePath))
                 {
-                    Console.WriteLine($"✅ [ConvertWordToHtml] Word 文件打開成功");
-                    
-                    var mainPart = document.MainDocumentPart;
-                    Console.WriteLine($"📋 [ConvertWordToHtml] MainPart: {(mainPart != null ? "存在" : "null")}");
-                    Console.WriteLine($"📋 [ConvertWordToHtml] Document: {(mainPart?.Document != null ? "存在" : "null")}");
-                    Console.WriteLine($"📋 [ConvertWordToHtml] Body: {(mainPart?.Document?.Body != null ? "存在" : "null")}");
-                    
-                    if (mainPart?.Document?.Body != null)
-                    {
-                        Console.WriteLine($"�� [ConvertWordToHtml] 開始處理段落和文本...");
-                        
-                        // 處理段落和文本
-                        var paragraphCount = 0;
-                        foreach (var paragraph in mainPart.Document.Body.Elements<Paragraph>())
-                        {
-                            if (paragraph == null) 
-                            {
-                                Console.WriteLine($"⚠️ [ConvertWordToHtml] 跳過 null 段落");
-                                continue;
-                            }
-                            
-                            paragraphCount++;
-                            Console.WriteLine($"📄 [ConvertWordToHtml] 處理段落 #{paragraphCount}");
-                            
-                            // 處理段落對齊
-                            var alignment = paragraph.ParagraphProperties?.Justification?.Val;
-                            var alignStyle = "";
-                            if (alignment != null)
-                            {
-                                switch (alignment.Value.ToString().ToLower())
-                                {
-                                    case "center":
-                                        alignStyle = "text-align: center;";
-                                        Console.WriteLine($"📄 [ConvertWordToHtml] 段落置中對齊");
-                                        break;
-                                    case "right":
-                                        alignStyle = "text-align: right;";
-                                        Console.WriteLine($"📄 [ConvertWordToHtml] 段落右對齊");
-                                        break;
-                                    case "left":
-                                        alignStyle = "text-align: left;";
-                                        Console.WriteLine($"📄 [ConvertWordToHtml] 段落左對齊");
-                                        break;
-                                    case "both":
-                                        alignStyle = "text-align: justify;";
-                                        Console.WriteLine($"📄 [ConvertWordToHtml] 段落兩端對齊");
-                                        break;
-                                }
-                            }
-                            
-                            var paragraphStyle = !string.IsNullOrEmpty(alignStyle) ? $" style=\"{alignStyle}\"" : "";
-                            htmlBuilder.AppendLine($"<p{paragraphStyle}>");
-                            
-                            var runCount = 0;
-                            foreach (var run in paragraph.Elements<Run>())
-                            {
-                                if (run == null) 
-                                {
-                                    Console.WriteLine($"⚠️ [ConvertWordToHtml] 跳過 null Run");
-                                    continue;
-                                }
-                                
-                                runCount++;
-                                Console.WriteLine($"📝 [ConvertWordToHtml] 處理 Run #{runCount}");
-                                
-                                var textCount = 0;
-                                foreach (var text in run.Elements<Text>())
-                                {
-                                    if (text == null) 
-                                    {
-                                        Console.WriteLine($"⚠️ [ConvertWordToHtml] 跳過 null Text");
-                                        continue;
-                                    }
-                                    
-                                    textCount++;
-                                    var content = text.Text ?? "";
-                                    Console.WriteLine($"📄 [ConvertWordToHtml] Text #{textCount}: '{content}' (長度: {content.Length})");
-                                    
-                                    // 處理格式
-                                    var isBold = run.RunProperties?.Bold?.Val != null && run.RunProperties.Bold.Val.Value;
-                                    var isItalic = run.RunProperties?.Italic?.Val != null && run.RunProperties.Italic.Val.Value;
-                                    var isUnderline = run.RunProperties?.Underline?.Val != null && run.RunProperties.Underline.Val.Value == DocumentFormat.OpenXml.Wordprocessing.UnderlineValues.Single;
-                                    var isStrike = run.RunProperties?.Strike?.Val != null && run.RunProperties.Strike.Val.Value;
-                                    
-                                    // 處理字體大小
-                                    var fontSize = run.RunProperties?.FontSize?.Val;
-                                    var fontSizeStyle = "";
-                                    if (fontSize != null)
-                                    {
-                                        try
-                                        {
-                                            // 嘗試將字體大小轉換為數字
-                                            if (int.TryParse(fontSize.Value.ToString(), out int fontSizeInt))
-                                            {
-                                                // 將 half-points 轉換為 pixels (1 half-point = 0.5 points, 1 point = 1.33 pixels)
-                                                var sizeInPixels = (fontSizeInt / 2.0) * 1.33;
-                                                fontSizeStyle = $"font-size: {sizeInPixels:F1}px;";
-                                                Console.WriteLine($"🔤 [ConvertWordToHtml] 字體大小: {fontSizeInt} half-points -> {sizeInPixels:F1}px");
-                                            }
-                                            else
-                                            {
-                                                Console.WriteLine($"⚠️ [ConvertWordToHtml] 無法解析字體大小: {fontSize.Value}");
-                                            }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            Console.WriteLine($"⚠️ [ConvertWordToHtml] 處理字體大小時發生錯誤: {ex.Message}");
-                                        }
-                                    }
-                                    
-                                    // 處理字體名稱 - 使用 RunFonts 而不是 FontFamily
-                                    var fontName = run.RunProperties?.RunFonts?.Ascii;
-                                    var fontFamilyStyle = "";
-                                    if (!string.IsNullOrEmpty(fontName))
-                                    {
-                                        fontFamilyStyle = $"font-family: '{fontName}';";
-                                        Console.WriteLine($"🔤 [ConvertWordToHtml] 字體: {fontName}");
-                                    }
-                                    
-                                    // 組合樣式
-                                    var style = "";
-                                    if (!string.IsNullOrEmpty(fontSizeStyle) || !string.IsNullOrEmpty(fontFamilyStyle))
-                                    {
-                                        style = $" style=\"{fontSizeStyle}{fontFamilyStyle}\"";
-                                    }
-                                    
-                                    // 應用格式
-                                    var formattedContent = content;
-                                    
-                                    // 應用下劃線
-                                    if (isUnderline)
-                                    {
-                                        formattedContent = $"<u>{formattedContent}</u>";
-                                        Console.WriteLine($"🔤 [ConvertWordToHtml] 應用下劃線格式");
-                                    }
-                                    
-                                    // 應用刪除線
-                                    if (isStrike)
-                                    {
-                                        formattedContent = $"<s>{formattedContent}</s>";
-                                        Console.WriteLine($"🔤 [ConvertWordToHtml] 應用刪除線格式");
-                                    }
-                                    
-                                    // 應用斜體
-                                    if (isItalic)
-                                    {
-                                        formattedContent = $"<em>{formattedContent}</em>";
-                                        Console.WriteLine($"🔤 [ConvertWordToHtml] 應用斜體格式");
-                                    }
-                                    
-                                    // 應用粗體
-                                    if (isBold)
-                                    {
-                                        formattedContent = $"<strong>{formattedContent}</strong>";
-                                        Console.WriteLine($"🔤 [ConvertWordToHtml] 應用粗體格式");
-                                    }
-                                    
-                                    // 應用字體樣式
-                                    if (!string.IsNullOrEmpty(style))
-                                    {
-                                        formattedContent = $"<span{style}>{formattedContent}</span>";
-                                        Console.WriteLine($"🔤 [ConvertWordToHtml] 應用字體樣式");
-                                    }
-                                    
-                                    htmlBuilder.Append(formattedContent);
-                                }
-                            }
-                            
-                            htmlBuilder.AppendLine("</p>");
-                        }
-                        
-                        Console.WriteLine($"✅ [ConvertWordToHtml] 段落處理完成，共處理 {paragraphCount} 個段落");
-
-                        // 處理表格
-                        Console.WriteLine($"📊 [ConvertWordToHtml] 開始處理表格...");
-                        var tableCount = 0;
-                        foreach (var table in mainPart.Document.Body.Elements<Table>())
-                        {
-                            if (table == null) 
-                            {
-                                Console.WriteLine($"⚠️ [ConvertWordToHtml] 跳過 null 表格");
-                                continue;
-                            }
-                            
-                            tableCount++;
-                            Console.WriteLine($"📊 [ConvertWordToHtml] 處理表格 #{tableCount}");
-                            
-                            htmlBuilder.AppendLine("<table>");
-                            
-                            var rowCount = 0;
-                            foreach (var row in table.Elements<TableRow>())
-                            {
-                                if (row == null) 
-                                {
-                                    Console.WriteLine($"⚠️ [ConvertWordToHtml] 跳過 null 行");
-                                    continue;
-                                }
-                                
-                                rowCount++;
-                                Console.WriteLine($"📋 [ConvertWordToHtml] 處理表格行 #{rowCount}");
-                                
-                                htmlBuilder.AppendLine("<tr>");
-                                
-                                var cells = row.Elements<TableCell>().ToList();
-                                Console.WriteLine($"📋 [ConvertWordToHtml] 該行有 {cells.Count} 個單元格");
-                                
-                                var cellCount = 0;
-                                foreach (var cell in cells)
-                                {
-                                    if (cell == null) 
-                                    {
-                                        Console.WriteLine($"⚠️ [ConvertWordToHtml] 跳過 null 單元格");
-                                        continue;
-                                    }
-                                    
-                                    cellCount++;
-                                    var isHeader = cells.First() == cell;
-                                    var tag = isHeader ? "th" : "td";
-                                    
-                                    Console.WriteLine($"📋 [ConvertWordToHtml] 處理單元格 #{cellCount} ({tag})");
-                                    htmlBuilder.AppendLine($"<{tag}>");
-                                    
-                                    var cellParagraphCount = 0;
-                                    foreach (var paragraph in cell.Elements<Paragraph>())
-                                    {
-                                        if (paragraph == null) continue;
-                                        
-                                        cellParagraphCount++;
-                                        Console.WriteLine($"📄 [ConvertWordToHtml] 單元格段落 #{cellParagraphCount}");
-                                        
-                                        var cellRunCount = 0;
-                                        foreach (var run in paragraph.Elements<Run>())
-                                        {
-                                            if (run == null) continue;
-                                            
-                                            cellRunCount++;
-                                            Console.WriteLine($"📝 [ConvertWordToHtml] 單元格 Run #{cellRunCount}");
-                                            
-                                            var cellTextCount = 0;
-                                            foreach (var text in run.Elements<Text>())
-                                            {
-                                                if (text == null) continue;
-                                                
-                                                cellTextCount++;
-                                                var content = text.Text ?? "";
-                                                Console.WriteLine($"📄 [ConvertWordToHtml] 單元格 Text #{cellTextCount}: '{content}'");
-                                                
-                                                var isBold = run.RunProperties?.Bold?.Val != null && run.RunProperties.Bold.Val.Value;
-                                                var isItalic = run.RunProperties?.Italic?.Val != null && run.RunProperties.Italic.Val.Value;
-                                                var isUnderline = run.RunProperties?.Underline?.Val != null && run.RunProperties.Underline.Val.Value == DocumentFormat.OpenXml.Wordprocessing.UnderlineValues.Single;
-                                                var isStrike = run.RunProperties?.Strike?.Val != null && run.RunProperties.Strike.Val.Value;
-                                                
-                                                // 處理字體大小
-                                                var fontSize = run.RunProperties?.FontSize?.Val;
-                                                var fontSizeStyle = "";
-                                                if (fontSize != null)
-                                                {
-                                                    try
-                                                    {
-                                                        // 嘗試將字體大小轉換為數字
-                                                        if (int.TryParse(fontSize.Value.ToString(), out int fontSizeInt))
-                                                        {
-                                                            // 將 half-points 轉換為 pixels (1 half-point = 0.5 points, 1 point = 1.33 pixels)
-                                                            var sizeInPixels = (fontSizeInt / 2.0) * 1.33;
-                                                            fontSizeStyle = $"font-size: {sizeInPixels:F1}px;";
-                                                        }
-                                                    }
-                                                    catch (Exception ex)
-                                                    {
-                                                        Console.WriteLine($"⚠️ [ConvertWordToHtml] 表格中處理字體大小時發生錯誤: {ex.Message}");
-                                                    }
-                                                }
-                                                
-                                                // 處理字體名稱 - 使用 RunFonts 而不是 FontFamily
-                                                var fontName = run.RunProperties?.RunFonts?.Ascii;
-                                                var fontFamilyStyle = "";
-                                                if (!string.IsNullOrEmpty(fontName))
-                                                {
-                                                    fontFamilyStyle = $"font-family: '{fontName}';";
-                                                }
-                                                
-                                                // 組合樣式
-                                                var style = "";
-                                                if (!string.IsNullOrEmpty(fontSizeStyle) || !string.IsNullOrEmpty(fontFamilyStyle))
-                                                {
-                                                    style = $" style=\"{fontSizeStyle}{fontFamilyStyle}\"";
-                                                }
-                                                
-                                                // 應用格式
-                                                var formattedContent = content;
-                                                
-                                                // 應用下劃線
-                                                if (isUnderline)
-                                                {
-                                                    formattedContent = $"<u>{formattedContent}</u>";
-                                                }
-                                                
-                                                // 應用刪除線
-                                                if (isStrike)
-                                                {
-                                                    formattedContent = $"<s>{formattedContent}</s>";
-                                                }
-                                                
-                                                // 應用斜體
-                                                if (isItalic)
-                                                {
-                                                    formattedContent = $"<em>{formattedContent}</em>";
-                                                }
-                                                
-                                                // 應用粗體
-                                                if (isBold)
-                                                {
-                                                    formattedContent = $"<strong>{formattedContent}</strong>";
-                                                }
-                                                
-                                                // 應用字體樣式
-                                                if (!string.IsNullOrEmpty(style))
-                                                {
-                                                    formattedContent = $"<span{style}>{formattedContent}</span>";
-                                                }
-                                                
-                                                htmlBuilder.Append(formattedContent);
-                                            }
-                                        }
-                                    }
-                                    
-                                    htmlBuilder.AppendLine($"</{tag}>");
-                                }
-                                
-                                htmlBuilder.AppendLine("</tr>");
-                            }
-                            
-                            htmlBuilder.AppendLine("</table>");
-                        }
-                        
-                        Console.WriteLine($"✅ [ConvertWordToHtml] 表格處理完成，共處理 {tableCount} 個表格");
-
-                        // 處理圖片（如果有的話）
-                        if (mainPart.ImageParts != null && mainPart.ImageParts.Any())
-                        {
-                            var imageCount = mainPart.ImageParts.Count();
-                            Console.WriteLine($"🖼️ [ConvertWordToHtml] 發現 {imageCount} 個圖片");
-                            
-                            var imageIndex = 0;
-                            foreach (var imagePart in mainPart.ImageParts)
-                            {
-                                if (imagePart == null) continue;
-                                
-                                imageIndex++;
-                                Console.WriteLine($"🖼️ [ConvertWordToHtml] 處理圖片 #{imageIndex}");
-                                
-                                try
-                                {
-                                    // 獲取圖片數據
-                                    using (var imageStream = imagePart.GetStream())
-                                    {
-                                        var imageBytes = new byte[imageStream.Length];
-                                        imageStream.Read(imageBytes, 0, (int)imageStream.Length);
-                                        
-                                        // 轉換為 base64
-                                        var base64String = Convert.ToBase64String(imageBytes);
-                                        var contentType = imagePart.ContentType;
-                                        
-                                        Console.WriteLine($"🖼️ [ConvertWordToHtml] 圖片類型: {contentType}, 大小: {imageBytes.Length} bytes");
-                                        
-                                        // 嵌入圖片到 HTML
-                                        htmlBuilder.AppendLine($"<img src=\"data:{contentType};base64,{base64String}\" alt=\"圖片 {imageIndex}\" style=\"max-width: 100%; height: auto; margin: 10px 0;\" />");
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine($"❌ [ConvertWordToHtml] 處理圖片 #{imageIndex} 時發生錯誤: {ex.Message}");
-                                    htmlBuilder.AppendLine($"<p style='color: red;'>圖片 {imageIndex} 處理失敗: {ex.Message}</p>");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine($"ℹ️ [ConvertWordToHtml] 沒有發現圖片");
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine($"❌ [ConvertWordToHtml] Document Body 為 null，無法處理內容");
-                    }
+                    return BadRequest(new { error = "文件路徑不能為空" });
                 }
+
+                var fullPath = Path.Combine(_uploadPath, request.FilePath);
+                if (!System.IO.File.Exists(fullPath))
+                {
+                    return NotFound(new { error = "文件不存在" });
+                }
+
+                var fileExtension = Path.GetExtension(fullPath).ToLowerInvariant();
+                if (fileExtension != ".docx" && fileExtension != ".doc")
+                {
+                    return BadRequest(new { error = "只支持 Word 文檔轉換" });
+                }
+
+                _loggingService.LogInformation($"開始轉換文檔: {request.FilePath}");
+
+                var htmlContent = await _documentConverter.ConvertToHtml(fullPath);
+                
+                _loggingService.LogInformation($"文檔轉換成功: {request.FilePath}");
+
+                return Ok(new { 
+                    success = true, 
+                    htmlContent = htmlContent,
+                    message = "文檔轉換成功" 
+                });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [ConvertWordToHtml] 轉換過程中發生錯誤: {ex.Message}");
-                Console.WriteLine($"❌ [ConvertWordToHtml] 錯誤堆疊: {ex.StackTrace}");
-                htmlBuilder.AppendLine($"<p style='color: red;'>轉換錯誤: {ex.Message}</p>");
+                _loggingService.LogError($"文檔轉換失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "文檔轉換失敗" });
             }
+        }
 
-            htmlBuilder.AppendLine("</body>");
-            htmlBuilder.AppendLine("</html>");
+        [HttpGet("files")]
+        public async Task<IActionResult> GetFiles([FromQuery] string type = "all")
+        {
+            try
+            {
+                var files = new List<object>();
+                var uploadDir = new DirectoryInfo(_uploadPath);
 
-            var result = htmlBuilder.ToString();
-            Console.WriteLine($"✅ [ConvertWordToHtml] 轉換完成，HTML 長度: {result.Length} 字符");
-            Console.WriteLine($"📄 [ConvertWordToHtml] HTML 前 200 字符: {result.Substring(0, Math.Min(200, result.Length))}...");
+                if (!uploadDir.Exists)
+                {
+                    return Ok(new { files = new List<object>(), message = "上傳目錄不存在" });
+                }
 
-            return result;
+                foreach (var file in uploadDir.GetFiles())
+                {
+                    if (type == "all" || 
+                        (type == "image" && IsImageFile(file.Extension)) ||
+                        (type == "document" && IsDocumentFile(file.Extension)))
+                    {
+                        files.Add(new
+                        {
+                            name = file.Name,
+                            size = file.Length,
+                            created = file.CreationTime,
+                            modified = file.LastWriteTime,
+                            type = GetFileType(file.Extension)
+                        });
+                    }
+                }
+
+                _loggingService.LogInformation($"獲取文件列表成功，類型: {type}，數量: {files.Count}");
+
+                return Ok(new { 
+                    files = files,
+                    total = files.Count,
+                    message = "文件列表獲取成功" 
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取文件列表失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取文件列表失敗" });
+            }
+        }
+
+        private bool IsImageFile(string extension)
+        {
+            var imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
+            return imageExtensions.Contains(extension.ToLowerInvariant());
+        }
+
+        private bool IsDocumentFile(string extension)
+        {
+            var documentExtensions = new[] { ".doc", ".docx", ".pdf", ".txt", ".rtf" };
+            return documentExtensions.Contains(extension.ToLowerInvariant());
+        }
+
+        private string GetFileType(string extension)
+        {
+            if (IsImageFile(extension)) return "image";
+            if (IsDocumentFile(extension)) return "document";
+            return "other";
         }
 
         /// <summary>
@@ -688,7 +461,7 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"📋 [GetForms] 獲取表單列表 - 頁面: {page}, 每頁: {pageSize}, 排序: {sortField} {sortOrder}");
+                _loggingService.LogInformation($"📋 [GetForms] 獲取表單列表 - 頁面: {page}, 每頁: {pageSize}, 排序: {sortField} {sortOrder}");
 
                 var query = _context.eFormDefinitions.AsQueryable();
 
@@ -720,7 +493,7 @@ namespace PurpleRice.Controllers
                     })
                     .ToListAsync();
 
-                Console.WriteLine($"✅ [GetForms] 成功獲取 {forms.Count} 個表單，總計 {total} 個");
+                _loggingService.LogInformation($"✅ [GetForms] 成功獲取 {forms.Count} 個表單，總計 {total} 個");
 
                 return Ok(new
                 {
@@ -735,7 +508,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [GetForms] 獲取表單列表失敗: {ex.Message}");
+                _loggingService.LogError($"❌ [GetForms] 獲取表單列表失敗: {ex.Message}", ex);
                 return StatusCode(500, new { success = false, error = $"獲取表單列表失敗: {ex.Message}" });
             }
         }
@@ -748,7 +521,7 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"🗑️ [BatchDeleteForms] 批量刪除表單 - 數量: {request.FormIds?.Count ?? 0}");
+                _loggingService.LogInformation($"🗑️ [BatchDeleteForms] 批量刪除表單 - 數量: {request.FormIds?.Count ?? 0}");
 
                 if (request.FormIds == null || !request.FormIds.Any())
                 {
@@ -775,7 +548,7 @@ namespace PurpleRice.Controllers
                                                     if (System.IO.File.Exists(filePath))
                         {
                             System.IO.File.Delete(filePath);
-                            Console.WriteLine($"🗑️ [BatchDeleteForms] 刪除文件: {filePath}");
+                            _loggingService.LogInformation($"🗑️ [BatchDeleteForms] 刪除文件: {filePath}");
                         }
 
                         // 刪除相關的 HTML 和圖片文件
@@ -786,14 +559,14 @@ namespace PurpleRice.Controllers
                             foreach (var relatedFile in relatedFiles)
                             {
                                 System.IO.File.Delete(relatedFile);
-                                Console.WriteLine($"🗑️ [BatchDeleteForms] 刪除相關文件: {relatedFile}");
+                                _loggingService.LogInformation($"🗑️ [BatchDeleteForms] 刪除相關文件: {relatedFile}");
                             }
                         }
                         }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"⚠️ [BatchDeleteForms] 刪除文件時發生錯誤: {ex.Message}");
+                        _loggingService.LogWarning($"⚠️ [BatchDeleteForms] 刪除文件時發生錯誤: {ex.Message}");
                     }
                 }
 
@@ -801,7 +574,7 @@ namespace PurpleRice.Controllers
                 _context.eFormDefinitions.RemoveRange(formsToDelete);
                 await _context.SaveChangesAsync();
 
-                Console.WriteLine($"✅ [BatchDeleteForms] 成功刪除 {formsToDelete.Count} 個表單");
+                _loggingService.LogInformation($"✅ [BatchDeleteForms] 成功刪除 {formsToDelete.Count} 個表單");
 
                 return Ok(new
                 {
@@ -812,7 +585,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [BatchDeleteForms] 批量刪除失敗: {ex.Message}");
+                _loggingService.LogError($"❌ [BatchDeleteForms] 批量刪除失敗: {ex.Message}", ex);
                 return StatusCode(500, new { success = false, error = $"批量刪除失敗: {ex.Message}" });
             }
         }
@@ -825,7 +598,7 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"🗑️ [DeleteForm] 刪除表單 - ID: {id}");
+                _loggingService.LogInformation($"🗑️ [DeleteForm] 刪除表單 - ID: {id}");
 
                 var form = await _context.eFormDefinitions.FindAsync(id);
                 if (form == null)
@@ -842,7 +615,7 @@ namespace PurpleRice.Controllers
                         if (System.IO.File.Exists(filePath))
                         {
                             System.IO.File.Delete(filePath);
-                            Console.WriteLine($"🗑️ [DeleteForm] 刪除文件: {filePath}");
+                            _loggingService.LogInformation($"🗑️ [DeleteForm] 刪除文件: {filePath}");
                         }
 
                         // 刪除相關的 HTML 和圖片文件
@@ -853,21 +626,21 @@ namespace PurpleRice.Controllers
                             foreach (var relatedFile in relatedFiles)
                             {
                                 System.IO.File.Delete(relatedFile);
-                                Console.WriteLine($"🗑️ [DeleteForm] 刪除相關文件: {relatedFile}");
+                                _loggingService.LogInformation($"🗑️ [DeleteForm] 刪除相關文件: {relatedFile}");
                             }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ [DeleteForm] 刪除文件時發生錯誤: {ex.Message}");
+                    _loggingService.LogWarning($"⚠️ [DeleteForm] 刪除文件時發生錯誤: {ex.Message}");
                 }
 
                 // 從資料庫刪除
                 _context.eFormDefinitions.Remove(form);
                 await _context.SaveChangesAsync();
 
-                Console.WriteLine($"✅ [DeleteForm] 成功刪除表單: {form.Name}");
+                _loggingService.LogInformation($"✅ [DeleteForm] 成功刪除表單: {form.Name}");
 
                 return Ok(new
                 {
@@ -877,7 +650,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [DeleteForm] 刪除失敗: {ex.Message}");
+                _loggingService.LogError($"❌ [DeleteForm] 刪除失敗: {ex.Message}", ex);
                 return StatusCode(500, new { success = false, error = $"刪除失敗: {ex.Message}" });
             }
         }
@@ -896,12 +669,12 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 開始 AI 生成表單");
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 用戶提示: {request.Prompt}");
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 包含當前 HTML: {request.IncludeCurrentHtml}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 開始 AI 生成表單");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 用戶提示: {request.Prompt}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 包含當前 HTML: {request.IncludeCurrentHtml}");
                 if (request.IncludeCurrentHtml && !string.IsNullOrEmpty(request.CurrentHtml))
                 {
-                    Console.WriteLine($"🤖 [GenerateFormWithAI] 當前 HTML 長度: {request.CurrentHtml.Length}");
+                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 當前 HTML 長度: {request.CurrentHtml.Length}");
                 }
 
                 // 獲取 X.AI 配置
@@ -910,14 +683,14 @@ namespace PurpleRice.Controllers
 
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    Console.WriteLine($"❌ [GenerateFormWithAI] X.AI API Key 未配置");
+                    _loggingService.LogWarning($"❌ [GenerateFormWithAI] X.AI API Key 未配置");
                     return BadRequest(new { success = false, error = "X.AI API Key 未配置" });
                 }
 
                 // 檢查是否為測試 API Key
                 if (apiKey.Contains("test-key") || apiKey.Contains("please-replace"))
                 {
-                    Console.WriteLine($"🧪 [GenerateFormWithAI] 使用測試模式，生成模擬響應");
+                    _loggingService.LogInformation($"🧪 [GenerateFormWithAI] 使用測試模式，生成模擬響應");
                     
                     // 生成模擬的 HTML 表單
                     var mockHtmlContent = GenerateMockHtmlForm(request.Prompt, request.IncludeCurrentHtml, request.CurrentHtml);
@@ -946,11 +719,11 @@ namespace PurpleRice.Controllers
                 var maxTokens = _configuration.GetValue<int>("XAI:MaxTokens", 15000);
                 var topP = _configuration.GetValue<double>("XAI:TopP", 0.9);
 
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 模型: {model}");
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 流式響應: {stream}");
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 溫度: {temperature}");
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 最大 Token: {maxTokens}");
-                Console.WriteLine($"🤖 [GenerateFormWithAI] Top P: {topP}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 模型: {model}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 流式響應: {stream}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 溫度: {temperature}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 最大 Token: {maxTokens}");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] Top P: {topP}");
 
                 // 構建請求 - 使用配置文件中的參數
                 var aiRequest = new
@@ -967,7 +740,7 @@ namespace PurpleRice.Controllers
                     top_p = topP
                 };
 
-                Console.WriteLine($"🤖 [GenerateFormWithAI] 發送請求到 X.AI API");
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 發送請求到 X.AI API");
 
                 using (var httpClient = new HttpClient())
                 {
@@ -981,21 +754,21 @@ namespace PurpleRice.Controllers
                     var jsonContent = JsonConvert.SerializeObject(aiRequest);
                     var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                    Console.WriteLine($"🤖 [GenerateFormWithAI] 請求內容: {jsonContent}");
-                    Console.WriteLine($"🤖 [GenerateFormWithAI] API Key: {apiKey.Substring(0, 10)}...");
-                    Console.WriteLine($"🤖 [GenerateFormWithAI] 請求 URL: https://api.x.ai/v1/chat/completions");
+                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 請求內容: {jsonContent}");
+                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] API Key: {apiKey.Substring(0, 10)}...");
+                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 請求 URL: https://api.x.ai/v1/chat/completions");
 
                     try
                     {
                         // 使用正確的 X.AI API 端點
                         var response = await httpClient.PostAsync("https://api.x.ai/v1/chat/completions", content);
                         
-                        Console.WriteLine($"🤖 [GenerateFormWithAI] X.AI 響應狀態: {response.StatusCode}");
+                        _loggingService.LogInformation($"🤖 [GenerateFormWithAI] X.AI 響應狀態: {response.StatusCode}");
 
                         if (!response.IsSuccessStatusCode)
                         {
                             var errorContent = await response.Content.ReadAsStringAsync();
-                            Console.WriteLine($"❌ [GenerateFormWithAI] X.AI API 請求失敗: {response.StatusCode} - {errorContent}");
+                            _loggingService.LogError($"❌ [GenerateFormWithAI] X.AI API 請求失敗: {response.StatusCode} - {errorContent}");
                             return StatusCode(500, new { success = false, error = $"X.AI API 請求失敗: {response.StatusCode} - {errorContent}" });
                         }
 
@@ -1004,7 +777,7 @@ namespace PurpleRice.Controllers
                         var reader = new StreamReader(responseStream);
                         var fullResponse = new StringBuilder();
                         
-                        Console.WriteLine($"🤖 [GenerateFormWithAI] 開始處理流式響應...");
+                        _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 開始處理流式響應...");
                         
                         string line;
                         while ((line = await reader.ReadLineAsync()) != null)
@@ -1014,7 +787,7 @@ namespace PurpleRice.Controllers
                                 var data = line.Substring(6);
                                 if (data == "[DONE]")
                                 {
-                                    Console.WriteLine($"🤖 [GenerateFormWithAI] 流式響應完成");
+                                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 流式響應完成");
                                     break;
                                 }
                                 
@@ -1029,28 +802,28 @@ namespace PurpleRice.Controllers
                                 }
                                 catch (Exception ex)
                                 {
-                                    Console.WriteLine($"⚠️ [GenerateFormWithAI] 解析流式數據時發生錯誤: {ex.Message}");
+                                    _loggingService.LogWarning($"⚠️ [GenerateFormWithAI] 解析流式數據時發生錯誤: {ex.Message}");
                                 }
                             }
                         }
 
                         var generatedContent = fullResponse.ToString();
-                        Console.WriteLine($"🤖 [GenerateFormWithAI] 完整響應長度: {generatedContent.Length}");
+                        _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 完整響應長度: {generatedContent.Length}");
 
                         if (string.IsNullOrEmpty(generatedContent))
                         {
-                            Console.WriteLine($"❌ [GenerateFormWithAI] AI 生成內容為空");
+                            _loggingService.LogWarning($"❌ [GenerateFormWithAI] AI 生成內容為空");
                             return BadRequest(new { success = false, error = "AI 生成內容為空" });
                         }
 
-                        Console.WriteLine($"✅ [GenerateFormWithAI] AI 生成成功，內容長度: {generatedContent.Length}");
+                        _loggingService.LogInformation($"✅ [GenerateFormWithAI] AI 生成成功，內容長度: {generatedContent.Length}");
 
                         // 提取 HTML 內容
                         var htmlContent = ExtractHtmlFromResponse(generatedContent);
                         var formName = ExtractFormNameFromResponse(generatedContent) ?? "AI 生成的表單";
 
-                        Console.WriteLine($"✅ [GenerateFormWithAI] 提取的 HTML 長度: {htmlContent.Length}");
-                        Console.WriteLine($"✅ [GenerateFormWithAI] 表單名稱: {formName}");
+                        _loggingService.LogInformation($"✅ [GenerateFormWithAI] 提取的 HTML 長度: {htmlContent.Length}");
+                        _loggingService.LogInformation($"✅ [GenerateFormWithAI] 表單名稱: {formName}");
 
                         return Ok(new
                         {
@@ -1062,17 +835,17 @@ namespace PurpleRice.Controllers
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"❌ [GenerateFormWithAI] HTTP 請求異常: {ex.Message}");
-                        Console.WriteLine($"❌ [GenerateFormWithAI] 異常類型: {ex.GetType().Name}");
-                        Console.WriteLine($"❌ [GenerateFormWithAI] 錯誤堆疊: {ex.StackTrace}");
+                        _loggingService.LogError($"❌ [GenerateFormWithAI] HTTP 請求異常: {ex.Message}", ex);
+                        _loggingService.LogError($"❌ [GenerateFormWithAI] 異常類型: {ex.GetType().Name}");
+                        _loggingService.LogError($"❌ [GenerateFormWithAI] 錯誤堆疊: {ex.StackTrace}");
                         return StatusCode(500, new { success = false, error = $"HTTP 請求異常: {ex.Message}" });
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [GenerateFormWithAI] AI 生成失敗: {ex.Message}");
-                Console.WriteLine($"❌ [GenerateFormWithAI] 錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogError($"❌ [GenerateFormWithAI] AI 生成失敗: {ex.Message}", ex);
+                _loggingService.LogError($"❌ [GenerateFormWithAI] 錯誤堆疊: {ex.StackTrace}");
                 return StatusCode(500, new { success = false, error = $"AI 生成失敗: {ex.Message}" });
             }
         }
@@ -1084,7 +857,7 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"🔍 [ExtractHtmlFromResponse] 開始提取 HTML，響應長度: {response.Length}");
+                _loggingService.LogInformation($"🔍 [ExtractHtmlFromResponse] 開始提取 HTML，響應長度: {response.Length}");
                 
                 // 嘗試提取 ```html 和 ``` 之間的內容
                 var htmlStart = response.IndexOf("```html");
@@ -1095,7 +868,7 @@ namespace PurpleRice.Controllers
                     if (endIndex >= 0)
                     {
                         var htmlContent = response.Substring(startIndex, endIndex - startIndex).Trim();
-                        Console.WriteLine($"✅ [ExtractHtmlFromResponse] 找到 ```html 代碼塊，長度: {htmlContent.Length}");
+                        _loggingService.LogInformation($"✅ [ExtractHtmlFromResponse] 找到 ```html 代碼塊，長度: {htmlContent.Length}");
                         return htmlContent;
                     }
                 }
@@ -1112,7 +885,7 @@ namespace PurpleRice.Controllers
                         // 檢查是否包含 HTML 標籤
                         if (codeContent.Contains("<html") || codeContent.Contains("<!DOCTYPE") || codeContent.Contains("<head>") || codeContent.Contains("<body>"))
                         {
-                            Console.WriteLine($"✅ [ExtractHtmlFromResponse] 找到代碼塊包含 HTML，長度: {codeContent.Length}");
+                            _loggingService.LogInformation($"✅ [ExtractHtmlFromResponse] 找到代碼塊包含 HTML，長度: {codeContent.Length}");
                             return codeContent;
                         }
                     }
@@ -1123,7 +896,7 @@ namespace PurpleRice.Controllers
                 if (htmlTagStart >= 0)
                 {
                     var htmlContent = response.Substring(htmlTagStart).Trim();
-                    Console.WriteLine($"✅ [ExtractHtmlFromResponse] 找到 <html 標籤，長度: {htmlContent.Length}");
+                    _loggingService.LogInformation($"✅ [ExtractHtmlFromResponse] 找到 <html 標籤，長度: {htmlContent.Length}");
                     return htmlContent;
                 }
 
@@ -1132,23 +905,23 @@ namespace PurpleRice.Controllers
                 if (doctypeStart >= 0)
                 {
                     var htmlContent = response.Substring(doctypeStart).Trim();
-                    Console.WriteLine($"✅ [ExtractHtmlFromResponse] 找到 <!DOCTYPE，長度: {htmlContent.Length}");
+                    _loggingService.LogInformation($"✅ [ExtractHtmlFromResponse] 找到 <!DOCTYPE，長度: {htmlContent.Length}");
                     return htmlContent;
                 }
 
                 // 如果都沒有找到，檢查是否包含 HTML 標籤
                 if (response.Contains("<head>") || response.Contains("<body>") || response.Contains("<table>"))
                 {
-                    Console.WriteLine($"⚠️ [ExtractHtmlFromResponse] 未找到明確的 HTML 標記，但包含 HTML 標籤，返回完整響應");
+                    _loggingService.LogWarning($"⚠️ [ExtractHtmlFromResponse] 未找到明確的 HTML 標記，但包含 HTML 標籤，返回完整響應");
                     return response.Trim();
                 }
 
-                Console.WriteLine($"❌ [ExtractHtmlFromResponse] 未找到任何 HTML 內容");
+                _loggingService.LogInformation($"❌ [ExtractHtmlFromResponse] 未找到任何 HTML 內容");
                 return response.Trim();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ [ExtractHtmlFromResponse] 提取 HTML 時發生錯誤: {ex.Message}");
+                _loggingService.LogWarning($"⚠️ [ExtractHtmlFromResponse] 提取 HTML 時發生錯誤: {ex.Message}");
                 return response.Trim();
             }
         }
@@ -1185,7 +958,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ [ExtractFormNameFromResponse] 提取表單名稱時發生錯誤: {ex.Message}");
+                _loggingService.LogWarning($"⚠️ [ExtractFormNameFromResponse] 提取表單名稱時發生錯誤: {ex.Message}");
                 return null;
             }
         }
@@ -1406,5 +1179,10 @@ namespace PurpleRice.Controllers
         public string Prompt { get; set; } = string.Empty;
         public bool IncludeCurrentHtml { get; set; } = false;
         public string CurrentHtml { get; set; } = string.Empty;
+    }
+
+    public class ConvertRequest
+    {
+        public string FilePath { get; set; } = string.Empty;
     }
 } 
