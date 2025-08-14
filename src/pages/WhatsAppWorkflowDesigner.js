@@ -828,6 +828,10 @@ const WhatsAppWorkflowDesigner = () => {
         }
         
         message.success(t('workflow.saveSuccess'), 2);
+        // 儲存成功後延遲 1 秒再導航，讓用戶看到成功訊息
+        setTimeout(() => {
+          navigate('/workflow-list');
+        }, 1000);
       } else {
         // 新增
         const response = await fetch('/api/workflowdefinitions', {
@@ -853,6 +857,10 @@ const WhatsAppWorkflowDesigner = () => {
         }
         
         message.success(t('workflow.saveSuccess'), 2);
+        // 儲存成功後延遲 1 秒再導航，讓用戶看到成功訊息
+        setTimeout(() => {
+          navigate('/workflow-list');
+        }, 1000);
       }
     } catch (error) {
       console.error('保存失敗:', error);
