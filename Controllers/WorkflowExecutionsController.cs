@@ -137,7 +137,8 @@ namespace PurpleRice.Controllers
                         duration = e.EndedAt.HasValue ? 
                             (int?)(e.EndedAt.Value - e.StartedAt).TotalMinutes : null,
                         e.CreatedBy,
-                        e.ErrorMessage
+                        e.ErrorMessage,
+                        e.InputJson  // 添加 InputJson 字段
                     })
                     .ToListAsync();
 

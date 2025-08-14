@@ -44,6 +44,9 @@ builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
 builder.Services.AddTransient<WhatsAppWorkflowService>();
 builder.Services.AddScoped<WorkflowEngine>();
 
+// 註冊 HttpClient 服務
+builder.Services.AddHttpClient();
+
 // 註冊 LoggingService 工廠
 builder.Services.AddScoped<Func<string, LoggingService>>(provider =>
 {

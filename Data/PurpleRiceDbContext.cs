@@ -26,6 +26,7 @@ namespace PurpleRice.Data
         public DbSet<MessageValidation> MessageValidations { get; set; }
         public DbSet<EFormInstance> EFormInstances { get; set; }
         public DbSet<EFormApproval> EFormApprovals { get; set; }
+        public DbSet<WhatsAppMonitorChatMsg> WhatsAppMonitorChatMsgs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -298,6 +299,31 @@ namespace PurpleRice.Data
                 entity.Property(e => e.CreatedUserId).HasColumnName("created_user_id");
                 entity.Property(e => e.UpdatedUserId).HasColumnName("updated_user_id");
                 entity.Property(e => e.SourceFilePath).HasColumnName("source_file_path").HasMaxLength(500);
+            });
+
+            modelBuilder.Entity<WhatsAppMonitorChatMsg>(entity =>
+            {
+                entity.ToTable("WhatsAppMonitorChatMsg", schema: "dbo");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("Id");
+                entity.Property(e => e.WaId).HasColumnName("WaId").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.WorkflowInstanceId).HasColumnName("WorkflowInstanceId");
+                entity.Property(e => e.MessageId).HasColumnName("MessageId").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.SenderType).HasColumnName("SenderType").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.MessageText).HasColumnName("MessageText").IsRequired();
+                entity.Property(e => e.MessageType).HasColumnName("MessageType").HasMaxLength(20);
+                entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
+                entity.Property(e => e.Timestamp).HasColumnName("Timestamp").IsRequired();
+                entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+                entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+                entity.Property(e => e.IsDeleted).HasColumnName("IsDeleted");
+                entity.Property(e => e.Metadata).HasColumnName("Metadata");
+                
+                // 配置關係
+                entity.HasOne(e => e.WorkflowExecution)
+                      .WithMany()
+                      .HasForeignKey(e => e.WorkflowInstanceId)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
         }
     }
