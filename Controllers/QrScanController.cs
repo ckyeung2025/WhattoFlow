@@ -8,7 +8,6 @@ using ZXing.QrCode;
 using PurpleRice.Data;
 using PurpleRice.Models;
 using PurpleRice.Services;
-using PurpleRice.Data;
 
 namespace PurpleRice.Controllers
 {
@@ -20,153 +19,139 @@ namespace PurpleRice.Controllers
         private readonly ErpDbContext _erpContext;
         private readonly PdfService _pdfService;
         private readonly IWebHostEnvironment _environment;
+        private readonly LoggingService _loggingService;
 
-        public QrScanController(PurpleRiceDbContext context, ErpDbContext erpContext, PdfService pdfService, IWebHostEnvironment environment)
+        public QrScanController(PurpleRiceDbContext context, ErpDbContext erpContext, PdfService pdfService, IWebHostEnvironment environment, Func<string, LoggingService> loggingServiceFactory)
         {
             _context = context;
             _erpContext = erpContext;
             _pdfService = pdfService;
             _environment = environment;
+            _loggingService = loggingServiceFactory("QrScanController");
         }
 
         [HttpGet("scan")]
         public IActionResult ScanQRCodeInfo()
         {
+            _loggingService.LogInformation("QR Code 掃描 API 信息請求");
             return Ok("API 連線成功，請使用 POST 並上傳圖片檔案欄位 imageFile 來進行 QR Code 掃描。");
         }
 
         [HttpPost("scan")]
         public async Task<IActionResult> ScanQRCode([FromForm] IFormFile imageFile)
         {
-            if (imageFile == null || imageFile.Length == 0)
-                return BadRequest("No image uploaded.");
-
-            // 檢查檔案類型
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp", ".gif" };
-            var fileExtension = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
-            
-            if (!allowedExtensions.Contains(fileExtension))
-                return BadRequest("Unsupported file format. Please upload JPG, PNG, BMP, or GIF files.");
-
             try
             {
-                using var stream = imageFile.OpenReadStream();
-                using var bitmap = new Bitmap(stream);
-
-                var options = new DecodingOptions
+                if (imageFile == null || imageFile.Length == 0)
                 {
-                    TryHarder = true,
-                    PossibleFormats = new[] { BarcodeFormat.QR_CODE }
-                };
-
-                var reader = new BarcodeReader
-                {
-                    AutoRotate = true,
-                    TryInverted = true,
-                    Options = options
-                };
-
-                var result = reader.Decode(bitmap);
-
-                if (result == null)
-                    return NotFound("No QR code found in the image.");
-
-                var qrCodeText = result.Text.Trim();
-                
-                // 查詢資料庫
-                var orderInfo = await _erpContext.SoOrderManage
-                    .Where(o => o.invoiceno == qrCodeText)
-                    .FirstOrDefaultAsync();
-
-                if (orderInfo == null)
-                {
-                    return NotFound(new { 
-                        message = "Invoice number not found in database",
-                        qrCodeText = qrCodeText
-                    });
+                    _loggingService.LogWarning("上傳的圖片文件為空");
+                    return BadRequest("No image uploaded.");
                 }
 
-                // 查詢客戶資訊
-                var customerInfo = await _erpContext.ItCustomer
-                    .Where(c => c.customerno == orderInfo.customerno)
-                    .FirstOrDefaultAsync();
-
-                // 儲存原始圖片
-                var originalImagePath = await SaveOriginalImage(imageFile, orderInfo.customerno);
-
-                // 轉換為 PDF
-                var receiptDate = DateTime.Now;
-                var groupName = $"DN_{orderInfo.customerno}_{orderInfo.invoiceno}_{receiptDate:yyyyMMddHHmm}";
-                var pdfPath = _pdfService.ConvertImageToPdf(originalImagePath, orderInfo.customerno, orderInfo.invoiceno, groupName);
-                var imageRelPath = $"Customer\\{orderInfo.customerno}\\Original\\{groupName}\\{groupName}_1.jpg";
-                var pdfRelPath = $"Customer\\{orderInfo.customerno}\\PDF\\{groupName}.pdf";
-                var deliveryReceipt = new DeliveryReceipt
+                // 檢查檔案類型
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp", ".gif" };
+                var fileExtension = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
                 {
-                    within_code = orderInfo.within_code,
-                    invoiceno = orderInfo.invoiceno,
-                    customerno = orderInfo.customerno,
-                    customername = customerInfo?.customername1,
-                    contacttel1 = customerInfo?.contacttel1,
-                    contacttel2 = customerInfo?.contacttel2,
-                    original_image_path = imageRelPath,
-                    pdf_path = pdfRelPath,
-                    qr_code_text = qrCodeText,
-                    receipt_date = receiptDate,
-                    upload_date = DateTime.Now,
-                    upload_ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                    status = "PENDING",
-                    uploaded_by = "DeliveryMan"
-                };
+                    _loggingService.LogWarning($"不支持的文件格式: {fileExtension}");
+                    return BadRequest("Unsupported file format. Please upload JPG, PNG, BMP, or GIF files.");
+                }
 
-                _context.DeliveryReceipt.Add(deliveryReceipt);
-                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"開始處理圖片文件: {imageFile.FileName}, 大小: {imageFile.Length} bytes");
 
-                var response = new
+                // 保存上傳的圖片
+                var uploadPath = Path.Combine(_environment.ContentRootPath, "Uploads", "qr-scans");
+                if (!Directory.Exists(uploadPath))
                 {
-                    success = true,
-                    message = "QR Code 掃描成功，記錄已儲存",
-                    receiptId = deliveryReceipt.id,
-                    invoiceNo = orderInfo.invoiceno,
-                    customerNo = orderInfo.customerno,
-                    contactTel1 = customerInfo?.contacttel1 ?? "",
-                    contactTel2 = customerInfo?.contacttel2 ?? "",
-                    customerName = customerInfo?.customername1 ?? "",
-                    qrCodeText = qrCodeText,
-                    receiptDate = deliveryReceipt.receipt_date,
-                    uploadDate = deliveryReceipt.upload_date,
-                    status = deliveryReceipt.status,
-                    originalImagePath = deliveryReceipt.original_image_path,
-                    pdfPath = deliveryReceipt.pdf_path,
-                    uploadedBy = deliveryReceipt.uploaded_by
-                };
+                    Directory.CreateDirectory(uploadPath);
+                    _loggingService.LogInformation($"創建 QR 掃描上傳目錄: {uploadPath}");
+                }
 
-                return Ok(response);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest($"Invalid image format: {ex.Message}");
+                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(uploadPath, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await imageFile.CopyToAsync(stream);
+                }
+
+                _loggingService.LogInformation($"圖片已保存到: {filePath}");
+
+                // 使用 ZXing 掃描 QR Code
+                using (var bitmap = new Bitmap(filePath))
+                {
+                    var reader = new BarcodeReader
+                    {
+                        Options = new DecodingOptions
+                        {
+                            TryHarder = true,
+                            PossibleFormats = new[] { BarcodeFormat.QR_CODE }
+                        }
+                    };
+
+                    var result = reader.Decode(bitmap);
+
+                    if (result != null)
+                    {
+                        _loggingService.LogInformation($"成功掃描 QR Code: {result.Text}");
+                        
+                        // 這裡可以添加 QR Code 內容的處理邏輯
+                        // 例如：解析送貨單號、客戶信息等
+                        
+                        return Ok(new
+                        {
+                            success = true,
+                            qrContent = result.Text,
+                            fileName = fileName,
+                            message = "QR Code 掃描成功"
+                        });
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning("無法識別圖片中的 QR Code");
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = "無法識別圖片中的 QR Code，請確保圖片清晰且包含有效的 QR Code"
+                        });
+                    }
+                }
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Internal error: {ex.Message}");
+                _loggingService.LogError($"QR Code 掃描失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "QR Code 掃描失敗" });
             }
         }
 
-        private async Task<string> SaveOriginalImage(IFormFile imageFile, string customerNo)
+        [HttpGet("history")]
+        public async Task<IActionResult> GetScanHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
-            var uploadsPath = Path.Combine(_environment.ContentRootPath, "Uploads");
-            var customerPath = Path.Combine(uploadsPath, "Customer", customerNo, "Original");
-            Directory.CreateDirectory(customerPath);
-
-            var fileName = $"DN_{customerNo}_{DateTime.Now:yyyyMMdd_HHmmss}{Path.GetExtension(imageFile.FileName)}";
-            var filePath = Path.Combine(customerPath, fileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            try
             {
-                await imageFile.CopyToAsync(stream);
+                _loggingService.LogInformation($"獲取掃描歷史 - 頁面: {page}, 每頁: {pageSize}");
+                
+                // 這裡可以實現掃描歷史的查詢邏輯
+                // 例如：從資料庫中查詢之前的掃描記錄
+                
+                var history = new List<object>(); // 暫時返回空列表
+                
+                _loggingService.LogInformation($"成功獲取掃描歷史，數量: {history.Count}");
+                
+                return Ok(new
+                {
+                    data = history,
+                    page = page,
+                    pageSize = pageSize,
+                    total = history.Count
+                });
             }
-
-            return filePath;
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取掃描歷史失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取掃描歷史失敗" });
+            }
         }
     }
 }

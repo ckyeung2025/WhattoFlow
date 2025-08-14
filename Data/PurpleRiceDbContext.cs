@@ -54,6 +54,7 @@ namespace PurpleRice.Data
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.MasterUserId).HasColumnName("master_user_id");
                 entity.Property(e => e.Name).HasColumnName("name");
+                entity.Property(e => e.Description).HasColumnName("description");
                 entity.Property(e => e.Email).HasColumnName("email");
                 entity.Property(e => e.Address).HasColumnName("address");
                 entity.Property(e => e.Phone).HasColumnName("phone");
@@ -278,6 +279,25 @@ namespace PurpleRice.Data
                     .WithMany()
                     .HasForeignKey(e => e.EFormInstanceId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            // eFormDefinition 配置
+            modelBuilder.Entity<eFormDefinition>(entity =>
+            {
+                entity.ToTable("eFormDefinitions", schema: "dbo");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(255).IsRequired();
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(500);
+                entity.Property(e => e.HtmlCode).HasColumnName("html_code").IsRequired();
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(10);
+                entity.Property(e => e.RStatus).HasColumnName("rstatus").HasMaxLength(10);
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                entity.Property(e => e.CreatedUserId).HasColumnName("created_user_id");
+                entity.Property(e => e.UpdatedUserId).HasColumnName("updated_user_id");
+                entity.Property(e => e.SourceFilePath).HasColumnName("source_file_path").HasMaxLength(500);
             });
         }
     }

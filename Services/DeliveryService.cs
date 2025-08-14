@@ -352,5 +352,37 @@ namespace PurpleRice.Services
 
             return delivery;
         }
+
+        public async Task<bool> RejectDeliveryAsync(int id, string approvedBy, string remarks = "")
+        {
+            var delivery = await _context.DeliveryReceipt.FindAsync(id);
+            if (delivery == null)
+                return false;
+
+            delivery.confirmed = false;
+            delivery.approved_by = approvedBy;
+            delivery.approved_date = DateTime.Now;
+            delivery.approval_remarks = remarks;
+            delivery.status = "已拒絕";
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<object> GetDeliveryStatisticsAsync()
+        {
+            var total = await _context.DeliveryReceipt.CountAsync();
+            var confirmed = await _context.DeliveryReceipt.CountAsync(d => d.confirmed);
+            var pending = await _context.DeliveryReceipt.CountAsync(d => !d.confirmed);
+            var today = await _context.DeliveryReceipt.CountAsync(d => d.upload_date.Date == DateTime.Today);
+
+            return new
+            {
+                Total = total,
+                Confirmed = confirmed,
+                Pending = pending,
+                Today = today
+            };
+        }
     }
 } 

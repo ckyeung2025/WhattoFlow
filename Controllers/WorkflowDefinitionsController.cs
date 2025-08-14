@@ -439,11 +439,11 @@ namespace PurpleRice.Controllers
                 }
 
                 var workflowData = JsonSerializer.Deserialize<JsonElement>(workflow.Json);
-                Console.WriteLine($"Parsed workflow data successfully");
+                _loggingService.LogDebug("Parsed workflow data successfully");
                 
                 if (!workflowData.TryGetProperty("nodes", out var nodes) || !workflowData.TryGetProperty("edges", out var edges))
                 {
-                    Console.WriteLine("Failed to get nodes or edges from workflow data");
+                    _loggingService.LogError("Failed to get nodes or edges from workflow data");
                     execution.Status = "Failed";
                     execution.ErrorMessage = "Invalid workflow definition format";
                     execution.EndedAt = DateTime.Now;
@@ -451,7 +451,7 @@ namespace PurpleRice.Controllers
                     return;
                 }
 
-                Console.WriteLine($"Found {nodes.GetArrayLength()} nodes and {edges.GetArrayLength()} edges");
+                _loggingService.LogInformation($"Found {nodes.GetArrayLength()} nodes and {edges.GetArrayLength()} edges");
                 await ProcessWorkflowNodesAsync(nodes, edges, execution, inputData, dbContext);
 
                 // 只有在沒有失敗的情況下才設置為完成
@@ -460,61 +460,61 @@ namespace PurpleRice.Controllers
                     execution.Status = "Completed";
                     execution.EndedAt = DateTime.Now;
                     // 不設置 CurrentStep，因為在 ExecuteWorkflowAsync 中無法知道具體步驟索引
-                    Console.WriteLine($"=== Workflow execution completed successfully ===");
+                    _loggingService.LogInformation("=== Workflow execution completed successfully ===");
                 }
                 else
                 {
-                    Console.WriteLine($"=== Workflow execution failed, status already set to Failed ===");
+                    _loggingService.LogWarning("=== Workflow execution failed, status already set to Failed ===");
                 }
                 
                 await dbContext.SaveChangesAsync();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Workflow execution failed: {ex.Message}");
-                Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
+                _loggingService.LogError($"Workflow execution failed: {ex.Message}");
+                _loggingService.LogError($"Exception stack trace: {ex.StackTrace}");
                 
                 // 直接從資料庫查詢並更新執行記錄
-                Console.WriteLine($"開始查詢執行記錄 ID: {execution.Id}");
+                _loggingService.LogInformation($"開始查詢執行記錄 ID: {execution.Id}");
                 try
                 {
                     var executionToUpdate = await dbContext.WorkflowExecutions.FindAsync(execution.Id);
                     if (executionToUpdate != null)
                     {
-                        Console.WriteLine($"找到執行記錄，當前狀態: {executionToUpdate.Status}");
+                        _loggingService.LogInformation($"找到執行記錄，當前狀態: {executionToUpdate.Status}");
                         executionToUpdate.Status = "Failed";
                         executionToUpdate.ErrorMessage = ex.Message;
                         executionToUpdate.EndedAt = DateTime.Now;
                         // 不設置 CurrentStep，因為在 ExecuteWorkflowAsync 中無法知道具體步驟索引
-                        Console.WriteLine($"工作流程執行失敗，狀態已更新為 Failed: {ex.Message}");
+                        _loggingService.LogError($"工作流程執行失敗，狀態已更新為 Failed: {ex.Message}");
                         
                         // 保存失敗狀態到資料庫
-                        Console.WriteLine($"準備保存失敗狀態到資料庫...");
+                        _loggingService.LogInformation($"準備保存失敗狀態到資料庫...");
                         var saveResult = await dbContext.SaveChangesAsync();
-                        Console.WriteLine($"保存結果: {saveResult} 個實體被更新");
-                        Console.WriteLine($"失敗狀態已保存到資料庫");
+                        _loggingService.LogInformation($"保存結果: {saveResult} 個實體被更新");
+                        _loggingService.LogInformation($"失敗狀態已保存到資料庫");
                         
                         // 驗證更新是否成功
-                        Console.WriteLine($"開始驗證更新結果...");
+                        _loggingService.LogInformation($"開始驗證更新結果...");
                         var updatedExecution = await dbContext.WorkflowExecutions.FindAsync(execution.Id);
                         if (updatedExecution != null)
                         {
-                            Console.WriteLine($"驗證更新結果 - 執行 ID: {updatedExecution.Id}, 狀態: {updatedExecution.Status}, 錯誤訊息: {updatedExecution.ErrorMessage}");
+                            _loggingService.LogInformation($"驗證更新結果 - 執行 ID: {updatedExecution.Id}, 狀態: {updatedExecution.Status}, 錯誤訊息: {updatedExecution.ErrorMessage}");
                         }
                         else
                         {
-                            Console.WriteLine($"警告：無法找到更新後的執行記錄");
+                            _loggingService.LogWarning($"警告：無法找到更新後的執行記錄");
                         }
                     }
                     else
                     {
-                        Console.WriteLine($"錯誤：無法找到執行記錄 ID: {execution.Id}");
+                        _loggingService.LogError($"錯誤：無法找到執行記錄 ID: {execution.Id}");
                     }
                 }
                 catch (Exception findEx)
                 {
-                    Console.WriteLine($"查詢執行記錄時出錯: {findEx.Message}");
-                    Console.WriteLine($"嘗試使用原始 SQL 更新...");
+                    _loggingService.LogError($"查詢執行記錄時出錯: {findEx.Message}");
+                    _loggingService.LogInformation($"嘗試使用原始 SQL 更新...");
                     
                     // 使用原始 SQL 更新
                     var sql = "UPDATE workflow_executions SET Status = 'Failed', ErrorMessage = @errorMessage, EndedAt = @endedAt WHERE Id = @id";
@@ -526,10 +526,10 @@ namespace PurpleRice.Controllers
                     };
                     
                     var updateResult = await dbContext.Database.ExecuteSqlRawAsync(sql, parameters);
-                    Console.WriteLine($"原始 SQL 更新結果: {updateResult} 行被影響");
+                    _loggingService.LogInformation($"原始 SQL 更新結果: {updateResult} 行被影響");
                     
                     // 同時更新當前步驟的狀態為 Failed
-                    Console.WriteLine($"嘗試更新當前步驟狀態為 Failed...");
+                    _loggingService.LogInformation($"嘗試更新當前步驟狀態為 Failed...");
                     var stepSql = "UPDATE workflow_step_executions SET Status = 'Failed', EndedAt = @endedAt, OutputJson = @outputJson WHERE WorkflowExecutionId = @executionId AND Status = 'Running'";
                     var stepParameters = new[]
                     {
@@ -539,7 +539,7 @@ namespace PurpleRice.Controllers
                     };
                     
                     var stepUpdateResult = await dbContext.Database.ExecuteSqlRawAsync(stepSql, stepParameters);
-                    Console.WriteLine($"步驟狀態更新結果: {stepUpdateResult} 行被影響");
+                    _loggingService.LogInformation($"步驟狀態更新結果: {stepUpdateResult} 行被影響");
                 }
             }
         }
@@ -551,8 +551,8 @@ namespace PurpleRice.Controllers
 
         private async Task ProcessWorkflowNodesAsync(JsonElement nodes, JsonElement edges, WorkflowExecution execution, object inputData, PurpleRiceDbContext dbContext)
         {
-            Console.WriteLine($"Processing workflow nodes. Total nodes: {nodes.GetArrayLength()}");
-            Console.WriteLine($"Current execution step: {execution.CurrentStep}");
+            _loggingService.LogInformation($"Processing workflow nodes. Total nodes: {nodes.GetArrayLength()}");
+            _loggingService.LogInformation($"Current execution step: {execution.CurrentStep}");
             
             // 構建節點映射和連接關係
             var nodeMap = new Dictionary<string, JsonElement>();
@@ -564,7 +564,7 @@ namespace PurpleRice.Controllers
                 var nodeId = node.GetProperty("id").GetString();
                 nodeMap[nodeId] = node;
                 edgeMap[nodeId] = new List<string>();
-                Console.WriteLine($"映射節點: {nodeId}");
+                _loggingService.LogDebug($"映射節點: {nodeId}");
             }
             
             // 建立連接關係
@@ -576,7 +576,7 @@ namespace PurpleRice.Controllers
                 if (edgeMap.ContainsKey(sourceId))
                 {
                     edgeMap[sourceId].Add(targetId);
-                    Console.WriteLine($"建立連接: {sourceId} -> {targetId}");
+                    _loggingService.LogDebug($"建立連接: {sourceId} -> {targetId}");
                 }
             }
             
@@ -589,7 +589,7 @@ namespace PurpleRice.Controllers
                 throw new Exception("找不到起始節點");
             }
             
-            Console.WriteLine($"找到起始節點: {startNodeId}");
+            _loggingService.LogInformation($"找到起始節點: {startNodeId}");
             
             // 使用廣度優先搜索來處理並行節點
             var nodesToProcess = new Queue<string>();
@@ -604,13 +604,13 @@ namespace PurpleRice.Controllers
                 
                 if (processedNodes.Contains(currentNodeId))
                 {
-                    Console.WriteLine($"節點 {currentNodeId} 已經處理過，跳過");
+                    _loggingService.LogDebug($"節點 {currentNodeId} 已經處理過，跳過");
                     continue;
                 }
                 
                 if (!nodeMap.ContainsKey(currentNodeId))
                 {
-                    Console.WriteLine($"節點 {currentNodeId} 不存在於節點映射中，跳過");
+                    _loggingService.LogWarning($"節點 {currentNodeId} 不存在於節點映射中，跳過");
                     continue;
                 }
                 
@@ -618,16 +618,16 @@ namespace PurpleRice.Controllers
                 var nodeData = node.GetProperty("data");
                 var nodeType = nodeData.GetProperty("type").GetString();
                 
-                Console.WriteLine($"=== 節點處理開始 ===");
-                Console.WriteLine($"節點 ID: {currentNodeId}");
-                Console.WriteLine($"節點數據: {nodeData}");
-                Console.WriteLine($"節點類型: {nodeType}");
-                Console.WriteLine($"節點類型長度: {nodeType?.Length ?? 0}");
-                Console.WriteLine($"節點類型字節: {string.Join(", ", nodeType?.Select(c => (int)c) ?? new int[0])}");
+                _loggingService.LogInformation($"=== 節點處理開始 ===");
+                _loggingService.LogDebug($"節點 ID: {currentNodeId}");
+                _loggingService.LogDebug($"節點數據: {nodeData}");
+                _loggingService.LogDebug($"節點類型: {nodeType}");
+                _loggingService.LogDebug($"節點類型長度: {nodeType?.Length ?? 0}");
+                _loggingService.LogDebug($"節點類型字節: {string.Join(", ", nodeType?.Select(c => (int)c) ?? new int[0])}");
                 
-                Console.WriteLine($"=== Processing node: {currentNodeId} ===");
-                Console.WriteLine($"Node type: {nodeType}");
-                Console.WriteLine($"Node data: {nodeData}");
+                _loggingService.LogInformation($"=== Processing node: {currentNodeId} ===");
+                _loggingService.LogDebug($"Node type: {nodeType}");
+                _loggingService.LogDebug($"Node data: {nodeData}");
 
                 // 創建步驟執行記錄
                 var stepExecution = new WorkflowStepExecution
@@ -640,135 +640,133 @@ namespace PurpleRice.Controllers
                     InputJson = nodeData.ToString() // 使用節點數據而不是 inputData
                 };
 
-                Console.WriteLine($"Creating step execution record for node type: {nodeType}");
+                _loggingService.LogDebug($"Creating step execution record for node type: {nodeType}");
                 dbContext.WorkflowStepExecutions.Add(stepExecution);
                 await dbContext.SaveChangesAsync();
-                Console.WriteLine($"Step execution record created with ID: {stepExecution.Id}");
+                _loggingService.LogDebug($"Step execution record created with ID: {stepExecution.Id}");
 
                 try
                 {
-                    Console.WriteLine($"Executing switch case for node type: {nodeType.ToLower()}");
-                    Console.WriteLine($"原始節點類型: {nodeType}");
-                    Console.WriteLine($"轉換後節點類型: {nodeType.ToLower()}");
-                    Console.WriteLine($"轉換後節點類型長度: {nodeType.ToLower()?.Length ?? 0}");
-                    Console.WriteLine($"轉換後節點類型字節: {string.Join(", ", nodeType.ToLower()?.Select(c => (int)c) ?? new int[0])}");
+                    _loggingService.LogDebug($"Executing switch case for node type: {nodeType.ToLower()}");
+                    _loggingService.LogDebug($"原始節點類型: {nodeType}");
+                    _loggingService.LogDebug($"轉換後節點類型: {nodeType.ToLower()}");
+                    _loggingService.LogDebug($"轉換後節點類型長度: {nodeType.ToLower()?.Length ?? 0}");
+                    _loggingService.LogDebug($"轉換後節點類型字節: {string.Join(", ", nodeType.ToLower()?.Select(c => (int)c) ?? new int[0])}");
                     
                     // 檢查所有可能的匹配
-                    Console.WriteLine($"檢查 'sendeform' 匹配: {nodeType.ToLower() == "sendeform"}");
-                    Console.WriteLine($"檢查 'sendEForm' 匹配: {nodeType.ToLower() == "sendeform"}");
-                    Console.WriteLine($"檢查包含 'eform': {nodeType.ToLower().Contains("eform")}");
-                    Console.WriteLine($"檢查包含 'form': {nodeType.ToLower().Contains("form")}");
+                    _loggingService.LogDebug($"檢查 'sendeform' 匹配: {nodeType.ToLower() == "sendeform"}");
+                    _loggingService.LogDebug($"檢查 'sendEForm' 匹配: {nodeType.ToLower() == "sendeform"}");
+                    _loggingService.LogDebug($"檢查包含 'eform': {nodeType.ToLower().Contains("eform")}");
+                    _loggingService.LogDebug($"檢查包含 'form': {nodeType.ToLower().Contains("form")}");
                     
                     // 使用統一的節點類型管理
                     var nodeDefinition = WorkflowNodeTypes.GetDefinition(nodeType);
                     if (nodeDefinition == null)
                     {
-                        Console.WriteLine($"Unknown node type: {nodeType}");
+                        _loggingService.LogError($"Unknown node type: {nodeType}");
                         throw new Exception($"Unsupported node type: {nodeType}");
                     }
 
-                    Console.WriteLine($"Processing node type: {nodeDefinition.Type} ({nodeDefinition.Label})");
+                    _loggingService.LogInformation($"Processing node type: {nodeDefinition.Type} ({nodeDefinition.Label})");
 
                     // 根據節點類型執行相應操作
                     switch (nodeDefinition.Type.ToLower())
                     {
                         case "start":
-                            Console.WriteLine("Skipping Start node");
+                            _loggingService.LogDebug("Skipping Start node");
                             break;
                         case "sendwhatsapp":
-                        case "sendWhatsApp":
-                            Console.WriteLine("Executing Send WhatsApp node");
+                            _loggingService.LogInformation("Executing Send WhatsApp node");
                             await ExecuteSendWhatsAppAsync(nodeData, inputData, dbContext, execution);
                             break;
                         case "sendwhatsapptemplate":
-                        case "sendWhatsAppTemplate":
-                            Console.WriteLine("Executing Send WhatsApp Template node");
+                            _loggingService.LogInformation("Executing Send WhatsApp Template node");
                             await ExecuteSendWhatsAppTemplateAsync(nodeData, inputData, dbContext, execution);
                             break;
                         case "waitreply":
-                            Console.WriteLine("Executing Wait Reply node");
+                            _loggingService.LogInformation("Executing Wait Reply node");
                             await ExecuteWaitReply(nodeData, inputData);
                             break;
                         case "dbquery":
-                            Console.WriteLine("Executing Database Query node");
+                            _loggingService.LogInformation("Executing Database Query node");
                             await ExecuteDbQuery(nodeData, inputData);
                             break;
                         case "callapi":
-                            Console.WriteLine("Executing Call API node");
+                            _loggingService.LogInformation("Executing Call API node");
                             await ExecuteCallApi(nodeData, inputData);
                             break;
                         case "sendeform":
-                            Console.WriteLine("Executing Send eForm node");
+                            _loggingService.LogInformation("Executing Send eForm node");
                             await ExecuteSendEFormAsync(nodeData, inputData, dbContext, execution);
                             break;
                         case "eformresult":
-                            Console.WriteLine("Executing eForm Result node");
+                            _loggingService.LogInformation("Executing eForm Result node");
                             await ExecuteEFormResult(nodeData, inputData);
                             break;
                         case "end":
-                            Console.WriteLine("Skipping End node");
+                            _loggingService.LogDebug("Skipping End node");
                             break;
                         default:
-                            Console.WriteLine($"Unknown node type: {nodeType}");
+                            _loggingService.LogError($"Unknown node type: {nodeType}");
                             throw new Exception($"Unsupported node type: {nodeType}");
                     }
 
                     stepExecution.Status = "Completed";
                     stepExecution.EndedAt = DateTime.Now;
-                    Console.WriteLine($"Node {nodeType} completed successfully");
+                    _loggingService.LogInformation($"Node {nodeType} completed successfully");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error executing node {nodeType}: {ex.Message}");
-                    Console.WriteLine($"Exception stack trace: {ex.StackTrace}");
+                    _loggingService.LogError($"Error executing node {nodeType}: {ex.Message}");
+                    _loggingService.LogError($"Exception stack trace: {ex.StackTrace}");
                     stepExecution.Status = "Failed";
                     stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
                     stepExecution.EndedAt = DateTime.Now;
                     
                     // 當任何步驟失敗時，將整個工作流程狀態更新為 Failed
-                    Console.WriteLine($"準備更新主記錄狀態為 Failed，執行 ID: {execution.Id}");
+                    _loggingService.LogInformation($"準備更新主記錄狀態為 Failed，執行 ID: {execution.Id}");
                     
                     // 直接從資料庫查詢並更新執行記錄
-                    Console.WriteLine($"開始查詢執行記錄 ID: {execution.Id}");
+                    _loggingService.LogInformation($"開始查詢執行記錄 ID: {execution.Id}");
                     try
                     {
                         var executionToUpdate = await dbContext.WorkflowExecutions.FindAsync(execution.Id);
                         if (executionToUpdate != null)
                         {
-                            Console.WriteLine($"找到執行記錄，當前狀態: {executionToUpdate.Status}");
+                            _loggingService.LogInformation($"找到執行記錄，當前狀態: {executionToUpdate.Status}");
                             executionToUpdate.Status = "Failed";
                             executionToUpdate.ErrorMessage = ex.Message;
                             executionToUpdate.EndedAt = DateTime.Now;
                             executionToUpdate.CurrentStep = processedNodes.Count; // 記錄失敗的步驟索引
-                            Console.WriteLine($"工作流程執行失敗，狀態已更新為 Failed: {ex.Message}");
+                            _loggingService.LogError($"工作流程執行失敗，狀態已更新為 Failed: {ex.Message}");
                             
                             // 保存失敗狀態到資料庫
-                            Console.WriteLine($"準備保存失敗狀態到資料庫...");
+                            _loggingService.LogInformation($"準備保存失敗狀態到資料庫...");
                             var saveResult = await dbContext.SaveChangesAsync();
-                            Console.WriteLine($"保存結果: {saveResult} 個實體被更新");
-                            Console.WriteLine($"失敗狀態已保存到資料庫");
+                            _loggingService.LogInformation($"保存結果: {saveResult} 個實體被更新");
+                            _loggingService.LogInformation($"失敗狀態已保存到資料庫");
                             
                             // 驗證更新是否成功
-                            Console.WriteLine($"開始驗證更新結果...");
+                            _loggingService.LogInformation($"開始驗證更新結果...");
                             var updatedExecution = await dbContext.WorkflowExecutions.FindAsync(execution.Id);
                             if (updatedExecution != null)
                             {
-                                Console.WriteLine($"驗證更新結果 - 執行 ID: {updatedExecution.Id}, 狀態: {updatedExecution.Status}, 錯誤訊息: {updatedExecution.ErrorMessage}");
+                                _loggingService.LogInformation($"驗證更新結果 - 執行 ID: {updatedExecution.Id}, 狀態: {updatedExecution.Status}, 錯誤訊息: {updatedExecution.ErrorMessage}");
                             }
                             else
                             {
-                                Console.WriteLine($"警告：無法找到更新後的執行記錄");
+                                _loggingService.LogWarning($"警告：無法找到更新後的執行記錄");
                             }
                         }
                         else
                         {
-                            Console.WriteLine($"錯誤：無法找到執行記錄 ID: {execution.Id}");
+                            _loggingService.LogError($"錯誤：無法找到執行記錄 ID: {execution.Id}");
                         }
                     }
                     catch (Exception findEx)
                     {
-                        Console.WriteLine($"查詢執行記錄時出錯: {findEx.Message}");
-                        Console.WriteLine($"嘗試使用原始 SQL 更新...");
+                        _loggingService.LogError($"查詢執行記錄時出錯: {findEx.Message}");
+                        _loggingService.LogInformation($"嘗試使用原始 SQL 更新...");
                         
                         // 使用原始 SQL 更新
                         var sql = "UPDATE workflow_executions SET Status = 'Failed', ErrorMessage = @errorMessage, EndedAt = @endedAt, CurrentStep = @currentStep WHERE Id = @id";
@@ -781,7 +779,7 @@ namespace PurpleRice.Controllers
                         };
                         
                         var updateResult = await dbContext.Database.ExecuteSqlRawAsync(sql, parameters);
-                        Console.WriteLine($"原始 SQL 更新結果: {updateResult} 行被影響");
+                        _loggingService.LogInformation($"原始 SQL 更新結果: {updateResult} 行被影響");
                     }
                     
                     return; // 失敗時立即退出
@@ -789,50 +787,44 @@ namespace PurpleRice.Controllers
 
                 await dbContext.SaveChangesAsync();
                 processedNodes.Add(currentNodeId);
-                Console.WriteLine($"=== Completed processing node: {currentNodeId} ===");
+                _loggingService.LogInformation($"=== Completed processing node: {currentNodeId} ===");
                 
                 // 將所有連接的節點加入處理隊列
                 if (edgeMap.ContainsKey(currentNodeId))
                 {
-                    Console.WriteLine($"節點 {currentNodeId} 的連接數量: {edgeMap[currentNodeId].Count}");
+                    _loggingService.LogDebug($"節點 {currentNodeId} 的連接數量: {edgeMap[currentNodeId].Count}");
                     foreach (var nextNodeId in edgeMap[currentNodeId])
                     {
                         if (!processedNodes.Contains(nextNodeId))
                         {
                             nodesToProcess.Enqueue(nextNodeId);
-                            Console.WriteLine($"Added to processing queue: {nextNodeId}");
+                            _loggingService.LogDebug($"Added to processing queue: {nextNodeId}");
                         }
                         else
                         {
-                            Console.WriteLine($"節點 {nextNodeId} 已經處理過，跳過");
+                            _loggingService.LogDebug($"節點 {nextNodeId} 已經處理過，跳過");
                         }
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"節點 {currentNodeId} 沒有連接的節點");
+                    _loggingService.LogDebug($"節點 {currentNodeId} 沒有連接的節點");
                 }
                 
-                Console.WriteLine($"當前處理隊列中的節點數量: {nodesToProcess.Count}");
-                Console.WriteLine($"已處理的節點: {string.Join(", ", processedNodes)}");
+                _loggingService.LogDebug($"當前處理隊列中的節點數量: {nodesToProcess.Count}");
+                _loggingService.LogDebug($"已處理的節點: {string.Join(", ", processedNodes)}");
             }
             
-            Console.WriteLine("Finished processing all workflow nodes");
-            Console.WriteLine($"總共處理了 {processedNodes.Count} 個節點");
-        }
-
-        private async Task ExecuteSendWhatsApp(JsonElement nodeData, object inputData)
-        {
-            // 這個方法在異步執行中不會被使用，保留為兼容性
-            throw new NotImplementedException("此方法在異步執行中不可用，請使用 ExecuteSendWhatsAppAsync");
+            _loggingService.LogInformation("Finished processing all workflow nodes");
+            _loggingService.LogInformation($"總共處理了 {processedNodes.Count} 個節點");
         }
 
         private async Task ExecuteSendWhatsAppAsync(JsonElement nodeData, object inputData, PurpleRiceDbContext dbContext, WorkflowExecution execution)
         {
             try
             {
-                Console.WriteLine($"=== ExecuteSendWhatsAppAsync 開始 ===");
-                Console.WriteLine($"nodeData: {nodeData}");
+                _loggingService.LogInformation($"=== ExecuteSendWhatsAppAsync 開始 ===");
+                _loggingService.LogDebug($"nodeData: {nodeData}");
                 
                 // 檢查 nodeData 是否為 null
                 if (nodeData.ValueKind == JsonValueKind.Null)
@@ -848,25 +840,25 @@ namespace PurpleRice.Controllers
                 if (nodeData.TryGetProperty("message", out var messageProp))
                 {
                     message = messageProp.GetString();
-                    Console.WriteLine($"找到 message: {message}");
+                    _loggingService.LogDebug($"找到 message: {message}");
                 }
                 else if (nodeData.TryGetProperty("Message", out var messagePropUpper))
                 {
                     message = messagePropUpper.GetString();
-                    Console.WriteLine($"找到 Message (大寫): {message}");
+                    _loggingService.LogDebug($"找到 Message (大寫): {message}");
                 }
                 else
                 {
-                    Console.WriteLine("找不到 message 屬性");
+                    _loggingService.LogWarning("找不到 message 屬性");
                     // 記錄所有可用的屬性
                     var availableProperties = nodeData.EnumerateObject().Select(p => p.Name).ToList();
-                    Console.WriteLine($"可用的屬性: {string.Join(", ", availableProperties)}");
+                    _loggingService.LogDebug($"可用的屬性: {string.Join(", ", availableProperties)}");
                     
                     // 嘗試從其他可能的屬性獲取
                     if (nodeData.TryGetProperty("taskName", out var taskNameProp))
                     {
                         message = taskNameProp.GetString();
-                        Console.WriteLine($"使用 taskName 作為 message: {message}");
+                        _loggingService.LogDebug($"使用 taskName 作為 message: {message}");
                     }
                 }
 
@@ -874,16 +866,16 @@ namespace PurpleRice.Controllers
                 if (nodeData.TryGetProperty("to", out var toProp))
                 {
                     to = toProp.GetString();
-                    Console.WriteLine($"找到 to: {to}");
+                    _loggingService.LogDebug($"找到 to: {to}");
                 }
                 else if (nodeData.TryGetProperty("To", out var toPropUpper))
                 {
                     to = toPropUpper.GetString();
-                    Console.WriteLine($"找到 To (大寫): {to}");
+                    _loggingService.LogDebug($"找到 To (大寫): {to}");
                 }
                 else
                 {
-                    Console.WriteLine("找不到 to 屬性");
+                    _loggingService.LogWarning("找不到 to 屬性");
                 }
 
                 if (string.IsNullOrEmpty(message) || string.IsNullOrEmpty(to))
@@ -898,35 +890,29 @@ namespace PurpleRice.Controllers
                         stepIndex = execution.CurrentStep
                     };
                     
-                    Console.WriteLine($"節點數據詳細信息: {System.Text.Json.JsonSerializer.Serialize(errorDetails)}");
+                    _loggingService.LogError($"節點數據詳細信息: {System.Text.Json.JsonSerializer.Serialize(errorDetails)}");
                     throw new Exception($"步驟配置中缺少 message 參數或為空。message: '{message}', to: '{to}'");
                 }
 
                 // 使用統一的 WhatsApp 服務
-                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(to, message, execution);
+                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(to, message, execution, dbContext);
                 
-                Console.WriteLine($"=== ExecuteSendWhatsAppAsync 完成 ===");
+                _loggingService.LogInformation($"=== ExecuteSendWhatsAppAsync 完成 ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"發送 WhatsApp 訊息失敗: {ex.Message}");
-                Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogError($"發送 WhatsApp 訊息失敗: {ex.Message}");
+                _loggingService.LogError($"錯誤堆疊: {ex.StackTrace}");
                 throw;
             }
-        }
-
-        private async Task ExecuteSendWhatsAppTemplate(JsonElement nodeData, object inputData)
-        {
-            // 這個方法在異步執行中不會被使用，保留為兼容性
-            throw new NotImplementedException("此方法在異步執行中不可用，請使用 ExecuteSendWhatsAppTemplateAsync");
         }
 
         private async Task ExecuteSendWhatsAppTemplateAsync(JsonElement nodeData, object inputData, PurpleRiceDbContext dbContext, WorkflowExecution execution)
         {
             try
             {
-                Console.WriteLine($"=== ExecuteSendWhatsAppTemplateAsync 開始 ===");
-                Console.WriteLine($"nodeData: {nodeData}");
+                _loggingService.LogInformation($"=== ExecuteSendWhatsAppTemplateAsync 開始 ===");
+                _loggingService.LogDebug($"nodeData: {nodeData}");
                 
                 // 檢查 nodeData 是否為 null
                 if (nodeData.ValueKind == JsonValueKind.Null)
@@ -935,48 +921,48 @@ namespace PurpleRice.Controllers
                 }
 
                 // 獲取節點數據
-                string templateName = null;
+                string templateId = null;
                 string to = null;
 
-                // 嘗試多種方式獲取 templateName
-                if (nodeData.TryGetProperty("templateName", out var templateNameProp))
+                // 嘗試多種方式獲取 templateId
+                if (nodeData.TryGetProperty("templateId", out var templateIdProp))
                 {
-                    templateName = templateNameProp.GetString();
-                    Console.WriteLine($"找到 templateName: {templateName}");
+                    templateId = templateIdProp.GetString();
+                    _loggingService.LogDebug($"找到 templateId: {templateId}");
                 }
-                else if (nodeData.TryGetProperty("TemplateName", out var templateNamePropUpper))
+                else if (nodeData.TryGetProperty("TemplateId", out var templateIdPropUpper))
                 {
-                    templateName = templateNamePropUpper.GetString();
-                    Console.WriteLine($"找到 TemplateName (大寫): {templateName}");
+                    templateId = templateIdPropUpper.GetString();
+                    _loggingService.LogDebug($"找到 TemplateId (大寫): {templateId}");
                 }
                 else
                 {
-                    Console.WriteLine("找不到 templateName 屬性");
+                    _loggingService.LogWarning("找不到 templateId 屬性");
                     var availableProperties = nodeData.EnumerateObject().Select(p => p.Name).ToList();
-                    Console.WriteLine($"可用的屬性: {string.Join(", ", availableProperties)}");
+                    _loggingService.LogDebug($"可用的屬性: {string.Join(", ", availableProperties)}");
                 }
 
                 // 嘗試多種方式獲取 to
                 if (nodeData.TryGetProperty("to", out var toProp))
                 {
                     to = toProp.GetString();
-                    Console.WriteLine($"找到 to: {to}");
+                    _loggingService.LogDebug($"找到 to: {to}");
                 }
                 else if (nodeData.TryGetProperty("To", out var toPropUpper))
                 {
                     to = toPropUpper.GetString();
-                    Console.WriteLine($"找到 To (大寫): {to}");
+                    _loggingService.LogDebug($"找到 To (大寫): {to}");
                 }
                 else
                 {
-                    Console.WriteLine("找不到 to 屬性");
+                    _loggingService.LogWarning("找不到 to 屬性");
                 }
 
-                if (string.IsNullOrEmpty(templateName) || string.IsNullOrEmpty(to))
+                if (string.IsNullOrEmpty(templateId) || string.IsNullOrEmpty(to))
                 {
                     var errorDetails = new
                     {
-                        templateName = templateName,
+                        templateId = templateId,
                         to = to,
                         nodeDataKeys = nodeData.EnumerateObject().Select(p => p.Name).ToList(),
                         nodeDataString = nodeData.ToString(),
@@ -984,22 +970,22 @@ namespace PurpleRice.Controllers
                         stepIndex = execution.CurrentStep
                     };
                     
-                    Console.WriteLine($"節點數據詳細信息: {System.Text.Json.JsonSerializer.Serialize(errorDetails)}");
-                    throw new Exception($"步驟配置中缺少 templateName 參數或為空。templateName: '{templateName}', to: '{to}'");
+                    _loggingService.LogError($"節點數據詳細信息: {System.Text.Json.JsonSerializer.Serialize(errorDetails)}");
+                    throw new Exception($"步驟配置中缺少 templateId 參數或為空。templateId: '{templateId}', to: '{to}'");
                 }
 
-                Console.WriteLine($"模板名稱: {templateName}");
-                Console.WriteLine($"收件人: {to}");
+                _loggingService.LogInformation($"模板 ID: {templateId}");
+                _loggingService.LogInformation($"收件人: {to}");
 
                 // 使用統一的 WhatsApp 服務
-                await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(to, templateName, execution);
+                await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(to, templateId, execution, dbContext);
                 
-                Console.WriteLine($"=== ExecuteSendWhatsAppTemplateAsync 完成 ===");
+                _loggingService.LogInformation($"=== ExecuteSendWhatsAppTemplateAsync 完成 ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"發送 WhatsApp 模板訊息失敗: {ex.Message}");
-                Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogError($"發送 WhatsApp 模板訊息失敗: {ex.Message}");
+                _loggingService.LogError($"錯誤堆疊: {ex.StackTrace}");
                 throw;
             }
         }
@@ -1026,31 +1012,25 @@ namespace PurpleRice.Controllers
             var timeout = nodeData.GetProperty("timeout").GetInt32();
             
             // 這裡實現等待邏輯
-            Console.WriteLine($"Waiting for user reply with timeout: {timeout} seconds");
-        }
-
-        private async Task ExecuteSendEForm(JsonElement nodeData, object inputData)
-        {
-            // 這個方法在異步執行中不會被使用，保留為兼容性
-            throw new NotImplementedException("此方法在異步執行中不可用，請使用 ExecuteSendEFormAsync");
+            _loggingService.LogInformation($"Waiting for user reply with timeout: {timeout} seconds");
         }
 
         private async Task ExecuteSendEFormAsync(JsonElement nodeData, object inputData, PurpleRiceDbContext dbContext, WorkflowExecution execution)
         {
             try
             {
-                Console.WriteLine($"=== ExecuteSendEFormAsync 開始 ===");
-                Console.WriteLine($"執行 ID: {execution.Id}");
-                Console.WriteLine($"節點數據: {nodeData}");
+                _loggingService.LogInformation($"=== ExecuteSendEFormAsync 開始 ===");
+                _loggingService.LogInformation($"執行 ID: {execution.Id}");
+                _loggingService.LogDebug($"節點數據: {nodeData}");
                 
                 // 獲取節點數據
                 var formName = nodeData.GetProperty("formName").GetString();
                 var formId = nodeData.GetProperty("formId").GetString();
                 var to = nodeData.GetProperty("to").GetString();
 
-                Console.WriteLine($"formName: {formName}");
-                Console.WriteLine($"formId: {formId}");
-                Console.WriteLine($"to: {to}");
+                _loggingService.LogInformation($"formName: {formName}");
+                _loggingService.LogInformation($"formId: {formId}");
+                _loggingService.LogInformation($"to: {to}");
 
                 if (string.IsNullOrEmpty(formName) || string.IsNullOrEmpty(to))
                 {
@@ -1058,35 +1038,35 @@ namespace PurpleRice.Controllers
                 }
 
                 // 1. 查詢原始表單定義
-                Console.WriteLine($"開始查詢表單定義: {formName}");
+                _loggingService.LogInformation($"開始查詢表單定義: {formName}");
                 var eFormDefinition = await dbContext.eFormDefinitions
                     .FirstOrDefaultAsync(f => f.Name == formName && f.Status == "A");
 
                 if (eFormDefinition == null)
                 {
-                    Console.WriteLine($"找不到表單定義: {formName}，嘗試查詢所有表單...");
+                    _loggingService.LogWarning($"找不到表單定義: {formName}，嘗試查詢所有表單...");
                     var allForms = await dbContext.eFormDefinitions.ToListAsync();
-                    Console.WriteLine($"資料庫中的所有表單:");
+                    _loggingService.LogDebug($"資料庫中的所有表單:");
                     foreach (var form in allForms)
                     {
-                        Console.WriteLine($"- ID: {form.Id}, Name: {form.Name}, Status: {form.Status}");
+                        _loggingService.LogDebug($"- ID: {form.Id}, Name: {form.Name}, Status: {form.Status}");
                     }
                     throw new Exception($"找不到表單定義: {formName}");
                 }
 
-                Console.WriteLine($"找到表單定義，ID: {eFormDefinition.Id}");
+                _loggingService.LogInformation($"找到表單定義，ID: {eFormDefinition.Id}");
 
                 // 2. 查詢當前流程實例中的用戶回覆記錄
-                Console.WriteLine($"開始查詢用戶回覆記錄，執行 ID: {execution.Id}");
+                _loggingService.LogInformation($"開始查詢用戶回覆記錄，執行 ID: {execution.Id}");
                 var userMessages = await dbContext.MessageValidations
                     .Where(m => m.WorkflowExecutionId == execution.Id && m.IsValid)
                     .OrderBy(m => m.CreatedAt)
                     .ToListAsync();
 
-                Console.WriteLine($"找到 {userMessages.Count} 條有效用戶回覆記錄");
+                _loggingService.LogInformation($"找到 {userMessages.Count} 條有效用戶回覆記錄");
                 foreach (var msg in userMessages)
                 {
-                    Console.WriteLine($"- 用戶訊息: {msg.UserMessage}, 時間: {msg.CreatedAt}");
+                    _loggingService.LogDebug($"- 用戶訊息: {msg.UserMessage}, 時間: {msg.CreatedAt}");
                 }
 
                 // 3. 獲取公司ID
@@ -1099,7 +1079,7 @@ namespace PurpleRice.Controllers
                 }
 
                 var companyId = workflowDefinition.CompanyId;
-                Console.WriteLine($"使用公司ID: {companyId}");
+                _loggingService.LogInformation($"使用公司ID: {companyId}");
 
                 // 4. 創建表單實例記錄
                 var eFormInstance = new EFormInstance
@@ -1122,19 +1102,19 @@ namespace PurpleRice.Controllers
                     var latestMessage = userMessages.Last();
                     eFormInstance.UserMessage = latestMessage.UserMessage;
 
-                    Console.WriteLine($"用戶消息: {latestMessage.UserMessage}");
+                    _loggingService.LogInformation($"用戶消息: {latestMessage.UserMessage}");
 
                     // 調用 AI 填充表單
                     var filledHtml = await FillFormWithAI(eFormDefinition.HtmlCode, latestMessage.UserMessage);
                     eFormInstance.FilledHtmlCode = filledHtml;
 
-                    Console.WriteLine($"AI 填充完成，HTML 長度: {filledHtml?.Length ?? 0}");
+                    _loggingService.LogInformation($"AI 填充完成，HTML 長度: {filledHtml?.Length ?? 0}");
                 }
                 else
                 {
                     // 沒有用戶回覆，使用原始表單
                     eFormInstance.FilledHtmlCode = eFormDefinition.HtmlCode;
-                    Console.WriteLine("沒有用戶回覆，使用原始表單");
+                    _loggingService.LogInformation("沒有用戶回覆，使用原始表單");
                 }
 
                 // 6. 生成表單 URL
@@ -1142,21 +1122,21 @@ namespace PurpleRice.Controllers
                 eFormInstance.FormUrl = formUrl;
 
                 // 7. 保存到數據庫
-                Console.WriteLine($"準備保存表單實例到資料庫...");
+                _loggingService.LogInformation($"準備保存表單實例到資料庫...");
                 dbContext.EFormInstances.Add(eFormInstance);
                 await dbContext.SaveChangesAsync();
 
-                Console.WriteLine($"表單實例已創建，ID: {eFormInstance.Id}");
+                _loggingService.LogInformation($"表單實例已創建，ID: {eFormInstance.Id}");
 
                 // 8. 發送 WhatsApp 消息（包含表單鏈接）
                 await SendEFormWhatsAppMessage(to, formName, formUrl, dbContext, execution);
 
-                Console.WriteLine($"=== ExecuteSendEFormAsync 完成 ===");
+                _loggingService.LogInformation($"=== ExecuteSendEFormAsync 完成 ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"發送 eForm 失敗: {ex.Message}");
-                Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogError($"發送 eForm 失敗: {ex.Message}");
+                _loggingService.LogError($"錯誤堆疊: {ex.StackTrace}");
                 throw;
             }
         }
@@ -1165,9 +1145,10 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"=== FillFormWithAI 開始 ===");
-                Console.WriteLine($"原始 HTML 長度: {originalHtml?.Length ?? 0}");
-                Console.WriteLine($"用戶消息: {userMessage}");
+                _loggingService.LogInformation($"=== FillFormWithAI 開始 ===");
+                _loggingService.LogInformation($"開始時間: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                _loggingService.LogInformation($"原始 HTML 長度: {originalHtml?.Length ?? 0}");
+                _loggingService.LogInformation($"用戶消息: {userMessage}");
 
                 // 從配置中獲取 AI 提示詞
                 var formAnalysisPrompt = _configuration["XAI:FormAnalysisPrompt"] ?? "";
@@ -1189,9 +1170,12 @@ HTML 表單內容：
                 var temperature = _configuration.GetValue<double>("XAI:Temperature", 0.8);
                 var maxTokens = _configuration.GetValue<int>("XAI:MaxTokens", 15000);
 
+                _loggingService.LogDebug($"XAI 配置 - Model: {model}, Temperature: {temperature}, MaxTokens: {maxTokens}");
+                _loggingService.LogDebug($"API Key 前10字符: {apiKey?.Substring(0, Math.Min(10, apiKey?.Length ?? 0))}...");
+
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    Console.WriteLine("X.AI API Key 未配置，返回原始 HTML");
+                    _loggingService.LogWarning("X.AI API Key 未配置，返回原始 HTML");
                     return originalHtml;
                 }
 
@@ -1214,28 +1198,79 @@ HTML 表單內容：
                 var jsonContent = System.Text.Json.JsonSerializer.Serialize(aiRequest);
                 var content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
 
-                Console.WriteLine($"發送 AI 請求...");
-                var response = await httpClient.PostAsync("https://api.x.ai/v1/chat/completions", content);
-                var responseContent = await response.Content.ReadAsStringAsync();
+                _loggingService.LogInformation($"發送 AI 請求...");
+                _loggingService.LogDebug($"請求 URL: https://api.x.ai/v1/chat/completions");
+                _loggingService.LogDebug($"請求內容長度: {jsonContent.Length}");
+                _loggingService.LogDebug($"提示詞長度: {prompt.Length}");
+                _loggingService.LogDebug($"HTTP 客戶端超時設置: {httpClient.Timeout.TotalMinutes} 分鐘");
 
-                if (!response.IsSuccessStatusCode)
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                
+                try
                 {
-                    Console.WriteLine($"AI 請求失敗: {response.StatusCode} - {responseContent}");
+                    var response = await httpClient.PostAsync("https://api.x.ai/v1/chat/completions", content);
+                    stopwatch.Stop();
+                    
+                    _loggingService.LogInformation($"AI 請求完成，耗時: {stopwatch.ElapsedMilliseconds}ms ({stopwatch.ElapsedMilliseconds / 1000.0:F2}秒)");
+                    _loggingService.LogDebug($"響應狀態碼: {response.StatusCode}");
+                    
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    _loggingService.LogDebug($"響應內容長度: {responseContent.Length}");
+                    
+                    if (responseContent.Length > 0)
+                    {
+                        _loggingService.LogDebug($"響應內容前500字符: {responseContent.Substring(0, Math.Min(500, responseContent.Length))}");
+                    }
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _loggingService.LogError($"AI 請求失敗: {response.StatusCode} - {responseContent}");
+                        _loggingService.LogWarning("=== FillFormWithAI 失敗 - HTTP 錯誤 ===");
+                        return originalHtml;
+                    }
+
+                    // 解析 AI 響應
+                    try
+                    {
+                        var aiResponse = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(responseContent);
+                        var filledHtml = aiResponse.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+
+                        _loggingService.LogInformation($"AI 填充完成，新 HTML 長度: {filledHtml?.Length ?? 0}");
+                        _loggingService.LogInformation("=== FillFormWithAI 成功完成 ===");
+                        return filledHtml;
+                    }
+                    catch (Exception parseEx)
+                    {
+                        _loggingService.LogError($"AI 響應解析失敗: {parseEx.Message}");
+                        _loggingService.LogDebug($"原始響應內容: {responseContent}");
+                        _loggingService.LogWarning("=== FillFormWithAI 失敗 - 響應解析錯誤 ===");
+                        return originalHtml;
+                    }
+                }
+                catch (TaskCanceledException timeoutEx)
+                {
+                    stopwatch.Stop();
+                    _loggingService.LogError($"AI 請求超時: {timeoutEx.Message}");
+                    _loggingService.LogDebug($"請求耗時: {stopwatch.ElapsedMilliseconds}ms ({stopwatch.ElapsedMilliseconds / 1000.0:F2}秒)");
+                    _loggingService.LogDebug($"超時設置: {httpClient.Timeout.TotalMinutes} 分鐘");
+                    _loggingService.LogWarning("=== FillFormWithAI 失敗 - 請求超時 ===");
                     return originalHtml;
                 }
-
-                // 解析 AI 響應
-                var aiResponse = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(responseContent);
-                var filledHtml = aiResponse.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-
-                Console.WriteLine($"AI 填充完成，新 HTML 長度: {filledHtml?.Length ?? 0}");
-                Console.WriteLine($"=== FillFormWithAI 完成 ===");
-
-                return filledHtml;
+                catch (HttpRequestException httpEx)
+                {
+                    stopwatch.Stop();
+                    _loggingService.LogError($"AI 請求 HTTP 錯誤: {httpEx.Message}");
+                    _loggingService.LogDebug($"請求耗時: {stopwatch.ElapsedMilliseconds}ms ({stopwatch.ElapsedMilliseconds / 1000.0:F2}秒)");
+                    _loggingService.LogWarning("=== FillFormWithAI 失敗 - HTTP 請求錯誤 ===");
+                    return originalHtml;
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"AI 填充失敗: {ex.Message}");
+                _loggingService.LogError($"AI 填充發生未預期錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤類型: {ex.GetType().Name}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogWarning("=== FillFormWithAI 失敗 - 未預期錯誤 ===");
                 return originalHtml; // 失敗時返回原始 HTML
             }
         }
@@ -1244,10 +1279,10 @@ HTML 表單內容：
         {
             try
             {
-                Console.WriteLine($"=== SendEFormWhatsAppMessage 開始 ===");
-                Console.WriteLine($"收件人: {to}");
-                Console.WriteLine($"表單名稱: {formName}");
-                Console.WriteLine($"表單URL: {formUrl}");
+                _loggingService.LogInformation($"=== SendEFormWhatsAppMessage 開始 ===");
+                _loggingService.LogInformation($"收件人: {to}");
+                _loggingService.LogInformation($"表單名稱: {formName}");
+                _loggingService.LogInformation($"表單URL: {formUrl}");
 
                 // 獲取公司 WhatsApp 配置
                 var workflowDefinition = await dbContext.WorkflowDefinitions
@@ -1309,12 +1344,12 @@ HTML 表單內容：
                     throw new Exception($"WhatsApp API 請求失敗: {response.StatusCode} - {responseContent}");
                 }
 
-                Console.WriteLine($"成功發送 eForm WhatsApp 消息到 {formattedTo}");
-                Console.WriteLine($"=== SendEFormWhatsAppMessage 完成 ===");
+                _loggingService.LogInformation($"成功發送 eForm WhatsApp 消息到 {formattedTo}");
+                _loggingService.LogInformation($"=== SendEFormWhatsAppMessage 完成 ===");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"發送 eForm WhatsApp 消息失敗: {ex.Message}");
+                _loggingService.LogError($"發送 eForm WhatsApp 消息失敗: {ex.Message}");
                 throw;
             }
         }
@@ -1325,20 +1360,20 @@ HTML 表單內容：
             var result = nodeData.GetProperty("result").GetString();
             
             // 這裡實現 eForm 結果處理邏輯
-            Console.WriteLine($"Processing eForm result: {result}");
+            _loggingService.LogInformation($"Processing eForm result: {result}");
         }
     }
 
     // 批量刪除請求模型
     public class WorkflowBatchDeleteRequest
     {
-        public List<int> Ids { get; set; }
+        public List<int> Ids { get; set; } = new List<int>();
     }
 
     // 批量狀態更新請求模型
     public class WorkflowBatchStatusRequest
     {
-        public List<int> Ids { get; set; }
+        public List<int> Ids { get; set; } = new List<int>();
         public bool IsActive { get; set; }
     }
 } 

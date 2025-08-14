@@ -9,6 +9,7 @@ import UnconfirmedPage from './pages/UnconfirmedPage';
 import CustomerSignedPage from './pages/CustomerSignedPage';
 import WhatsAppWorkflowPage from './pages/WhatsAppWorkflowPage';
 import WorkflowListPage from './pages/WorkflowListPage';
+import WorkflowMonitorPage from './pages/WorkflowMonitorPage';
 import MyPreferencesModal from './components/MyPreferencesModal';
 import CompanyUserAdminPage from './pages/CompanyUserAdminPage';
 import CompanyEditPage from './pages/CompanyEditPage';
@@ -26,7 +27,11 @@ const pathToMenuKey = {
   '/unsigned': 'unsigned',
   '/customer-signed': 'customerSigned',
   '/whatsapp-workflow': 'whatsappWorkflow',
+  '/workflow-list': 'whatsappWorkflow',
+  '/workflow-monitor': 'workflowMonitor',
   '/whatsapp-templates': 'whatsappTemplates',
+  '/eform-list': 'eformList',
+  '/company-user-admin': 'companyUserAdmin',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -54,8 +59,17 @@ function MainLayout({ userInfo, onLogout }) {
       case 'whatsappWorkflow':
         navigate('/workflow-list');
         break;
+      case 'workflowMonitor':
+        navigate('/workflow-monitor');
+        break;
       case 'whatsappTemplates':
         navigate('/whatsapp-templates');
+        break;
+      case 'eformList':
+        navigate('/eform-list');
+        break;
+      case 'companyUserAdmin':
+        navigate('/company-user-admin');
         break;
       default:
         navigate('/dashboard');
@@ -78,6 +92,7 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/customer-signed" element={<CustomerSignedPage />} />
             <Route path="/whatsapp-workflow" element={<WhatsAppWorkflowPage />} />
             <Route path="/workflow-list" element={<WorkflowListPage />} />
+            <Route path="/workflow-monitor" element={<WorkflowMonitorPage />} />
             <Route path="/company-user-admin" element={<CompanyUserAdminPage />} />
             <Route path="/company-edit" element={<CompanyEditPage />} />
             <Route path="/eform-list" element={<EFormListPage />} />
@@ -118,6 +133,9 @@ function AppContent() {
       case 'whatsappWorkflow':
         navigate('/workflow-list');
         break;
+      case 'workflowMonitor':
+        navigate('/workflow-monitor');
+        break;
       case 'companyUserAdmin':
         navigate('/company-user-admin');
         break;
@@ -141,13 +159,6 @@ function AppContent() {
     }
   }, []);
 
-  // 刪除這段 useEffect，避免 userInfo.language 變動時自動 changeLanguage
-  // useEffect(() => {
-  //   if (userInfo && userInfo.language) {
-  //     changeLanguage(userInfo.language);
-  //   }
-  // }, [userInfo && userInfo.language, changeLanguage]);
-
   const onFinish = async (values) => {
     setLoading(true);
     try {
@@ -159,30 +170,69 @@ function AppContent() {
       const data = await response.json();
       if (data.success) {
         message.success(t('login.loginSuccess'));
+        
+        // 先設置基本的登入狀態
         setIsLoggedIn(true);
-        setUserInfo({
-          user_id: data.user_id,
-          account: data.account,
-          name: data.name, // 改為 data.name
-          email: data.email,
-          phone: data.phone,
-          language: data.language,
-          timezone: data.timezone,
-          avatar_url: data.avatar_url,
-          company_id: data.company_id // 添加 company_id
-        });
-        localStorage.setItem('userInfo', JSON.stringify({
-          user_id: data.user_id,
-          account: data.account,
-          name: data.name, // 改為 data.name
-          email: data.email,
-          phone: data.phone,
-          language: data.language,
-          timezone: data.timezone,
-          avatar_url: data.avatar_url,
-          company_id: data.company_id // 添加 company_id
-        }));
-        localStorage.setItem('token', data.token); // 新增這行，存下 JWT token
+        localStorage.setItem('token', data.token);
+        
+        // 使用 token 調用 /api/auth/me 獲取完整的用戶信息
+        try {
+          const meResponse = await fetch('/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${data.token}`
+            }
+          });
+          
+          if (meResponse.ok) {
+            const userData = await meResponse.json();
+            const fullUserInfo = {
+              user_id: userData.user_id,
+              account: userData.account,
+              name: userData.name,
+              email: userData.email,
+              phone: userData.phone,
+              language: userData.language,
+              timezone: userData.timezone,
+              avatar_url: userData.avatar_url,
+              company_id: data.user.companyId // 從登入響應中獲取
+            };
+            
+            setUserInfo(fullUserInfo);
+            localStorage.setItem('userInfo', JSON.stringify(fullUserInfo));
+          } else {
+            // 如果 /api/auth/me 失敗，使用登入響應中的基本信息
+            const basicUserInfo = {
+              user_id: data.user.id,
+              account: data.user.account,
+              name: data.user.name,
+              email: data.user.email,
+              phone: '',
+              language: 'zh-TC',
+              timezone: 'Asia/Hong_Kong',
+              avatar_url: '',
+              company_id: data.user.companyId
+            };
+            
+            setUserInfo(basicUserInfo);
+            localStorage.setItem('userInfo', JSON.stringify(basicUserInfo));
+          }
+        } catch (meError) {
+          // 如果調用 /api/auth/me 失敗，使用登入響應中的基本信息
+          const basicUserInfo = {
+            user_id: data.user.id,
+            account: data.user.account,
+            name: data.user.name,
+            email: data.user.email,
+            phone: '',
+            language: 'zh-TC',
+            timezone: 'Asia/Hong_Kong',
+            avatar_url: '',
+            company_id: data.user.companyId
+          };
+          
+          setUserInfo(basicUserInfo);
+          localStorage.setItem('userInfo', JSON.stringify(basicUserInfo));
+        }
       } else {
         message.error(data.message || t('login.loginFailed'));
       }
@@ -218,6 +268,7 @@ function AppContent() {
               <Route path="/customer-signed" element={<CustomerSignedPage />} />
               <Route path="/whatsapp-workflow" element={<WhatsAppWorkflowPage />} />
               <Route path="/workflow-list" element={<WorkflowListPage />} />
+              <Route path="/workflow-monitor" element={<WorkflowMonitorPage />} />
               <Route path="/company-user-admin" element={<CompanyUserAdminPage />} />
               <Route path="/company-edit" element={<CompanyEditPage />} />
               <Route path="/eform-list" element={<EFormListPage />} />

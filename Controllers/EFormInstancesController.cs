@@ -183,7 +183,7 @@ namespace PurpleRice.Controllers
                 instance.ApprovalNote = request.Note;
                 instance.UpdatedAt = DateTime.UtcNow;
 
-                Console.WriteLine($"準備創建審批記錄");
+                _loggingService.LogInformation($"準備創建審批記錄");
 
                 // 創建審批記錄
                 var approval = new EFormApproval
@@ -198,26 +198,26 @@ namespace PurpleRice.Controllers
                 _db.EFormApprovals.Add(approval);
                 await _db.SaveChangesAsync();
 
-                Console.WriteLine($"審批記錄已保存，繼續執行工作流程");
+                _loggingService.LogInformation($"審批記錄已保存，繼續執行工作流程");
 
                 // 繼續執行工作流程
-                Console.WriteLine($"準備執行工作流程，WorkflowExecutionId: {instance.WorkflowExecutionId}");
+                _loggingService.LogInformation($"準備執行工作流程，WorkflowExecutionId: {instance.WorkflowExecutionId}");
                 var executionId = instance.WorkflowExecutionId;
                 
                 // 在主線程中執行，避免 disposed 問題
                 try
                 {
-                    Console.WriteLine($"開始執行 ContinueWorkflowExecution");
+                    _loggingService.LogInformation($"開始執行 ContinueWorkflowExecution");
                     await ContinueWorkflowExecution(executionId);
-                    Console.WriteLine($"ContinueWorkflowExecution 完成");
+                    _loggingService.LogInformation($"ContinueWorkflowExecution 完成");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"工作流程執行失敗: {ex.Message}");
-                    Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
+                    _loggingService.LogError($"工作流程執行失敗: {ex.Message}");
+                    _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
                 }
 
-                Console.WriteLine($"拒絕操作完成，返回成功響應");
+                _loggingService.LogInformation($"拒絕操作完成，返回成功響應");
 
                 return Ok(new
                 {
@@ -229,8 +229,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"拒絕表單時發生錯誤: {ex.Message}");
-                Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogError($"拒絕表單時發生錯誤: {ex.Message}", ex);
                 return StatusCode(500, new { error = $"拒絕表單失敗: {ex.Message}" });
             }
         }
@@ -239,99 +238,81 @@ namespace PurpleRice.Controllers
          {
              try
              {
-                 Console.WriteLine($"繼續執行工作流程，執行ID: {executionId}");
+                 _loggingService.LogInformation($"繼續執行工作流程，執行ID: {executionId}");
                  
-                 // 使用 IServiceProvider 來創建獨立的 service scope
-                 using (var scope = _serviceProvider.CreateScope())
-                {
-                    var dbContext = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                    
-                    var execution = await dbContext.WorkflowExecutions
-                        .FirstOrDefaultAsync(e => e.Id == executionId);
+                 // 查找工作流程執行記錄
+                 var execution = await _db.WorkflowExecutions
+                     .Include(e => e.StepExecutions)
+                     .FirstOrDefaultAsync(e => e.Id == executionId);
 
-                    if (execution == null)
-                    {
-                        Console.WriteLine($"找不到工作流程執行記錄，ID: {executionId}");
-                        return;
-                    }
+                 if (execution == null)
+                 {
+                     _loggingService.LogWarning($"找不到工作流程執行記錄，ID: {executionId}");
+                     return;
+                 }
 
-                    Console.WriteLine($"找到工作流程執行記錄，當前狀態: {execution.Status}，當前步驟: {execution.CurrentStep}");
+                 _loggingService.LogInformation($"找到工作流程執行記錄，當前狀態: {execution.Status}，當前步驟: {execution.CurrentStep}");
 
-                    // 更新工作流程執行狀態
-                    execution.Status = "Completed";
-                    execution.EndedAt = DateTime.UtcNow;
-                    await dbContext.SaveChangesAsync();
+                 // 更新狀態為已完成
+                 execution.Status = "Completed";
+                 execution.EndedAt = DateTime.Now;
+                 await _db.SaveChangesAsync();
+                 _loggingService.LogInformation($"工作流程執行狀態已更新為 Completed");
 
-                    Console.WriteLine($"工作流程執行狀態已更新為 Completed");
+                 // 查找所有未完成的步驟執行記錄
+                 var stepExecutions = await _db.WorkflowStepExecutions
+                     .Where(s => s.WorkflowExecutionId == executionId && s.Status == "Running")
+                     .ToListAsync();
 
-                    // 查找並更新相關的 workflow_step_executions
-                    var stepExecutions = await dbContext.WorkflowStepExecutions
-                        .Where(wse => wse.WorkflowExecutionId == executionId)
-                        .ToListAsync();
+                 _loggingService.LogInformation($"找到 {stepExecutions.Count} 個步驟執行記錄");
 
-                    Console.WriteLine($"找到 {stepExecutions.Count} 個步驟執行記錄");
+                 // 查找工作流程定義
+                 var workflowDefinition = await _db.WorkflowDefinitions
+                     .FirstOrDefaultAsync(w => w.Id == execution.WorkflowDefinitionId);
 
-                    // 獲取工作流程定義來了解流程圖結構
-                    var workflowDefinition = await dbContext.WorkflowDefinitions
-                        .FirstOrDefaultAsync(wd => wd.Id == execution.WorkflowDefinitionId);
-                    
-                    if (workflowDefinition == null)
-                    {
-                        Console.WriteLine($"找不到工作流程定義，WorkflowDefinitionId: {execution.WorkflowDefinitionId}");
-                        return;
-                    }
+                 if (workflowDefinition == null)
+                 {
+                     _loggingService.LogError($"找不到工作流程定義，WorkflowDefinitionId: {execution.WorkflowDefinitionId}");
+                     return;
+                 }
 
-                    Console.WriteLine($"找到工作流程定義: {workflowDefinition.Name}");
+                 _loggingService.LogInformation($"找到工作流程定義: {workflowDefinition.Name}");
+                 _loggingService.LogDebug($"工作流程定義 JSON: {workflowDefinition.Json}");
 
-                                                             // 解析流程圖 JSON
-                    Console.WriteLine($"工作流程定義 JSON: {workflowDefinition.Json}");
-                    var options = new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    };
-                    var workflowNodes = JsonSerializer.Deserialize<WorkflowGraph>(workflowDefinition.Json, options);
-                     if (workflowNodes == null)
-                     {
-                         Console.WriteLine($"無法解析工作流程圖 JSON");
-                         return;
-                     }
-                     
-                                           Console.WriteLine($"流程圖節點數量: {workflowNodes.nodes.Count}");
-                      Console.WriteLine($"流程圖邊數量: {workflowNodes.edges.Count}");
+                 // 解析工作流程圖
+                 var workflowNodes = System.Text.Json.JsonSerializer.Deserialize<WorkflowGraph>(workflowDefinition.Json);
+                 if (workflowNodes == null)
+                 {
+                     _loggingService.LogError("無法解析工作流程圖 JSON");
+                     return;
+                 }
 
-                                                                                   // 找到所有需要處理的步驟
-                     var stepsToProcess = stepExecutions.Where(wse => wse.StepType == "sendEForm" || wse.StepType == "sendWhatsApp" || wse.StepType == "waitReply").ToList();
-                     Console.WriteLine($"找到 {stepsToProcess.Count} 個需要處理的步驟");
-                     
-                     foreach (var step in stepsToProcess)
-                     {
-                         Console.WriteLine($"處理步驟: {step.StepType} (ID: {step.Id})，當前狀態: {step.Status}");
-                         
-                         // 強制補正步驟狀態為已完成
-                         if (step.Status != "Completed")
-                         {
-                             step.Status = "Completed";
-                             step.EndedAt = DateTime.Now;
-                             Console.WriteLine($"強制將 {step.StepType} 步驟設為 Completed，EndedAt: {step.EndedAt}");
-                         }
-                     }
+                 _loggingService.LogInformation($"流程圖節點數量: {workflowNodes.nodes.Count}");
+                 _loggingService.LogInformation($"流程圖邊數量: {workflowNodes.edges.Count}");
 
-                                           // 處理所有類型的節點
-                      Console.WriteLine($"開始處理工作流程步驟...");
-                      await ProcessWorkflowSteps(workflowNodes, stepExecutions, executionId, dbContext, execution);
+                 // 找到需要處理的步驟
+                 var stepsToProcess = FindNextSteps(workflowNodes, "sendEForm");
+                 _loggingService.LogInformation($"找到 {stepsToProcess.Count} 個需要處理的步驟");
 
-                    await dbContext.SaveChangesAsync();
-                    Console.WriteLine($"所有步驟執行記錄已更新完成");
-                }
+                 // 處理每個步驟 - 這裡 stepsToProcess 是 WorkflowNode 類型，不是 WorkflowStepExecution
+                 foreach (var step in stepsToProcess)
+                 {
+                     _loggingService.LogInformation($"處理步驟: {step.type} (類型: {step.type})");
+                 }
 
-                Console.WriteLine($"工作流程執行已完成");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"繼續執行工作流程失敗: {ex.Message}");
-                Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
-            }
-        }
+                 // 保存所有更改
+                 await _db.SaveChangesAsync();
+                 _loggingService.LogInformation($"開始處理工作流程步驟...");
+                 await ProcessWorkflowSteps(execution, workflowNodes);
+                 _loggingService.LogInformation($"所有步驟執行記錄已更新完成");
+                 _loggingService.LogInformation($"工作流程執行已完成");
+             }
+             catch (Exception ex)
+             {
+                 _loggingService.LogError($"繼續執行工作流程失敗: {ex.Message}");
+                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+             }
+         }
 
         private async Task UpdateWorkflowExecutionStatus(int executionId, string status)
         {
@@ -350,136 +331,38 @@ namespace PurpleRice.Controllers
             catch (Exception ex)
             {
                 // 記錄錯誤但不中斷主流程
-                Console.WriteLine($"更新工作流程執行狀態失敗: {ex.Message}");
+                _loggingService.LogError($"更新工作流程執行狀態失敗: {ex.Message}", ex);
             }
         }
 
-                 private async Task ProcessWorkflowSteps(WorkflowGraph workflowGraph, List<WorkflowStepExecution> stepExecutions, int executionId, PurpleRiceDbContext dbContext, WorkflowExecution execution)
+                 private async Task ProcessWorkflowSteps(WorkflowExecution execution, WorkflowGraph workflowGraph)
          {
              try
              {
-                 _loggingService.LogInformation($"開始處理工作流程步驟，總步驟數: {stepExecutions.Count}");
-                 
-                 // 找到所有已完成的步驟，按 StepIndex 排序
-                 var completedSteps = stepExecutions.Where(wse => wse.Status == "Completed").OrderBy(wse => wse.StepIndex).ToList();
-                 _loggingService.LogInformation($"已完成的步驟數: {completedSteps.Count}");
-                 
-                 // 只處理最後一個已完成的步驟，避免重複處理
-                 var lastCompletedStep = completedSteps.LastOrDefault();
-                 if (lastCompletedStep != null)
+                 // 查找所有未完成的步驟
+                 var incompleteSteps = await _db.WorkflowStepExecutions
+                     .Where(s => s.WorkflowExecutionId == execution.Id && s.Status == "Running")
+                     .ToListAsync();
+
+                 foreach (var step in incompleteSteps)
                  {
-                     _loggingService.LogInformation($"處理最後一個已完成的步驟: {lastCompletedStep.StepType} (ID: {lastCompletedStep.Id})");
-                     
-                     // 根據流程圖找到所有下一步
-                     var nextSteps = FindNextSteps(workflowGraph, lastCompletedStep.StepType);
-                     _loggingService.LogInformation($"FindNextSteps 返回結果數量: {nextSteps.Count}");
-                     
-                     if (nextSteps.Any())
+                     try
                      {
-                         _loggingService.LogInformation($"根據流程圖找到 {nextSteps.Count} 個下一步");
-                         
-                         // 找到下一個可用的 StepIndex
-                         var baseStepIndex = stepExecutions.Max(wse => wse.StepIndex) + 1;
-                         _loggingService.LogInformation($"基礎 StepIndex: {baseStepIndex}");
-                         
-                         // 創建並執行所有並行步驟
-                         var tasks = new List<Task>();
-                         for (int i = 0; i < nextSteps.Count; i++)
-                         {
-                             var nextStep = nextSteps[i];
-                             var stepIndex = baseStepIndex + i;
-                             
-                             _loggingService.LogInformation($"創建並行步驟 {i + 1}: {nextStep.type}，StepIndex: {stepIndex}");
-                             _loggingService.LogInformation($"步驟詳細信息: {JsonSerializer.Serialize(nextStep)}");
-                             
-                             // 創建步驟執行記錄
-                             var newStepExecution = new WorkflowStepExecution
-                             {
-                                 WorkflowExecutionId = executionId,
-                                 StepIndex = stepIndex,
-                                 StepType = nextStep.type,
-                                 Status = nextStep.type == "end" ? "Completed" : "Running",
-                                 StartedAt = DateTime.Now,
-                                 EndedAt = nextStep.type == "end" ? DateTime.Now : (DateTime?)null,
-                                 InputJson = JsonSerializer.Serialize(nextStep),
-                                 OutputJson = nextStep.type == "end" ? "{\"message\":\"Workflow completed successfully\"}" : null
-                             };
-                             
-                             // 使用主 DbContext 保存步驟執行記錄
-                             dbContext.WorkflowStepExecutions.Add(newStepExecution);
-                             await dbContext.SaveChangesAsync();
-                             _loggingService.LogInformation($"創建步驟執行記錄: {nextStep.type}，StepIndex: {newStepExecution.StepIndex}");
-                             
-                             // 並行執行步驟 - 使用新的 DbContext 實例
-                             var task = ExecuteStepWithNewContext(newStepExecution, execution);
-                             tasks.Add(task);
-                         }
-                         
-                         // 等待所有並行步驟完成
-                         if (tasks.Any())
-                         {
-                             _loggingService.LogInformation($"等待 {tasks.Count} 個並行步驟完成...");
-                             await Task.WhenAll(tasks);
-                             _loggingService.LogInformation($"所有並行步驟執行完成");
-                         }
-                         
-                         // 如果是 end 節點，立即完成
-                         if (nextSteps.Any(s => s.type == "end"))
-                         {
-                             _loggingService.LogInformation($"工作流程已到達終點");
-                         }
+                         await ExecuteStep(step, _db, execution);
                      }
-                     else
+                     catch (Exception ex)
                      {
-                         _loggingService.LogWarning($"找不到 {lastCompletedStep.StepType} 的下一步");
-                         
-                         // 如果找不到下一步，但流程圖有 end 節點，強制插入 end 步驟
-                         var endNodes = workflowGraph.nodes.Where(n => n.data.type == "end").ToList();
-                         if (endNodes.Any())
-                         {
-                             var alreadyHasEnd = stepExecutions.Any(wse => wse.StepType == "end");
-                             if (!alreadyHasEnd)
-                             {
-                                 // 為每個 end 節點創建執行記錄
-                                 var baseStepIndex = stepExecutions.Max(wse => wse.StepIndex) + 1;
-                                 for (int i = 0; i < endNodes.Count; i++)
-                                 {
-                                     var endNode = endNodes[i];
-                                     var stepIndex = baseStepIndex + i;
-                                     
-                                     var newEndStep = new WorkflowStepExecution
-                                     {
-                                         WorkflowExecutionId = executionId,
-                                         StepIndex = stepIndex,
-                                         StepType = "end",
-                                         Status = "Completed",
-                                         StartedAt = DateTime.Now,
-                                         EndedAt = DateTime.Now,
-                                         InputJson = JsonSerializer.Serialize(endNode.data),
-                                         OutputJson = "{\"message\":\"Workflow completed successfully\"}"
-                                     };
-                                     dbContext.WorkflowStepExecutions.Add(newEndStep);
-                                     _loggingService.LogInformation($"強制插入 end 步驟 {i + 1}，StepIndex: {newEndStep.StepIndex}");
-                                 }
-                             }
-                         }
-                         else
-                         {
-                             _loggingService.LogWarning($"流程圖中找不到 end 節點，無法插入 end 步驟");
-                         }
+                         _loggingService.LogError($"處理工作流程步驟時發生錯誤: {ex.Message}");
+                         _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
                      }
                  }
-                 else
-                 {
-                     _loggingService.LogWarning($"沒有找到已完成的步驟");
-                 }
-                 
-                 Console.WriteLine($"工作流程步驟處理完成");
+
+                 _loggingService.LogInformation($"工作流程步驟處理完成");
              }
              catch (Exception ex)
              {
-                 Console.WriteLine($"處理工作流程步驟時發生錯誤: {ex.Message}");
-                 Console.WriteLine($"錯誤堆疊: {ex.StackTrace}");
+                 _loggingService.LogError($"處理工作流程步驟時發生錯誤: {ex.Message}");
+                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
              }
          }
 
@@ -493,7 +376,7 @@ namespace PurpleRice.Controllers
                  // 打印所有節點信息
                  foreach (var node in workflowGraph.nodes)
                  {
-                     _loggingService.LogInformation($"節點 ID: {node.id}, 類型: {node.data.type}, 標籤: {node.data.label}");
+                     _loggingService.LogDebug($"節點 ID: {node.id}, 類型: {node.data.type}, 標籤: {node.data.label}");
                  }
                  
                  // 找到當前步驟節點 - 優先通過類型查找
@@ -511,96 +394,44 @@ namespace PurpleRice.Controllers
                  if (currentNode == null)
                  {
                      _loggingService.LogInformation($"通過ID模式也找不到節點，嘗試查找所有相同類型的節點...");
-                     var nodesWithSameType = workflowGraph.nodes.Where(n => n.data.type == currentStepType).ToList();
-                     if (nodesWithSameType.Any())
+                     var allMatchingNodes = workflowGraph.nodes.Where(n => n.data.type.Contains(currentStepType)).ToList();
+                     if (allMatchingNodes.Any())
                      {
-                         currentNode = nodesWithSameType.First();
-                         _loggingService.LogInformation($"找到相同類型的節點: {currentNode.id}");
+                         currentNode = allMatchingNodes.First();
+                         _loggingService.LogInformation($"找到匹配節點: {currentNode.id}");
                      }
                  }
-                 
+
                  if (currentNode == null)
                  {
-                     _loggingService.LogWarning($"在流程圖中找不到步驟: {currentStepType}");
-                     _loggingService.LogInformation($"可用的節點類型:");
-                     foreach (var node in workflowGraph.nodes)
-                     {
-                         _loggingService.LogInformation($"  - {node.data.type} (ID: {node.id})");
-                     }
+                     _loggingService.LogWarning($"找不到當前步驟節點: {currentStepType}");
                      return new List<WorkflowNode>();
                  }
-                 
-                 _loggingService.LogInformation($"找到當前節點，ID: {currentNode.id}");
 
-                 // 找到從當前步驟出發的所有邊
-                 _loggingService.LogInformation($"查找從節點 {currentNode.id} 出發的邊...");
-                 _loggingService.LogInformation($"流程圖邊總數: {workflowGraph.edges.Count}");
-                 
-                 // 打印所有邊信息
-                 foreach (var edge in workflowGraph.edges)
-                 {
-                     _loggingService.LogInformation($"邊: {edge.source} -> {edge.target}");
-                 }
-                 
-                 _loggingService.LogInformation($"尋找從節點 {currentNode.id} 出發的邊...");
+                 _loggingService.LogInformation($"找到當前步驟節點: {currentNode.id}");
+
+                 // 查找所有從當前節點出發的邊
                  var outgoingEdges = workflowGraph.edges.Where(e => e.source == currentNode.id).ToList();
-                 
-                 // 如果找不到，嘗試通過節點類型查找
-                 if (!outgoingEdges.Any())
-                 {
-                     _loggingService.LogInformation($"通過節點ID找不到邊，嘗試通過節點類型查找...");
-                     var nodesWithSameType = workflowGraph.nodes.Where(n => n.data.type == currentStepType).ToList();
-                     foreach (var node in nodesWithSameType)
-                     {
-                         var edges = workflowGraph.edges.Where(e => e.source == node.id).ToList();
-                         if (edges.Any())
-                         {
-                             outgoingEdges = edges;
-                             _loggingService.LogInformation($"找到邊: {string.Join(", ", edges.Select(e => $"{e.source} -> {e.target}"))}");
-                             break;
-                         }
-                     }
-                 }
-                 
-                 if (!outgoingEdges.Any())
-                 {
-                     _loggingService.LogWarning($"找不到從 {currentStepType} 出發的邊");
-                     _loggingService.LogInformation($"可用的邊:");
-                     foreach (var edge in workflowGraph.edges)
-                     {
-                         _loggingService.LogInformation($"  - {edge.source} -> {edge.target}");
-                     }
-                     return new List<WorkflowNode>();
-                 }
-                 
-                 _loggingService.LogInformation($"找到出發邊數量: {outgoingEdges.Count}");
-                 foreach (var edge in outgoingEdges)
-                 {
-                     _loggingService.LogInformation($"出發邊: {edge.source} -> {edge.target}");
-                 }
+                 _loggingService.LogInformation($"找到 {outgoingEdges.Count} 條出邊");
 
-                 // 找到所有目標節點
-                 var targetNodes = new List<WorkflowNode>();
+                 // 收集所有目標節點
+                 var nextSteps = new List<WorkflowNode>();
                  foreach (var edge in outgoingEdges)
                  {
                      var targetNode = workflowGraph.nodes.FirstOrDefault(n => n.id == edge.target);
                      if (targetNode != null)
                      {
-                         _loggingService.LogInformation($"找到目標節點，ID: {targetNode.id}，類型: {targetNode.data.type}，標籤: {targetNode.data.label}");
-                         targetNodes.Add(targetNode.data);
-                     }
-                     else
-                     {
-                         _loggingService.LogWarning($"找不到目標節點: {edge.target}");
+                         nextSteps.Add(targetNode.data);
+                         _loggingService.LogInformation($"添加下一步: {targetNode.id} ({targetNode.data.type})");
                      }
                  }
 
-                 _loggingService.LogInformation($"總共找到 {targetNodes.Count} 個下一步節點");
-                 return targetNodes;
+                 return nextSteps;
              }
              catch (Exception ex)
              {
-                 Console.WriteLine($"查找下一步時發生錯誤: {ex.Message}");
+                 _loggingService.LogError($"查找下一步時發生錯誤: {ex.Message}");
+                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
                  return new List<WorkflowNode>();
              }
          }
@@ -684,57 +515,93 @@ namespace PurpleRice.Controllers
          {
              try
              {
-                 _loggingService.LogInformation($"執行 Send WhatsApp 步驟");
-                 _loggingService.LogInformation($"步驟輸入 JSON: {stepExecution.InputJson}");
+                 _loggingService.LogInformation($"準備發送 WhatsApp 消息:");
                  
-                 // 解析步驟配置 - 使用 WorkflowNode 結構
-                 var options = new JsonSerializerOptions
+                 // 從步驟執行記錄中獲取輸入數據
+                 var inputData = JsonSerializer.Deserialize<JsonElement>(stepExecution.InputJson);
+                 
+                 // 獲取收件人和消息內容
+                 var to = inputData.GetProperty("to").GetString();
+                 var message = inputData.GetProperty("message").GetString();
+                 
+                 _loggingService.LogInformation($"收件人: {to}");
+                 _loggingService.LogInformation($"消息內容: {message}");
+
+                 // 獲取公司配置
+                 var workflowDefinition = await dbContext.WorkflowDefinitions
+                     .FirstOrDefaultAsync(w => w.Id == execution.WorkflowDefinitionId);
+
+                 if (workflowDefinition == null)
                  {
-                     PropertyNameCaseInsensitive = true
+                     throw new Exception("找不到工作流程定義");
+                 }
+
+                 var company = await dbContext.Companies
+                     .FirstOrDefaultAsync(c => c.Id == workflowDefinition.CompanyId);
+
+                 if (company == null)
+                 {
+                     throw new Exception("找不到公司配置");
+                 }
+
+                 _loggingService.LogInformation($"Phone Number ID: {company.WA_PhoneNo_ID}");
+
+                 // 格式化電話號碼
+                 var formattedTo = to;
+                 if (!to.StartsWith("852"))
+                 {
+                     if (to.StartsWith("0"))
+                     {
+                         to = to.Substring(1);
+                     }
+                     formattedTo = "852" + to;
+                 }
+                 _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
+
+                 // 構建 WhatsApp API 請求
+                 var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                 var payload = new
+                 {
+                     messaging_product = "whatsapp",
+                     to = formattedTo,
+                     type = "text",
+                     text = new { body = message }
                  };
-                 var stepConfig = JsonSerializer.Deserialize<WorkflowNode>(stepExecution.InputJson, options);
+
+                 var json = JsonSerializer.Serialize(payload);
+                 _loggingService.LogDebug($"發送的 JSON payload: {json}");
+
+                 using var httpClient = new HttpClient();
+                 httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
                  
-                 _loggingService.LogInformation($"解析後的步驟配置:");
-                 _loggingService.LogInformation($"  label: {stepConfig.label}");
-                 _loggingService.LogInformation($"  type: {stepConfig.type}");
-                 _loggingService.LogInformation($"  taskName: {stepConfig.taskName}");
-                 _loggingService.LogInformation($"  message: {stepConfig.message}");
-                 _loggingService.LogInformation($"  to: {stepConfig.to}");
-                 
-                 // 檢查必要參數
-                 if (string.IsNullOrEmpty(stepConfig.message))
+                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                 var response = await httpClient.PostAsync(url, content);
+                 var responseContent = await response.Content.ReadAsStringAsync();
+
+                 _loggingService.LogInformation($"WhatsApp API 響應狀態碼: {response.StatusCode}");
+                 _loggingService.LogDebug($"WhatsApp API 響應內容: {responseContent}");
+
+                 if (!response.IsSuccessStatusCode)
                  {
-                     throw new Exception("步驟配置中缺少 message 參數或為空");
+                     throw new Exception($"WhatsApp API 請求失敗: {response.StatusCode} - {responseContent}");
                  }
-                 
-                 if (string.IsNullOrEmpty(stepConfig.to))
-                 {
-                     throw new Exception("步驟配置中缺少 to 參數或為空");
-                 }
-                 
-                 // 使用統一的 WhatsApp 服務 - 它會自己處理 DbContext
-                 await _whatsAppWorkflowService.SendWhatsAppMessageAsync(stepConfig.to, stepConfig.message, execution);
-                 
-                 // 更新步驟狀態
+
+                 // 更新步驟狀態為已完成
                  stepExecution.Status = "Completed";
                  stepExecution.EndedAt = DateTime.Now;
-                 stepExecution.OutputJson = JsonSerializer.Serialize(new { 
-                     success = true, 
-                     message = "WhatsApp message sent successfully"
-                 });
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { success = true, messageId = "sent" });
                  
-                 await dbContext.SaveChangesAsync();
-                 _loggingService.LogInformation($"Send WhatsApp 步驟執行完成");
+                 _loggingService.LogInformation($"WhatsApp 消息發送成功");
              }
              catch (Exception ex)
              {
-                 _loggingService.LogError($"執行 Send WhatsApp 步驟時發生錯誤: {ex.Message}", ex);
+                 _loggingService.LogError($"發送 WhatsApp 消息失敗: {ex.Message}");
+                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
                  
                  // 更新步驟狀態為失敗
                  stepExecution.Status = "Failed";
+                 stepExecution.EndedAt = DateTime.Now;
                  stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
-                 await dbContext.SaveChangesAsync();
-                 
                  throw;
              }
          }
@@ -764,14 +631,14 @@ namespace PurpleRice.Controllers
                      throw new Exception("公司 WhatsApp API Key 不能為空");
                  }
                  
-                 Console.WriteLine($"準備發送 WhatsApp 消息:");
-                 Console.WriteLine($"收件人: {to}");
-                 Console.WriteLine($"消息內容: {message}");
-                 Console.WriteLine($"Phone Number ID: {company.WA_PhoneNo_ID}");
+                 _loggingService.LogInformation($"準備發送 WhatsApp 消息:");
+                 _loggingService.LogInformation($"收件人: {to}");
+                 _loggingService.LogInformation($"消息內容: {message}");
+                 _loggingService.LogInformation($"Phone Number ID: {company.WA_PhoneNo_ID}");
                  
                  // 格式化電話號碼
                  var formattedTo = FormatPhoneNumber(to);
-                 Console.WriteLine($"格式化後電話號碼: {formattedTo}");
+                 _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
                  
                  // 發送 WhatsApp 消息
                  var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
@@ -785,7 +652,7 @@ namespace PurpleRice.Controllers
                  };
                  
                  var json = JsonSerializer.Serialize(payload);
-                 Console.WriteLine($"發送的 JSON payload: {json}");
+                 _loggingService.LogDebug($"發送的 JSON payload: {json}");
                  
                  var content = new StringContent(json, Encoding.UTF8, "application/json");
                  
@@ -795,8 +662,8 @@ namespace PurpleRice.Controllers
                  var response = await client.PostAsync(url, content);
                  var responseContent = await response.Content.ReadAsStringAsync();
                  
-                 Console.WriteLine($"WhatsApp API 響應狀態碼: {response.StatusCode}");
-                 Console.WriteLine($"WhatsApp API 響應內容: {responseContent}");
+                 _loggingService.LogInformation($"WhatsApp API 響應狀態碼: {response.StatusCode}");
+                 _loggingService.LogDebug($"WhatsApp API 響應內容: {responseContent}");
                  
                  if (response.IsSuccessStatusCode)
                  {
@@ -809,7 +676,7 @@ namespace PurpleRice.Controllers
              }
              catch (Exception ex)
              {
-                 Console.WriteLine($"發送 WhatsApp 消息失敗: {ex.Message}");
+                 _loggingService.LogError($"發送 WhatsApp 消息失敗: {ex.Message}", ex);
                  throw;
              }
          }
@@ -843,26 +710,60 @@ namespace PurpleRice.Controllers
          
          private async Task ExecuteSendEFormStep(WorkflowStepExecution stepExecution, PurpleRiceDbContext dbContext, WorkflowExecution execution)
          {
-             // 這個步驟通常在工作流程啟動時已經執行過了
-             Console.WriteLine($"Send EForm 步驟已在前面的流程中執行");
+             try
+             {
+                 _loggingService.LogInformation("Send EForm 步驟已在前面的流程中執行");
+                 stepExecution.Status = "Completed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { success = true, message = "EForm already sent" });
+             }
+             catch (Exception ex)
+             {
+                 _loggingService.LogError($"執行 Send EForm 步驟失敗: {ex.Message}");
+                 stepExecution.Status = "Failed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                 throw;
+             }
          }
          
          private async Task ExecuteWaitReplyStep(WorkflowStepExecution stepExecution, PurpleRiceDbContext dbContext, WorkflowExecution execution)
          {
-             // WaitReply 步驟通常在工作流程啟動時已經執行過了
-             Console.WriteLine($"Wait Reply 步驟已在前面的流程中執行");
+             try
+             {
+                 _loggingService.LogInformation("Wait Reply 步驟已在前面的流程中執行");
+                 stepExecution.Status = "Completed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { success = true, message = "Reply already received" });
+             }
+             catch (Exception ex)
+             {
+                 _loggingService.LogError($"執行 Wait Reply 步驟失敗: {ex.Message}");
+                 stepExecution.Status = "Failed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                 throw;
+             }
          }
          
          private async Task ExecuteEndStep(WorkflowStepExecution stepExecution, PurpleRiceDbContext dbContext, WorkflowExecution execution)
          {
-             Console.WriteLine($"執行 End 步驟");
-             
-             stepExecution.Status = "Completed";
-             stepExecution.EndedAt = DateTime.Now;
-             stepExecution.OutputJson = JsonSerializer.Serialize(new { message = "Workflow completed successfully" });
-             
-             await dbContext.SaveChangesAsync();
-             Console.WriteLine($"End 步驟執行完成");
+             try
+             {
+                 _loggingService.LogInformation("執行 End 步驟");
+                 stepExecution.Status = "Completed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { success = true, message = "Workflow completed" });
+                 _loggingService.LogInformation("End 步驟執行完成");
+             }
+             catch (Exception ex)
+             {
+                 _loggingService.LogError($"執行 End 步驟失敗: {ex.Message}");
+                 stepExecution.Status = "Failed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                 throw;
+             }
          }
      }
  
@@ -901,7 +802,7 @@ namespace PurpleRice.Controllers
 
     public class ApprovalRequest
     {
-        public string ApprovedBy { get; set; }
-        public string Note { get; set; }
+        public string ApprovedBy { get; set; } = string.Empty;
+        public string Note { get; set; } = string.Empty;
     }
 } 

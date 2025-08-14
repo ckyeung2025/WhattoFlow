@@ -9,7 +9,7 @@ using PurpleRice.Data;
 using PurpleRice.Models;
 using PurpleRice.Services;
 using Microsoft.Extensions.Caching.Memory;
-using PurpleRice.Data;
+using System.Text.Json;
 
 namespace PurpleRice.Controllers
 {
@@ -22,16 +22,18 @@ namespace PurpleRice.Controllers
         private readonly PdfService _pdfService;
         private readonly IWebHostEnvironment _environment;
         private readonly IConfiguration _configuration;
+        private readonly LoggingService _loggingService;
         private static MemoryCache _messageCache = new MemoryCache(new MemoryCacheOptions());
         private static MemoryCache _groupCache = new MemoryCache(new MemoryCacheOptions());
 
-        public WhatsAppQrScanController(PurpleRiceDbContext context, ErpDbContext erpContext, PdfService pdfService, IWebHostEnvironment environment, IConfiguration configuration)
+        public WhatsAppQrScanController(PurpleRiceDbContext context, ErpDbContext erpContext, PdfService pdfService, IWebHostEnvironment environment, IConfiguration configuration, Func<string, LoggingService> loggingServiceFactory)
         {
             _context = context;
             _erpContext = erpContext;
             _pdfService = pdfService;
             _environment = environment;
             _configuration = configuration;
+            _loggingService = loggingServiceFactory("WhatsAppQrScanController");
         }
 
         [HttpGet("scan")]
@@ -157,18 +159,19 @@ namespace PurpleRice.Controllers
             }
         }
 
-        [HttpGet("webhook")]
-        public async Task<IActionResult> VerifyWebhook([FromQuery(Name = "hub.mode")] string mode,
-                                           [FromQuery(Name = "hub.challenge")] string challenge,
-                                           [FromQuery(Name = "hub.verify_token")] string verifyToken)
+        [HttpGet("{companyToken}")]
+        public async Task<IActionResult> VerifyWebhook(string companyToken, [FromQuery(Name = "hub.mode")] string mode,
+                                       [FromQuery(Name = "hub.challenge")] string challenge,
+                                       [FromQuery(Name = "hub.verify_token")] string verifyToken)
         {
-            // 從第一個公司獲取 VerifyToken（假設只有一個公司）
-            var company = await _context.Companies.FirstOrDefaultAsync();
+            // 查找對應的公司
+            var company = await _context.Companies.FirstOrDefaultAsync(c => c.WA_WebhookToken == companyToken);
             if (company == null)
             {
-                return Unauthorized("No company found");
+                return Unauthorized("Company not found");
             }
 
+            // 檢查驗證令牌是否匹配
             if (mode == "subscribe" && verifyToken == company.WA_VerifyToken)
             {
                 return Content(challenge);
@@ -179,41 +182,86 @@ namespace PurpleRice.Controllers
             }
         }
 
-        private async Task SendWhatsAppReply(string waId)
+        private async Task SendWhatsAppReply(string waId, Company company)
         {
-            // 從第一個公司獲取 WhatsApp 配置
-            var company = await _context.Companies.FirstOrDefaultAsync();
-            if (company == null || string.IsNullOrEmpty(company.WA_API_Key) || string.IsNullOrEmpty(company.WA_PhoneNo_ID))
+            _loggingService.LogInformation($"=== 開始發送 WhatsApp 回覆 ===");
+            _loggingService.LogInformation($"目標 waId: {waId}");
+            
+            try
             {
-                Console.WriteLine("WhatsApp 配置不完整");
-                return;
+                // 使用傳入的 company 參數，而不是重新查詢
+                if (company == null)
+                {
+                    _loggingService.LogError("錯誤：未找到公司資料");
+                    return;
+                }
+                
+                if (string.IsNullOrEmpty(company.WA_API_Key))
+                {
+                    _loggingService.LogError("錯誤：WA_API_Key 為空");
+                    return;
+                }
+                
+                if (string.IsNullOrEmpty(company.WA_PhoneNo_ID))
+                {
+                    _loggingService.LogError("錯誤：WA_PhoneNo_ID 為空");
+                    return;
+                }
+                
+                _loggingService.LogInformation($"公司名稱: {company.Name}");
+                _loggingService.LogInformation($"WA_PhoneNo_ID: {company.WA_PhoneNo_ID}");
+                _loggingService.LogDebug($"API Key 長度: {company.WA_API_Key?.Length ?? 0}");
+
+                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                _loggingService.LogInformation($"API URL: {url}");
+
+                var messageText = "親愛的送貨員/客戶，系統未能在您傳送的訊息或照片中辨識到有效的送貨單資料。請您盡量在光線充足的環境下，將送貨單的 QR Code 清晰拍攝後再傳送，謝謝您的配合！\n\nDear delivery staff/customer, our system could not identify valid delivery note information from your message or photo. Please try to take a clear photo of the delivery note's QR code in a well-lit environment and resend it. Thank you for your cooperation!";
+
+                var payload = new
+                {
+                    messaging_product = "whatsapp",
+                    to = waId,
+                    type = "text",
+                    text = new { body = messageText }
+                };
+
+                var jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
+                _loggingService.LogDebug($"發送的 Payload: {jsonPayload}");
+
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                
+                var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                _loggingService.LogInformation("發送 HTTP 請求...");
+                
+                var response = await httpClient.PostAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"HTTP 回應狀態碼: {response.StatusCode}");
+                _loggingService.LogDebug($"HTTP 回應內容: {responseContent}");
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    _loggingService.LogInformation("WhatsApp 回覆發送成功！");
+                }
+                else
+                {
+                    _loggingService.LogError($"WhatsApp 回覆發送失敗，狀態碼: {response.StatusCode}");
+                }
             }
-
-            var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
-
-            var messageText = "親愛的送貨員/客戶，系統未能在您傳送的訊息或照片中辨識到有效的送貨單資料。請您盡量在光線充足的環境下，將送貨單的 QR Code 清晰拍攝後再傳送，謝謝您的配合！\n\nDear delivery staff/customer, our system could not identify valid delivery note information from your message or photo. Please try to take a clear photo of the delivery note’s QR code in a well-lit environment and resend it. Thank you for your cooperation!";
-
-            var payload = new
+            catch (Exception ex)
             {
-                messaging_product = "whatsapp",
-                to = waId,
-                type = "text",
-                text = new { body = messageText }
-            };
-
-            using var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-            var content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
-            await httpClient.PostAsync(url, content);
+                _loggingService.LogError($"發送 WhatsApp 回覆時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+            }
         }
 
-        private async Task SendWhatsAppSuccessReply(string waId)
+        private async Task SendWhatsAppSuccessReply(string waId, Company company)
         {
-            // 從第一個公司獲取 WhatsApp 配置
-            var company = await _context.Companies.FirstOrDefaultAsync();
+            // 使用傳入的 company 參數，而不是重新查詢
             if (company == null || string.IsNullOrEmpty(company.WA_API_Key) || string.IsNullOrEmpty(company.WA_PhoneNo_ID))
             {
-                Console.WriteLine("WhatsApp 配置不完整");
+                _loggingService.LogError("WhatsApp 配置不完整");
                 return;
             }
 
@@ -235,215 +283,352 @@ namespace PurpleRice.Controllers
             await httpClient.PostAsync(url, content);
         }
 
-        [HttpPost("webhook")]
-        public async Task<IActionResult> WhatsAppWebhook([FromBody] object payload)
+        [HttpPost("{companyToken}")]
+        public async Task<IActionResult> WhatsAppWebhook(string companyToken, [FromBody] object payload)
         {
             string waId = null;
             string mediaId = null;
             string messageId = null;
             string currentGroupDir = null;
 
+            _loggingService.LogInformation($"=== WhatsApp Webhook 開始處理 ===");
+            _loggingService.LogInformation($"CompanyToken: {companyToken}");
+            _loggingService.LogDebug($"Payload: {payload}");
+
             try
             {
+                // 使用 companyToken 查找對應的公司
+                var company = await _context.Companies.FirstOrDefaultAsync(c => c.WA_WebhookToken == companyToken);
+                if (company == null)
+                {
+                    _loggingService.LogWarning($"找不到對應的公司，Token: {companyToken}");
+                    return NotFound("Company not found");
+                }
+
+                _loggingService.LogInformation($"找到公司: {company.Name} (ID: {company.Id})");
+
                 var json = payload.ToString();
+                _loggingService.LogDebug($"JSON 字串: {json}");
+                
                 using var doc = System.Text.Json.JsonDocument.Parse(json);
                 var root = doc.RootElement;
+                _loggingService.LogDebug($"Root 元素: {root}");
+                
                 var entry = root.GetProperty("entry")[0];
+                _loggingService.LogDebug($"Entry: {entry}");
+                
                 var changes = entry.GetProperty("changes")[0];
+                _loggingService.LogDebug($"Changes: {changes}");
+                
                 var value = changes.GetProperty("value");
+                _loggingService.LogDebug($"Value: {value}");
+                
                 var messages = value.GetProperty("messages")[0];
+                _loggingService.LogDebug($"Messages: {messages}");
 
                 // 取 wa_id
                 if (value.TryGetProperty("contacts", out var contacts))
+                {
                     waId = contacts[0].GetProperty("wa_id").GetString();
+                    _loggingService.LogInformation($"取得 wa_id: {waId}");
+                }
+                else
+                {
+                    _loggingService.LogWarning("未找到 contacts 屬性");
+                }
 
                 // 取 message id
                 if (messages.TryGetProperty("id", out var msgIdProp))
+                {
                     messageId = msgIdProp.GetString();
+                    _loggingService.LogInformation($"取得 message_id: {messageId}");
+                }
+                else
+                {
+                    _loggingService.LogWarning("未找到 message id 屬性");
+                }
 
                 // 取 image id
                 if (messages.TryGetProperty("image", out var image))
+                {
                     mediaId = image.GetProperty("id").GetString();
+                    _loggingService.LogInformation($"取得 image media_id: {mediaId}");
+                }
                 else
                 {
+                    _loggingService.LogInformation("未找到 image 屬性，檢查其他訊息類型...");
+                    
+                    // 檢查是否有文字訊息
+                    if (messages.TryGetProperty("text", out var text))
+                    {
+                        var textBody = text.GetProperty("body").GetString();
+                        _loggingService.LogInformation($"發現文字訊息: {textBody}");
+                    }
+                    
+                    // 檢查是否有文件訊息
+                    if (messages.TryGetProperty("document", out var document))
+                    {
+                        _loggingService.LogInformation("發現文件訊息");
+                    }
+                    
+                    // 檢查是否有語音訊息
+                    if (messages.TryGetProperty("audio", out var audio))
+                    {
+                        _loggingService.LogInformation("發現語音訊息");
+                    }
+                    
                     // 取得目前分組目錄
                     if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
                     {
+                        _loggingService.LogInformation($"找到現有分組目錄: {groupDir}");
                         await SaveImageToGroupDir(mediaId, waId, groupDir);
                     }
-                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
+                    else
+                    {
+                        _loggingService.LogInformation($"未找到現有分組目錄，waId: {waId}");
+                    }
+                    
+                    if (!string.IsNullOrEmpty(waId)) 
+                    {
+                        _loggingService.LogInformation($"發送回覆給 waId: {waId}");
+                        await SendWhatsAppReply(waId, company);
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning("無法發送回覆，waId 為空");
+                    }
                     return Ok();
                 }
 
                 if (string.IsNullOrEmpty(mediaId))
                 {
+                    _loggingService.LogInformation("mediaId 為空，發送回覆");
                     if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
                     {
                         await SaveImageToGroupDir(mediaId, waId, groupDir);
                     }
-                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
-                    return Ok();
-                }
-            }
-            catch
-            {
-                return Ok();
-            }
-
-            // 下載圖片
-            byte[] imageBytes = null;
-            try
-            {
-                // 從第一個公司獲取 WhatsApp 配置
-                var company = await _context.Companies.FirstOrDefaultAsync();
-                if (company == null || string.IsNullOrEmpty(company.WA_API_Key))
-                {
-                    Console.WriteLine("WhatsApp 配置不完整，無法下載圖片");
-                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
+                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company);
                     return Ok();
                 }
 
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                var metaResp = await httpClient.GetAsync($"https://graph.facebook.com/v19.0/{mediaId}");
-                var metaJson = await metaResp.Content.ReadAsStringAsync();
-                dynamic metaObj = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonObject>(metaJson);
-                var mediaUrl = metaObj?["url"]?.ToString();
-                if (mediaUrl == null) { if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId); return Ok(); }
-                var imgResp = await httpClient.GetAsync(mediaUrl);
-                if (!imgResp.IsSuccessStatusCode) { if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId); return Ok(); }
-                imageBytes = await imgResp.Content.ReadAsByteArrayAsync();
-            }
-            catch
-            {
-                if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
-                return Ok();
-            }
-
-            // 掃描 QR code
-            string qrCodeText = null;
-            bool isNewGroup = false;
-            string newGroupDir = null;
-            string customerNo = null;
-            try
-            {
-                using var ms = new MemoryStream(imageBytes);
-                using var bitmap = new Bitmap(ms);
-                var options = new DecodingOptions { TryHarder = true, PossibleFormats = new[] { BarcodeFormat.QR_CODE } };
-                var reader = new BarcodeReader { AutoRotate = true, TryInverted = true, Options = options };
-                var result = reader.Decode(bitmap);
-                if (result == null)
+                _loggingService.LogInformation($"開始下載圖片，mediaId: {mediaId}");
+                // 下載圖片
+                byte[] imageBytes = null;
+                try
                 {
-                    // 取得目前分組目錄
+                    // 使用已找到的公司配置，不需要重新查詢
+                    if (string.IsNullOrEmpty(company.WA_API_Key))
+                    {
+                        _loggingService.LogWarning("WhatsApp 配置不完整，無法下載圖片");
+                        if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company);
+                        return Ok();
+                    }
+
+                    using var httpClient = new HttpClient();
+                    httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                    var metaResp = await httpClient.GetAsync($"https://graph.facebook.com/v19.0/{mediaId}");
+                    var metaJson = await metaResp.Content.ReadAsStringAsync();
+                    dynamic metaObj = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonObject>(metaJson);
+                    var mediaUrl = metaObj?["url"]?.ToString();
+                    if (mediaUrl == null) { if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company); return Ok(); }
+                    var imgResp = await httpClient.GetAsync(mediaUrl);
+                    if (!imgResp.IsSuccessStatusCode) { if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company); return Ok(); }
+                    imageBytes = await imgResp.Content.ReadAsByteArrayAsync();
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError($"下載圖片失敗: {ex.Message}", ex);
+                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company);
+                    return Ok();
+                }
+
+                // 掃描 QR code
+                string qrCodeText = null;
+                bool isNewGroup = false;
+                string newGroupDir = null;
+                string customerNo = null;
+                try
+                {
+                    using var ms = new MemoryStream(imageBytes);
+                    using var bitmap = new Bitmap(ms);
+                    var options = new DecodingOptions { TryHarder = true, PossibleFormats = new[] { BarcodeFormat.QR_CODE } };
+                    var reader = new BarcodeReader { AutoRotate = true, TryInverted = true, Options = options };
+                    var result = reader.Decode(bitmap);
+                    if (result == null)
+                    {
+                        // 取得目前分組目錄
+                        if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
+                        {
+                            await SaveImageToGroupDir(mediaId, waId, groupDir, imageBytes);
+                        }
+                        if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company);
+                        return Ok();
+                    }
+                    qrCodeText = result.Text.Trim();
+                    _loggingService.LogInformation($"掃描到 QR Code 文字: {qrCodeText}");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError($"掃描 QR Code 失敗: {ex.Message}", ex);
                     if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
                     {
                         await SaveImageToGroupDir(mediaId, waId, groupDir, imageBytes);
                     }
-                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
+                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company);
                     return Ok();
                 }
-                qrCodeText = result.Text.Trim();
-            }
-            catch
-            {
-                if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
+
+                // 查資料庫
+                // 新增：解析 QR Code 格式來提取 invoice no
+                string extractedInvoiceNo = qrCodeText;
+                
+                // 檢查是否為新的 QR Code 格式
+                if (qrCodeText.StartsWith("DN*") || qrCodeText.StartsWith("INV*"))
                 {
-                    await SaveImageToGroupDir(mediaId, waId, groupDir, imageBytes);
+                    // 分割字串並取得第二個元素（索引1）
+                    var parts = qrCodeText.Split('*');
+                    if (parts.Length >= 2)
+                    {
+                        extractedInvoiceNo = parts[1];
+                        _loggingService.LogInformation($"從 QR Code 格式 '{qrCodeText}' 中提取到 invoice no: {extractedInvoiceNo}");
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"QR Code 格式不正確，無法解析: {qrCodeText}");
+                    }
                 }
-                if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
+                
+                var orderInfo = await _erpContext.SoOrderManage.Where(o => o.invoiceno == extractedInvoiceNo).FirstOrDefaultAsync();
+                if (orderInfo == null)
+                {
+                    _loggingService.LogWarning($"QR Code 文字 '{qrCodeText}' 提取的 invoice no '{extractedInvoiceNo}' 未找到對應的訂單資訊");
+                    if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
+                    {
+                        await SaveImageToGroupDir(mediaId, waId, groupDir, imageBytes);
+                    }
+                    if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId, company);
+                    return Ok();
+                }
+                _loggingService.LogInformation($"找到訂單資訊: 客戶編號={orderInfo.customerno}, 發票號碼={orderInfo.invoiceno}");
+
+                // 新分組：以 DN_{customerNo}_{invoiceNo}_{yyyyMMddHHmm} 為目錄名
+                customerNo = orderInfo.customerno;
+                var invoiceNo = orderInfo.invoiceno;
+                var uploadsPath = Path.Combine(_environment.ContentRootPath, "Uploads");
+                var groupBaseDir = Path.Combine(uploadsPath, "Customer", customerNo, "Original");
+                var groupName = $"DN_{customerNo}_{invoiceNo}_{DateTime.Now:yyyyMMddHHmm}";
+                newGroupDir = Path.Combine(groupBaseDir, groupName);
+                Directory.CreateDirectory(newGroupDir);
+                // 更新 mapping
+                if (!string.IsNullOrEmpty(waId))
+                    _groupCache.Set(waId, newGroupDir, TimeSpan.FromHours(2));
+                // 儲存這張圖到新分組
+                await SaveImageToGroupDir(mediaId, waId, newGroupDir, imageBytes);
+                _loggingService.LogInformation($"儲存圖片到新分組: {newGroupDir}");
+
+                // 方法開頭統一宣告
+                string originalImagePath = null;
+                string pdfPath = null;
+                string imageRelPath = null;
+                string pdfRelPath = null;
+                DeliveryReceipt deliveryReceipt = null;
+                ItCustomer customerInfo = null;
+                DateTime receiptDate = DateTime.Now;
+
+                // 產生 PDF
+                originalImagePath = await SaveOriginalImageFromBytes(imageBytes, orderInfo.customerno);
+                pdfPath = _pdfService.ConvertImageToPdf(originalImagePath, customerNo, invoiceNo, groupName);
+                _loggingService.LogInformation($"產生 PDF: {pdfPath}");
+
+                // 寫入 DeliveryReceipt
+                imageRelPath = $"Customer\\{customerNo}\\Original\\{groupName}\\{groupName}_1.jpg"; // 假設只存第一張
+                pdfRelPath = $"Customer\\{customerNo}\\PDF\\{groupName}.pdf";
+                customerInfo = await _erpContext.ItCustomer.Where(c => c.customerno == orderInfo.customerno).FirstOrDefaultAsync();
+                receiptDate = DateTime.Now;
+                _loggingService.LogInformation($"寫入 DeliveryReceipt: 發票號碼={orderInfo.invoiceno}, 客戶編號={orderInfo.customerno}");
+
+                deliveryReceipt = new DeliveryReceipt
+                {
+                    within_code = orderInfo.within_code,
+                    invoiceno = orderInfo.invoiceno,
+                    customerno = orderInfo.customerno,
+                    customername = customerInfo?.customername1,
+                    contacttel1 = customerInfo?.contacttel1,
+                    contacttel2 = customerInfo?.contacttel2,
+                    original_image_path = imageRelPath,
+                    pdf_path = pdfRelPath,
+                    qr_code_text = qrCodeText,
+                    receipt_date = receiptDate,
+                    upload_date = DateTime.Now,
+                    upload_ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    status = "PENDING",
+                    uploaded_by = "DeliveryMan"
+                };
+                _context.DeliveryReceipt.Add(deliveryReceipt);
+                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"儲存 DeliveryReceipt 到資料庫，ID: {deliveryReceipt.id}");
+
+                // 發送成功訊息給送貨員，要求拍攝送貨證明照片
+                if (!string.IsNullOrEmpty(waId))
+                {
+                    await SendWhatsAppSuccessReply(waId, company);
+                    _loggingService.LogInformation($"發送成功回覆給 waId: {waId}");
+                }
+
+                var response = new
+                {
+                    success = true,
+                    message = "QR Code 掃描成功，記錄已儲存",
+                    receiptId = deliveryReceipt.id,
+                    invoiceNo = orderInfo.invoiceno,
+                    customerNo = orderInfo.customerno,
+                    contactTel1 = customerInfo?.contacttel1 ?? "",
+                    contactTel2 = customerInfo?.contacttel2 ?? "",
+                    customerName = customerInfo?.customername1 ?? "",
+                    qrCodeText = qrCodeText,
+                    receiptDate = deliveryReceipt.receipt_date,
+                    uploadDate = deliveryReceipt.upload_date,
+                    status = deliveryReceipt.status,
+                    originalImagePath = deliveryReceipt.original_image_path,
+                    pdfPath = deliveryReceipt.pdf_path,
+                    uploadedBy = deliveryReceipt.uploaded_by
+                };
+                _loggingService.LogInformation($"回傳成功訊息給用戶，waId: {waId}");
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"=== Webhook 處理發生錯誤 ===");
+                _loggingService.LogError($"錯誤訊息: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                _loggingService.LogDebug($"Payload 內容: {payload}");
+                
+                // 嘗試回覆用戶
+                if (!string.IsNullOrEmpty(waId))
+                {
+                    _loggingService.LogInformation($"嘗試發送錯誤回覆給 waId: {waId}");
+                    try
+                    {
+                        // 需要從外部作用域獲取 company
+                        var companyForError = await _context.Companies.FirstOrDefaultAsync(c => c.WA_WebhookToken == companyToken);
+                        if (companyForError != null)
+                        {
+                            await SendWhatsAppReply(waId, companyForError);
+                            _loggingService.LogInformation("錯誤回覆發送成功");
+                        }
+                    }
+                    catch (Exception replyEx)
+                    {
+                        _loggingService.LogError($"發送錯誤回覆失敗: {replyEx.Message}", replyEx);
+                    }
+                }
+                else
+                {
+                    _loggingService.LogWarning("無法發送錯誤回覆，waId 為空");
+                }
+                
                 return Ok();
             }
-
-            // 查資料庫
-            var orderInfo = await _erpContext.SoOrderManage.Where(o => o.invoiceno == qrCodeText).FirstOrDefaultAsync();
-            if (orderInfo == null)
-            {
-                if (!string.IsNullOrEmpty(waId) && _groupCache.TryGetValue(waId, out string groupDir) && !string.IsNullOrEmpty(groupDir))
-                {
-                    await SaveImageToGroupDir(mediaId, waId, groupDir, imageBytes);
-                }
-                if (!string.IsNullOrEmpty(waId)) await SendWhatsAppReply(waId);
-                return Ok();
-            }
-
-            // 新分組：以 DN_{customerNo}_{invoiceNo}_{yyyyMMddHHmm} 為目錄名
-            customerNo = orderInfo.customerno;
-            var invoiceNo = orderInfo.invoiceno;
-            var uploadsPath = Path.Combine(_environment.ContentRootPath, "Uploads");
-            var groupBaseDir = Path.Combine(uploadsPath, "Customer", customerNo, "Original");
-            var groupName = $"DN_{customerNo}_{invoiceNo}_{DateTime.Now:yyyyMMddHHmm}";
-            newGroupDir = Path.Combine(groupBaseDir, groupName);
-            Directory.CreateDirectory(newGroupDir);
-            // 更新 mapping
-            if (!string.IsNullOrEmpty(waId))
-                _groupCache.Set(waId, newGroupDir, TimeSpan.FromHours(2));
-            // 儲存這張圖到新分組
-            await SaveImageToGroupDir(mediaId, waId, newGroupDir, imageBytes);
-
-            // 方法開頭統一宣告
-            string originalImagePath = null;
-            string pdfPath = null;
-            string imageRelPath = null;
-            string pdfRelPath = null;
-            DeliveryReceipt deliveryReceipt = null;
-            ItCustomer customerInfo = null;
-            DateTime receiptDate = DateTime.Now;
-
-            // 產生 PDF
-            originalImagePath = await SaveOriginalImageFromBytes(imageBytes, orderInfo.customerno);
-            pdfPath = _pdfService.ConvertImageToPdf(originalImagePath, customerNo, invoiceNo, groupName);
-
-            // 寫入 DeliveryReceipt
-            imageRelPath = $"Customer\\{customerNo}\\Original\\{groupName}\\{groupName}_1.jpg"; // 假設只存第一張
-            pdfRelPath = $"Customer\\{customerNo}\\PDF\\{groupName}.pdf";
-            customerInfo = await _erpContext.ItCustomer.Where(c => c.customerno == orderInfo.customerno).FirstOrDefaultAsync();
-            receiptDate = DateTime.Now;
-
-            deliveryReceipt = new DeliveryReceipt
-            {
-                within_code = orderInfo.within_code,
-                invoiceno = orderInfo.invoiceno,
-                customerno = orderInfo.customerno,
-                customername = customerInfo?.customername1,
-                contacttel1 = customerInfo?.contacttel1,
-                contacttel2 = customerInfo?.contacttel2,
-                original_image_path = imageRelPath,
-                pdf_path = pdfRelPath,
-                qr_code_text = qrCodeText,
-                receipt_date = receiptDate,
-                upload_date = DateTime.Now,
-                upload_ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                status = "PENDING",
-                uploaded_by = "DeliveryMan"
-            };
-            _context.DeliveryReceipt.Add(deliveryReceipt);
-            await _context.SaveChangesAsync();
-
-            // 發送成功訊息給送貨員，要求拍攝送貨證明照片
-            if (!string.IsNullOrEmpty(waId))
-            {
-                await SendWhatsAppSuccessReply(waId);
-            }
-
-            var response = new
-            {
-                success = true,
-                message = "QR Code 掃描成功，記錄已儲存",
-                receiptId = deliveryReceipt.id,
-                invoiceNo = orderInfo.invoiceno,
-                customerNo = orderInfo.customerno,
-                contactTel1 = customerInfo?.contacttel1 ?? "",
-                contactTel2 = customerInfo?.contacttel2 ?? "",
-                customerName = customerInfo?.customername1 ?? "",
-                qrCodeText = qrCodeText,
-                receiptDate = deliveryReceipt.receipt_date,
-                uploadDate = deliveryReceipt.upload_date,
-                status = deliveryReceipt.status,
-                originalImagePath = deliveryReceipt.original_image_path,
-                pdfPath = deliveryReceipt.pdf_path,
-                uploadedBy = deliveryReceipt.uploaded_by
-            };
-            return Ok(response);
         }
 
         private async Task<string> SaveOriginalImage(IFormFile imageFile, string customerNo)

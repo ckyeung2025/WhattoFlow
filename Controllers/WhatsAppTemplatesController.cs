@@ -2,19 +2,52 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
+using PurpleRice.Services;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 using System.Text.Json;
 
 namespace PurpleRice.Controllers
 {
+    // DTO 類用於創建請求
+    public class WhatsAppTemplateCreateRequest
+    {
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public string Category { get; set; }
+        public string TemplateType { get; set; }
+        public string Content { get; set; }
+        public string Variables { get; set; }
+        public string Status { get; set; }
+        public string Language { get; set; }
+    }
+
+    // DTO 類用於更新請求
+    public class WhatsAppTemplateUpdateRequest
+    {
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public string Category { get; set; }
+        public string TemplateType { get; set; }
+        public string Content { get; set; }
+        public string Variables { get; set; }
+        public string Status { get; set; }
+        public string Language { get; set; }
+    }
+
     [ApiController]
     [Route("api/[controller]")]
     public class WhatsAppTemplatesController : ControllerBase
     {
         private readonly PurpleRiceDbContext _context;
-
-        public WhatsAppTemplatesController(PurpleRiceDbContext context)
+        private readonly LoggingService _loggingService;
+        
+        public WhatsAppTemplatesController(PurpleRiceDbContext context, Func<string, LoggingService> loggingServiceFactory)
         {
             _context = context;
+            _loggingService = loggingServiceFactory("WhatsAppTemplatesController");
         }
 
         private Guid? GetCurrentUserCompanyId()
@@ -47,98 +80,84 @@ namespace PurpleRice.Controllers
         public async Task<IActionResult> GetTemplates(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10,
-            [FromQuery] string sortField = "createdAt",
+            [FromQuery] string sortField = "created_at",
             [FromQuery] string sortOrder = "desc",
-            [FromQuery] string search = "",
-            [FromQuery] string category = "",
-            [FromQuery] string status = "")
+            [FromQuery] string search = "")
         {
             try
             {
-                Console.WriteLine($"📋 [GetTemplates] 獲取模板列表 - 頁面: {page}, 每頁: {pageSize}, 排序: {sortField} {sortOrder}, 搜索: {search}");
+                _loggingService.LogInformation($"📋 [GetTemplates] 獲取模板列表 - 頁面: {page}, 每頁: {pageSize}, 排序: {sortField} {sortOrder}, 搜索: {search}");
 
-                var query = _context.WhatsAppTemplates.AsQueryable();
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [GetTemplates] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 修復：根據公司ID過濾模板
+                var query = _context.WhatsAppTemplates
+                    .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted)
+                    .AsQueryable();
 
                 // 搜索過濾
                 if (!string.IsNullOrEmpty(search))
                 {
                     query = query.Where(t => 
                         t.Name.Contains(search) || 
-                        t.Description.Contains(search) || 
-                        t.Category.Contains(search));
+                        t.Category.Contains(search) || 
+                        t.TemplateType.Contains(search));
                 }
 
-                // 分類過濾
-                if (!string.IsNullOrEmpty(category))
+                // 排序
+                switch (sortField.ToLower())
                 {
-                    query = query.Where(t => t.Category == category);
+                    case "name":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Name) : query.OrderByDescending(t => t.Name);
+                        break;
+                    case "category":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Category) : query.OrderByDescending(t => t.Category);
+                        break;
+                    case "template_type":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.TemplateType) : query.OrderByDescending(t => t.TemplateType);
+                        break;
+                    case "status":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Status) : query.OrderByDescending(t => t.Status);
+                        break;
+                    case "created_at":
+                    default:
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt);
+                        break;
                 }
 
-                // 狀態過濾
-                if (!string.IsNullOrEmpty(status))
-                {
-                    query = query.Where(t => t.Status == status);
-                }
-
-                // 應用排序
-                query = sortField.ToLower() switch
-                {
-                    "name" => sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Name) : query.OrderByDescending(t => t.Name),
-                    "category" => sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Category) : query.OrderByDescending(t => t.Category),
-                    "status" => sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Status) : query.OrderByDescending(t => t.Status),
-                    "updatedat" => sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.UpdatedAt) : query.OrderByDescending(t => t.UpdatedAt),
-                    _ => sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt)
-                };
-
-                // 計算總數
                 var total = await query.CountAsync();
-
-                // 應用分頁
                 var templates = await query
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
-                    .Select(t => new
-                    {
-                        t.Id,
-                        t.Name,
-                        t.Description,
-                        t.Category,
-                        t.TemplateType,
-                        t.Content,
-                        t.Variables,
-                        t.Status,
-                        t.Language,
-                        t.CreatedAt,
-                        t.UpdatedAt,
-                        t.CreatedBy,
-                        t.UpdatedBy,
-                        t.Version
-                    })
                     .ToListAsync();
 
-                Console.WriteLine($"✅ [GetTemplates] 成功獲取 {templates.Count} 個模板，總計 {total} 個");
-                
-                // 添加調試信息
+                // 記錄每個模板的詳細信息
                 foreach (var template in templates)
                 {
-                    Console.WriteLine($"📋 [GetTemplates] 模板 {template.Name}: Content={template.Content?.Substring(0, Math.Min(50, template.Content?.Length ?? 0))}..., Variables={template.Variables?.Substring(0, Math.Min(50, template.Variables?.Length ?? 0))}...");
+                    _loggingService.LogDebug($"📋 [GetTemplates] 模板 {template.Name}: Content={template.Content?.Substring(0, Math.Min(50, template.Content?.Length ?? 0))}..., Variables={template.Variables?.Substring(0, Math.Min(50, template.Variables?.Length ?? 0))}...");
                 }
+
+                _loggingService.LogInformation($"✅ [GetTemplates] 成功獲取 {templates.Count} 個模板，總計 {total} 個");
 
                 return Ok(new
                 {
-                    success = true,
-                    data = templates,
-                    total = total,
-                    page = page,
-                    pageSize = pageSize,
-                    sortField = sortField,
-                    sortOrder = sortOrder
+                    success = true,           // 添加 success 字段
+                    data = templates,         // 模板數據
+                    total = total,            // 總數量
+                    page = page,              // 當前頁面
+                    pageSize = pageSize,      // 每頁大小
+                    totalPages = (int)Math.Ceiling((double)total / pageSize)  // 總頁數
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [GetTemplates] 獲取模板列表失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"獲取模板列表失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [GetTemplates] 獲取模板列表失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取模板列表失敗" });
             }
         }
 
@@ -150,38 +169,18 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                var template = await _context.WhatsAppTemplates
-                    .Where(t => t.Id == id)
-                    .Select(t => new
-                    {
-                        t.Id,
-                        t.Name,
-                        t.Description,
-                        t.Category,
-                        t.TemplateType,
-                        t.Content,
-                        t.Variables,
-                        t.Status,
-                        t.Language,
-                        t.CreatedAt,
-                        t.UpdatedAt,
-                        t.CreatedBy,
-                        t.UpdatedBy,
-                        t.Version
-                    })
-                    .FirstOrDefaultAsync();
-
+                var template = await _context.WhatsAppTemplates.FindAsync(id);
                 if (template == null)
                 {
-                    return NotFound(new { success = false, error = "模板不存在" });
+                    return NotFound(new { error = "模板不存在" });
                 }
 
-                return Ok(new { success = true, data = template });
+                return Ok(template);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [GetTemplate] 獲取模板詳情失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"獲取模板詳情失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [GetTemplate] 獲取模板詳情失敗: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
@@ -193,9 +192,19 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                if (string.IsNullOrEmpty(request.Name))
+                // 獲取當前用戶ID和公司ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
                 {
-                    return BadRequest(new { success = false, error = "模板名稱不能為空" });
+                    _loggingService.LogWarning("❌ [CreateTemplate] 無法識別當前用戶");
+                    return Unauthorized(new { error = "無法識別當前用戶" });
+                }
+
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [CreateTemplate] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
                 }
 
                 var template = new WhatsAppTemplate
@@ -203,35 +212,35 @@ namespace PurpleRice.Controllers
                     Id = Guid.NewGuid(),
                     Name = request.Name,
                     Description = request.Description,
-                    Category = request.Category ?? "General",
-                    TemplateType = request.TemplateType ?? "Text",
+                    Category = request.Category,
+                    TemplateType = request.TemplateType,
                     Content = request.Content,
                     Variables = request.Variables,
-                    Status = request.Status ?? "Active",
-                    Language = request.Language ?? "zh-TW",
+                    Status = request.Status,
+                    Language = request.Language,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
-                    CreatedBy = request.CreatedBy ?? "System",
-                    UpdatedBy = request.UpdatedBy ?? "System",
-                    CompanyId = request.CompanyId,
-                    Version = 1
+                    CreatedBy = userId.ToString(),
+                    UpdatedBy = userId.ToString(),
+                    CompanyId = companyId.Value,
+                    IsDeleted = false
                 };
 
                 _context.WhatsAppTemplates.Add(template);
                 await _context.SaveChangesAsync();
 
-                Console.WriteLine($"✅ [CreateTemplate] 成功創建模板: {template.Name}");
+                _loggingService.LogInformation($"✅ [CreateTemplate] 成功創建模板: {template.Name}, 用戶ID: {userId}, 公司ID: {companyId.Value}");
 
                 return Ok(new { 
                     success = true, 
-                    data = template.Id,
-                    message = "模板創建成功" 
+                    data = template,
+                    message = "模板創建成功"
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [CreateTemplate] 創建模板失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"創建模板失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [CreateTemplate] 創建模板失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
@@ -243,17 +252,34 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                Console.WriteLine($"📝 [UpdateTemplate] 開始更新模板 ID: {id}");
-                Console.WriteLine($"📝 [UpdateTemplate] 請求數據: {System.Text.Json.JsonSerializer.Serialize(request)}");
+                _loggingService.LogInformation($"📝 [UpdateTemplate] 開始更新模板 ID: {id}");
+                _loggingService.LogDebug($"📝 [UpdateTemplate] 請求數據: {JsonSerializer.Serialize(request)}");
 
-                var template = await _context.WhatsAppTemplates.FindAsync(id);
-                if (template == null)
+                // 獲取當前用戶ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
                 {
-                    Console.WriteLine($"❌ [UpdateTemplate] 模板不存在: {id}");
-                    return NotFound(new { success = false, error = "模板不存在" });
+                    _loggingService.LogWarning("❌ [UpdateTemplate] 無法識別當前用戶");
+                    return Unauthorized(new { error = "無法識別當前用戶" });
                 }
 
-                // 更新所有字段，即使為空也更新
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [UpdateTemplate] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                var template = await _context.WhatsAppTemplates
+                    .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId.Value);
+            
+                if (template == null)
+                {
+                    _loggingService.LogWarning($"❌ [UpdateTemplate] 模板不存在或無權限訪問: {id}");
+                    return NotFound(new { error = "模板不存在或無權限訪問" });
+                }
+
+                // 更新模板屬性
                 template.Name = request.Name;
                 template.Description = request.Description;
                 template.Category = request.Category;
@@ -263,24 +289,29 @@ namespace PurpleRice.Controllers
                 template.Status = request.Status;
                 template.Language = request.Language;
                 template.UpdatedAt = DateTime.UtcNow;
-                template.UpdatedBy = request.UpdatedBy ?? "System";
-                template.Version++;
-
-                Console.WriteLine($"📝 [UpdateTemplate] 更新後數據: Name={template.Name}, Category={template.Category}, TemplateType={template.TemplateType}, Status={template.Status}");
+                template.UpdatedBy = userId.ToString();  // 設置更新用戶ID
+                
+                // 確保 CreatedBy 字段不為空（如果是新創建的模板）
+                if (string.IsNullOrEmpty(template.CreatedBy))
+                {
+                    template.CreatedBy = userId.ToString();
+                }
 
                 await _context.SaveChangesAsync();
 
-                Console.WriteLine($"✅ [UpdateTemplate] 成功更新模板: {template.Name}");
+                _loggingService.LogInformation($"📝 [UpdateTemplate] 更新後數據: Name={template.Name}, Category={template.Category}, TemplateType={template.TemplateType}, Status={template.Status}, UpdatedBy={userId}");
+                _loggingService.LogInformation($"✅ [UpdateTemplate] 成功更新模板: {template.Name}");
 
                 return Ok(new { 
                     success = true, 
-                    message = "模板更新成功" 
+                    data = template,
+                    message = "模板更新成功"
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [UpdateTemplate] 更新模板失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"更新模板失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [UpdateTemplate] 更新模板失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
@@ -288,48 +319,71 @@ namespace PurpleRice.Controllers
         /// 批量刪除模板
         /// </summary>
         [HttpDelete("batch-delete")]
-        public async Task<IActionResult> BatchDeleteTemplates([FromBody] WhatsAppTemplateBatchDeleteRequest request)
+        public async Task<IActionResult> BatchDeleteTemplates([FromQuery] string templateIds)
         {
             try
             {
-                Console.WriteLine($"🗑️ [BatchDeleteTemplates] 批量刪除模板 - 數量: {request.TemplateIds?.Count ?? 0}");
+                // 解析查詢參數中的 templateIds
+                var ids = templateIds?.Split(',')
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Select(id => Guid.TryParse(id, out var guid) ? guid : Guid.Empty)
+                    .Where(id => id != Guid.Empty)
+                    .ToList() ?? new List<Guid>();
 
-                if (request.TemplateIds == null || !request.TemplateIds.Any())
+                _loggingService.LogInformation($"🗑️ [BatchDeleteTemplates] 批量刪除模板 - 數量: {ids.Count}");
+
+                if (!ids.Any())
                 {
-                    return BadRequest(new { success = false, error = "請提供要刪除的模板 ID" });
+                    return BadRequest(new { error = "請提供要刪除的模板 ID 列表" });
                 }
 
+                // 獲取當前用戶ID和公司ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+                {
+                    _loggingService.LogWarning("❌ [BatchDeleteTemplates] 無法識別當前用戶");
+                    return Unauthorized(new { error = "無法識別當前用戶" });
+                }
+
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [BatchDeleteTemplates] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 修復：根據公司ID過濾模板
                 var templatesToDelete = await _context.WhatsAppTemplates
-                    .Where(t => request.TemplateIds.Contains(t.Id))
+                    .Where(t => ids.Contains(t.Id) && t.CompanyId == companyId.Value)
                     .ToListAsync();
 
                 if (!templatesToDelete.Any())
                 {
-                    return NotFound(new { success = false, error = "未找到要刪除的模板" });
+                    return NotFound(new { error = "未找到要刪除的模板或無權限訪問" });
                 }
 
-                // 軟刪除（標記為已刪除）
+                // 軟刪除：設置 IsDeleted 標記和更新信息
                 foreach (var template in templatesToDelete)
                 {
                     template.IsDeleted = true;
                     template.UpdatedAt = DateTime.UtcNow;
+                    template.UpdatedBy = userId.ToString();  // 新增：設置更新用戶ID
                 }
 
                 await _context.SaveChangesAsync();
 
-                Console.WriteLine($"✅ [BatchDeleteTemplates] 成功刪除 {templatesToDelete.Count} 個模板");
+                _loggingService.LogInformation($"✅ [BatchDeleteTemplates] 成功刪除 {templatesToDelete.Count} 個模板，用戶ID: {userId}, 公司ID: {companyId.Value}");
 
-                return Ok(new
-                {
-                    success = true,
+                return Ok(new { 
+                    success = true, 
                     deletedCount = templatesToDelete.Count,
                     message = $"成功刪除 {templatesToDelete.Count} 個模板"
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [BatchDeleteTemplates] 批量刪除失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"批量刪除失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [BatchDeleteTemplates] 批量刪除失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
@@ -341,29 +395,46 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                var template = await _context.WhatsAppTemplates.FindAsync(id);
+                // 獲取當前用戶ID和公司ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out Guid userId))
+                {
+                    _loggingService.LogWarning("❌ [DeleteTemplate] 無法識別當前用戶");
+                    return Unauthorized(new { error = "無法識別當前用戶" });
+                }
+
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [DeleteTemplate] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 修復：根據公司ID查找模板
+                var template = await _context.WhatsAppTemplates
+                    .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId.Value);
+            
                 if (template == null)
                 {
-                    return NotFound(new { success = false, error = "模板不存在" });
+                    _loggingService.LogWarning($"❌ [DeleteTemplate] 模板不存在或無權限訪問: {id}");
+                    return NotFound(new { error = "模板不存在或無權限訪問" });
                 }
 
                 // 軟刪除
                 template.IsDeleted = true;
                 template.UpdatedAt = DateTime.UtcNow;
+                template.UpdatedBy = userId.ToString();  // 新增：設置更新用戶ID
+                
                 await _context.SaveChangesAsync();
 
-                Console.WriteLine($"✅ [DeleteTemplate] 成功刪除模板: {template.Name}");
+                _loggingService.LogInformation($"✅ [DeleteTemplate] 成功刪除模板: {template.Name}, 用戶ID: {userId}, 公司ID: {companyId.Value}");
 
-                return Ok(new
-                {
-                    success = true,
-                    message = "模板已成功刪除"
-                });
+                return Ok(new { success = true, message = "模板刪除成功" });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [DeleteTemplate] 刪除失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"刪除失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [DeleteTemplate] 刪除失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
@@ -382,471 +453,60 @@ namespace PurpleRice.Controllers
                     .OrderBy(c => c)
                     .ToListAsync();
 
-                return Ok(new { success = true, data = categories });
+                return Ok(categories);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [GetCategories] 獲取分類失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"獲取分類失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [GetCategories] 獲取分類失敗: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
         /// <summary>
         /// 測試模板渲染
         /// </summary>
-        [HttpPost("test-render")]
-        public async Task<IActionResult> TestRenderTemplate([FromBody] WhatsAppTemplateTestRequest request)
+        [HttpPost("{id}/test-render")]
+        public async Task<IActionResult> TestRenderTemplate(Guid id, [FromBody] Dictionary<string, string> variables)
         {
             try
             {
-                var template = await _context.WhatsAppTemplates.FindAsync(request.TemplateId);
+                var template = await _context.WhatsAppTemplates.FindAsync(id);
                 if (template == null)
                 {
-                    return NotFound(new { success = false, error = "模板不存在" });
+                    return NotFound(new { error = "模板不存在" });
                 }
 
-                // 解析模板內容
-                var templateContent = JsonSerializer.Deserialize<JsonElement>(template.Content);
-                var variables = !string.IsNullOrEmpty(template.Variables) 
-                    ? JsonSerializer.Deserialize<List<WhatsAppTemplateVariable>>(template.Variables) 
-                    : new List<WhatsAppTemplateVariable>();
-
-                // 渲染模板
-                var renderedContent = RenderTemplate(templateContent, request.Variables);
+                // 這裡實現模板渲染邏輯
+                var renderedContent = RenderTemplate(template.Content, variables);
 
                 return Ok(new { 
-                    success = true, 
-                    data = new
-                    {
-                        originalContent = templateContent,
-                        renderedContent = renderedContent,
-                        variables = variables
-                    }
+                    originalContent = template.Content,
+                    renderedContent = renderedContent,
+                    variables = variables
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [TestRenderTemplate] 測試渲染失敗: {ex.Message}");
-                return StatusCode(500, new { success = false, error = $"測試渲染失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [TestRenderTemplate] 測試渲染失敗: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
         /// <summary>
         /// 渲染模板內容
         /// </summary>
-        private string RenderTemplate(JsonElement templateContent, Dictionary<string, string> variables)
+        private string RenderTemplate(string templateContent, Dictionary<string, string> variables)
         {
-            var content = templateContent.GetProperty("content").GetString();
-            
-            if (variables != null)
+            if (string.IsNullOrEmpty(templateContent) || variables == null)
+                return templateContent;
+
+            var result = templateContent;
+            foreach (var variable in variables)
             {
-                foreach (var variable in variables)
-                {
-                    content = content.Replace($"{{{{{variable.Key}}}}}", variable.Value);
-                }
+                result = result.Replace($"{{{{{variable.Key}}}}}", variable.Value ?? "");
             }
 
-            return content;
+            return result;
         }
-
-        // GET: api/whatsapptemplates/meta-templates
-        [HttpGet("meta-templates")]
-        public async Task<IActionResult> GetMetaTemplates()
-        {
-            try
-            {
-                var companyId = GetCurrentUserCompanyId();
-                if (!companyId.HasValue)
-                {
-                    return Unauthorized(new { error = "無法識別用戶公司" });
-                }
-
-                // 從公司表獲取 WhatsApp 配置
-                var company = await _context.Companies
-                    .Where(c => c.Id == companyId.Value)
-                    .FirstOrDefaultAsync();
-
-                if (company == null || string.IsNullOrEmpty(company.WA_API_Key) || string.IsNullOrEmpty(company.WA_PhoneNo_ID))
-                {
-                    return BadRequest(new { error = "公司 WhatsApp 配置不完整" });
-                }
-
-                // 調用 Meta API 獲取模板列表
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                
-                // 首先檢查 Access Token 是否有效並獲取用戶資訊
-                var meUrl = "https://graph.facebook.com/v23.0/me?fields=id,name,whatsapp_business_account";
-                var meResponse = await httpClient.GetAsync(meUrl);
-                var meContent = await meResponse.Content.ReadAsStringAsync();
-                
-                if (!meResponse.IsSuccessStatusCode)
-                {
-                    return BadRequest(new { error = $"Access Token 無效或權限不足: {meResponse.StatusCode} - {meContent}" });
-                }
-                
-                var meData = JsonSerializer.Deserialize<JsonElement>(meContent);
-                
-                // 檢查是否有 WhatsApp Business Account
-                if (!meData.TryGetProperty("whatsapp_business_account", out var wbaProperty))
-                {
-                    return BadRequest(new { 
-                        error = "此 Access Token 沒有關聯的 WhatsApp Business Account",
-                        details = "請在 Facebook 開發者後台啟用 WhatsApp Business API 並設置正確的權限",
-                        setupSteps = new[] {
-                            "1. 登入 developers.facebook.com",
-                            "2. 選擇您的應用程式",
-                            "3. 在左側選單中找到 'WhatsApp'",
-                            "4. 點擊 'Getting Started' 設置 WhatsApp Business API",
-                            "5. 添加 whatsapp_business_messaging 權限",
-                            "6. 生成新的 Access Token"
-                        }
-                    });
-                }
-                
-                var whatsappBusinessAccountId = wbaProperty.GetProperty("id").GetString();
-                
-                // 使用 WhatsApp Business Account ID 獲取模板列表
-                var url = $"https://graph.facebook.com/v23.0/{whatsappBusinessAccountId}/message_templates";
-                var response = await httpClient.GetAsync(url);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    return BadRequest(new { error = $"Meta API 請求失敗: {response.StatusCode} - {responseContent}" });
-                }
-
-                // 解析 Meta API 響應
-                var metaResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                var templates = new List<object>();
-
-                if (metaResponse.TryGetProperty("data", out var dataArray))
-                {
-                    foreach (var template in dataArray.EnumerateArray())
-                    {
-                        var templateObj = new
-                        {
-                            id = template.TryGetProperty("id", out var idProp) ? idProp.GetString() : "",
-                            name = template.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : "",
-                            status = template.TryGetProperty("status", out var statusProp) ? statusProp.GetString() : "",
-                            category = template.TryGetProperty("category", out var categoryProp) ? categoryProp.GetString() : "",
-                            language = template.TryGetProperty("language", out var languageProp) ? languageProp.GetString() : "",
-                            components = template.TryGetProperty("components", out var componentsProp) ? componentsProp.ToString() : "[]"
-                        };
-                        templates.Add(templateObj);
-                    }
-                }
-
-                return Ok(new { success = true, data = templates });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = $"獲取 Meta 模板失敗: {ex.Message}" });
-            }
-        }
-
-        // POST: api/whatsapptemplates/import-from-meta
-        [HttpPost("import-from-meta")]
-        public async Task<IActionResult> ImportFromMeta([FromBody] ImportMetaTemplateRequest request)
-        {
-            try
-            {
-                var companyId = GetCurrentUserCompanyId();
-                if (!companyId.HasValue)
-                {
-                    return Unauthorized(new { error = "無法識別用戶公司" });
-                }
-
-                // 從公司表獲取 WhatsApp 配置
-                var company = await _context.Companies
-                    .Where(c => c.Id == companyId.Value)
-                    .FirstOrDefaultAsync();
-
-                if (company == null || string.IsNullOrEmpty(company.WA_API_Key) || string.IsNullOrEmpty(company.WA_PhoneNo_ID))
-                {
-                    return BadRequest(new { error = "公司 WhatsApp 配置不完整" });
-                }
-
-                // 調用 Meta API 獲取特定模板詳情
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                
-                var url = $"https://graph.facebook.com/v23.0/{request.MetaTemplateId}";
-                var response = await httpClient.GetAsync(url);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    return BadRequest(new { error = $"Meta API 請求失敗: {response.StatusCode} - {responseContent}" });
-                }
-
-                // 解析模板詳情並創建本地模板
-                var metaTemplate = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                
-                var newTemplate = new WhatsAppTemplate
-                {
-                    Name = request.CustomName ?? metaTemplate.GetProperty("name").GetString(),
-                    Description = request.Description ?? $"從 Meta 導入的模板: {metaTemplate.GetProperty("name").GetString()}",
-                    Category = request.Category ?? "Imported",
-                    TemplateType = "Text", // 默認類型
-                    Content = responseContent, // 保存完整的 Meta 模板數據
-                    Variables = "[]", // 默認空變數
-                    Status = "Active",
-                    Language = metaTemplate.GetProperty("language").GetString(),
-                    CreatedBy = User.FindFirst("user_id")?.Value ?? "System",
-                    UpdatedBy = User.FindFirst("user_id")?.Value ?? "System",
-                    CompanyId = companyId.Value,
-                    MetaTemplateId = request.MetaTemplateId.ToString() // 保存 Meta 模板 ID
-                };
-
-                _context.WhatsAppTemplates.Add(newTemplate);
-                await _context.SaveChangesAsync();
-
-                return Ok(new { success = true, data = newTemplate, message = "模板導入成功" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = $"導入 Meta 模板失敗: {ex.Message}" });
-            }
-        }
-
-        // POST: api/whatsapptemplates/create-in-meta
-        [HttpPost("create-in-meta")]
-        public async Task<IActionResult> CreateInMeta([FromBody] CreateMetaTemplateRequest request)
-        {
-            try
-            {
-                var companyId = GetCurrentUserCompanyId();
-                if (!companyId.HasValue)
-                {
-                    return Unauthorized(new { error = "無法識別用戶公司" });
-                }
-
-                // 從公司表獲取 WhatsApp 配置
-                var company = await _context.Companies
-                    .Where(c => c.Id == companyId.Value)
-                    .FirstOrDefaultAsync();
-
-                if (company == null || string.IsNullOrEmpty(company.WA_API_Key) || string.IsNullOrEmpty(company.WA_PhoneNo_ID))
-                {
-                    return BadRequest(new { error = "公司 WhatsApp 配置不完整" });
-                }
-
-                // 構建 Meta API 請求
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                
-                // 首先檢查 Access Token 是否有效並獲取用戶資訊
-                var meUrl = "https://graph.facebook.com/v23.0/me?fields=id,name,whatsapp_business_account";
-                var meResponse = await httpClient.GetAsync(meUrl);
-                var meContent = await meResponse.Content.ReadAsStringAsync();
-                
-                if (!meResponse.IsSuccessStatusCode)
-                {
-                    return BadRequest(new { error = $"Access Token 無效或權限不足: {meResponse.StatusCode} - {meContent}" });
-                }
-                
-                var meData = JsonSerializer.Deserialize<JsonElement>(meContent);
-                
-                // 檢查是否有 WhatsApp Business Account
-                if (!meData.TryGetProperty("whatsapp_business_account", out var wbaProperty))
-                {
-                    return BadRequest(new { 
-                        error = "此 Access Token 沒有關聯的 WhatsApp Business Account",
-                        details = "請在 Facebook 開發者後台啟用 WhatsApp Business API 並設置正確的權限",
-                        setupSteps = new[] {
-                            "1. 登入 developers.facebook.com",
-                            "2. 選擇您的應用程式",
-                            "3. 在左側選單中找到 'WhatsApp'",
-                            "4. 點擊 'Getting Started' 設置 WhatsApp Business API",
-                            "5. 添加 whatsapp_business_messaging 權限",
-                            "6. 生成新的 Access Token"
-                        }
-                    });
-                }
-                
-                var whatsappBusinessAccountId = wbaProperty.GetProperty("id").GetString();
-                
-                var url = $"https://graph.facebook.com/v23.0/{whatsappBusinessAccountId}/message_templates";
-                var payload = new
-                {
-                    name = request.Name,
-                    category = request.Category,
-                    components = new[]
-                    {
-                        new
-                        {
-                            type = "BODY",
-                            text = request.Content
-                        }
-                    },
-                    language = request.Language
-                };
-                
-                var content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync(url, content);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    return BadRequest(new { error = $"Meta API 創建失敗: {response.StatusCode} - {responseContent}" });
-                }
-
-                // 解析響應獲取 Meta 模板 ID
-                var metaResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                var metaTemplateId = metaResponse.GetProperty("id").GetString();
-
-                // 創建本地模板記錄
-                var newTemplate = new WhatsAppTemplate
-                {
-                    Name = request.Name,
-                    Description = request.Description,
-                    Category = request.Category,
-                    TemplateType = "Text",
-                    Content = request.Content,
-                    Variables = "[]",
-                    Status = "Active",
-                    Language = request.Language,
-                    CreatedBy = User.FindFirst("user_id")?.Value ?? "System",
-                    UpdatedBy = User.FindFirst("user_id")?.Value ?? "System",
-                    CompanyId = companyId.Value,
-                    MetaTemplateId = metaTemplateId
-                };
-
-                _context.WhatsAppTemplates.Add(newTemplate);
-                await _context.SaveChangesAsync();
-
-                return Ok(new { success = true, data = newTemplate, message = "Meta 模板創建成功" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = $"創建 Meta 模板失敗: {ex.Message}" });
-            }
-        }
-
-        // DELETE: api/whatsapptemplates/{id}/delete-from-meta
-        [HttpDelete("{id}/delete-from-meta")]
-        public async Task<IActionResult> DeleteFromMeta(Guid id)
-        {
-            try
-            {
-                var companyId = GetCurrentUserCompanyId();
-                if (!companyId.HasValue)
-                {
-                    return Unauthorized(new { error = "無法識別用戶公司" });
-                }
-
-                var template = await _context.WhatsAppTemplates
-                    .Where(t => t.Id == id && t.CompanyId == companyId.Value)
-                    .FirstOrDefaultAsync();
-
-                if (template == null)
-                {
-                    return NotFound(new { error = "模板不存在" });
-                }
-
-                if (string.IsNullOrEmpty(template.MetaTemplateId))
-                {
-                    return BadRequest(new { error = "此模板沒有對應的 Meta 模板 ID" });
-                }
-
-                // 從公司表獲取 WhatsApp 配置
-                var company = await _context.Companies
-                    .Where(c => c.Id == companyId.Value)
-                    .FirstOrDefaultAsync();
-
-                if (company == null || string.IsNullOrEmpty(company.WA_API_Key))
-                {
-                    return BadRequest(new { error = "公司 WhatsApp 配置不完整" });
-                }
-
-                // 調用 Meta API 刪除模板
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                
-                var url = $"https://graph.facebook.com/v19.0/{template.MetaTemplateId}";
-                var response = await httpClient.DeleteAsync(url);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var responseContent = await response.Content.ReadAsStringAsync();
-                    return BadRequest(new { error = $"Meta API 刪除失敗: {response.StatusCode} - {responseContent}" });
-                }
-
-                // 刪除本地模板記錄
-                _context.WhatsAppTemplates.Remove(template);
-                await _context.SaveChangesAsync();
-
-                return Ok(new { success = true, message = "Meta 模板刪除成功" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { error = $"刪除 Meta 模板失敗: {ex.Message}" });
-            }
-        }
-    }
-
-    // 請求模型
-    public class WhatsAppTemplateCreateRequest
-    {
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public string Category { get; set; }
-        public string TemplateType { get; set; }
-        public string Content { get; set; }
-        public string Variables { get; set; }
-        public string Status { get; set; }
-        public string Language { get; set; }
-        public string CreatedBy { get; set; }
-        public string UpdatedBy { get; set; }
-        public Guid? CompanyId { get; set; }
-    }
-
-    public class WhatsAppTemplateUpdateRequest
-    {
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public string Category { get; set; }
-        public string TemplateType { get; set; }
-        public string Content { get; set; }
-        public string Variables { get; set; }
-        public string Status { get; set; }
-        public string Language { get; set; }
-        public string UpdatedBy { get; set; }
-    }
-
-    public class WhatsAppTemplateBatchDeleteRequest
-    {
-        public List<Guid> TemplateIds { get; set; } = new List<Guid>();
-    }
-
-    public class WhatsAppTemplateTestRequest
-    {
-        public Guid TemplateId { get; set; }
-        public Dictionary<string, string> Variables { get; set; }
-    }
-
-    public class WhatsAppTemplateVariable
-    {
-        public string Name { get; set; }
-        public string Type { get; set; }
-        public string Description { get; set; }
-    }
-
-    public class ImportMetaTemplateRequest
-    {
-        public Guid MetaTemplateId { get; set; }
-        public string CustomName { get; set; }
-        public string Description { get; set; }
-        public string Category { get; set; }
-    }
-
-    public class CreateMetaTemplateRequest
-    {
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public string Category { get; set; }
-        public string Content { get; set; }
-        public string Language { get; set; }
     }
 }

@@ -16,12 +16,14 @@ namespace PurpleRice.Controllers
         private readonly PurpleRiceDbContext _context;
         private readonly DeliveryService _deliveryService;
         private readonly IWebHostEnvironment _environment;
+        private readonly LoggingService _loggingService;
 
-        public DeliveryController(PurpleRiceDbContext context, DeliveryService deliveryService, IWebHostEnvironment environment)
+        public DeliveryController(PurpleRiceDbContext context, DeliveryService deliveryService, IWebHostEnvironment environment, Func<string, LoggingService> loggingServiceFactory)
         {
             _context = context;
             _deliveryService = deliveryService;
             _environment = environment;
+            _loggingService = loggingServiceFactory("DeliveryController");
         }
 
         [HttpGet("unconfirmed")]
@@ -34,7 +36,11 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                _loggingService.LogInformation($"獲取未確認送貨單 - 頁面: {page}, 每頁: {pageSize}, 搜索: {searchTerm}");
+                
                 var result = await _deliveryService.GetUnconfirmedDeliveriesAsync(page, pageSize, searchTerm, sortBy, sortOrder);
+                
+                _loggingService.LogInformation($"成功獲取 {result.Data.Count} 個未確認送貨單，總計 {result.Total} 個");
                 
                 return Ok(new
                 {
@@ -47,6 +53,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
+                _loggingService.LogError($"獲取未確認送貨單失敗: {ex.Message}", ex);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
@@ -61,7 +68,11 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                _loggingService.LogInformation($"獲取已確認送貨單 - 頁面: {page}, 每頁: {pageSize}, 搜索: {searchTerm}");
+                
                 var result = await _deliveryService.GetConfirmedDeliveriesAsync(page, pageSize, searchTerm, sortBy, sortOrder);
+                
+                _loggingService.LogInformation($"成功獲取 {result.Data.Count} 個已確認送貨單，總計 {result.Total} 個");
                 
                 return Ok(new
                 {
@@ -74,6 +85,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
+                _loggingService.LogError($"獲取已確認送貨單失敗: {ex.Message}", ex);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
@@ -135,50 +147,125 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                var success = await _deliveryService.ConfirmDeliveryAsync(id, request.ApprovedBy, request.Remarks);
+                _loggingService.LogInformation($"確認送貨單 - ID: {id}");
                 
-                if (success)
-                    return Ok(new { message = "確認成功" });
+                var result = await _deliveryService.ConfirmDeliveryAsync(id, request.ApprovedBy, request.Remarks);
+                
+                if (result)
+                {
+                    _loggingService.LogInformation($"成功確認送貨單 - ID: {id}");
+                    return Ok(new { success = true, message = "送貨單已確認" });
+                }
                 else
-                    return NotFound(new { error = "找不到指定的送貨單" });
+                {
+                    _loggingService.LogWarning($"確認送貨單失敗 - ID: {id}");
+                    return BadRequest(new { success = false, message = "確認送貨單失敗" });
+                }
             }
             catch (Exception ex)
             {
+                _loggingService.LogError($"確認送貨單時發生錯誤 - ID: {id}, 錯誤: {ex.Message}", ex);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
 
-        [HttpPost("confirm-multiple")]
-        public async Task<IActionResult> ConfirmMultipleDeliveries([FromBody] ConfirmMultipleDeliveriesRequest request)
+        [HttpPost("reject/{id}")]
+        public async Task<IActionResult> RejectDelivery(int id, [FromBody] RejectDeliveryRequest request)
         {
             try
             {
-                var success = await _deliveryService.ConfirmMultipleDeliveriesAsync(request.Ids, request.ApprovedBy, request.Remarks);
+                _loggingService.LogInformation($"拒絕送貨單 - ID: {id}, 原因: {request.Remarks}");
                 
-                if (success)
-                    return Ok(new { message = "批量確認成功" });
+                var result = await _deliveryService.RejectDeliveryAsync(id, request.ApprovedBy, request.Remarks);
+                
+                if (result)
+                {
+                    _loggingService.LogInformation($"成功拒絕送貨單 - ID: {id}");
+                    return Ok(new { success = true, message = "送貨單已拒絕" });
+                }
                 else
-                    return NotFound(new { error = "找不到指定的送貨單" });
+                {
+                    _loggingService.LogWarning($"拒絕送貨單失敗 - ID: {id}");
+                    return BadRequest(new { success = false, message = "拒絕送貨單失敗" });
+                }
             }
             catch (Exception ex)
             {
+                _loggingService.LogError($"拒絕送貨單時發生錯誤 - ID: {id}, 錯誤: {ex.Message}", ex);
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("statistics")]
+        public async Task<IActionResult> GetDeliveryStatistics()
+        {
+            try
+            {
+                _loggingService.LogInformation("獲取送貨統計信息");
+                
+                var statistics = await _deliveryService.GetDeliveryStatisticsAsync();
+                
+                _loggingService.LogInformation("成功獲取送貨統計信息");
+                
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取送貨統計信息失敗: {ex.Message}", ex);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
 
         [HttpPost("cancel-confirm/{id}")]
-        public async Task<IActionResult> CancelConfirm(int id)
+        public async Task<IActionResult> CancelConfirmDelivery(int id)
         {
             try
             {
-                var success = await _deliveryService.CancelConfirmAsync(id);
-                if (success)
-                    return Ok(new { message = "已取消確認，資料已退回送貨員已送貨" });
+                _loggingService.LogInformation($"取消確認送貨單 - ID: {id}");
+                
+                var result = await _deliveryService.CancelConfirmAsync(id);
+                
+                if (result)
+                {
+                    _loggingService.LogInformation($"成功取消確認送貨單 - ID: {id}");
+                    return Ok(new { success = true, message = "送貨單已取消確認" });
+                }
                 else
-                    return NotFound(new { error = "找不到指定的送貨單" });
+                {
+                    _loggingService.LogWarning($"取消確認送貨單失敗 - ID: {id}");
+                    return BadRequest(new { success = false, message = "取消確認送貨單失敗" });
+                }
             }
             catch (Exception ex)
             {
+                _loggingService.LogError($"取消確認送貨單時發生錯誤 - ID: {id}, 錯誤: {ex.Message}", ex);
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("confirm-multiple")]
+        public async Task<IActionResult> BatchConfirmDeliveries([FromBody] ConfirmMultipleDeliveriesRequest request)
+        {
+            try
+            {
+                _loggingService.LogInformation($"批量確認送貨單 - 數量: {request.Ids.Count}");
+                
+                var result = await _deliveryService.ConfirmMultipleDeliveriesAsync(request.Ids, request.ApprovedBy, request.Remarks);
+                
+                if (result)
+                {
+                    _loggingService.LogInformation($"成功批量確認 {request.Ids.Count} 個送貨單");
+                    return Ok(new { success = true, message = $"成功確認 {request.Ids.Count} 個送貨單" });
+                }
+                else
+                {
+                    _loggingService.LogWarning($"批量確認送貨單失敗");
+                    return BadRequest(new { success = false, message = "批量確認送貨單失敗" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"批量確認送貨單時發生錯誤: {ex.Message}", ex);
                 return StatusCode(500, new { error = ex.Message });
             }
         }
@@ -225,14 +312,20 @@ namespace PurpleRice.Controllers
 
     public class ConfirmDeliveryRequest
     {
-        public string ApprovedBy { get; set; }
-        public string Remarks { get; set; }
+        public string ApprovedBy { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
     }
 
     public class ConfirmMultipleDeliveriesRequest
     {
-        public List<int> Ids { get; set; }
-        public string ApprovedBy { get; set; }
-        public string Remarks { get; set; }
+        public List<int> Ids { get; set; } = new List<int>();
+        public string ApprovedBy { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
+    }
+
+    public class RejectDeliveryRequest
+    {
+        public string ApprovedBy { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
     }
 } 
