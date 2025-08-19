@@ -19,6 +19,7 @@ import EFormListPage from './pages/EFormListPage';
 import EFormInstancePage from './pages/EFormInstancePage';
 import StudioTest from './pages/StudioTest';
 import './App.css';
+import DataSetManagementPage from './pages/DataSetManagementPage';
 
 const { Content } = Layout;
 
@@ -32,6 +33,7 @@ const pathToMenuKey = {
   '/whatsapp-templates': 'whatsappTemplates',
   '/eform-list': 'eformList',
   '/company-user-admin': 'companyUserAdmin',
+  '/data-sets': 'dataSets',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -71,6 +73,9 @@ function MainLayout({ userInfo, onLogout }) {
       case 'companyUserAdmin':
         navigate('/company-user-admin');
         break;
+      case 'dataSets':
+        navigate('/data-sets');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -99,6 +104,7 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/eform-instance/:id" element={<EFormInstancePage />} />
             <Route path="/whatsapp-templates" element={<WhatsAppTemplateList />} />
             <Route path="/studio-test" element={<StudioTest />} />
+            <Route path="/data-sets" element={<DataSetManagementPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -144,6 +150,9 @@ function AppContent() {
         break;
       case 'whatsappTemplates':
         navigate('/whatsapp-templates');
+        break;
+      case 'dataSets':
+        navigate('/data-sets');
         break;
       default:
         navigate('/dashboard');
@@ -275,6 +284,7 @@ function AppContent() {
               <Route path="/eform-instance/:id" element={<EFormInstancePage />} />
               <Route path="/whatsapp-templates" element={<WhatsAppTemplateList />} />
               <Route path="/studio-test" element={<StudioTest />} />
+              <Route path="/data-sets" element={<DataSetManagementPage />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </Content>
