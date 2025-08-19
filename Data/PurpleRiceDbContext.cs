@@ -27,6 +27,11 @@ namespace PurpleRice.Data
         public DbSet<EFormInstance> EFormInstances { get; set; }
         public DbSet<EFormApproval> EFormApprovals { get; set; }
         public DbSet<WhatsAppMonitorChatMsg> WhatsAppMonitorChatMsgs { get; set; }
+        public DbSet<DataSet> DataSets { get; set; }
+        public DbSet<DataSetColumn> DataSetColumns { get; set; }
+        public DbSet<DataSetDataSource> DataSetDataSources { get; set; }
+        public DbSet<DataSetRecord> DataSetRecords { get; set; }
+        public DbSet<DataSetRecordValue> DataSetRecordValues { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -324,6 +329,149 @@ namespace PurpleRice.Data
                       .WithMany()
                       .HasForeignKey(e => e.WorkflowInstanceId)
                       .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // DataSet 相關配置 - 簡化版本
+            modelBuilder.Entity<DataSet>(entity =>
+            {
+                entity.ToTable("data_sets");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Name).HasColumnName("name");
+                entity.Property(e => e.Description).HasColumnName("description");
+                entity.Property(e => e.DataSourceType).HasColumnName("data_source_type");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id");
+                entity.Property(e => e.Status).HasColumnName("status");
+                entity.Property(e => e.IsScheduled).HasColumnName("is_scheduled");
+                entity.Property(e => e.UpdateIntervalMinutes).HasColumnName("update_interval_minutes");
+                entity.Property(e => e.LastUpdateTime).HasColumnName("last_update_time");
+                entity.Property(e => e.NextUpdateTime).HasColumnName("next_update_time");
+                entity.Property(e => e.TotalRecords).HasColumnName("total_records");
+                entity.Property(e => e.LastDataSyncTime).HasColumnName("last_data_sync_time");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => new { e.CompanyId, e.Name }).IsUnique();
+            });
+            
+            modelBuilder.Entity<DataSetColumn>(entity =>
+            {
+                entity.ToTable("data_set_columns");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.DataSetId).HasColumnName("data_set_id");
+                entity.Property(e => e.ColumnName).HasColumnName("column_name");
+                entity.Property(e => e.DisplayName).HasColumnName("display_name");
+                entity.Property(e => e.DataType).HasColumnName("data_type");
+                entity.Property(e => e.MaxLength).HasColumnName("max_length");
+                entity.Property(e => e.IsRequired).HasColumnName("is_required");
+                entity.Property(e => e.IsPrimaryKey).HasColumnName("is_primary_key");
+                entity.Property(e => e.IsSearchable).HasColumnName("is_searchable");
+                entity.Property(e => e.IsSortable).HasColumnName("is_sortable");
+                entity.Property(e => e.IsIndexed).HasColumnName("is_indexed");
+                entity.Property(e => e.DefaultValue).HasColumnName("default_value");
+                entity.Property(e => e.SortOrder).HasColumnName("sort_order");
+                
+                entity.HasIndex(e => e.DataSetId);
+                entity.HasIndex(e => new { e.DataSetId, e.ColumnName }).IsUnique();
+                entity.HasIndex(e => new { e.DataSetId, e.SortOrder });
+            });
+            
+            modelBuilder.Entity<DataSetDataSource>(entity =>
+            {
+                entity.ToTable("data_set_data_sources");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.DataSetId).HasColumnName("data_set_id");
+                entity.Property(e => e.SourceType).HasColumnName("source_type");
+                entity.Property(e => e.DatabaseConnection).HasColumnName("database_connection");
+                entity.Property(e => e.SqlQuery).HasColumnName("sql_query");
+                entity.Property(e => e.SqlParameters).HasColumnName("sql_parameters");
+                entity.Property(e => e.ExcelFilePath).HasColumnName("excel_file_path");
+                entity.Property(e => e.ExcelSheetName).HasColumnName("excel_sheet_name");
+                entity.Property(e => e.ExcelUrl).HasColumnName("excel_url");
+                entity.Property(e => e.GoogleDocsUrl).HasColumnName("google_docs_url");
+                entity.Property(e => e.GoogleDocsSheetName).HasColumnName("google_docs_sheet_name");
+                entity.Property(e => e.AuthenticationConfig).HasColumnName("authentication_config");
+                entity.Property(e => e.AutoUpdate).HasColumnName("auto_update");
+                entity.Property(e => e.UpdateIntervalMinutes).HasColumnName("update_interval_minutes");
+                entity.Property(e => e.LastUpdateTime).HasColumnName("last_update_time");
+                
+                entity.HasIndex(e => e.DataSetId);
+            });
+            
+            modelBuilder.Entity<DataSetRecord>(entity =>
+            {
+                entity.ToTable("data_set_records");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.DataSetId).HasColumnName("data_set_id");
+                entity.Property(e => e.PrimaryKeyValue).HasColumnName("primary_key_value");
+                entity.Property(e => e.Status).HasColumnName("status");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                
+                entity.HasIndex(e => e.DataSetId);
+                entity.HasIndex(e => new { e.DataSetId, e.PrimaryKeyValue });
+                entity.HasIndex(e => new { e.DataSetId, e.Status });
+                entity.HasIndex(e => new { e.DataSetId, e.CreatedAt });
+            });
+            
+            modelBuilder.Entity<DataSetRecordValue>(entity =>
+            {
+                entity.ToTable("data_set_record_values");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.RecordId).HasColumnName("record_id");
+                entity.Property(e => e.ColumnName).HasColumnName("column_name");
+                entity.Property(e => e.StringValue).HasColumnName("string_value");
+                entity.Property(e => e.NumericValue).HasColumnName("numeric_value");
+                entity.Property(e => e.DateValue).HasColumnName("date_value");
+                entity.Property(e => e.BooleanValue).HasColumnName("boolean_value");
+                entity.Property(e => e.TextValue).HasColumnName("text_value");
+                
+                entity.HasIndex(e => e.RecordId);
+                entity.HasIndex(e => e.ColumnName);
+                entity.HasIndex(e => new { e.ColumnName, e.StringValue });
+                entity.HasIndex(e => new { e.ColumnName, e.NumericValue });
+                entity.HasIndex(e => new { e.ColumnName, e.DateValue });
+            });
+            
+            // 配置外鍵關係 - 簡化版本
+            modelBuilder.Entity<DataSetColumn>(entity =>
+            {
+                entity.HasOne(c => c.DataSet)
+                      .WithMany(d => d.Columns)
+                      .HasForeignKey(c => c.DataSetId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            modelBuilder.Entity<DataSetDataSource>(entity =>
+            {
+                entity.HasOne(ds => ds.DataSet)
+                      .WithMany(d => d.DataSources)
+                      .HasForeignKey(ds => ds.DataSetId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            modelBuilder.Entity<DataSetRecord>(entity =>
+            {
+                entity.HasOne(r => r.DataSet)
+                      .WithMany(d => d.Records)
+                      .HasForeignKey(r => r.DataSetId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                
+                entity.HasMany(r => r.Values)
+                      .WithOne(v => v.Record)
+                      .HasForeignKey(v => v.RecordId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            modelBuilder.Entity<DataSetRecordValue>(entity =>
+            {
+                entity.HasOne(v => v.Record)
+                      .WithMany(r => r.Values)
+                      .HasForeignKey(v => v.RecordId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

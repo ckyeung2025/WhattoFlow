@@ -9,7 +9,8 @@ import {
   MenuUnfoldOutlined,
   UserOutlined,
   MessageOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  DatabaseOutlined  // 添加這個圖標
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
@@ -64,6 +65,13 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
       icon: <BarChartOutlined />,
       label: t('menu.workflowMonitor'),
       url: '/workflow-monitor',
+    },
+    // 新增 Data Set 管理選單
+    {
+      key: 'dataSets',
+      icon: <DatabaseOutlined />,
+      label: 'Data Set 管理',
+      url: '/data-sets',
     },
     {
       key: 'companyUserAdmin',
