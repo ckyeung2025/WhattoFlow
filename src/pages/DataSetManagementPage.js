@@ -42,6 +42,13 @@ const DataSetManagementPage = () => {
   const [sheetNames, setSheetNames] = useState([]);
   const [sheetLoading, setSheetLoading] = useState(false);
 
+  // 在組件頂部添加記錄分頁狀態
+  const [recordsPagination, setRecordsPagination] = useState({
+    current: 1,
+    pageSize: 50,
+    total: 0
+  });
+
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -288,13 +295,30 @@ const DataSetManagementPage = () => {
     }
   };
 
+  // 修改 fetchRecords 函數支持分頁
   const fetchRecords = async (datasetId, searchParams = {}) => {
     console.log('fetchRecords: 開始獲取記錄，DataSet ID:', datasetId, '搜尋參數:', searchParams);
     setRecordsLoading(true);
     try {
       let url = `/api/datasets/${datasetId}/records`;
-      if (Object.keys(searchParams).length > 0) {
-        const params = new URLSearchParams(searchParams);
+      
+      // 構建查詢參數，包括分頁參數
+      const params = new URLSearchParams();
+      
+      // 添加分頁參數
+      const page = searchParams.page || recordsPagination.current;
+      const pageSize = searchParams.pageSize || recordsPagination.pageSize;
+      params.append('page', page);
+      params.append('pageSize', pageSize);
+      
+      // 添加其他搜尋參數
+      Object.keys(searchParams).forEach(key => {
+        if (key !== 'page' && key !== 'pageSize') {
+          params.append(key, searchParams[key]);
+        }
+      });
+      
+      if (params.toString()) {
         url += `?${params.toString()}`;
       }
       
@@ -315,6 +339,32 @@ const DataSetManagementPage = () => {
       if (result.success) {
         console.log('fetchRecords: 成功獲取記錄，記錄數量:', result.data.length);
         
+        // 更新記錄數據
+        setRecords(result.data);
+        
+        // 更新分頁信息
+        if (result.pagination) {
+          setRecordsPagination(prev => ({
+            ...prev,
+            current: result.pagination.page || page,
+            pageSize: result.pagination.pageSize || pageSize,
+            total: result.pagination.totalCount || result.data.length
+          }));
+          console.log('fetchRecords: 更新分頁信息:', {
+            current: result.pagination.page || page,
+            pageSize: result.pagination.pageSize || pageSize,
+            total: result.pagination.totalCount || result.data.length
+          });
+        } else {
+          // 如果後台沒有返回分頁信息，使用默認值
+          setRecordsPagination(prev => ({
+            ...prev,
+            current: page,
+            pageSize: pageSize,
+            total: result.data.length
+          }));
+        }
+        
         // 添加詳細的數據結構日誌
         if (result.data.length > 0) {
           console.log('fetchRecords: 第一條記錄的完整結構:', result.data[0]);
@@ -329,8 +379,6 @@ const DataSetManagementPage = () => {
             console.log('fetchRecords: 第一條記錄的可用屬性:', result.data[0]);
           }
         }
-        
-        setRecords(result.data);
       } else {
         console.error('fetchRecords: 獲取記錄失敗:', result.message);
         message.error('獲取記錄失敗: ' + result.message);
@@ -1524,7 +1572,8 @@ const DataSetManagementPage = () => {
         placement="right"
         open={drawerVisible}
         onClose={() => setDrawerVisible(false)}
-        width={1200}
+        width="100%"  // 改為全屏寬度
+        style={{ maxWidth: '100vw' }}  // 確保最大寬度
         extra={
           <Space>
             <Button 
@@ -1580,13 +1629,31 @@ const DataSetManagementPage = () => {
           dataSource={records}
           loading={recordsLoading}
           rowKey="id"
-          scroll={{ x: 1200 }}
+          scroll={{ x: 'max-content' }}  // 改為自適應寬度
           pagination={{
-            pageSize: 20,
+            current: recordsPagination.current,
+            pageSize: recordsPagination.pageSize,
+            total: recordsPagination.total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 條記錄`
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 條，共 ${total} 條記錄`,
+            pageSizeOptions: ['20', '50', '100', '200'],
+            onChange: (page, pageSize) => {
+              console.log('記錄分頁變更:', { page, pageSize });
+              setRecordsPagination(prev => ({ ...prev, current: page, pageSize }));
+              if (selectedDataSet) {
+                fetchRecords(selectedDataSet.id, { page, pageSize });
+              }
+            },
+            onShowSizeChange: (current, size) => {
+              console.log('記錄頁面大小變更:', { current, size });
+              setRecordsPagination(prev => ({ ...prev, current: 1, pageSize: size }));
+              if (selectedDataSet) {
+                fetchRecords(selectedDataSet.id, { page: 1, pageSize: size });
+              }
+            }
           }}
+          size="small"  // 使用小尺寸以顯示更多數據
         />
       </Drawer>
 
