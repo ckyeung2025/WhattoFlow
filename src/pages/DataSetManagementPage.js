@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Button, Modal, Form, Input, Select, Upload, message, 
   Card, Tag, Space, Typography, Drawer, Tooltip, Popconfirm,
-  Tabs, Switch, InputNumber, Divider, Alert, Row, Col, Collapse
+  Tabs, Switch, InputNumber, Divider, Alert, Row, Col, Collapse, Radio
 } from 'antd';
 import { 
   PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined,
@@ -107,17 +107,76 @@ const DataSetManagementPage = () => {
     if (record.dataSource) {
       console.log('handleEdit: 填充數據源表單:', record.dataSource);
       const dataSource = record.dataSource;
-      dataSourceForm.setFieldsValue({
-        sourceType: dataSource.sourceType,
-        databaseConnection: dataSource.databaseConnection,
-        sqlQuery: dataSource.sqlQuery,
-        excelFilePath: dataSource.excelFilePath,
-        excelSheetName: dataSource.excelSheetName,
-        googleDocsUrl: dataSource.googleDocsUrl,
-        googleDocsSheetName: dataSource.googleDocsSheetName,
-        autoUpdate: dataSource.autoUpdate,
-        updateIntervalMinutes: dataSource.updateIntervalMinutes
-      });
+      
+      // 處理 SQL 連接配置
+      if (dataSource.sourceType === 'SQL' && dataSource.authenticationConfig) {
+        try {
+          const authConfig = JSON.parse(dataSource.authenticationConfig);
+          if (authConfig.connectionType === 'preset') {
+            dataSourceForm.setFieldsValue({
+              sourceType: dataSource.sourceType,
+              connectionType: 'preset',
+              presetConnection: authConfig.presetName,
+              sqlQuery: dataSource.sqlQuery,
+              sqlParameters: dataSource.sqlParameters,
+              autoUpdate: dataSource.autoUpdate,
+              updateIntervalMinutes: dataSource.updateIntervalMinutes
+            });
+          } else if (authConfig.connectionType === 'custom') {
+            dataSourceForm.setFieldsValue({
+              sourceType: dataSource.sourceType,
+              connectionType: 'custom',
+              serverName: authConfig.serverName,
+              port: authConfig.port,
+              databaseName: authConfig.databaseName,
+              authenticationType: authConfig.authenticationType,
+              username: authConfig.username,
+              password: authConfig.password,
+              additionalOptions: authConfig.additionalOptions,
+              sqlQuery: dataSource.sqlQuery,
+              sqlParameters: dataSource.sqlParameters,
+              autoUpdate: dataSource.autoUpdate,
+              updateIntervalMinutes: dataSource.updateIntervalMinutes
+            });
+          } else {
+            // 向後兼容：舊的 databaseConnection 欄位
+            dataSourceForm.setFieldsValue({
+              sourceType: dataSource.sourceType,
+              connectionType: 'preset',
+              presetConnection: dataSource.databaseConnection,
+              sqlQuery: dataSource.sqlQuery,
+              sqlParameters: dataSource.sqlParameters,
+              autoUpdate: dataSource.autoUpdate,
+              updateIntervalMinutes: dataSource.updateIntervalMinutes
+            });
+          }
+        } catch (error) {
+          console.error('解析認證配置失敗:', error);
+          // 向後兼容：使用舊的 databaseConnection 欄位
+          dataSourceForm.setFieldsValue({
+            sourceType: dataSource.sourceType,
+            connectionType: 'preset',
+            presetConnection: dataSource.databaseConnection,
+            sqlQuery: dataSource.sqlQuery,
+            sqlParameters: dataSource.sqlParameters,
+            autoUpdate: dataSource.autoUpdate,
+            updateIntervalMinutes: dataSource.updateIntervalMinutes
+          });
+        }
+      } else {
+        // 非 SQL 數據源或其他情況
+        dataSourceForm.setFieldsValue({
+          sourceType: dataSource.sourceType,
+          databaseConnection: dataSource.databaseConnection,
+          sqlQuery: dataSource.sqlQuery,
+          excelFilePath: dataSource.excelFilePath,
+          excelSheetName: dataSource.excelSheetName,
+          googleDocsUrl: dataSource.googleDocsUrl,
+          googleDocsSheetName: dataSource.googleDocsSheetName,
+          autoUpdate: dataSource.autoUpdate,
+          updateIntervalMinutes: dataSource.updateIntervalMinutes
+        });
+      }
     } else {
       console.log('handleEdit: 該 DataSet 沒有數據源配置');
     }
@@ -200,9 +259,33 @@ const DataSetManagementPage = () => {
 
   const handleViewRecords = async (record) => {
     console.log('handleViewRecords: 開始查看記錄，DataSet:', record);
+    
+    // 先設置基本的 DataSet 信息
     setSelectedDataSet(record);
     setDrawerVisible(true);
+    
+    // 獲取記錄數據
     await fetchRecords(record.id);
+    
+    // 如果 selectedDataSet 沒有欄位定義，但 records 有數據，動態生成欄位定義
+    if (records.length > 0) {
+      console.log('檢查記錄數據，準備動態生成欄位定義');
+      const firstRecord = records[0];
+      
+      if (firstRecord.Values && firstRecord.Values.length > 0) {
+        console.log('從記錄數據動態生成欄位定義');
+        const dynamicColumns = generateDynamicColumns(records);
+        
+        setSelectedDataSet(prev => ({
+          ...prev,
+          columns: dynamicColumns
+        }));
+        
+        console.log('動態生成的欄位定義:', dynamicColumns);
+      } else {
+        console.warn('記錄中沒有 Values 數據');
+      }
+    }
   };
 
   const fetchRecords = async (datasetId, searchParams = {}) => {
@@ -231,6 +314,22 @@ const DataSetManagementPage = () => {
       
       if (result.success) {
         console.log('fetchRecords: 成功獲取記錄，記錄數量:', result.data.length);
+        
+        // 添加詳細的數據結構日誌
+        if (result.data.length > 0) {
+          console.log('fetchRecords: 第一條記錄的完整結構:', result.data[0]);
+          console.log('fetchRecords: 第一條記錄的所有屬性:', Object.keys(result.data[0]));
+          
+          // 檢查是否有 Values 屬性
+          if (result.data[0].Values) {
+            console.log('fetchRecords: 第一條記錄的 Values 數量:', result.data[0].Values.length);
+            console.log('fetchRecords: 第一條記錄的 Values 結構:', result.data[0].Values[0]);
+          } else {
+            console.warn('fetchRecords: 第一條記錄沒有 Values 屬性！');
+            console.log('fetchRecords: 第一條記錄的可用屬性:', result.data[0]);
+          }
+        }
+        
         setRecords(result.data);
       } else {
         console.error('fetchRecords: 獲取記錄失敗:', result.message);
@@ -295,6 +394,31 @@ const DataSetManagementPage = () => {
       if (!sourceType) {
         message.error('請選擇數據源類型');
         return;
+      }
+      
+      // 處理 SQL 連接配置
+      if (sourceType === 'SQL') {
+        if (dataSourceValues.connectionType === 'preset') {
+          // 預設連接
+          dataSourceValues.databaseConnection = dataSourceValues.presetConnection;
+          dataSourceValues.authenticationConfig = JSON.stringify({
+            connectionType: 'preset',
+            presetName: dataSourceValues.presetConnection
+          });
+        } else if (dataSourceValues.connectionType === 'custom') {
+          // 自定義連接
+          dataSourceValues.databaseConnection = 'custom';
+          dataSourceValues.authenticationConfig = JSON.stringify({
+            connectionType: 'custom',
+            serverName: dataSourceValues.serverName,
+            port: dataSourceValues.port,
+            databaseName: dataSourceValues.databaseName,
+            authenticationType: dataSourceValues.authenticationType,
+            username: dataSourceValues.username,
+            password: dataSourceValues.password,
+            additionalOptions: dataSourceValues.additionalOptions
+          });
+        }
       }
       
       const requestData = {
@@ -450,19 +574,40 @@ const DataSetManagementPage = () => {
     }
     
     console.log('renderRecordColumns: 開始渲染欄位，欄位數量:', selectedDataSet.columns.length);
+    console.log('renderRecordColumns: 欄位定義:', selectedDataSet.columns);
     
     return selectedDataSet.columns.map(col => ({
       title: col.displayName || col.columnName,
       dataIndex: col.columnName,
       key: col.columnName,
       render: (_, record) => {
-        const value = record.Values?.find(v => v.columnName === col.columnName);
+        // 添加詳細的日誌來診斷問題
+        console.log(`renderRecordColumns: 正在渲染記錄 ${record.id}，欄位 ${col.columnName}`);
+        console.log(`renderRecordColumns: 記錄的完整結構:`, record);
+        console.log(`renderRecordColumns: 記錄的所有屬性:`, Object.keys(record));
+        
+        // 嘗試多種可能的屬性名稱
+        let values = record.Values || record.values || record.DataSetRecordValues || record.dataSetRecordValues;
+        
+        if (values) {
+          console.log(`renderRecordColumns: 找到 Values 數據，數量:`, values.length);
+          console.log(`renderRecordColumns: 第一個 Value 的結構:`, values[0]);
+          console.log(`renderRecordColumns: 所有 Values 的 columnName:`, values.map(v => v.columnName));
+        } else {
+          console.warn(`renderRecordColumns: 記錄中沒有找到 Values 數據`);
+          console.log(`renderRecordColumns: 記錄的可用屬性:`, record);
+        }
+        
+        const value = values?.find(v => v.columnName === col.columnName);
         if (!value) {
           console.log(`renderRecordColumns: 欄位 ${col.columnName} 沒有找到值`);
+          if (values) {
+            console.log(`renderRecordColumns: 可用的 columnName:`, values.map(v => v.columnName));
+          }
           return '-';
         }
         
-        console.log(`renderRecordColumns: 欄位 ${col.columnName} 的值:`, value);
+        console.log(`renderRecordColumns: 欄位 ${col.columnName} 找到值:`, value);
         
         // 修正：使用正確的屬性名稱
         switch (col.dataType) {
@@ -547,6 +692,188 @@ const DataSetManagementPage = () => {
     } finally {
       setSheetLoading(false);
     }
+  };
+
+  const testSqlConnection = async () => {
+    try {
+      const values = await dataSourceForm.validateFields();
+      const connectionType = values.connectionType;
+
+      if (connectionType === 'preset') {
+        const presetConnection = values.presetConnection;
+        if (!presetConnection) {
+          message.error('請選擇預設連接');
+          return;
+        }
+        message.success(`預設連接配置完成: ${presetConnection}`);
+        return;
+      } else if (connectionType === 'custom') {
+        const serverName = values.serverName;
+        const port = values.port;
+        const databaseName = values.databaseName;
+        const authType = values.authenticationType;
+        const username = values.username;
+        const password = values.password;
+        const additionalOptions = values.additionalOptions;
+        const sqlQuery = values.sqlQuery;
+
+        if (!serverName || !databaseName) {
+          message.error('請輸入伺服器名稱和數據庫名稱');
+          return;
+        }
+
+        if (authType === 'sql' && (!username || !password)) {
+          message.error('請輸入 SQL Server 認證信息');
+          return;
+        }
+
+        if (!sqlQuery) {
+          message.error('請先輸入 SQL 查詢語句');
+          return;
+        }
+
+        // 構建連接字符串
+        let connectionString = `Server=${serverName}`;
+        if (port) {
+          connectionString += `,${port}`;
+        }
+        connectionString += `;Database=${databaseName};`;
+        
+        if (authType === 'sql') {
+          connectionString += `User ID=${username};Password=${password};`;
+        } else if (authType === 'windows') {
+          connectionString += `Integrated Security=True;`;
+        }
+        
+        // 自動添加 SSL 信任設置，解決憑證驗證問題
+        connectionString += `TrustServerCertificate=true;Encrypt=false;`;
+        
+        if (additionalOptions) {
+          connectionString += additionalOptions;
+        }
+
+        // 顯示測試中的狀態
+        message.loading('正在測試連接...', 0);
+
+        try {
+          const response = await fetch('/api/datasets/test-sql-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connectionString })
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            message.destroy();
+            message.success('連接測試成功！正在獲取欄位定義...');
+            console.log('連接字符串:', connectionString);
+            
+            // 連接測試成功後，自動獲取欄位定義
+            await generateColumnsFromSql(sqlQuery, connectionString);
+            
+          } else {
+            message.destroy();
+            message.error(`連接測試失敗: ${result.message}`);
+          }
+        } catch (error) {
+          message.destroy();
+          console.error('SQL 連接測試請求失敗:', error);
+          message.error('連接測試失敗: ' + error.message);
+        }
+      }
+    } catch (error) {
+      console.error('連接測試失敗:', error);
+      message.error('請先完成連接配置');
+    }
+  };
+
+  // 新增：根據 SQL 查詢生成欄位定義
+  const generateColumnsFromSql = async (sqlQuery, connectionString) => {
+    try {
+      console.log('開始根據 SQL 查詢生成欄位定義');
+      
+      const response = await fetch('/api/datasets/generate-columns-from-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          connectionString,
+          sqlQuery: sqlQuery
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('成功獲取欄位定義:', result.columns);
+        
+        // 自動填充欄位定義表單
+        const columnsData = result.columns.map((col, index) => ({
+          key: index,
+          columnName: col.columnName,
+          displayName: col.displayName || col.columnName,
+          dataType: col.dataType,
+          maxLength: col.maxLength,
+          isRequired: false,
+          isPrimaryKey: index === 0, // 假設第一列是主鍵
+          isSearchable: true,
+          isSortable: true,
+          isIndexed: false,
+          defaultValue: col.defaultValue,
+          sortOrder: index
+        }));
+        
+        columnsForm.setFieldsValue({ columns: columnsData });
+        message.success(`已自動生成 ${result.columns.length} 個欄位定義`);
+        
+        // 自動切換到欄位定義標籤
+        const tabsElement = document.querySelector('.ant-tabs-tab[data-key="columns"]');
+        if (tabsElement) {
+          tabsElement.click();
+        }
+        
+      } else {
+        console.error('獲取欄位定義失敗:', result.message);
+        message.warning('無法自動生成欄位定義: ' + result.message);
+      }
+    } catch (error) {
+      console.error('生成欄位定義失敗:', error);
+      message.warning('無法自動生成欄位定義，請手動配置');
+    }
+  };
+
+  // 新增：從記錄動態生成欄位定義
+  const generateDynamicColumns = (records) => {
+    if (!records || records.length === 0) return [];
+    
+    // 從第一個記錄的 Values 中提取欄位信息
+    const firstRecord = records[0];
+    if (!firstRecord.Values || firstRecord.Values.length === 0) return [];
+    
+    console.log('generateDynamicColumns: 第一個記錄的 Values:', firstRecord.Values);
+    
+    return firstRecord.Values.map((value, index) => ({
+      key: index,
+      columnName: value.columnName,
+      displayName: value.columnName,
+      dataType: inferDataTypeFromValue(value),
+      maxLength: 255,
+      isRequired: false,
+      isPrimaryKey: index === 0,
+      isSearchable: true,
+      isSortable: true,
+      isIndexed: false,
+      defaultValue: null,
+      sortOrder: index
+    }));
+  };
+
+  // 新增：推斷數據類型
+  const inferDataTypeFromValue = (value) => {
+    if (value.dateValue) return 'datetime';
+    if (value.numericValue !== null && value.numericValue !== undefined) return 'decimal';
+    if (value.booleanValue !== null && value.booleanValue !== undefined) return 'boolean';
+    return 'string';
   };
 
   return (
@@ -682,11 +1009,150 @@ const DataSetManagementPage = () => {
                   if (sourceType === 'SQL') {
                     return (
                       <>
-                        <Form.Item name="databaseConnection" label="數據庫連接">
-                          <Select placeholder="選擇數據庫連接">
-                            <Select.Option value="erp_awh">ERP 數據庫</Select.Option>
-                            <Select.Option value="purple_rice">Purple Rice 數據庫</Select.Option>
-                          </Select>
+                        <Form.Item name="connectionType" label="連接方式">
+                          <Radio.Group defaultValue="preset">
+                            <Radio value="preset">使用預設連接</Radio>
+                            <Radio value="custom">自定義連接</Radio>
+                          </Radio.Group>
+                        </Form.Item>
+                        
+                        {/* 預設連接選項 */}
+                        <Form.Item
+                          noStyle
+                          shouldUpdate={(prevValues, currentValues) => 
+                            prevValues.connectionType !== currentValues.connectionType
+                          }
+                        >
+                          {({ getFieldValue }) => {
+                            const connectionType = getFieldValue('connectionType');
+                            
+                            if (connectionType === 'preset') {
+                              return (
+                                <Form.Item name="presetConnection" label="預設數據庫連接">
+                                  <Select placeholder="選擇數據庫連接">
+                                    <Select.Option value="erp_awh">ERP 數據庫</Select.Option>
+                                    <Select.Option value="purple_rice">Purple Rice 數據庫</Select.Option>
+                                  </Select>
+                                </Form.Item>
+                              );
+                            }
+                            
+                            if (connectionType === 'custom') {
+                              return (
+                                <>
+                                  <Row gutter={16}>
+                                    <Col span={12}>
+                                      <Form.Item
+                                        name="serverName"
+                                        label="伺服器名稱/IP"
+                                        rules={[{ required: true, message: '請輸入伺服器名稱或IP' }]}
+                                      >
+                                        <Input placeholder="例如：192.168.1.100" />
+                                      </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                      <Form.Item
+                                        name="port"
+                                        label="端口號"
+                                        initialValue="1433"
+                                      >
+                                        <Input placeholder="例如：1433" />
+                                      </Form.Item>
+                                    </Col>
+                                  </Row>
+                                  
+                                  <Row gutter={16}>
+                                    <Col span={12}>
+                                      <Form.Item
+                                        name="databaseName"
+                                        label="數據庫名稱"
+                                        rules={[{ required: true, message: '請輸入數據庫名稱' }]}
+                                      >
+                                        <Input placeholder="例如：MyDatabase" />
+                                      </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                      <Form.Item
+                                        name="authenticationType"
+                                        label="認證方式"
+                                        initialValue="sql"
+                                      >
+                                        <Select>
+                                          <Select.Option value="sql">SQL Server 認證</Select.Option>
+                                          <Select.Option value="windows">Windows 認證</Select.Option>
+                                        </Select>
+                                      </Form.Item>
+                                    </Col>
+                                  </Row>
+                                  
+                                  <Form.Item
+                                    noStyle
+                                    shouldUpdate={(prevValues, currentValues) => 
+                                      prevValues.authenticationType !== currentValues.authenticationType
+                                    }
+                                  >
+                                    {({ getFieldValue }) => {
+                                      const authType = getFieldValue('authenticationType');
+                                      
+                                      if (authType === 'sql') {
+                                        return (
+                                          <Row gutter={16}>
+                                            <Col span={12}>
+                                              <Form.Item
+                                                name="username"
+                                                label="用戶名"
+                                                rules={[{ required: true, message: '請輸入用戶名' }]}
+                                              >
+                                                <Input placeholder="例如：sa" />
+                                              </Form.Item>
+                                            </Col>
+                                            <Col span={12}>
+                                              <Form.Item
+                                                name="password"
+                                                label="密碼"
+                                                rules={[{ required: true, message: '請輸入密碼' }]}
+                                              >
+                                                <Input.Password placeholder="輸入密碼" />
+                                              </Form.Item>
+                                            </Col>
+                                          </Row>
+                                        );
+                                      }
+                                      
+                                      return null;
+                                    }}
+                                  </Form.Item>
+                                  
+                                  <Form.Item name="additionalOptions" label="額外連接選項">
+                                    <TextArea 
+                                      rows={2} 
+                                      placeholder="例如：TrustServerCertificate=true;MultipleActiveResultSets=true"
+                                    />
+                                  </Form.Item>
+                                  
+                                  <Alert
+                                    message="連接測試"
+                                    description="配置完成後，可以點擊下方按鈕測試連接是否成功。"
+                                    type="info"
+                                    showIcon
+                                    style={{ marginBottom: 16 }}
+                                  />
+                                  
+                                  <Form.Item>
+                                    <Button 
+                                      type="dashed" 
+                                      onClick={() => testSqlConnection()}
+                                      icon={<DatabaseOutlined />}
+                                    >
+                                      測試連接
+                                    </Button>
+                                  </Form.Item>
+                                </>
+                              );
+                            }
+                            
+                            return null;
+                          }}
                         </Form.Item>
                         
                         <Form.Item

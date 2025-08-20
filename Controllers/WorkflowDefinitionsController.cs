@@ -370,7 +370,7 @@ namespace PurpleRice.Controllers
                         
                         // 在異步執行中創建新的 DbContext 實例
                         var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<PurpleRiceDbContext>();
-                        optionsBuilder.UseSqlServer("Server=127.0.0.1;Database=PurpleRice;User Id=sa;Password=sql!Q@W3e;TrustServerCertificate=true;");
+                        optionsBuilder.UseSqlServer(_configuration.GetConnectionString("PurpleRice"));
                         
                         using var asyncDbContext = new PurpleRiceDbContext(optionsBuilder.Options);
                         await ExecuteWorkflowAsync(workflow, execution, request.InputData, asyncDbContext);
@@ -385,7 +385,7 @@ namespace PurpleRice.Controllers
                         
                         // 使用新的 DbContext 更新執行狀態
                         var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<PurpleRiceDbContext>();
-                        optionsBuilder.UseSqlServer("Server=127.0.0.1;Database=PurpleRice;User Id=sa;Password=sql!Q@W3e;TrustServerCertificate=true;");
+                        optionsBuilder.UseSqlServer(_configuration.GetConnectionString("PurpleRice"));
                         
                         using var asyncDbContext = new PurpleRiceDbContext(optionsBuilder.Options);
                         var executionToUpdate = await asyncDbContext.WorkflowExecutions.FindAsync(execution.Id);

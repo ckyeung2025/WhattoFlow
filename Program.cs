@@ -12,10 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 builder.Services.AddDbContext<PurpleRiceDbContext>(options =>
-    options.UseSqlServer("Server=127.0.0.1;Database=PurpleRice;User Id=sa;Password=sql!Q@W3e;TrustServerCertificate=true;"));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("PurpleRice")));
 
 builder.Services.AddDbContext<ErpDbContext>(options =>
-    options.UseSqlServer("Server=127.0.0.1;Database=erp_awh;User Id=sa;Password=sql!Q@W3e;TrustServerCertificate=true;"));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("ErpDatabase")));
     
     // JWT 驗證設定
 builder.Services.AddAuthentication(options =>
