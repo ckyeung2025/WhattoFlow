@@ -234,85 +234,114 @@ namespace PurpleRice.Controllers
             }
         }
 
-                 private async Task ContinueWorkflowExecution(int executionId)
-         {
-             try
-             {
-                 _loggingService.LogInformation($"繼續執行工作流程，執行ID: {executionId}");
-                 
-                 // 查找工作流程執行記錄
-                 var execution = await _db.WorkflowExecutions
-                     .Include(e => e.StepExecutions)
-                     .FirstOrDefaultAsync(e => e.Id == executionId);
+                         private async Task ContinueWorkflowExecution(int executionId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"繼續執行工作流程，執行ID: {executionId}");
+                
+                // 查找工作流程執行記錄
+                var execution = await _db.WorkflowExecutions
+                    .Include(e => e.StepExecutions)
+                    .FirstOrDefaultAsync(e => e.Id == executionId);
 
-                 if (execution == null)
-                 {
-                     _loggingService.LogWarning($"找不到工作流程執行記錄，ID: {executionId}");
-                     return;
-                 }
+                if (execution == null)
+                {
+                    _loggingService.LogWarning($"找不到工作流程執行記錄，ID: {executionId}");
+                    return;
+                }
 
-                 _loggingService.LogInformation($"找到工作流程執行記錄，當前狀態: {execution.Status}，當前步驟: {execution.CurrentStep}");
+                _loggingService.LogInformation($"找到工作流程執行記錄，當前狀態: {execution.Status}，當前步驟: {execution.CurrentStep}");
 
-                 // 更新狀態為已完成
-                 execution.Status = "Completed";
-                 execution.EndedAt = DateTime.Now;
-                 await _db.SaveChangesAsync();
-                 _loggingService.LogInformation($"工作流程執行狀態已更新為 Completed");
+                // 不要直接设置为Completed，而是继续执行后续节点
+                // execution.Status = "Completed";
+                // execution.EndedAt = DateTime.Now;
+                // await _db.SaveChangesAsync();
+                // _loggingService.LogInformation($"工作流程執行狀態已更新為 Completed");
 
-                 // 查找所有未完成的步驟執行記錄
-                 var stepExecutions = await _db.WorkflowStepExecutions
-                     .Where(s => s.WorkflowExecutionId == executionId && s.Status == "Running")
-                     .ToListAsync();
+                // 查找sendEForm步骤执行记录
+                var sendEFormStep = await _db.WorkflowStepExecutions
+                    .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
+                    .FirstOrDefaultAsync();
 
-                 _loggingService.LogInformation($"找到 {stepExecutions.Count} 個步驟執行記錄");
+                if (sendEFormStep != null)
+                {
+                    // 更新sendEForm步骤状态为Completed
+                    sendEFormStep.Status = "Completed";
+                    sendEFormStep.EndedAt = DateTime.Now;
+                    sendEFormStep.OutputJson = System.Text.Json.JsonSerializer.Serialize(new { success = true, message = "EForm approved, continuing workflow" });
+                    await _db.SaveChangesAsync();
+                    _loggingService.LogInformation($"sendEForm 步驟狀態已更新為 Completed");
+                }
 
-                 // 查找工作流程定義
-                 var workflowDefinition = await _db.WorkflowDefinitions
-                     .FirstOrDefaultAsync(w => w.Id == execution.WorkflowDefinitionId);
+                // 查找工作流程定義
+                var workflowDefinition = await _db.WorkflowDefinitions
+                    .FirstOrDefaultAsync(w => w.Id == execution.WorkflowDefinitionId);
 
-                 if (workflowDefinition == null)
-                 {
-                     _loggingService.LogError($"找不到工作流程定義，WorkflowDefinitionId: {execution.WorkflowDefinitionId}");
-                     return;
-                 }
+                if (workflowDefinition == null)
+                {
+                    _loggingService.LogError($"找不到工作流程定義，WorkflowDefinitionId: {execution.WorkflowDefinitionId}");
+                    return;
+                }
 
-                 _loggingService.LogInformation($"找到工作流程定義: {workflowDefinition.Name}");
-                 _loggingService.LogDebug($"工作流程定義 JSON: {workflowDefinition.Json}");
+                _loggingService.LogInformation($"找到工作流程定義: {workflowDefinition.Name}");
+                _loggingService.LogDebug($"工作流程定義 JSON: {workflowDefinition.Json}");
 
-                 // 解析工作流程圖
-                 var workflowNodes = System.Text.Json.JsonSerializer.Deserialize<WorkflowGraph>(workflowDefinition.Json);
-                 if (workflowNodes == null)
-                 {
-                     _loggingService.LogError("無法解析工作流程圖 JSON");
-                     return;
-                 }
+                // 解析工作流程圖
+                var workflowNodes = System.Text.Json.JsonSerializer.Deserialize<WorkflowGraph>(workflowDefinition.Json);
+                if (workflowNodes == null)
+                {
+                    _loggingService.LogError("無法解析工作流程圖 JSON");
+                    return;
+                }
 
-                 _loggingService.LogInformation($"流程圖節點數量: {workflowNodes.nodes.Count}");
-                 _loggingService.LogInformation($"流程圖邊數量: {workflowNodes.edges.Count}");
+                _loggingService.LogInformation($"流程圖節點數量: {workflowNodes.nodes.Count}");
+                _loggingService.LogInformation($"流程圖邊數量: {workflowNodes.edges.Count}");
 
-                 // 找到需要處理的步驟
-                 var stepsToProcess = FindNextSteps(workflowNodes, "sendEForm");
-                 _loggingService.LogInformation($"找到 {stepsToProcess.Count} 個需要處理的步驟");
+                // 找到需要處理的步驟
+                var stepsToProcess = FindNextSteps(workflowNodes, "sendEForm");
+                _loggingService.LogInformation($"找到 {stepsToProcess.Count} 個需要處理的步驟");
 
-                 // 處理每個步驟 - 這裡 stepsToProcess 是 WorkflowNode 類型，不是 WorkflowStepExecution
-                 foreach (var step in stepsToProcess)
-                 {
-                     _loggingService.LogInformation($"處理步驟: {step.type} (類型: {step.type})");
-                 }
+                // 处理每个步骤
+                foreach (var step in stepsToProcess)
+                {
+                    _loggingService.LogInformation($"處理步驟: {step.type} (類型: {step.type})");
+                }
 
-                 // 保存所有更改
-                 await _db.SaveChangesAsync();
-                 _loggingService.LogInformation($"開始處理工作流程步驟...");
-                 await ProcessWorkflowSteps(execution, workflowNodes);
-                 _loggingService.LogInformation($"所有步驟執行記錄已更新完成");
-                 _loggingService.LogInformation($"工作流程執行已完成");
-             }
-             catch (Exception ex)
-             {
-                 _loggingService.LogError($"繼續執行工作流程失敗: {ex.Message}");
-                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
-             }
-         }
+                // 保存所有更改
+                await _db.SaveChangesAsync();
+                _loggingService.LogInformation($"開始處理工作流程步驟...");
+                await ProcessWorkflowSteps(execution, workflowNodes);
+                _loggingService.LogInformation($"所有步驟執行記錄已更新完成");
+                
+                // 检查是否所有步骤都已完成
+                var allSteps = await _db.WorkflowStepExecutions
+                    .Where(s => s.WorkflowExecutionId == executionId)
+                    .ToListAsync();
+                
+                var completedSteps = allSteps.Count(s => s.Status == "Completed");
+                var totalSteps = allSteps.Count;
+                
+                _loggingService.LogInformation($"步驟完成情況: {completedSteps}/{totalSteps}");
+                
+                if (completedSteps >= totalSteps)
+                {
+                    execution.Status = "Completed";
+                    execution.EndedAt = DateTime.Now;
+                    await _db.SaveChangesAsync();
+                    _loggingService.LogInformation($"所有步驟已完成，工作流程標記為 Completed");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"還有 {totalSteps - completedSteps} 個步驟未完成，工作流程繼續執行");
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"繼續執行工作流程失敗: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+            }
+        }
 
         private async Task UpdateWorkflowExecutionStatus(int executionId, string status)
         {
@@ -339,21 +368,79 @@ namespace PurpleRice.Controllers
          {
              try
              {
+                 _loggingService.LogInformation($"開始處理工作流程步驟，執行ID: {execution.Id}");
+                 
                  // 查找所有未完成的步驟
                  var incompleteSteps = await _db.WorkflowStepExecutions
                      .Where(s => s.WorkflowExecutionId == execution.Id && s.Status == "Running")
                      .ToListAsync();
 
+                 _loggingService.LogInformation($"找到 {incompleteSteps.Count} 個未完成的步驟");
+
+                 if (incompleteSteps.Count == 0)
+                 {
+                     // 如果没有未完成的步骤，查找需要创建的后续步骤
+                     _loggingService.LogInformation("沒有未完成的步驟，檢查是否需要創建後續步驟");
+                     
+                     // 查找sendEForm步骤
+                     var sendEFormStep = await _db.WorkflowStepExecutions
+                         .Where(s => s.WorkflowExecutionId == execution.Id && s.StepType == "sendEForm")
+                         .FirstOrDefaultAsync();
+                     
+                     if (sendEFormStep != null && sendEFormStep.Status == "Completed")
+                     {
+                         _loggingService.LogInformation("sendEForm步驟已完成，查找後續節點");
+                         
+                         // 查找后续节点
+                         var nextSteps = FindNextSteps(workflowGraph, "sendEForm");
+                         _loggingService.LogInformation($"找到 {nextSteps.Count} 個後續節點");
+                         
+                         // 为每个后续节点创建步骤执行记录
+                         foreach (var nextStep in nextSteps)
+                         {
+                             var stepExecution = new WorkflowStepExecution
+                             {
+                                 WorkflowExecutionId = execution.Id,
+                                 StepIndex = execution.CurrentStep ?? 0,
+                                 StepType = nextStep.type,
+                                 Status = "Running",
+                                 InputJson = System.Text.Json.JsonSerializer.Serialize(nextStep),
+                                 StartedAt = DateTime.Now
+                             };
+                             
+                             _db.WorkflowStepExecutions.Add(stepExecution);
+                             _loggingService.LogInformation($"創建步驟執行記錄: {nextStep.type}");
+                         }
+                         
+                         await _db.SaveChangesAsync();
+                         
+                         // 重新获取未完成的步骤
+                         incompleteSteps = await _db.WorkflowStepExecutions
+                             .Where(s => s.WorkflowExecutionId == execution.Id && s.Status == "Running")
+                             .ToListAsync();
+                         
+                         _loggingService.LogInformation($"重新獲取到 {incompleteSteps.Count} 個未完成的步驟");
+                     }
+                 }
+
+                 // 处理每个未完成的步骤
                  foreach (var step in incompleteSteps)
                  {
                      try
                      {
+                         _loggingService.LogInformation($"處理步驟: {step.StepType}，ID: {step.Id}");
                          await ExecuteStep(step, _db, execution);
+                         _loggingService.LogInformation($"步驟 {step.StepType} 處理完成");
                      }
                      catch (Exception ex)
                      {
                          _loggingService.LogError($"處理工作流程步驟時發生錯誤: {ex.Message}");
                          _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                         
+                         // 标记步骤为失败
+                         step.Status = "Failed";
+                         step.OutputJson = System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message });
+                         await _db.SaveChangesAsync();
                      }
                  }
 

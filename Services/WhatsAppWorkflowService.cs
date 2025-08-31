@@ -135,6 +135,9 @@ namespace PurpleRice.Services
                     case "text":
                         await SendInternalTextTemplateAsync(company, formattedTo, internalTemplate, variables);
                         break;
+                    case "interactive":
+                        await SendInternalInteractiveTemplateAsync(company, formattedTo, internalTemplate, variables);
+                        break;
                     case "location":
                         await SendInternalLocationTemplateAsync(company, formattedTo, internalTemplate, variables);
                         break;
@@ -560,6 +563,220 @@ namespace PurpleRice.Services
             {
                 throw new Exception($"處理聯絡人模板失敗: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 發送 Interactive 類型的 WhatsApp 模板消息
+        /// </summary>
+        private async Task SendInternalInteractiveTemplateAsync(Company company, string to, WhatsAppTemplate template, Dictionary<string, string> variables)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 發送 Interactive 模板開始 ===");
+                _loggingService.LogInformation($"模板名稱: {template.Name}");
+                _loggingService.LogInformation($"模板內容: {template.Content}");
+                
+                var templateContent = JsonSerializer.Deserialize<JsonElement>(template.Content);
+                
+                // 獲取 Interactive 類型
+                var interactiveType = templateContent.GetProperty("interactiveType").GetString();
+                var header = templateContent.TryGetProperty("header", out var headerProp) ? headerProp.GetString() : "";
+                var body = templateContent.GetProperty("body").GetString();
+                var footer = templateContent.TryGetProperty("footer", out var footerProp) ? footerProp.GetString() : "";
+                
+                _loggingService.LogInformation($"Interactive 類型: {interactiveType}");
+                _loggingService.LogInformation($"Header: {header}");
+                _loggingService.LogInformation($"Body: {body}");
+                _loggingService.LogInformation($"Footer: {footer}");
+                
+                // 替換變數
+                if (variables != null)
+                {
+                    header = ReplaceVariables(header, variables);
+                    body = ReplaceVariables(body, variables);
+                    footer = ReplaceVariables(footer, variables);
+                }
+                
+                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                
+                // 根據不同的 Interactive 類型構建不同的 payload
+                object payload;
+                
+                switch (interactiveType.ToLower())
+                {
+                    case "button":
+                        payload = BuildButtonPayload(to, header, body, footer, templateContent);
+                        break;
+                    case "list":
+                        payload = BuildListPayload(to, header, body, footer, templateContent);
+                        break;
+                    case "product":
+                        payload = BuildProductPayload(to, header, body, footer, templateContent);
+                        break;
+                    default:
+                        throw new Exception($"不支援的 Interactive 類型: {interactiveType}");
+                }
+                
+                var jsonPayload = JsonSerializer.Serialize(payload);
+                _loggingService.LogInformation($"WhatsApp Interactive API URL: {url}");
+                _loggingService.LogInformation($"WhatsApp Interactive API Payload: {jsonPayload}");
+
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                
+                var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                
+                _loggingService.LogInformation($"開始發送 WhatsApp Interactive 消息...");
+                var response = await httpClient.PostAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"WhatsApp Interactive API Response Status: {response.StatusCode}");
+                _loggingService.LogInformation($"WhatsApp Interactive API Response Content: {responseContent}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception($"WhatsApp Interactive API 請求失敗: {response.StatusCode} - {responseContent}");
+                }
+                
+                _loggingService.LogInformation($"=== 發送 Interactive 模板完成 ===");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"處理 Interactive 模板失敗: {ex.Message}", ex);
+                throw new Exception($"處理 Interactive 模板失敗: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// 構建 Button 類型的 payload
+        /// </summary>
+        private object BuildButtonPayload(string to, string header, string body, string footer, JsonElement templateContent)
+        {
+            var action = templateContent.GetProperty("action");
+            var buttons = new List<object>();
+            
+            if (action.TryGetProperty("buttons", out var buttonsProp) && buttonsProp.GetArrayLength() > 0)
+            {
+                foreach (var button in buttonsProp.EnumerateArray())
+                {
+                    // Button 類型只支持 reply 類型的按鈕
+                    // WhatsApp Business API 的 Button 類型不支持 url 和 phone_number
+                    var buttonType = button.GetProperty("type").GetString();
+                    
+                    if (buttonType == "reply")
+                    {
+                        var reply = button.GetProperty("reply");
+                        buttons.Add(new
+                        {
+                            type = "reply",
+                            reply = new
+                            {
+                                id = reply.GetProperty("id").GetString(),
+                                title = reply.GetProperty("title").GetString()
+                            }
+                        });
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"Button 類型不支援 {buttonType} 按鈕，已跳過");
+                    }
+                }
+            }
+            
+            // Button 類型不支持 header 和 footer
+            return new
+            {
+                messaging_product = "whatsapp",
+                to = to,
+                type = "interactive",
+                interactive = new
+                {
+                    type = "button",
+                    body = new { text = body },
+                    action = new { buttons = buttons.ToArray() }
+                }
+            };
+        }
+        
+        /// <summary>
+        /// 構建 List 類型的 payload
+        /// </summary>
+        private object BuildListPayload(string to, string header, string body, string footer, JsonElement templateContent)
+        {
+            var action = templateContent.GetProperty("action");
+            var sections = new List<object>();
+            
+            if (action.TryGetProperty("sections", out var sectionsProp) && sectionsProp.GetArrayLength() > 0)
+            {
+                foreach (var section in sectionsProp.EnumerateArray())
+                {
+                    var rows = new List<object>();
+                    
+                    if (section.TryGetProperty("rows", out var rowsProp) && rowsProp.GetArrayLength() > 0)
+                    {
+                        foreach (var row in rowsProp.EnumerateArray())
+                        {
+                            rows.Add(new
+                            {
+                                id = row.GetProperty("id").GetString(),
+                                title = row.GetProperty("title").GetString(),
+                                description = row.TryGetProperty("description", out var descProp) ? descProp.GetString() : ""
+                            });
+                        }
+                    }
+                    
+                    sections.Add(new
+                    {
+                        title = section.GetProperty("title").GetString(),
+                        rows = rows.ToArray()
+                    });
+                }
+            }
+            
+            return new
+            {
+                messaging_product = "whatsapp",
+                to = to,
+                type = "interactive",
+                interactive = new
+                {
+                    type = "list",
+                    header = !string.IsNullOrEmpty(header) ? new { type = "text", text = header } : null,
+                    body = new { text = body },
+                    footer = !string.IsNullOrEmpty(footer) ? new { text = footer } : null,
+                    action = new
+                    {
+                        button = action.TryGetProperty("button", out var buttonProp) ? buttonProp.GetString() : "選擇選項",
+                        sections = sections.ToArray()
+                    }
+                }
+            };
+        }
+        
+        /// <summary>
+        /// 構建 Product 類型的 payload
+        /// </summary>
+        private object BuildProductPayload(string to, string header, string body, string footer, JsonElement templateContent)
+        {
+            var action = templateContent.GetProperty("action");
+            
+            // Product 類型不支持 header 和 footer
+            return new
+            {
+                messaging_product = "whatsapp",
+                to = to,
+                type = "interactive",
+                interactive = new
+                {
+                    type = "product",
+                    body = new { text = body },
+                    action = new
+                    {
+                        catalog_id = action.GetProperty("catalog_id").GetString(),
+                        product_retailer_id = action.GetProperty("product_retailer_id").GetString()
+                    }
+                }
+            };
         }
 
         /// <summary>

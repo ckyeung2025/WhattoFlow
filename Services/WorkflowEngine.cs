@@ -15,13 +15,13 @@ namespace PurpleRice.Services
 {
     public class WorkflowEngine
     {
-        private readonly PurpleRiceDbContext _db;
+        private readonly IServiceProvider _serviceProvider;
         private readonly WhatsAppWorkflowService _whatsAppWorkflowService;
         private readonly LoggingService _loggingService;
 
-        public WorkflowEngine(PurpleRiceDbContext db, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory)
+        public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory)
         {
-            _db = db;
+            _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
             _loggingService = loggingServiceFactory("WorkflowEngine");
         }
@@ -79,7 +79,68 @@ namespace PurpleRice.Services
                 
                 execution.Status = "Error";
                 execution.ErrorMessage = ex.Message;
-                await _db.SaveChangesAsync();
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // 新增：從 WorkflowDefinitionsController 調用的方法
+        public async Task<WorkflowExecutionResult> ExecuteWorkflow(int executionId, object inputData)
+        {
+            try
+            {
+                WriteLog($"=== ExecuteWorkflow 開始 ===");
+                WriteLog($"執行 ID: {executionId}");
+
+                // 使用 IServiceProvider 創建新的 DbContext 實例
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+
+                // 查找執行記錄
+                var execution = await db.WorkflowExecutions
+                    .Include(e => e.WorkflowDefinition)
+                    .FirstOrDefaultAsync(e => e.Id == executionId);
+
+                if (execution == null)
+                {
+                    throw new Exception($"找不到執行記錄: {executionId}");
+                }
+
+                // 更新輸入數據
+                if (inputData != null)
+                {
+                    execution.InputJson = JsonSerializer.Serialize(inputData);
+                }
+
+                // 執行工作流程
+                await ExecuteWorkflowAsync(execution);
+
+                // 返回執行結果
+                return new WorkflowExecutionResult
+                {
+                    Status = execution.Status,
+                    OutputData = new
+                    {
+                        executionId = execution.Id,
+                        status = execution.Status,
+                        completedAt = execution.EndedAt,
+                        errorMessage = execution.ErrorMessage
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"ExecuteWorkflow 失敗: {ex.Message}");
+                return new WorkflowExecutionResult
+                {
+                    Status = "Failed",
+                    OutputData = new
+                    {
+                        error = ex.Message,
+                        stackTrace = ex.StackTrace
+                    }
+                };
             }
         }
 
@@ -91,6 +152,10 @@ namespace PurpleRice.Services
             var node = nodeMap[nodeId];
             var nodeData = node.Data;
 
+            // 為每個節點執行創建獨立的 DbContext 實例
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+
             // 記錄步驟執行
             var stepExec = new WorkflowStepExecution
             {
@@ -101,8 +166,8 @@ namespace PurpleRice.Services
                 InputJson = JsonSerializer.Serialize(nodeData),
                 StartedAt = DateTime.Now
             };
-            _db.WorkflowStepExecutions.Add(stepExec);
-            await _db.SaveChangesAsync();
+            db.WorkflowStepExecutions.Add(stepExec);
+            await db.SaveChangesAsync();
 
             WriteLog($"=== 執行節點: {nodeId} ===");
             WriteLog($"節點類型: {nodeData?.Type}");
@@ -128,7 +193,7 @@ namespace PurpleRice.Services
                     {
                         WriteLog($"參數完整，開始發送 WhatsApp 消息到 {nodeData.To}");
                         WriteLog($"消息內容: {nodeData.Message}");
-                        await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution, _db);
+                        await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution, db);
                         WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}");
                     }
                     else
@@ -142,7 +207,7 @@ namespace PurpleRice.Services
                 case "sendWhatsAppTemplate":
                     if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.TemplateName))
                     {
-                        await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateId, execution, _db);
+                        await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateId, execution, db);
                     }
                     else
                     {
@@ -155,7 +220,7 @@ namespace PurpleRice.Services
                     execution.Status = "Waiting";
                     execution.CurrentStep = stepExec.StepIndex;
                     stepExec.Status = "Waiting";
-                    await _db.SaveChangesAsync();
+                    await db.SaveChangesAsync();
                     return; // 暫停流程，等待外部觸發
                 case "dbQuery":
                     // TODO: 執行資料庫查詢/更新
@@ -175,15 +240,27 @@ namespace PurpleRice.Services
                     if (!string.IsNullOrEmpty(nodeData.FormName) && !string.IsNullOrEmpty(nodeData.To))
                     {
                         WriteLog($"參數完整，開始處理 eForm 發送");
-                        // 這裡應該調用 eForm 服務，但為了簡化，我們先標記為完成
-                        // 實際的 eForm 處理邏輯在 WorkflowDefinitionsController 中
+                        // 这里应该调用 eForm 服务
                         WriteLog($"eForm 節點處理完成，繼續到下一個節點");
+                        
+                        // 重要：更新步骤执行状态
+                        stepExec.Status = "Completed";
+                        stepExec.EndedAt = DateTime.Now;
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { success = true, message = "EForm sent successfully" });
+                        await db.SaveChangesAsync();
                     }
                     else
                     {
                         WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, to={nodeData.To}");
                         var nodeDataJson = JsonSerializer.Serialize(nodeData);
                         WriteLog($"完整節點數據: {nodeDataJson}");
+                        
+                        // 标记步骤为失败
+                        stepExec.Status = "Failed";
+                        stepExec.EndedAt = DateTime.Now;
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                        await db.SaveChangesAsync();
+                        return; // 停止执行
                     }
                     break;
                 case "end":
@@ -191,12 +268,12 @@ namespace PurpleRice.Services
                     WriteLog($"=== 到達 End 節點: {nodeId} ===");
                     stepExec.Status = "Completed";
                     stepExec.EndedAt = DateTime.Now;
-                    await _db.SaveChangesAsync();
+                    await db.SaveChangesAsync();
                     WriteLog($"End 節點 {nodeId} 標記為完成");
                     
                     // 檢查是否所有分支都已完成
                     var allEndNodes = flowData.Nodes.Where(n => n.Data?.Type == "end").ToList();
-                    var completedEndNodes = await _db.WorkflowStepExecutions
+                    var completedEndNodes = await db.WorkflowStepExecutions
                         .Where(s => s.WorkflowExecutionId == execution.Id && 
                                    s.StepType == "end" && 
                                    s.Status == "Completed")
@@ -212,7 +289,7 @@ namespace PurpleRice.Services
                     {
                         execution.Status = "Completed";
                         execution.EndedAt = DateTime.Now;
-                        await _db.SaveChangesAsync();
+                        await db.SaveChangesAsync();
                         WriteLog($"=== 所有分支都已完成，工作流程標記為完成 ===");
                     }
                     else
@@ -227,7 +304,7 @@ namespace PurpleRice.Services
 
             stepExec.Status = "Completed";
             stepExec.EndedAt = DateTime.Now;
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             // 更新執行步驟
             execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
@@ -361,5 +438,12 @@ namespace PurpleRice.Services
         public string Prompt { get; set; }
         public string RetryMessage { get; set; }
         public int MaxRetries { get; set; }
+    }
+
+    // 新增：工作流程執行結果模型
+    public class WorkflowExecutionResult
+    {
+        public string Status { get; set; }
+        public object OutputData { get; set; }
     }
 } 

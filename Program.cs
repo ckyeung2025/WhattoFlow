@@ -14,6 +14,8 @@ builder.Services.AddControllers();
 builder.Services.AddDbContext<PurpleRiceDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("PurpleRice")));
 
+
+
 builder.Services.AddDbContext<ErpDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("ErpDatabase")));
     
@@ -42,7 +44,7 @@ builder.Services.AddScoped<DocumentConverterService>();
 builder.Services.AddScoped<UserSessionService>();
 builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
 builder.Services.AddTransient<WhatsAppWorkflowService>();
-builder.Services.AddScoped<WorkflowEngine>();
+builder.Services.AddScoped<WorkflowEngine>(); // 改為 Scoped 以解決生命週期問題
 
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();

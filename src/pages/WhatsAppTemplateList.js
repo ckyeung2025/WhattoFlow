@@ -41,6 +41,10 @@ const WhatsAppTemplateList = () => {
   const [variables, setVariables] = useState([]);
   const [pendingTemplateData, setPendingTemplateData] = useState(null);
   
+  // 新增狀態用於管理按鈕和列表選項
+  const [buttons, setButtons] = useState([]);
+  const [listOptions, setListOptions] = useState([]);
+  
   // 地圖相關狀態
   const [locationMap, setLocationMap] = useState(null);
   const [locationMarker, setLocationMarker] = useState(null);
@@ -717,10 +721,27 @@ const WhatsAppTemplateList = () => {
   // 處理模板類型變化
   const handleTemplateTypeChange = (value) => {
     setTemplateType(value);
-    form.setFieldsValue({
-      content: '',
-      variables: ''
-    });
+    
+    // 根據模板類型設置不同的默認值
+    if (value === 'Interactive') {
+      form.setFieldsValue({
+        content: '',
+        variables: '',
+        buttons: [],
+        listOptions: []
+      });
+      setInteractiveType('button'); // 設置默認的 interactiveType
+      setButtons([]); // 重置按鈕狀態
+      setListOptions([]); // 重置選項狀態
+    } else {
+      form.setFieldsValue({
+        content: '',
+        variables: ''
+      });
+      setButtons([]); // 重置按鈕狀態
+      setListOptions([]); // 重置選項狀態
+    }
+    
     setVariables([]);
   };
 
@@ -764,17 +785,76 @@ const WhatsAppTemplateList = () => {
           caption: values.mediaCaption || ''
         };
       case 'Interactive':
-        return {
+        const interactiveContent = {
           type: 'interactive',
           interactiveType: interactiveType,
           header: values.header || '',
           body: values.body,
-          footer: values.footer || '',
-          action: {
-            buttons: values.buttons || [],
-            sections: values.sections || []
-          }
+          footer: values.footer || ''
         };
+        
+        // 根據不同的 interactiveType 生成不同的 action 結構
+        switch (interactiveType) {
+          case 'button':
+            // 處理多個按鈕
+            const buttons = [];
+            if (values.buttons && values.buttons.length > 0) {
+              values.buttons.forEach((button, index) => {
+                if (button.text && button.value) {
+                  // Button 類型只支持 reply 類型的按鈕
+                  // WhatsApp Business API 的 Button 類型不支持 url 和 phone_number
+                  buttons.push({
+                    type: 'reply',
+                    reply: {
+                      id: button.value || String(index + 1),
+                      title: button.text
+                    }
+                  });
+                }
+              });
+            }
+            
+            interactiveContent.action = {
+              buttons: buttons
+            };
+            break;
+            
+          case 'list':
+            // 處理列表選項
+            const options = [];
+            if (values.listOptions && values.listOptions.length > 0) {
+              values.listOptions.forEach(option => {
+                if (option.id && option.title) {
+                  options.push({
+                    id: option.id,
+                    title: option.title,
+                    description: option.description || ''
+                  });
+                }
+              });
+            }
+            
+            interactiveContent.action = {
+              button: values.listTitle || '選擇選項',
+              sections: [{
+                title: values.listTitle || '選項列表',
+                rows: options
+              }]
+            };
+            break;
+            
+          case 'product':
+            interactiveContent.action = {
+              catalog_id: values.productCatalogId,
+              product_retailer_id: values.productId
+            };
+            break;
+            
+          default:
+            interactiveContent.action = {};
+        }
+        
+        return interactiveContent;
       case 'Location':
         return {
           type: 'location',
@@ -960,6 +1040,80 @@ const WhatsAppTemplateList = () => {
         status: template.status,
         language: template.language
       };
+      
+      // 新增：為 Interactive 類型設置 interactiveType 和相關字段
+      if (template.templateType === 'Interactive' && content.interactiveType) {
+        pendingData.interactiveType = content.interactiveType;
+        setInteractiveType(content.interactiveType); // 同步狀態變量
+        
+        // 根據不同的 interactiveType 恢復對應的字段
+        switch (content.interactiveType) {
+          case 'button':
+            if (content.action && content.action.buttons && content.action.buttons.length > 0) {
+              const buttons = content.action.buttons.map(button => {
+                let buttonData = { text: '', type: 'quick_reply', value: '' };
+                
+                if (button.type === 'reply' && button.reply) {
+                  buttonData = {
+                    text: button.reply.title || '',
+                    type: 'quick_reply',
+                    value: button.reply.id || ''
+                  };
+                } else if (button.type === 'url') {
+                  buttonData = {
+                    text: button.url || '',
+                    type: 'url',
+                    value: button.url || ''
+                  };
+                } else if (button.type === 'phone_number') {
+                  buttonData = {
+                    text: button.phone_number || '',
+                    type: 'phone_number',
+                    value: button.phone_number || ''
+                  };
+                }
+                
+                return buttonData;
+              });
+              
+              pendingData.buttons = buttons;
+              setButtons(buttons); // 設置按鈕狀態
+            }
+            break;
+            
+          case 'list':
+            if (content.action && content.action.sections && content.action.sections.length > 0) {
+              const section = content.action.sections[0];
+              pendingData.listTitle = section.title || '';
+              
+              // 將選項轉換為對象數組格式
+              if (section.rows && section.rows.length > 0) {
+                const options = section.rows.map(row => ({
+                  id: row.id || '',
+                  title: row.title || '',
+                  description: row.description || ''
+                }));
+                pendingData.listOptions = options;
+                setListOptions(options); // 設置選項狀態
+              }
+            }
+            break;
+            
+          case 'product':
+            if (content.action) {
+              pendingData.productId = content.action.product_retailer_id || '';
+              pendingData.productCatalogId = content.action.catalog_id || '';
+              // 產品圖片URL可能需要從其他地方獲取
+            }
+            break;
+        }
+      }
+      
+      // 新增：為 Media 類型設置 mediaType
+      if (template.templateType === 'Media' && content.mediaType) {
+        pendingData.mediaType = content.mediaType;
+        setMediaType(content.mediaType); // 同步狀態變量
+      }
       
       console.log('設置的 pendingTemplateData:', pendingData);
       setPendingTemplateData(pendingData);
@@ -1230,7 +1384,13 @@ const WhatsAppTemplateList = () => {
               label={t('whatsappTemplate.mediaType')}
               rules={[{ required: true, message: t('whatsappTemplate.pleaseSelectMediaType') }]}
             >
-              <Radio.Group onChange={(e) => setMediaType(e.target.value)} value={mediaType}>
+              <Radio.Group 
+                onChange={(e) => {
+                  setMediaType(e.target.value);
+                  form.setFieldsValue({ mediaType: e.target.value });
+                }} 
+                value={mediaType}
+              >
                 <Radio.Button value="image"><PictureOutlined /> {t('whatsappTemplate.image')}</Radio.Button>
                 <Radio.Button value="video"><VideoCameraOutlined /> {t('whatsappTemplate.video')}</Radio.Button>
                 <Radio.Button value="audio"><AudioOutlined /> {t('whatsappTemplate.audio')}</Radio.Button>
@@ -1266,7 +1426,13 @@ const WhatsAppTemplateList = () => {
               label={t('whatsappTemplate.interactiveType')}
               rules={[{ required: true, message: t('whatsappTemplate.pleaseSelectInteractiveType') }]}
             >
-              <Radio.Group onChange={(e) => setInteractiveType(e.target.value)} value={interactiveType}>
+              <Radio.Group 
+                onChange={(e) => {
+                  setInteractiveType(e.target.value);
+                  form.setFieldsValue({ interactiveType: e.target.value });
+                }} 
+                value={interactiveType}
+              >
                 <Radio.Button value="button">{t('whatsappTemplate.button')}</Radio.Button>
                 <Radio.Button value="list">{t('whatsappTemplate.list')}</Radio.Button>
                 <Radio.Button value="product">{t('whatsappTemplate.product')}</Radio.Button>
@@ -1297,6 +1463,246 @@ const WhatsAppTemplateList = () => {
             >
               <Input placeholder={t('whatsappTemplate.pleaseEnterFooter')} />
             </Form.Item>
+            
+            {/* Button 類型的按鈕配置 */}
+            {interactiveType === 'button' && (
+              <>
+                <Divider orientation="left">按鈕配置</Divider>
+                <div style={{ marginBottom: 16 }}>
+                  <Button 
+                    type="dashed" 
+                    onClick={() => {
+                      if (buttons.length < 3) {
+                        const newButtons = [...buttons, { text: '', type: 'quick_reply', value: '' }];
+                        setButtons(newButtons);
+                        form.setFieldsValue({ buttons: newButtons });
+                      } else {
+                        message.warning('最多只能添加 3 個按鈕');
+                      }
+                    }}
+                    icon={<PlusOutlined />}
+                    disabled={buttons.length >= 3}
+                  >
+                    添加按鈕
+                  </Button>
+                  <span style={{ marginLeft: 8, fontSize: '12px', color: '#666' }}>
+                    最多 3 個按鈕
+                  </span>
+                </div>
+                
+                {buttons.map((button, index) => (
+                  <Card key={index} size="small" style={{ marginBottom: '8px' }}>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Form.Item
+                          name={['buttons', index, 'text']}
+                          label={`按鈕 ${index + 1} 文字`}
+                          rules={[{ required: true, message: '請輸入按鈕文字' }]}
+                        >
+                          <Input 
+                            placeholder="請輸入按鈕文字"
+                            value={button.text}
+                            onChange={(e) => {
+                              const newButtons = [...buttons];
+                              newButtons[index].text = e.target.value;
+                              setButtons(newButtons);
+                              form.setFieldsValue({ buttons: newButtons });
+                            }}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          name={['buttons', index, 'type']}
+                          label="按鈕類型"
+                          rules={[{ required: true, message: '請選擇按鈕類型' }]}
+                        >
+                          <Select 
+                            placeholder="請選擇按鈕類型"
+                            value={button.type}
+                            onChange={(value) => {
+                              const newButtons = [...buttons];
+                              newButtons[index].type = value;
+                              setButtons(newButtons);
+                              form.setFieldsValue({ buttons: newButtons });
+                            }}
+                          >
+                            <Option value="quick_reply">快速回覆</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={6}>
+                        <Form.Item
+                          name={['buttons', index, 'value']}
+                          label="回覆ID"
+                          rules={[{ required: true, message: '請輸入回覆ID' }]}
+                        >
+                          <Input 
+                            placeholder="回覆ID（用於識別用戶選擇）"
+                            value={button.value}
+                            onChange={(e) => {
+                              const newButtons = [...buttons];
+                              newButtons[index].value = e.target.value;
+                              setButtons(newButtons);
+                              form.setFieldsValue({ buttons: newButtons });
+                            }}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={2}>
+                        <Button 
+                          type="text" 
+                          danger 
+                          icon={<DeleteOutlined />}
+                          onClick={() => {
+                            const newButtons = buttons.filter((_, i) => i !== index);
+                            setButtons(newButtons);
+                            form.setFieldsValue({ buttons: newButtons });
+                          }}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
+                ))}
+              </>
+            )}
+            
+            {/* List 類型的選項配置 */}
+            {interactiveType === 'list' && (
+              <>
+                <Divider orientation="left">列表選項配置</Divider>
+                <Form.Item
+                  name="listTitle"
+                  label="列表標題"
+                  rules={[{ required: true, message: '請輸入列表標題' }]}
+                >
+                  <Input placeholder="請輸入列表標題" />
+                </Form.Item>
+                
+                <div style={{ marginBottom: 16 }}>
+                  <Button 
+                    type="dashed" 
+                    onClick={() => {
+                      if (listOptions.length < 10) {
+                        const newOptions = [...listOptions, { id: '', title: '', description: '' }];
+                        setListOptions(newOptions);
+                        form.setFieldsValue({ listOptions: newOptions });
+                      } else {
+                        message.warning('最多只能添加 10 個選項');
+                      }
+                    }}
+                    icon={<PlusOutlined />}
+                    disabled={listOptions.length >= 10}
+                  >
+                    添加選項
+                  </Button>
+                  <span style={{ marginLeft: 8, fontSize: '12px', color: '#666' }}>
+                    最多 10 個選項
+                  </span>
+                </div>
+                
+                {listOptions.map((option, index) => (
+                  <Card key={index} size="small" style={{ marginBottom: '8px' }}>
+                    <Row gutter={16}>
+                      <Col span={6}>
+                        <Form.Item
+                          name={['listOptions', index, 'id']}
+                          label={`選項 ${index + 1} ID`}
+                          rules={[{ required: true, message: '請輸入選項ID' }]}
+                        >
+                          <Input 
+                            placeholder="選項ID"
+                            value={option.id}
+                            onChange={(e) => {
+                              const newOptions = [...listOptions];
+                              newOptions[index].id = e.target.value;
+                              setListOptions(newOptions);
+                              form.setFieldsValue({ listOptions: newOptions });
+                            }}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          name={['listOptions', index, 'title']}
+                          label="選項標題"
+                          rules={[{ required: true, message: '請輸入選項標題' }]}
+                        >
+                          <Input 
+                            placeholder="選項標題"
+                            value={option.title}
+                            onChange={(e) => {
+                              const newOptions = [...listOptions];
+                              newOptions[index].title = e.target.value;
+                              setListOptions(newOptions);
+                              form.setFieldsValue({ listOptions: newOptions });
+                            }}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          name={['listOptions', index, 'description']}
+                          label="選項描述"
+                        >
+                          <Input 
+                            placeholder="選項描述（可選）"
+                            value={option.description}
+                            onChange={(e) => {
+                              const newOptions = [...listOptions];
+                              newOptions[index].description = e.target.value;
+                              setListOptions(newOptions);
+                              form.setFieldsValue({ listOptions: newOptions });
+                            }}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={2}>
+                        <Button 
+                          type="text" 
+                          danger 
+                          icon={<DeleteOutlined />}
+                          onClick={() => {
+                            const newOptions = listOptions.filter((_, i) => i !== index);
+                            setListOptions(newOptions);
+                            form.setFieldsValue({ listOptions: newOptions });
+                          }}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
+                ))}
+              </>
+            )}
+            
+            {/* Product 類型的產品配置 */}
+            {interactiveType === 'product' && (
+              <>
+                <Divider orientation="left">產品配置</Divider>
+                <Form.Item
+                  name="productId"
+                  label="產品ID"
+                  rules={[{ required: true, message: '請輸入產品ID' }]}
+                >
+                  <Input placeholder="請輸入產品ID" />
+                </Form.Item>
+                
+                <Form.Item
+                  name="productCatalogId"
+                  label="產品目錄ID"
+                  rules={[{ required: true, message: '請輸入產品目錄ID' }]}
+                >
+                  <Input placeholder="請輸入Facebook產品目錄ID" />
+                </Form.Item>
+                
+                <Form.Item
+                  name="productImageUrl"
+                  label="產品圖片URL"
+                >
+                  <Input placeholder="請輸入產品圖片URL" />
+                </Form.Item>
+              </>
+            )}
           </>
         );
 
@@ -1635,6 +2041,8 @@ const WhatsAppTemplateList = () => {
           form.resetFields();
           setVariables([]);
           setPendingTemplateData(null);
+          setButtons([]); // 重置按鈕狀態
+          setListOptions([]); // 重置選項狀態
           
           // 清理地圖資源
           if (locationMap) {
@@ -1655,6 +2063,8 @@ const WhatsAppTemplateList = () => {
               form.resetFields();
               setVariables([]);
               setPendingTemplateData(null);
+              setButtons([]); // 重置按鈕狀態
+              setListOptions([]); // 重置選項狀態
             }}>
               {t('whatsappTemplate.cancel')}
             </Button>
