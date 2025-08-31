@@ -15,11 +15,76 @@ namespace PurpleRice.Controllers
     {
         private readonly PurpleRiceDbContext _context;
         private readonly LoggingService _loggingService;
+        private readonly WorkflowEngine _workflowEngine;
 
-        public WorkflowEngineController(PurpleRiceDbContext context, Func<string, LoggingService> loggingServiceFactory)
+        public WorkflowEngineController(
+            PurpleRiceDbContext context, 
+            Func<string, LoggingService> loggingServiceFactory,
+            WorkflowEngine workflowEngine)
         {
             _context = context;
             _loggingService = loggingServiceFactory("WorkflowEngineController");
+            _workflowEngine = workflowEngine;
+        }
+
+        // 手動啟動工作流程
+        [HttpPost("workflow/{id}/start")]
+        public async Task<IActionResult> StartWorkflow(int id, [FromBody] StartWorkflowRequest request)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 手動啟動工作流程開始 ===");
+                _loggingService.LogInformation($"工作流程 ID: {id}");
+
+                // 查找工作流程定義
+                var workflow = await _context.WorkflowDefinitions
+                    .FirstOrDefaultAsync(w => w.Id == id);
+
+                if (workflow == null)
+                {
+                    _loggingService.LogWarning($"找不到工作流程，ID: {id}");
+                    return NotFound(new { error = "工作流程不存在" });
+                }
+
+                if (workflow.Status != "Active" && workflow.Status != "啟用")
+                {
+                    _loggingService.LogWarning($"工作流程狀態不正確: {workflow.Status}");
+                    return BadRequest(new { error = "工作流程未啟用" });
+                }
+
+                // 創建執行記錄
+                var execution = new WorkflowExecution
+                {
+                    WorkflowDefinitionId = workflow.Id,
+                    Status = "Running",
+                    StartedAt = DateTime.Now,
+                    InputJson = System.Text.Json.JsonSerializer.Serialize(request.InputData),
+                    CreatedBy = "manual-user"
+                };
+
+                _context.WorkflowExecutions.Add(execution);
+                await _context.SaveChangesAsync();
+
+                _loggingService.LogInformation($"執行記錄已創建，ID: {execution.Id}");
+
+                // 調用 WorkflowEngine 執行工作流程
+                var result = await _workflowEngine.ExecuteWorkflow(execution.Id, request.InputData);
+
+                _loggingService.LogInformation($"工作流程執行完成，狀態: {result.Status}");
+
+                return Ok(new
+                {
+                    success = true,
+                    executionId = execution.Id,
+                    status = result.Status,
+                    message = "工作流程已啟動並執行完成"
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"啟動工作流程失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = $"啟動工作流程失敗: {ex.Message}" });
+            }
         }
 
         [HttpGet("workflows")]
@@ -161,96 +226,6 @@ namespace PurpleRice.Controllers
             }
         }
 
-        [HttpPost("workflow/{id}/start")]
-        public async Task<IActionResult> StartWorkflow(int id, [FromBody] object inputData)
-        {
-            try
-            {
-                _loggingService.LogInformation($"啟動工作流程 - ID: {id}");
-
-                var workflow = await _context.WorkflowDefinitions
-                    .FirstOrDefaultAsync(w => w.Id == id);
-
-                if (workflow == null)
-                {
-                    _loggingService.LogWarning($"找不到工作流程，ID: {id}");
-                    return NotFound(new { error = "工作流程不存在" });
-                }
-
-                if (workflow.Status != "Active")
-                {
-                    _loggingService.LogWarning($"工作流程狀態不正確: {workflow.Status}");
-                    return BadRequest(new { error = "工作流程未啟用" });
-                }
-
-                // 創建執行記錄
-                var execution = new WorkflowExecution
-                {
-                    WorkflowDefinitionId = id,
-                    Status = "Running",
-                    CurrentStep = 0,
-                    InputJson = System.Text.Json.JsonSerializer.Serialize(inputData),
-                    StartedAt = DateTime.Now
-                };
-
-                _context.WorkflowExecutions.Add(execution);
-                await _context.SaveChangesAsync();
-
-                _loggingService.LogInformation($"成功啟動工作流程: {workflow.Name}, 執行ID: {execution.Id}");
-
-                // 這裡可以添加實際的工作流程執行邏輯
-                // 例如：調用 WorkflowEngine 來執行流程
-
-                return Ok(new
-                {
-                    executionId = execution.Id,
-                    status = execution.Status,
-                    message = "工作流程已啟動"
-                });
-            }
-            catch (Exception ex)
-            {
-                _loggingService.LogError($"啟動工作流程失敗: {ex.Message}", ex);
-                return StatusCode(500, new { error = "啟動工作流程失敗" });
-            }
-        }
-
-        [HttpPost("execution/{id}/stop")]
-        public async Task<IActionResult> StopExecution(int id)
-        {
-            try
-            {
-                _loggingService.LogInformation($"停止執行記錄 - ID: {id}");
-
-                var execution = await _context.WorkflowExecutions
-                    .FirstOrDefaultAsync(e => e.Id == id);
-
-                if (execution == null)
-                {
-                    _loggingService.LogWarning($"找不到執行記錄，ID: {id}");
-                    return NotFound(new { error = "執行記錄不存在" });
-                }
-
-                if (execution.Status == "Completed" || execution.Status == "Failed")
-                {
-                    _loggingService.LogWarning($"執行記錄狀態不正確: {execution.Status}");
-                    return BadRequest(new { error = "執行記錄已完成或失敗，無法停止" });
-                }
-
-                execution.Status = "Stopped";
-                execution.EndedAt = DateTime.Now;
-                await _context.SaveChangesAsync();
-
-                _loggingService.LogInformation($"成功停止執行記錄: ID {execution.Id}");
-                return Ok(new { message = "執行記錄已停止" });
-            }
-            catch (Exception ex)
-            {
-                _loggingService.LogError($"停止執行記錄失敗: {ex.Message}", ex);
-                return StatusCode(500, new { error = "停止執行記錄失敗" });
-            }
-        }
-
         [HttpGet("statistics")]
         public async Task<IActionResult> GetStatistics()
         {
@@ -259,7 +234,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation("獲取工作流程引擎統計信息");
 
                 var totalWorkflows = await _context.WorkflowDefinitions.CountAsync();
-                var activeWorkflows = await _context.WorkflowDefinitions.CountAsync(w => w.Status == "Active");
+                var activeWorkflows = await _context.WorkflowDefinitions.CountAsync(w => w.Status == "Active" || w.Status == "啟用");
                 var totalExecutions = await _context.WorkflowExecutions.CountAsync();
                 var runningExecutions = await _context.WorkflowExecutions.CountAsync(e => e.Status == "Running");
                 var completedExecutions = await _context.WorkflowExecutions.CountAsync(e => e.Status == "Completed");
@@ -284,5 +259,11 @@ namespace PurpleRice.Controllers
                 return StatusCode(500, new { error = "獲取統計信息失敗" });
             }
         }
+    }
+
+    // 啟動工作流程請求模型
+    public class StartWorkflowRequest
+    {
+        public object InputData { get; set; }
     }
 }
