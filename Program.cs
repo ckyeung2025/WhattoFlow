@@ -43,11 +43,6 @@ builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<DocumentConverterService>();
 builder.Services.AddScoped<UserSessionService>();
 builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
-builder.Services.AddTransient<WhatsAppWorkflowService>();
-builder.Services.AddScoped<WorkflowEngine>(); // 改為 Scoped 以解決生命週期問題
-
-// 註冊 HttpClient 服務
-builder.Services.AddHttpClient();
 
 // 註冊 LoggingService 工廠
 builder.Services.AddScoped<Func<string, LoggingService>>(provider =>
@@ -59,6 +54,22 @@ builder.Services.AddScoped<Func<string, LoggingService>>(provider =>
         return new LoggingService(configuration, logger, serviceName);
     };
 });
+
+// 註冊 WhatsAppWorkflowService
+builder.Services.AddScoped<WhatsAppWorkflowService>();
+
+// 註冊 LoggingService 實例（用於控制器）
+builder.Services.AddScoped<LoggingService>(provider =>
+{
+    var configuration = provider.GetRequiredService<IConfiguration>();
+    var logger = provider.GetRequiredService<ILogger<LoggingService>>();
+    return new LoggingService(configuration, logger, "WhatsAppController");
+});
+
+builder.Services.AddScoped<WorkflowEngine>(); // 改為 Scoped 以解決生命週期問題
+
+// 註冊 HttpClient 服務
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 

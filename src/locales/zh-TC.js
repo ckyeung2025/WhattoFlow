@@ -1036,9 +1036,12 @@ const zhTC = {
     endNode: '結束節點',
     waitReplyNode: '等待回覆節點',
     sendMessageNode: '發送訊息節點',
+    sendTemplateNode: '發送模板節點',
     conditionNode: '條件節點',
     formNode: '表單節點',
     webhookNode: 'Webhook 節點',
+    dbQueryNode: '資料庫查詢節點',
+    eFormResultNode: '表單結果節點',
     taskName: '任務名稱',
     taskNamePlaceholder: '請輸入任務名稱',
     description: '描述',
@@ -1080,6 +1083,141 @@ const zhTC = {
     copyFailed: '複製失敗',
     nameRequired: '請輸入工作流程名稱',
     descriptionRequired: '請輸入工作流程描述',
+    
+    // 按鈕和操作
+    delete: '刪除',
+    clear: '清除',
+    selectUser: '選擇用戶',
+    selectPerson: '選擇人員',
+    selectForm: '選擇表單',
+    selectTemplate: '選擇模板',
+    
+    // 表單標籤和提示
+    taskNameLabel: '任務名稱',
+    taskNamePlaceholder: '輸入任務名稱',
+    phoneNumberPlaceholder: '輸入電話號碼 (例如: 85296366318) 或點擊選擇用戶',
+    selectSpecifiedPerson: '選擇指定人員',
+    waitReplyMessagePlaceholder: '輸入等待用戶回覆時的提示訊息',
+    selectEFormPlaceholder: '選擇要發送的 e-Form',
+    
+    // 節點配置
+    replyType: '回覆類型',
+    initiator: '流程啟動人',
+    specifiedPerson: '指定人員',
+    promptMessage: '提示訊息',
+    validationConfig: '驗證配置',
+    validationSettings: '驗證設定',
+    enableValidation: '啟用驗證',
+    yes: '是',
+    no: '否',
+    validatorType: '驗證器類型',
+    defaultValidator: '預設驗證器',
+    customValidator: '自定義驗證器',
+    openaiValidation: 'OpenAI 驗證',
+    xaiValidation: 'XAI 驗證',
+    promptText: '提示文字',
+    retryMessage: '重試訊息',
+    maxRetries: '最大重試次數',
+    
+    // 功能說明
+    waitReplyDescription1: '1. 流程執行到此節點時會暫停等待用戶回覆',
+    waitReplyDescription2: '2. 只有指定的用戶回覆才會繼續執行流程',
+    waitReplyDescription3: '3. 如果啟用驗證，會檢查用戶輸入是否符合要求',
+    waitReplyDescription4: '4. 驗證失敗時會要求用戶重新輸入',
+    eFormDescription1: '1. 選擇要發送的 e-Form 表單',
+    eFormDescription2: '2. 選擇接收表單的用戶（電話號碼）',
+    eFormDescription3: '3. 系統會將表單連結發送給指定用戶',
+    eFormDescription4: '4. 用戶可以點擊連結填寫表單',
+    eFormDescription5: '5. 表單提交後會觸發後續流程',
+    
+    // 啟動方式配置
+    activationConfig: '啟動方式配置',
+    activationType: '啟動方式',
+    manualActivation: '手動啟動',
+    metaWebhookCall: 'Meta Webhook 呼叫',
+    scheduledTableWatch: '定時監看數據表',
+    watchTable: '監看數據表',
+    queryCondition: '查詢條件',
+    checkInterval: '檢查間隔 (秒)',
+    
+    // 配置說明
+    metaWebhookConfigTitle: 'Meta Webhook 配置說明',
+    metaWebhookConfig1: '1. 請在公司設定頁面配置 Meta Webhook URL',
+    metaWebhookConfig2: '2. 當收到 WhatsApp 訊息時，系統會回覆選單讓用戶選擇功能',
+    metaWebhookConfig3: '3. 根據用戶選擇啟動對應的流程',
+    metaWebhookConfig4: '4. 此流程將在用戶選擇後執行',
+    scheduledWatchTitle: '定時監看說明',
+    scheduledWatchDescription: '此功能正在開發中，將在後續版本中實現',
+    
+    // 模態框
+    selectWhatsAppTemplate: '選擇 WhatsApp 模板',
+    selectUser: '選擇用戶',
+    selectEForm: '選擇 e-Form 表單',
+    noTemplatesAvailable: '暫無可用的模板，請先創建模板',
+    noUsersAvailable: '暫無可用的用戶，請先添加用戶',
+    noEFormsAvailable: '暫無可用的 e-Form 表單，請先創建表單',
+    
+    // 其他界面元素
+    inDevelopment: '開發中',
+    clickToSelectConnection: '點擊選擇連接線',
+    template: '模板',
+    templateInfo: '模板信息',
+    templateId: '模板ID：',
+    templateName: '模板名稱：',
+    formInfo: '表單信息',
+    formId: '表單ID：',
+    formName: '表單名稱：',
+    formDescription: '描述：',
+    
+    // 默認值和提示
+    enterValidContent: '請輸入有效內容',
+    inputIncorrectRetry: '輸入不正確，請重新輸入',
+    dateFormatExample: '例如：請輸入請假日期，格式：YYYY-MM-DD',
+    formatExample: '例如：格式不正確，請重新輸入，例如：2024-01-15',
+    tableExample: '例如: dbo.SoOrderManage',
+    queryExample: '例如: WHERE status = \'PENDING\' AND created_at > @lastCheckTime',
+    
+    // 默認節點數據
+    defaultStartNode: '開始',
+    defaultEndNode: '結束',
+    defaultSendWhatsAppNode: '發送 WhatsApp 訊息',
+    defaultSendTemplateNode: '發送 WhatsApp 模板',
+    defaultWaitReplyNode: '等待用戶回覆',
+    defaultDbQueryNode: '資料庫查詢/更新',
+    defaultCallApiNode: '觸發外部 API',
+    defaultSendEFormNode: '發送 e-Form',
+    defaultEFormResultNode: 'e-Form 核准/拒絕',
+    
+    // 驗證訊息
+    defaultReplyMessage: '請輸入您的回覆',
+    defaultValidationPrompt: '請輸入有效內容',
+    defaultRetryMessage: '輸入不正確，請重新輸入',
+    
+    // 註釋說明
+    specifiedUsersComment: '指定人員的電話號碼，用逗號分隔',
+    scheduledIntervalComment: '5分鐘',
+    
+    // 狀態和其他標籤
+    statusEnabled: '啟用',
+    designer: '設計者',
+    functionDescription: '功能說明',
+    
+    // 錯誤訊息
+    saveFailed: '保存失敗',
+    updateFailed: '更新失敗',
+    createFailed: '創建失敗',
+    getTemplatesFailed: '獲取模板列表失敗',
+    unknownError: '未知錯誤',
+    
+    // 驗證錯誤訊息
+    missingStartNode: '缺少開始節點 (Start)',
+    missingEndNode: '缺少結束節點 (End)',
+    noConnections: '沒有連接線',
+    circularConnection: '發現循環連接：節點 "{nodeName}" 參與循環',
+    isolatedNodes: '發現孤立節點：{nodeNames}',
+    startNodeNoOutput: '開始節點 "{nodeName}" 沒有輸出連接',
+    endNodeNoInput: '結束節點 "{nodeName}" 沒有輸入連接',
+    
     // 節點類型說明
     nodeDescriptions: {
       start: '流程的開始點，只能有一個',
