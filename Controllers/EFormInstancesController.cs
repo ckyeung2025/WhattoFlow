@@ -424,6 +424,7 @@ namespace PurpleRice.Controllers
                  }
 
                  // 处理每个未完成的步骤
+                 var hasFailedSteps = false;
                  foreach (var step in incompleteSteps)
                  {
                      try
@@ -440,10 +441,44 @@ namespace PurpleRice.Controllers
                          // 标记步骤为失败
                          step.Status = "Failed";
                          step.OutputJson = System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message });
+                         hasFailedSteps = true;
                          await _db.SaveChangesAsync();
                      }
                  }
 
+                 // 檢查流程狀態
+                 var allSteps = await _db.WorkflowStepExecutions
+                     .Where(s => s.WorkflowExecutionId == execution.Id)
+                     .ToListAsync();
+                 
+                 var completedSteps = allSteps.Count(s => s.Status == "Completed");
+                 var failedSteps = allSteps.Count(s => s.Status == "Failed");
+                 var totalSteps = allSteps.Count;
+                 
+                 _loggingService.LogInformation($"步驟完成情況: {completedSteps}/{totalSteps}");
+                 
+                 if (hasFailedSteps || failedSteps > 0)
+                 {
+                     // 如果有失敗的步驟，將整個流程標記為失敗
+                     execution.Status = "Failed";
+                     execution.ErrorMessage = $"流程執行失敗，有 {failedSteps} 個步驟失敗";
+                     execution.EndedAt = DateTime.Now;
+                     _loggingService.LogWarning($"流程執行失敗，狀態已更新為 Failed");
+                 }
+                 else if (completedSteps == totalSteps)
+                 {
+                     // 如果所有步驟都完成，將流程標記為完成
+                     execution.Status = "Completed";
+                     execution.EndedAt = DateTime.Now;
+                     _loggingService.LogInformation($"流程執行完成，狀態已更新為 Completed");
+                 }
+                 else
+                 {
+                     // 還有步驟未完成，流程繼續執行
+                     _loggingService.LogInformation($"還有 {totalSteps - completedSteps} 個步驟未完成，工作流程繼續執行");
+                 }
+                 
+                 await _db.SaveChangesAsync();
                  _loggingService.LogInformation($"工作流程步驟處理完成");
              }
              catch (Exception ex)
@@ -534,6 +569,9 @@ namespace PurpleRice.Controllers
                      case "sendWhatsApp":
                          await ExecuteSendWhatsAppStep(stepExecution, dbContext, execution);
                          break;
+                     case "sendWhatsAppTemplate":
+                         await ExecuteSendWhatsAppTemplateStep(stepExecution, dbContext, execution);
+                         break;
                      case "sendEForm":
                          await ExecuteSendEFormStep(stepExecution, dbContext, execution);
                          break;
@@ -572,6 +610,9 @@ namespace PurpleRice.Controllers
                  {
                      case "sendWhatsApp":
                          await ExecuteSendWhatsAppStep(stepExecution, dbContext, execution);
+                         break;
+                     case "sendWhatsAppTemplate":
+                         await ExecuteSendWhatsAppTemplateStep(stepExecution, dbContext, execution);
                          break;
                      case "sendEForm":
                          await ExecuteSendEFormStep(stepExecution, dbContext, execution);
@@ -614,64 +655,9 @@ namespace PurpleRice.Controllers
                  _loggingService.LogInformation($"收件人: {to}");
                  _loggingService.LogInformation($"消息內容: {message}");
 
-                 // 獲取公司配置
-                 var workflowDefinition = await dbContext.WorkflowDefinitions
-                     .FirstOrDefaultAsync(w => w.Id == execution.WorkflowDefinitionId);
-
-                 if (workflowDefinition == null)
-                 {
-                     throw new Exception("找不到工作流程定義");
-                 }
-
-                 var company = await dbContext.Companies
-                     .FirstOrDefaultAsync(c => c.Id == workflowDefinition.CompanyId);
-
-                 if (company == null)
-                 {
-                     throw new Exception("找不到公司配置");
-                 }
-
-                 _loggingService.LogInformation($"Phone Number ID: {company.WA_PhoneNo_ID}");
-
-                 // 格式化電話號碼
-                 var formattedTo = to;
-                 if (!to.StartsWith("852"))
-                 {
-                     if (to.StartsWith("0"))
-                     {
-                         to = to.Substring(1);
-                     }
-                     formattedTo = "852" + to;
-                 }
-                 _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
-
-                 // 構建 WhatsApp API 請求
-                 var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
-                 var payload = new
-                 {
-                     messaging_product = "whatsapp",
-                     to = formattedTo,
-                     type = "text",
-                     text = new { body = message }
-                 };
-
-                 var json = JsonSerializer.Serialize(payload);
-                 _loggingService.LogDebug($"發送的 JSON payload: {json}");
-
-                 using var httpClient = new HttpClient();
-                 httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                 
-                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-                 var response = await httpClient.PostAsync(url, content);
-                 var responseContent = await response.Content.ReadAsStringAsync();
-
-                 _loggingService.LogInformation($"WhatsApp API 響應狀態碼: {response.StatusCode}");
-                 _loggingService.LogDebug($"WhatsApp API 響應內容: {responseContent}");
-
-                 if (!response.IsSuccessStatusCode)
-                 {
-                     throw new Exception($"WhatsApp API 請求失敗: {response.StatusCode} - {responseContent}");
-                 }
+                 // 直接使用 WhatsAppWorkflowService 發送消息
+                 // 該服務已經處理了公司配置、電話號碼格式化、API 調用等所有邏輯
+                 await _whatsAppWorkflowService.SendWhatsAppMessageAsync(to, message, execution, dbContext);
 
                  // 更新步驟狀態為已完成
                  stepExecution.Status = "Completed";
@@ -693,107 +679,7 @@ namespace PurpleRice.Controllers
              }
          }
          
-         private async Task<string> SendWhatsAppMessage(Company company, string to, string message)
-         {
-             try
-             {
-                 // 驗證必要參數
-                 if (string.IsNullOrEmpty(message))
-                 {
-                     throw new Exception("消息內容不能為空");
-                 }
-                 
-                 if (string.IsNullOrEmpty(to))
-                 {
-                     throw new Exception("收件人電話號碼不能為空");
-                 }
-                 
-                 if (string.IsNullOrEmpty(company.WA_PhoneNo_ID))
-                 {
-                     throw new Exception("公司 WhatsApp Phone Number ID 不能為空");
-                 }
-                 
-                 if (string.IsNullOrEmpty(company.WA_API_Key))
-                 {
-                     throw new Exception("公司 WhatsApp API Key 不能為空");
-                 }
-                 
-                 _loggingService.LogInformation($"準備發送 WhatsApp 消息:");
-                 _loggingService.LogInformation($"收件人: {to}");
-                 _loggingService.LogInformation($"消息內容: {message}");
-                 _loggingService.LogInformation($"Phone Number ID: {company.WA_PhoneNo_ID}");
-                 
-                 // 格式化電話號碼
-                 var formattedTo = FormatPhoneNumber(to);
-                 _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
-                 
-                 // 發送 WhatsApp 消息
-                 var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
-                 
-                 var payload = new
-                 {
-                     messaging_product = "whatsapp",
-                     to = formattedTo,
-                     type = "text",
-                     text = new { body = message }
-                 };
-                 
-                 var json = JsonSerializer.Serialize(payload);
-                 _loggingService.LogDebug($"發送的 JSON payload: {json}");
-                 
-                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                 
-                 using var client = new HttpClient();
-                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {company.WA_API_Key}");
-                 
-                 var response = await client.PostAsync(url, content);
-                 var responseContent = await response.Content.ReadAsStringAsync();
-                 
-                 _loggingService.LogInformation($"WhatsApp API 響應狀態碼: {response.StatusCode}");
-                 _loggingService.LogDebug($"WhatsApp API 響應內容: {responseContent}");
-                 
-                 if (response.IsSuccessStatusCode)
-                 {
-                     return "Message sent successfully";
-                 }
-                 else
-                 {
-                     throw new Exception($"WhatsApp API 錯誤: {responseContent}");
-                 }
-             }
-             catch (Exception ex)
-             {
-                 _loggingService.LogError($"發送 WhatsApp 消息失敗: {ex.Message}", ex);
-                 throw;
-             }
-         }
-         
-         /// <summary>
-         /// 格式化電話號碼
-         /// </summary>
-         /// <param name="phoneNumber">原始電話號碼</param>
-         /// <returns>格式化後的電話號碼</returns>
-         private string FormatPhoneNumber(string phoneNumber)
-         {
-             var countryCode = "852"; // 暫時硬編碼香港區號，可以之後從公司設定獲取
-             
-             // 檢查電話號碼是否已經包含國家代碼
-             if (!phoneNumber.StartsWith(countryCode))
-             {
-                 // 移除開頭的 0（如果有的話）
-                 if (phoneNumber.StartsWith("0"))
-                 {
-                     phoneNumber = phoneNumber.Substring(1);
-                 }
-                 // 添加國家代碼
-                 return countryCode + phoneNumber;
-             }
-             else
-             {
-                 // 已經包含國家代碼，直接使用
-                 return phoneNumber;
-             }
-         }
+
          
          private async Task ExecuteSendEFormStep(WorkflowStepExecution stepExecution, PurpleRiceDbContext dbContext, WorkflowExecution execution)
          {
@@ -826,6 +712,46 @@ namespace PurpleRice.Controllers
              catch (Exception ex)
              {
                  _loggingService.LogError($"執行 Wait Reply 步驟失敗: {ex.Message}");
+                 stepExecution.Status = "Failed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                 throw;
+             }
+         }
+         
+         private async Task ExecuteSendWhatsAppTemplateStep(WorkflowStepExecution stepExecution, PurpleRiceDbContext dbContext, WorkflowExecution execution)
+         {
+             try
+             {
+                 _loggingService.LogInformation("開始執行 Send WhatsApp Template 步驟");
+                 
+                 // 從步驟執行記錄中獲取輸入數據
+                 var inputData = JsonSerializer.Deserialize<JsonElement>(stepExecution.InputJson);
+                 
+                 // 獲取模板相關參數
+                 var to = inputData.GetProperty("to").GetString();
+                 var templateId = inputData.GetProperty("templateId").GetString();
+                 
+                 _loggingService.LogInformation($"收件人: {to}");
+                 _loggingService.LogInformation($"模板 ID: {templateId}");
+
+                 // 直接使用 WhatsAppWorkflowService 發送模板消息
+                 // 該服務已經處理了公司配置、電話號碼格式化、模板查詢等所有邏輯
+                 await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(to, templateId, execution, dbContext);
+
+                 // 更新步驟狀態為已完成
+                 stepExecution.Status = "Completed";
+                 stepExecution.EndedAt = DateTime.Now;
+                 stepExecution.OutputJson = JsonSerializer.Serialize(new { success = true, messageId = "template_sent" });
+                 
+                 _loggingService.LogInformation("WhatsApp Template 消息發送成功");
+             }
+             catch (Exception ex)
+             {
+                 _loggingService.LogError($"發送 WhatsApp Template 消息失敗: {ex.Message}");
+                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                 
+                 // 更新步驟狀態為失敗
                  stepExecution.Status = "Failed";
                  stepExecution.EndedAt = DateTime.Now;
                  stepExecution.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });

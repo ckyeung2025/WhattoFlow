@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLanguage } from '../contexts/LanguageContext';
 import ReactFlow, {
   MiniMap, Controls, Background, addEdge, useNodesState, useEdgesState, Handle, Position, useReactFlow, getBezierPath
 } from 'react-flow-renderer';
 import { Button, Drawer, Form, Input, Select, message, Tooltip, Modal, Card, Tag, Space, Typography } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined, MessageOutlined, SendOutlined, ClockCircleOutlined, DatabaseOutlined, ApiOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined, UpOutlined } from '@ant-design/icons';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useLanguage } from '../contexts/LanguageContext';
 
 const { Title } = Typography;
 
@@ -135,236 +135,69 @@ const purpleButtonStyle = `
   }
 `;
 
-const nodeTypes = [
-  { type: 'start', label: 'Start', icon: PlayCircleOutlined },
-  { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
-  { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
-  { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
-  { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
-  { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
-  { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
-  { type: 'eFormResult', label: 'eForm Approved/Rejected', icon: CheckCircleOutlined },
-  { type: 'end', label: 'End', icon: StopOutlined },
-];
 
-const initialNodes = [
-  {
-    id: 'start',
-    type: 'input',
-    position: { x: 120, y: 200 },
-    data: { label: 'Start', type: 'start' },
-    draggable: false,
-  },
-];
+
 const initialEdges = [];
 
-const nodeTypeLabel = type => nodeTypes.find(n => n.type === type)?.label || type;
-
-const defaultNodeData = type => {
-  switch (type) {
-    case 'start':
-      return { 
-        taskName: 'Start',
-        activationType: 'manual', // manual, webhook, scheduled
-        webhookToken: '',
-        webhookUrl: '',
-        scheduledTable: '',
-        scheduledQuery: '',
-        scheduledInterval: 300 // 5分鐘
-      };
-    case 'end':
-      return { taskName: 'End' };
-    case 'sendWhatsApp':
-      return { taskName: 'Send WhatsApp Message', message: '', to: '' };
-    case 'sendWhatsAppTemplate':
-      return { taskName: 'Send WhatsApp Template', templateId: '', templateName: '', variables: {} };
-    case 'waitReply':
-      return { 
-        taskName: 'Wait for User Reply', 
-        replyType: 'initiator', // initiator, specified
-        specifiedUsers: '', // 指定人員的電話號碼，用逗號分隔
-        message: '請輸入您的回覆',
-        validation: {
-          enabled: true,
-          validatorType: 'default',
-          prompt: '請輸入有效內容',
-          retryMessage: '輸入不正確，請重新輸入',
-          maxRetries: 3
-        }
-      };
-    case 'dbQuery':
-      return { taskName: 'Database Query/Update', sql: '' };
-    case 'callApi':
-      return { taskName: 'Trigger External API', url: '' };
-    case 'sendEForm':
-      return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '' };
-    case 'eFormResult':
-      return { taskName: 'eForm Approved/Rejected', result: '' };
-    default:
-      return { taskName: type };
-  }
-};
-
-// nodeTypesObj 搬到 component 外部，onDelete 由 props 傳入
-const createNodeTypesObj = (onDelete) => ({
-  default: ({ id, data, selected }) => (
-    <div
-      style={{
-        padding: 8,
-        background: selected ? '#e6f7ff' : '#fff',
-        border: '1.5px solid #1890ff',
-        borderRadius: 6,
-        minWidth: 120,
-        position: 'relative',
-        boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
-        transition: 'box-shadow 0.2s',
-      }}
-      className="custom-node"
-    >
-      {/* 一般節點 - 上方接入點，下方接出點 */}
-      {/* 上方接入點 - 橙色 */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-target"
-        style={{ 
-          background: '#faad14', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          top: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-        title="輸入連接點"
-      />
-      
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-        <span>{data.taskName || data.label}</span>
-      </div>
-      
-      {/* 下方接出點 - 綠色 */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-source"
-        style={{ 
-          background: '#52c41a', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          bottom: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-        title="輸出連接點"
-      />
-      
-      {selected && data.type !== 'start' && (
-        <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>刪除</button>
-      )}
-    </div>
-  ),
-  input: ({ id, data, selected }) => (
-    <div
-      style={{
-        padding: 8,
-        background: '#f6ffed',
-        border: '2px solid #52c41a',
-        borderRadius: 6,
-        minWidth: 80,
-        position: 'relative',
-        boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
-        transition: 'box-shadow 0.2s',
-      }}
-      className="custom-node"
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-        <span>{data.taskName || data.label}</span>
-      </div>
-      {/* Start 節點 - 只有下方接出點 - 綠色 */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-source"
-        style={{ 
-          background: '#52c41a', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          bottom: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-        title="輸出連接點"
-      />
-    </div>
-  ),
-  output: ({ id, data, selected }) => (
-    <div
-      style={{
-        padding: 8,
-        background: '#fffbe6',
-        border: '2px solid #faad14',
-        borderRadius: 6,
-        minWidth: 80,
-        position: 'relative',
-        boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
-        transition: 'box-shadow 0.2s',
-      }}
-      className="custom-node"
-    >
-      {/* End 節點 - 只有上方接入點 - 橙色 */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-target"
-        style={{ 
-          background: '#faad14', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          top: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-        title="輸入連接點"
-      />
-      
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-        <span>{data.taskName || data.label}</span>
-      </div>
-      
-
-      
-      {selected && (
-        <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>刪除</button>
-      )}
-    </div>
-  ),
-});
-
 const WhatsAppWorkflowDesigner = () => {
+  const { t, isReady } = useLanguage(); // 使用專案的語言系統，並檢查是否準備好
   const [form] = Form.useForm(); // 添加表單實例
+  
+  // 在組件內部定義 initialNodes，這樣可以使用 t() 函數
+  const initialNodes = useMemo(() => [
+    {
+      id: 'start',
+      type: 'input',
+      position: { x: 120, y: 200 },
+      data: { label: isReady ? t('workflowDesigner.defaultStartNode') : 'Start', type: 'start' },
+      draggable: false,
+    },
+  ], [isReady, t]);
+  
+  // 在組件內部定義 nodeTypes，這樣可以使用 t() 函數
+  const nodeTypes = useMemo(() => {
+    if (!isReady) {
+      return [
+        { type: 'start', label: 'Start', icon: PlayCircleOutlined },
+        { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
+        { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
+        { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
+        { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
+        { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
+        { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
+        { type: 'eFormResult', label: 'eForm Approved/Rejected', icon: CheckCircleOutlined },
+        { type: 'end', label: 'End', icon: StopOutlined },
+      ];
+    }
+    
+    return [
+      { type: 'start', label: t('workflowDesigner.startNode'), icon: PlayCircleOutlined },
+      { type: 'sendWhatsApp', label: t('workflowDesigner.sendMessageNode'), icon: SendOutlined },
+      { type: 'sendWhatsAppTemplate', label: t('workflowDesigner.sendTemplateNode'), icon: MessageOutlined },
+      { type: 'waitReply', label: t('workflowDesigner.waitReplyNode'), icon: ClockCircleOutlined },
+      { type: 'dbQuery', label: t('workflowDesigner.dbQueryNode'), icon: DatabaseOutlined },
+      { type: 'callApi', label: t('workflowDesigner.webhookNode'), icon: ApiOutlined },
+      { type: 'sendEForm', label: t('workflowDesigner.formNode'), icon: FormOutlined },
+      { type: 'eFormResult', label: t('workflowDesigner.eFormResultNode'), icon: CheckCircleOutlined },
+      { type: 'end', label: t('workflowDesigner.endNode'), icon: StopOutlined },
+    ];
+  }, [isReady, t]);
+  
+  // 調試語言系統 - 只在開發模式下輸出
+  if (process.env.NODE_ENV === 'development') {
+    console.log('WhatsAppWorkflowDesigner: 當前語言系統狀態');
+    console.log('isReady:', isReady);
+    console.log('t function available:', typeof t === 'function');
+    console.log('startNode translation:', t('workflowDesigner.startNode'));
+    console.log('nodeTypes:', nodeTypes);
+    console.log('nodeTypes[0].label:', nodeTypes[0]?.label);
+    console.log('nodeTypes[1].label:', nodeTypes[1]?.label);
+    console.log('nodeTypes[2].label:', nodeTypes[2]?.label);
+  }
+  
+  // 在組件內部定義 nodeTypeLabel 函數，這樣可以使用 nodeTypes
+  const nodeTypeLabel = useCallback((type) => nodeTypes.find(n => n.type === type)?.label || type, [nodeTypes]);
+  
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -378,7 +211,7 @@ const WhatsAppWorkflowDesigner = () => {
   const [updatedAt, setUpdatedAt] = useState('');
   const [createdBy, setCreatedBy] = useState('');
   const [updatedBy, setUpdatedBy] = useState('');
-  const [status, setStatus] = useState('啟用');
+  const [status, setStatus] = useState('');
   const [templates, setTemplates] = useState([]);
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -398,7 +231,6 @@ const WhatsAppWorkflowDesigner = () => {
   const [loadingNodeTypes, setLoadingNodeTypes] = useState(true);
   
   const navigate = useNavigate();
-  const { t } = useLanguage();
   const reactFlowInstanceRef = useRef();
   
   // 工具欄收合切換
@@ -406,12 +238,410 @@ const WhatsAppWorkflowDesigner = () => {
     setIsToolbarCollapsed(!isToolbarCollapsed);
   };
   
-  // 創建動態的節點標籤函數
-  const getNodeTypeLabel = useCallback((type) => {
-    // 使用本地定義
-    const nodeType = nodeTypes.find(n => n.type === type);
-    return nodeType ? nodeType.label : type;
-  }, [nodeTypes]);
+  // 在組件內部定義 defaultNodeData 函數，這樣可以使用 t() 函數
+  const defaultNodeData = useCallback((type) => {
+    if (!isReady) {
+      // 語言系統未準備好時使用英文
+      switch (type) {
+        case 'start':
+          return { 
+            taskName: 'Start',
+            activationType: 'manual',
+            webhookToken: '',
+            webhookUrl: '',
+            scheduledTable: '',
+            scheduledQuery: '',
+            scheduledInterval: 300
+          };
+        case 'end':
+          return { taskName: 'End' };
+        case 'sendWhatsApp':
+          return { taskName: 'Send WhatsApp Message', message: '', to: '' };
+        case 'sendWhatsAppTemplate':
+          return { taskName: 'Send WhatsApp Template', templateId: '', templateName: '', variables: {} };
+        case 'waitReply':
+          return { 
+            taskName: 'Wait for User Reply', 
+            replyType: 'initiator',
+            specifiedUsers: '',
+            message: 'Please enter your reply',
+            validation: {
+              enabled: true,
+              validatorType: 'default',
+              prompt: 'Please enter valid content',
+              retryMessage: 'Input incorrect, please retry',
+              maxRetries: 3
+            }
+          };
+        case 'dbQuery':
+          return { taskName: 'Database Query/Update', sql: '' };
+        case 'callApi':
+          return { taskName: 'Trigger External API', url: '' };
+        case 'sendEForm':
+          return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '' };
+        case 'eFormResult':
+          return { taskName: 'eForm Approved/Rejected', result: '' };
+        default:
+          return { taskName: type };
+      }
+    }
+    
+    // 語言系統準備好時使用翻譯
+    switch (type) {
+      case 'start':
+        return { 
+          taskName: t('workflowDesigner.defaultStartNode'),
+          activationType: 'manual', // manual, webhook, scheduled
+          webhookToken: '',
+          webhookUrl: '',
+          scheduledTable: '',
+          scheduledQuery: '',
+          scheduledInterval: 300 // 5分鐘
+        };
+      case 'end':
+        return { taskName: t('workflowDesigner.defaultEndNode') };
+      case 'sendWhatsApp':
+        return { taskName: t('workflowDesigner.defaultSendWhatsAppNode'), message: '', to: '' };
+      case 'sendWhatsAppTemplate':
+        return { taskName: t('workflowDesigner.defaultSendTemplateNode'), templateId: '', templateName: '', variables: {} };
+      case 'waitReply':
+        return { 
+          taskName: t('workflowDesigner.defaultWaitReplyNode'), 
+          replyType: 'initiator', // initiator, specified
+          specifiedUsers: '', // 指定人員的電話號碼，用逗號分隔
+          message: t('workflowDesigner.defaultReplyMessage'),
+          validation: {
+            enabled: true,
+            validatorType: 'default',
+            prompt: t('workflowDesigner.defaultValidationPrompt'),
+            retryMessage: t('workflowDesigner.defaultRetryMessage'),
+            maxRetries: 3
+          }
+        };
+      case 'dbQuery':
+        return { taskName: t('workflowDesigner.defaultDbQueryNode'), sql: '' };
+      case 'callApi':
+        return { taskName: t('workflowDesigner.defaultCallApiNode'), url: '' };
+      case 'sendEForm':
+        return { taskName: t('workflowDesigner.defaultSendEFormNode'), formName: '', formId: '', formDescription: '', to: '' };
+      case 'eFormResult':
+        return { taskName: t('workflowDesigner.defaultEFormResultNode'), result: '' };
+      default:
+        return { taskName: type };
+    }
+  }, [isReady, t]);
+  
+  // 在組件內部定義 createNodeTypesObj 函數，這樣可以使用 t() 函數
+  const createNodeTypesObj = useCallback((onDelete) => {
+    if (!isReady) {
+      // 語言系統未準備好時使用英文
+      return {
+        default: ({ id, data, selected }) => (
+          <div
+            style={{
+              padding: 8,
+              background: selected ? '#e6f7ff' : '#fff',
+              border: '1.5px solid #1890ff',
+              borderRadius: 6,
+              minWidth: 120,
+              position: 'relative',
+              boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
+              transition: 'box-shadow 0.2s',
+            }}
+            className="custom-node"
+          >
+            <Handle
+              type="target"
+              position={Position.Top}
+              id="top-target"
+              style={{ 
+                background: '#faad14', 
+                width: 14, 
+                height: 14, 
+                borderRadius: 7, 
+                top: -7, 
+                left: '50%', 
+                opacity: 0.9, 
+                border: '2px solid #fff',
+                cursor: 'crosshair',
+                transform: 'translateX(-50%)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }}
+              title="Click to select connection"
+            />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+              <span>{data.taskName || data.label}</span>
+            </div>
+            
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id="bottom-source"
+              style={{ 
+                background: '#52c41a', 
+                width: 14, 
+                height: 14, 
+                borderRadius: 7, 
+                bottom: -7, 
+                left: '50%', 
+                opacity: 0.9, 
+                border: '2px solid #fff',
+                cursor: 'crosshair',
+                transform: 'translateX(-50%)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }}
+              title="Click to select connection"
+            />
+            
+            {selected && data.type !== 'start' && (
+              <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>Delete</button>
+            )}
+          </div>
+        ),
+        input: ({ id, data, selected }) => (
+          <div
+            style={{
+              padding: 8,
+              background: '#f6ffed',
+              border: '2px solid #52c41a',
+              borderRadius: 6,
+              minWidth: 80,
+              position: 'relative',
+              boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
+              transition: 'box-shadow 0.2s',
+            }}
+            className="custom-node"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+              <span>{data.taskName || data.label}</span>
+            </div>
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id="bottom-source"
+              style={{ 
+                background: '#52c41a', 
+                width: 14, 
+                height: 14, 
+                borderRadius: 7, 
+                bottom: -7, 
+                left: '50%', 
+                opacity: 0.9, 
+                border: '2px solid #fff',
+                cursor: 'crosshair',
+                transform: 'translateX(-50%)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }}
+              title="Click to select connection"
+            />
+          </div>
+        ),
+        output: ({ id, data, selected }) => (
+          <div
+            style={{
+              padding: 8,
+              background: '#fffbe6',
+              border: '2px solid #faad14',
+              borderRadius: 6,
+              minWidth: 80,
+              position: 'relative',
+              boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
+              transition: 'box-shadow 0.2s',
+            }}
+            className="custom-node"
+          >
+            <Handle
+              type="target"
+              position={Position.Top}
+              id="top-target"
+              style={{ 
+                background: '#faad14', 
+                width: 14, 
+                height: 14, 
+                borderRadius: 7, 
+                top: -7, 
+                left: '50%', 
+                opacity: 0.9, 
+                border: '2px solid #fff',
+                cursor: 'crosshair',
+                transform: 'translateX(-50%)',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }}
+              title="Click to select connection"
+            />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+              <span>{data.taskName || data.label}</span>
+            </div>
+            
+            {selected && (
+              <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>Delete</button>
+            )}
+          </div>
+        ),
+      };
+    }
+    
+    // 語言系統準備好時使用翻譯
+    return {
+    default: ({ id, data, selected }) => (
+      <div
+        style={{
+          padding: 8,
+          background: selected ? '#e6f7ff' : '#fff',
+          border: '1.5px solid #1890ff',
+          borderRadius: 6,
+          minWidth: 120,
+          position: 'relative',
+          boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
+          transition: 'box-shadow 0.2s',
+        }}
+        className="custom-node"
+      >
+        {/* 一般節點 - 上方接入點，下方接出點 */}
+        {/* 上方接入點 - 橙色 */}
+        <Handle
+          type="target"
+          position={Position.Top}
+          id="top-target"
+          style={{ 
+            background: '#faad14', 
+            width: 14, 
+            height: 14, 
+            borderRadius: 7, 
+            top: -7, 
+            left: '50%', 
+            opacity: 0.9, 
+            border: '2px solid #fff',
+            cursor: 'crosshair',
+            transform: 'translateX(-50%)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+          title={t('workflowDesigner.clickToSelectConnection')}
+        />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+          <span>{data.taskName || data.label}</span>
+        </div>
+        
+        {/* 下方接出點 - 綠色 */}
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          id="bottom-source"
+          style={{ 
+            background: '#52c41a', 
+            width: 14, 
+            height: 14, 
+            borderRadius: 7, 
+            bottom: -7, 
+            left: '50%', 
+            opacity: 0.9, 
+            border: '2px solid #fff',
+            cursor: 'crosshair',
+            transform: 'translateX(-50%)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+          title={t('workflowDesigner.clickToSelectConnection')}
+        />
+        
+        {selected && data.type !== 'start' && (
+          <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>{t('workflowDesigner.delete')}</button>
+        )}
+      </div>
+    ),
+    input: ({ id, data, selected }) => (
+      <div
+        style={{
+          padding: 8,
+          background: '#f6ffed',
+          border: '2px solid #52c41a',
+          borderRadius: 6,
+          minWidth: 80,
+          position: 'relative',
+          boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
+          transition: 'box-shadow 0.2s',
+        }}
+        className="custom-node"
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+          <span>{data.taskName || data.label}</span>
+        </div>
+        {/* Start 節點 - 只有下方接出點 - 綠色 */}
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          id="bottom-source"
+          style={{ 
+            background: '#52c41a', 
+            width: 14, 
+            height: 14, 
+            borderRadius: 7, 
+            bottom: -7, 
+            left: '50%', 
+            opacity: 0.9, 
+            border: '2px solid #fff',
+            cursor: 'crosshair',
+            transform: 'translateX(-50%)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+          title={t('workflowDesigner.clickToSelectConnection')}
+        />
+      </div>
+    ),
+    output: ({ id, data, selected }) => (
+      <div
+        style={{
+          padding: 8,
+          background: '#fffbe6',
+          border: '2px solid #faad14',
+          borderRadius: 6,
+          minWidth: 80,
+          position: 'relative',
+          boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
+          transition: 'box-shadow 0.2s',
+        }}
+        className="custom-node"
+      >
+        {/* End 節點 - 只有上方接入點 - 橙色 */}
+        <Handle
+          type="target"
+          position={Position.Top}
+          id="top-target"
+          style={{ 
+            background: '#faad14', 
+            width: 14, 
+            height: 14, 
+            borderRadius: 7, 
+            top: -7, 
+            left: '50%', 
+            opacity: 0.9, 
+            border: '2px solid #fff',
+            cursor: 'crosshair',
+            transform: 'translateX(-50%)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+          title={t('workflowDesigner.clickToSelectConnection')}
+        />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+          <span>{data.taskName || data.label}</span>
+        </div>
+        
+        {selected && (
+          <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>{t('workflowDesigner.delete')}</button>
+        )}
+      </div>
+    ),
+  };
+  }, [isReady, t]);
   
   const handleInit = (instance) => {
     reactFlowInstanceRef.current = instance;
@@ -439,7 +669,7 @@ const WhatsAppWorkflowDesigner = () => {
           setTemplates(result.data);
           console.log('WhatsApp 模板已載入:', result.data);
         } else {
-          console.error('獲取模板列表失敗:', result.message || '未知錯誤');
+          console.error(t('workflowDesigner.getTemplatesFailed'), result.message || t('workflowDesigner.unknownError'));
           // 使用模擬數據作為後備
           setTemplates([
             { id: 'template1', name: '歡迎訊息', description: '新用戶歡迎訊息模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
@@ -450,7 +680,7 @@ const WhatsAppWorkflowDesigner = () => {
           ]);
         }
       } else {
-        console.error('獲取模板列表失敗:', response.statusText);
+        console.error(t('workflowDesigner.getTemplatesFailed'), response.statusText);
         // 使用模擬數據作為後備
         setTemplates([
           { id: 'template1', name: '歡迎訊息', description: '新用戶歡迎訊息模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
@@ -561,8 +791,16 @@ const WhatsAppWorkflowDesigner = () => {
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
-          setNodeTypeDefinitions(result.data);
-          console.log('節點類型定義已載入:', result.data);
+          // 將後端數據與本地翻譯合併
+          const mergedData = result.data.map(backendNodeType => {
+            const localNodeType = nodeTypes.find(nt => nt.type === backendNodeType.type);
+            return {
+              ...backendNodeType,
+              label: localNodeType ? localNodeType.label : backendNodeType.label
+            };
+          });
+          setNodeTypeDefinitions(mergedData);
+          console.log('節點類型定義已載入 (已合併翻譯):', mergedData);
         }
       } else {
         console.error('獲取節點類型定義失敗:', response.statusText);
@@ -596,6 +834,9 @@ const WhatsAppWorkflowDesigner = () => {
 
   // 若有 id，載入現有流程資料
   useEffect(() => {
+    // 設置初始狀態 - 使用空字符串，避免在語言系統未準備好時調用 t()
+    setStatus('');
+    
     fetchNodeTypeDefinitions();
     fetchTemplates();
     fetchUsers();
@@ -621,7 +862,7 @@ const WhatsAppWorkflowDesigner = () => {
           setUpdatedAt(data.updatedAt || '');
           setCreatedBy(data.createdBy || '');
           setUpdatedBy(data.updatedBy || '');
-          setStatus(data.status || '啟用');
+          setStatus(data.status || t('workflowDesigner.statusEnabled'));
           if (data.json) {
             try {
               const flow = JSON.parse(data.json);
@@ -651,8 +892,15 @@ const WhatsAppWorkflowDesigner = () => {
           message.error('載入流程定義失敗');
         });
     }
-  }, [workflowId]);
-
+    }, [workflowId]);
+  
+  // 語言系統準備好後設置狀態
+  useEffect(() => {
+    if (t && typeof t === 'function') {
+      setStatus(t('workflowDesigner.statusEnabled'));
+    }
+  }, [t]);
+  
   // 刪除節點（Start 節點不可刪）
   const handleDeleteNode = useCallback((nodeId) => {
     setNodes(nds => nds.filter(n => n.id !== nodeId || n.data.type === 'start'));
@@ -695,15 +943,15 @@ const WhatsAppWorkflowDesigner = () => {
     const hasEnd = nodes.some(n => n.data.type === 'end');
     
     if (!hasStart) {
-      errors.push('缺少開始節點 (Start)');
+      errors.push(t('workflowDesigner.missingStartNode'));
     }
     if (!hasEnd) {
-      errors.push('缺少結束節點 (End)');
+      errors.push(t('workflowDesigner.missingEndNode'));
     }
     
     // 檢查是否有連接
     if (edges.length === 0) {
-      errors.push('沒有連接線');
+      errors.push(t('workflowDesigner.noConnections'));
       return { errors, warnings };
     }
     
@@ -742,7 +990,7 @@ const WhatsAppWorkflowDesigner = () => {
     // 檢查每個節點是否有循環
     for (const node of nodes) {
       if (hasCycle(node.id)) {
-        errors.push(`發現循環連接：節點 "${node.data.taskName || node.data.label}" 參與循環`);
+        errors.push(t('workflowDesigner.circularConnection', { nodeName: node.data.taskName || node.data.label }));
         break;
       }
     }
@@ -761,7 +1009,7 @@ const WhatsAppWorkflowDesigner = () => {
     );
     
     if (isolatedNodes.length > 0) {
-      warnings.push(`發現孤立節點：${isolatedNodes.map(n => n.data.taskName || n.data.label).join(', ')}`);
+      warnings.push(t('workflowDesigner.isolatedNodes', { nodeNames: isolatedNodes.map(n => n.data.taskName || n.data.label).join(', ') }));
     }
     
     // 檢查 Start 節點是否有輸出
@@ -769,7 +1017,7 @@ const WhatsAppWorkflowDesigner = () => {
     for (const startNode of startNodes) {
       const hasOutput = edges.some(edge => edge.source === startNode.id);
       if (!hasOutput) {
-        warnings.push(`開始節點 "${startNode.data.taskName || startNode.data.label}" 沒有輸出連接`);
+        warnings.push(t('workflowDesigner.startNodeNoOutput', { nodeName: startNode.data.taskName || startNode.data.label }));
       }
     }
     
@@ -778,7 +1026,7 @@ const WhatsAppWorkflowDesigner = () => {
     for (const endNode of endNodes) {
       const hasInput = edges.some(edge => edge.target === endNode.id);
       if (!hasInput) {
-        warnings.push(`結束節點 "${endNode.data.taskName || endNode.data.label}" 沒有輸入連接`);
+        warnings.push(t('workflowDesigner.endNodeNoInput', { nodeName: endNode.data.taskName || endNode.data.label }));
       }
     }
     
@@ -852,16 +1100,16 @@ const WhatsAppWorkflowDesigner = () => {
             name: name,
             description: description,
             json: flowJson,
-            status: status || '啟用',
-            createdBy: createdBy || '設計者',
-            updatedBy: updatedBy || '設計者',
+            status: status || t('workflowDesigner.statusEnabled'),
+            createdBy: createdBy || t('workflowDesigner.designer'),
+            updatedBy: updatedBy || t('workflowDesigner.designer'),
             executions: []
           }),
         });
         
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`更新失敗: ${errorText}`);
+          throw new Error(`${t('workflowDesigner.updateFailed')}: ${errorText}`);
         }
         
         message.success(t('workflow.saveSuccess'), 2);
@@ -881,16 +1129,16 @@ const WhatsAppWorkflowDesigner = () => {
             name: name,
             description: description,
             json: flowJson,
-            status: status || '啟用',
-            createdBy: createdBy || '設計者',
-            updatedBy: updatedBy || '設計者',
+            status: status || t('workflowDesigner.statusEnabled'),
+            createdBy: createdBy || t('workflowDesigner.designer'),
+            updatedBy: updatedBy || t('workflowDesigner.designer'),
             executions: []
           }),
         });
         
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`創建失敗: ${errorText}`);
+          throw new Error(`${t('workflowDesigner.createFailed')}: ${errorText}`);
         }
         
         message.success(t('workflow.saveSuccess'), 2);
@@ -900,13 +1148,13 @@ const WhatsAppWorkflowDesigner = () => {
         }, 1000);
       }
     } catch (error) {
-      console.error('保存失敗:', error);
-      message.error('❌ 保存失敗: ' + error.message);
+      console.error(t('workflowDesigner.saveFailed'), error);
+      message.error('❌ ' + t('workflowDesigner.saveFailed') + ': ' + error.message);
     }
   };
 
   // nodeTypesObj 用 useMemo，依賴 handleDeleteNode
-  const nodeTypesObj = useMemo(() => createNodeTypesObj(handleDeleteNode), [handleDeleteNode]);
+  const nodeTypesObj = useMemo(() => createNodeTypesObj(handleDeleteNode), [handleDeleteNode, createNodeTypesObj]);
 
   // 拖拉節點到畫布
   const onDragStart = (event, nodeType) => {
@@ -1126,8 +1374,8 @@ const WhatsAppWorkflowDesigner = () => {
         validation: selectedNode.data.validation || {
           enabled: true,
           validatorType: 'default',
-          prompt: '請輸入有效內容',
-          retryMessage: '輸入不正確，請重新輸入',
+          prompt: t('workflowDesigner.defaultValidationPrompt'),
+          retryMessage: t('workflowDesigner.defaultRetryMessage'),
           maxRetries: 3
         }
       };
@@ -1282,7 +1530,7 @@ const WhatsAppWorkflowDesigner = () => {
                               padding: '1px 4px',
                               borderRadius: '2px'
                             }}>
-                              開發中
+                              {t('workflowDesigner.inDevelopment')}
                             </div>
                           )}
                         </div>
@@ -1420,7 +1668,7 @@ const WhatsAppWorkflowDesigner = () => {
                       fontWeight: 'bold'
                     }}
                   >
-                    刪除
+                    {t('workflowDesigner.delete')}
                   </Button>
                 </div>
               );
@@ -1471,7 +1719,7 @@ const WhatsAppWorkflowDesigner = () => {
                       boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
                     }}
                   >
-                    點擊選擇連接線
+                    {t('workflowDesigner.clickToSelectConnection')}
                   </div>
                 </div>
               );
@@ -1504,16 +1752,16 @@ const WhatsAppWorkflowDesigner = () => {
               }}
               onValuesChange={(_, all) => handleNodeDataChange(all)}
             >
-              <Form.Item label="Task Name" name="taskName">
-                <Input placeholder="輸入任務名稱" />
+              <Form.Item label={t('workflowDesigner.taskNameLabel')} name="taskName">
+                <Input placeholder={t('workflowDesigner.taskNamePlaceholder')} />
               </Form.Item>
               
-              {selectedNode.data.type === 'sendWhatsApp' && (
+                            {selectedNode.data.type === 'sendWhatsApp' && (
                 <>
                   <Form.Item label={t('workflow.to')}>
                     <Input 
                       value={selectedNode.data.to || ''}
-                      placeholder="輸入電話號碼 (例如: 85296366318) 或點擊選擇用戶" 
+                      placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
                       readOnly
                       onClick={() => setIsUserModalVisible(true)}
                       suffix={
@@ -1527,7 +1775,7 @@ const WhatsAppWorkflowDesigner = () => {
                                 handleNodeDataChange({ to: '' });
                               }}
                             >
-                              清除
+                              {t('workflowDesigner.clear')}
                             </Button>
                           )}
                           <Button 
@@ -1535,7 +1783,7 @@ const WhatsAppWorkflowDesigner = () => {
                             size="small" 
                             onClick={() => setIsUserModalVisible(true)}
                           >
-                            選擇用戶
+                            {t('workflowDesigner.selectUser')}
                           </Button>
                         </Space>
                       }
@@ -1552,12 +1800,12 @@ const WhatsAppWorkflowDesigner = () => {
                   </Form.Item>
                 </>
               )}
-              {selectedNode.data.type === 'sendWhatsAppTemplate' && (
+                            {selectedNode.data.type === 'sendWhatsAppTemplate' && (
                 <>
                   <Form.Item label={t('workflow.to')}>
                     <Input 
                       value={selectedNode.data.to || ''}
-                      placeholder="輸入電話號碼 (例如: 85296366318) 或點擊選擇用戶" 
+                      placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
                       readOnly
                       onClick={() => setIsUserModalVisible(true)}
                       suffix={
@@ -1571,7 +1819,7 @@ const WhatsAppWorkflowDesigner = () => {
                                 handleNodeDataChange({ to: '' });
                               }}
                             >
-                              清除
+                              {t('workflowDesigner.clear')}
                             </Button>
                           )}
                           <Button 
@@ -1579,7 +1827,7 @@ const WhatsAppWorkflowDesigner = () => {
                             size="small" 
                             onClick={() => setIsUserModalVisible(true)}
                           >
-                            選擇用戶
+                            {t('workflowDesigner.selectUser')}
                           </Button>
                         </Space>
                       }
@@ -1594,36 +1842,36 @@ const WhatsAppWorkflowDesigner = () => {
                   <Form.Item label="模板">
                     <Input 
                       value={selectedNode.data.templateName || ''}
-                      placeholder="選擇模板" 
+                      placeholder={t('workflowDesigner.selectTemplate')} 
                       readOnly 
                       onClick={() => setIsTemplateModalVisible(true)}
                       suffix={<MessageOutlined />}
                     />
                   </Form.Item>
                   {selectedNode.data.templateId && (
-                    <Card size="small" title="模板信息" style={{ marginBottom: 16 }}>
-                      <p><strong>模板ID：</strong>{selectedNode.data.templateId}</p>
-                      <p><strong>模板名稱：</strong>{selectedNode.data.templateName}</p>
+                    <Card size="small" title={t('workflowDesigner.templateInfo')} style={{ marginBottom: 16 }}>
+                                              <p><strong>{t('workflowDesigner.templateId')}</strong>{selectedNode.data.templateId}</p>
+                        <p><strong>{t('workflowDesigner.templateName')}</strong>{selectedNode.data.templateName}</p>
                     </Card>
                   )}
                 </>
               )}
               {selectedNode.data.type === 'waitReply' && (
                 <>
-                  <Form.Item label="回覆類型" name="replyType">
+                  <Form.Item label={t('workflowDesigner.replyType')} name="replyType">
                     <Select
                       options={[
-                        { value: 'initiator', label: '流程啟動人' },
-                        { value: 'specified', label: '指定人員' }
+                        { value: 'initiator', label: t('workflowDesigner.initiator') },
+                        { value: 'specified', label: t('workflowDesigner.specifiedPerson') }
                       ]}
                     />
                   </Form.Item>
                   
                   {selectedNode.data.replyType === 'specified' && (
-                    <Form.Item label="指定人員">
+                    <Form.Item label={t('workflowDesigner.specifiedPerson')}>
                       <Input 
                         value={selectedNode.data.specifiedUsers || ''}
-                        placeholder="選擇指定人員" 
+                        placeholder={t('workflowDesigner.selectSpecifiedPerson')} 
                         readOnly 
                         onClick={() => setIsUserModalVisible(true)}
                         suffix={
@@ -1640,13 +1888,13 @@ const WhatsAppWorkflowDesigner = () => {
                                 清除
                               </Button>
                             )}
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              onClick={() => setIsUserModalVisible(true)}
-                            >
-                              選擇人員
-                            </Button>
+                                                      <Button 
+                            type="text" 
+                            size="small" 
+                            onClick={() => setIsUserModalVisible(true)}
+                          >
+                            {t('workflowDesigner.selectPerson')}
+                          </Button>
                           </Space>
                         }
                         style={{
@@ -1659,55 +1907,55 @@ const WhatsAppWorkflowDesigner = () => {
                     </Form.Item>
                   )}
                   
-                  <Form.Item label="提示訊息" name="message">
+                  <Form.Item label={t('workflowDesigner.promptMessage')} name="message">
                     <Input.TextArea 
                       rows={3} 
-                      placeholder="輸入等待用戶回覆時的提示訊息"
+                      placeholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
                     />
                   </Form.Item>
-                  <Form.Item label="驗證配置">
-                    <Card size="small" title="驗證設定" style={{ marginBottom: 16 }}>
-                      <Form.Item label="啟用驗證" name={['validation', 'enabled']}>
+                  <Form.Item label={t('workflowDesigner.validationConfig')}>
+                    <Card size="small" title={t('workflowDesigner.validationSettings')} style={{ marginBottom: 16 }}>
+                      <Form.Item label={t('workflowDesigner.enableValidation')} name={['validation', 'enabled']}>
                         <Select
                           options={[
-                            { value: true, label: '是' },
-                            { value: false, label: '否' }
+                            { value: true, label: t('workflowDesigner.yes') },
+                            { value: false, label: t('workflowDesigner.no') }
                           ]}
                         />
                       </Form.Item>
-                      <Form.Item label="驗證器類型" name={['validation', 'validatorType']}>
+                      <Form.Item label={t('workflowDesigner.validatorType')} name={['validation', 'validatorType']}>
                         <Select
                           options={[
-                            { value: 'default', label: '預設驗證器' },
-                            { value: 'custom', label: '自定義驗證器' },
-                            { value: 'openai', label: 'OpenAI 驗證' },
-                            { value: 'xai', label: 'XAI 驗證' }
+                            { value: 'default', label: t('workflowDesigner.defaultValidator') },
+                            { value: 'custom', label: t('workflowDesigner.customValidator') },
+                            { value: 'openai', label: t('workflowDesigner.openaiValidation') },
+                            { value: 'xai', label: t('workflowDesigner.xaiValidation') }
                           ]}
                         />
                       </Form.Item>
-                      <Form.Item label="提示文字" name={['validation', 'prompt']}>
-                        <Input placeholder="例如：請輸入請假日期，格式：YYYY-MM-DD" />
+                      <Form.Item label={t('workflowDesigner.promptText')} name={['validation', 'prompt']}>
+                        <Input placeholder={t('workflowDesigner.dateFormatExample')} />
                       </Form.Item>
-                      <Form.Item label="重試訊息" name={['validation', 'retryMessage']}>
-                        <Input placeholder="例如：格式不正確，請重新輸入，例如：2024-01-15" />
+                      <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
+                        <Input placeholder={t('workflowDesigner.formatExample')} />
                       </Form.Item>
-                      <Form.Item label="最大重試次數" name={['validation', 'maxRetries']}>
+                      <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
                         <Input type="number" min="1" max="10" />
                       </Form.Item>
                     </Card>
                   </Form.Item>
-                  <Card size="small" title="功能說明" style={{ marginTop: 16 }}>
+                  <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      1. 流程執行到此節點時會暫停等待用戶回覆
+                      {t('workflowDesigner.waitReplyDescription1')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      2. 只有指定的用戶回覆才會繼續執行流程
+                      {t('workflowDesigner.waitReplyDescription2')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      3. 如果啟用驗證，會檢查用戶輸入是否符合要求
+                      {t('workflowDesigner.waitReplyDescription3')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                      4. 驗證失敗時會要求用戶重新輸入
+                      {t('workflowDesigner.waitReplyDescription4')}
                     </p>
                   </Card>
                 </>
@@ -1723,7 +1971,7 @@ const WhatsAppWorkflowDesigner = () => {
                   <Form.Item label="選擇表單">
                     <Input 
                       value={selectedNode.data.formName || ''}
-                      placeholder="選擇要發送的 e-Form" 
+                                              placeholder={t('workflowDesigner.selectEFormPlaceholder')} 
                       readOnly 
                       onClick={() => setIsEFormModalVisible(true)}
                       suffix={
@@ -1749,7 +1997,7 @@ const WhatsAppWorkflowDesigner = () => {
                             size="small" 
                             onClick={() => setIsEFormModalVisible(true)}
                           >
-                            選擇表單
+                            {t('workflowDesigner.selectForm')}
                           </Button>
                         </Space>
                       }
@@ -1762,10 +2010,10 @@ const WhatsAppWorkflowDesigner = () => {
                     />
                   </Form.Item>
                   
-                  <Form.Item label={t('workflow.to')}>
+                                    <Form.Item label={t('workflow.to')}>
                     <Input 
                       value={selectedNode.data.to || ''}
-                      placeholder="輸入電話號碼 (例如: 85296366318) 或點擊選擇用戶" 
+                      placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
                       readOnly
                       onClick={() => setIsUserModalVisible(true)}
                       suffix={
@@ -1779,7 +2027,7 @@ const WhatsAppWorkflowDesigner = () => {
                                 handleNodeDataChange({ to: '' });
                               }}
                             >
-                              清除
+                              {t('workflowDesigner.clear')}
                             </Button>
                           )}
                           <Button 
@@ -1787,7 +2035,7 @@ const WhatsAppWorkflowDesigner = () => {
                             size="small" 
                             onClick={() => setIsUserModalVisible(true)}
                           >
-                            選擇用戶
+                            {t('workflowDesigner.selectUser')}
                           </Button>
                         </Space>
                       }
@@ -1801,30 +2049,30 @@ const WhatsAppWorkflowDesigner = () => {
                   </Form.Item>
                   
                   {selectedNode.data.formId && (
-                    <Card size="small" title="表單信息" style={{ marginBottom: 16 }}>
-                      <p><strong>表單ID：</strong>{selectedNode.data.formId}</p>
-                      <p><strong>表單名稱：</strong>{selectedNode.data.formName}</p>
+                    <Card size="small" title={t('workflowDesigner.formInfo')} style={{ marginBottom: 16 }}>
+                      <p><strong>{t('workflowDesigner.formId')}</strong>{selectedNode.data.formId}</p>
+                      <p><strong>{t('workflowDesigner.formName')}</strong>{selectedNode.data.formName}</p>
                       {selectedNode.data.formDescription && (
-                        <p><strong>描述：</strong>{selectedNode.data.formDescription}</p>
+                        <p><strong>{t('workflowDesigner.formDescription')}</strong>{selectedNode.data.formDescription}</p>
                       )}
                     </Card>
                   )}
                   
-                  <Card size="small" title="功能說明" style={{ marginTop: 16 }}>
+                  <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      1. 選擇要發送的 e-Form 表單
+                      {t('workflowDesigner.eFormDescription1')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      2. 選擇接收表單的用戶（電話號碼）
+                      {t('workflowDesigner.eFormDescription2')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      3. 系統會將表單連結發送給指定用戶
+                      {t('workflowDesigner.eFormDescription3')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                      4. 用戶可以點擊連結填寫表單
+                      {t('workflowDesigner.eFormDescription4')}
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                      5. 表單提交後會觸發後續流程
+                      {t('workflowDesigner.eFormDescription5')}
                     </p>
                   </Card>
                 </>
@@ -1840,7 +2088,7 @@ const WhatsAppWorkflowDesigner = () => {
           )}
           {selectedNode && selectedNode.data.type === 'start' && (
             <div style={{ color: '#888' }}>
-              <h4>啟動方式配置</h4>
+                                <h4>{t('workflowDesigner.activationConfig')}</h4>
               <Form
                 layout="vertical"
                 size="small"
@@ -1853,30 +2101,30 @@ const WhatsAppWorkflowDesigner = () => {
                 }}
                 onValuesChange={(_, all) => handleNodeDataChange(all)}
               >
-                <Form.Item label="啟動方式" name="activationType">
-                  <Select
-                    options={[
-                      { value: 'manual', label: '手動啟動' },
-                      { value: 'webhook', label: 'Meta Webhook 呼叫' },
-                      { value: 'scheduled', label: '定時監看數據表' }
-                    ]}
-                  />
+                <Form.Item label={t('workflowDesigner.activationType')} name="activationType">
+                                      <Select
+                      options={[
+                        { value: 'manual', label: t('workflowDesigner.manualActivation') },
+                        { value: 'webhook', label: t('workflowDesigner.metaWebhookCall') },
+                        { value: 'scheduled', label: t('workflowDesigner.scheduledTableWatch') }
+                      ]}
+                    />
                 </Form.Item>
                 
                 {selectedNode.data.activationType === 'webhook' && (
                   <>
-                    <Card size="small" title="Meta Webhook 配置說明" style={{ marginTop: 16 }}>
+                    <Card size="small" title={t('workflowDesigner.metaWebhookConfigTitle')} style={{ marginTop: 16 }}>
                       <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                        1. 請在公司設定頁面配置 Meta Webhook URL
+                        {t('workflowDesigner.metaWebhookConfig1')}
                       </p>
                       <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                        2. 當收到 WhatsApp 訊息時，系統會回覆選單讓用戶選擇功能
+                        {t('workflowDesigner.metaWebhookConfig2')}
                       </p>
                       <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                        3. 根據用戶選擇啟動對應的流程
+                        {t('workflowDesigner.metaWebhookConfig3')}
                       </p>
                       <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                        4. 此流程將在用戶選擇後執行
+                        {t('workflowDesigner.metaWebhookConfig4')}
                       </p>
                     </Card>
                   </>
@@ -1884,21 +2132,21 @@ const WhatsAppWorkflowDesigner = () => {
                 
                 {selectedNode.data.activationType === 'scheduled' && (
                   <>
-                    <Form.Item label="監看數據表" name="scheduledTable">
-                      <Input placeholder="例如: dbo.SoOrderManage" />
+                    <Form.Item label={t('workflowDesigner.watchTable')} name="scheduledTable">
+                      <Input placeholder={t('workflowDesigner.tableExample')} />
                     </Form.Item>
-                    <Form.Item label="查詢條件" name="scheduledQuery">
+                    <Form.Item label={t('workflowDesigner.queryCondition')} name="scheduledQuery">
                       <Input.TextArea 
                         rows={3} 
-                        placeholder="例如: WHERE status = 'PENDING' AND created_at > @lastCheckTime"
+                        placeholder={t('workflowDesigner.queryExample')}
                       />
                     </Form.Item>
-                    <Form.Item label="檢查間隔 (秒)" name="scheduledInterval">
+                    <Form.Item label={t('workflowDesigner.checkInterval')} name="scheduledInterval">
                       <Input type="number" min="60" max="3600" />
                     </Form.Item>
-                    <Card size="small" title="定時監看說明" style={{ marginTop: 16 }}>
+                    <Card size="small" title={t('workflowDesigner.scheduledWatchTitle')} style={{ marginTop: 16 }}>
                       <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                        此功能正在開發中，將在後續版本中實現
+                        {t('workflowDesigner.scheduledWatchDescription')}
                       </p>
                     </Card>
                   </>
@@ -1911,7 +2159,7 @@ const WhatsAppWorkflowDesigner = () => {
 
       {/* 模板選擇 Modal */}
       <Modal
-        title="選擇 WhatsApp 模板"
+        title={t('workflowDesigner.selectWhatsAppTemplate')}
         open={isTemplateModalVisible}
         onCancel={() => setIsTemplateModalVisible(false)}
         footer={null}
@@ -1942,7 +2190,7 @@ const WhatsAppWorkflowDesigner = () => {
           ))}
           {templates.length === 0 && (
             <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-              暫無可用的模板，請先創建模板
+              {t('workflowDesigner.noTemplatesAvailable')}
             </div>
           )}
         </div>
@@ -1950,7 +2198,7 @@ const WhatsAppWorkflowDesigner = () => {
 
       {/* 用戶選擇 Modal */}
       <Modal
-        title="選擇用戶"
+        title={t('workflowDesigner.selectUser')}
         open={isUserModalVisible}
         onCancel={() => setIsUserModalVisible(false)}
         footer={null}
@@ -1976,7 +2224,7 @@ const WhatsAppWorkflowDesigner = () => {
           ))}
           {users.length === 0 && (
             <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-              暫無可用的用戶，請先添加用戶
+              {t('workflowDesigner.noUsersAvailable')}
             </div>
           )}
         </div>
@@ -1984,7 +2232,7 @@ const WhatsAppWorkflowDesigner = () => {
 
       {/* EForm 選擇 Modal */}
       <Modal
-        title="選擇 e-Form 表單"
+        title={t('workflowDesigner.selectEForm')}
         open={isEFormModalVisible}
         onCancel={() => setIsEFormModalVisible(false)}
         footer={null}
@@ -2007,7 +2255,7 @@ const WhatsAppWorkflowDesigner = () => {
                   )}
                   <Space>
                     <Tag color="blue">e-Form</Tag>
-                    <Tag color="green">啟用</Tag>
+                    <Tag color="green">{t('workflowDesigner.statusEnabled')}</Tag>
                     {form.created_at && (
                       <Tag color="orange">
                         {new Date(form.created_at).toLocaleDateString('zh-TW')}
@@ -2021,7 +2269,7 @@ const WhatsAppWorkflowDesigner = () => {
           ))}
           {eforms.length === 0 && (
             <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-              暫無可用的 e-Form 表單，請先創建表單
+              {t('workflowDesigner.noEFormsAvailable')}
             </div>
           )}
         </div>
