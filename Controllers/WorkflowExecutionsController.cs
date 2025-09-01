@@ -50,6 +50,66 @@ namespace PurpleRice.Controllers
             return Ok(new { executionId = execution.Id, status = execution.Status });
         }
 
+        // 手動啟動工作流程（從 WorkflowEngineController 合併）
+        [HttpPost("workflow/{id}/start")]
+        public async Task<IActionResult> StartWorkflow(int id, [FromBody] StartWorkflowRequest request)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 手動啟動工作流程開始 ===");
+                _loggingService.LogInformation($"工作流程 ID: {id}");
+
+                // 查找工作流程定義
+                var workflow = await _db.WorkflowDefinitions
+                    .FirstOrDefaultAsync(w => w.Id == id);
+
+                if (workflow == null)
+                {
+                    _loggingService.LogWarning($"找不到工作流程，ID: {id}");
+                    return NotFound(new { error = "工作流程不存在" });
+                }
+
+                if (workflow.Status != "Active" && workflow.Status != "啟用")
+                {
+                    _loggingService.LogWarning($"工作流程狀態不正確: {workflow.Status}");
+                    return BadRequest(new { error = "工作流程未啟用" });
+                }
+
+                // 創建執行記錄
+                var execution = new WorkflowExecution
+                {
+                    WorkflowDefinitionId = workflow.Id,
+                    Status = "Running",
+                    StartedAt = DateTime.Now,
+                    InputJson = JsonSerializer.Serialize(request.InputData),
+                    CreatedBy = User.FindFirst("user_id")?.Value ?? "manual-user"
+                };
+
+                _db.WorkflowExecutions.Add(execution);
+                await _db.SaveChangesAsync();
+
+                _loggingService.LogInformation($"執行記錄已創建，ID: {execution.Id}");
+
+                // 調用 WorkflowEngine 執行工作流程
+                var result = await _engine.ExecuteWorkflow(execution.Id, request.InputData);
+
+                _loggingService.LogInformation($"工作流程執行完成，狀態: {result.Status}");
+
+                return Ok(new
+                {
+                    success = true,
+                    executionId = execution.Id,
+                    status = result.Status,
+                    message = "工作流程已啟動並執行完成"
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"啟動工作流程失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = $"啟動工作流程失敗: {ex.Message}" });
+            }
+        }
+
         // GET: api/workflowexecutions/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(int id)
@@ -251,6 +311,41 @@ namespace PurpleRice.Controllers
                     stackTrace = ex.StackTrace,
                     innerException = ex.InnerException?.Message
                 });
+            }
+        }
+
+        // 從 WorkflowEngineController 合併的統計信息方法
+        [HttpGet("statistics")]
+        public async Task<IActionResult> GetStatistics()
+        {
+            try
+            {
+                _loggingService.LogInformation("獲取工作流程引擎統計信息");
+
+                var totalWorkflows = await _db.WorkflowDefinitions.CountAsync();
+                var activeWorkflows = await _db.WorkflowDefinitions.CountAsync(w => w.Status == "Active" || w.Status == "啟用");
+                var totalExecutions = await _db.WorkflowExecutions.CountAsync();
+                var runningExecutions = await _db.WorkflowExecutions.CountAsync(e => e.Status == "Running");
+                var completedExecutions = await _db.WorkflowExecutions.CountAsync(e => e.Status == "Completed");
+                var failedExecutions = await _db.WorkflowExecutions.CountAsync(e => e.Status == "Failed");
+
+                var statistics = new
+                {
+                    totalWorkflows = totalWorkflows,
+                    activeWorkflows = activeWorkflows,
+                    totalExecutions = totalExecutions,
+                    runningExecutions = runningExecutions,
+                    completedExecutions = completedExecutions,
+                    failedExecutions = failedExecutions
+                };
+
+                _loggingService.LogInformation($"成功獲取統計信息: 工作流程 {totalWorkflows}, 執行記錄 {totalExecutions}");
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取統計信息失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取統計信息失敗" });
             }
         }
 
@@ -478,5 +573,11 @@ namespace PurpleRice.Controllers
     {
         public int WorkflowDefinitionId { get; set; }
         public Dictionary<string, object> Input { get; set; }
+    }
+
+    // 從 WorkflowEngineController 合併的請求模型
+    public class StartWorkflowRequest
+    {
+        public object InputData { get; set; }
     }
 } 
