@@ -728,12 +728,33 @@ namespace PurpleRice.Controllers
                  // 從步驟執行記錄中獲取輸入數據
                  var inputData = JsonSerializer.Deserialize<JsonElement>(stepExecution.InputJson);
                  
-                 // 獲取模板相關參數
-                 var to = inputData.GetProperty("to").GetString();
-                 var templateId = inputData.GetProperty("templateId").GetString();
+                 // 安全地獲取模板相關參數
+                 string to = "";
+                 string templateId = "";
+                 
+                 if (inputData.TryGetProperty("to", out var toElement))
+                 {
+                     to = toElement.GetString() ?? "";
+                 }
+                 
+                 if (inputData.TryGetProperty("templateId", out var templateIdElement))
+                 {
+                     templateId = templateIdElement.GetString() ?? "";
+                 }
                  
                  _loggingService.LogInformation($"收件人: {to}");
                  _loggingService.LogInformation($"模板 ID: {templateId}");
+                 
+                 // 驗證必要參數
+                 if (string.IsNullOrEmpty(to))
+                 {
+                     throw new InvalidOperationException("缺少必要的 'to' 參數");
+                 }
+                 
+                 if (string.IsNullOrEmpty(templateId))
+                 {
+                     throw new InvalidOperationException("缺少必要的 'templateId' 參數");
+                 }
 
                  // 直接使用 WhatsAppWorkflowService 發送模板消息
                  // 該服務已經處理了公司配置、電話號碼格式化、模板查詢等所有邏輯
@@ -802,6 +823,7 @@ namespace PurpleRice.Controllers
          public string message { get; set; } = "";
          public string to { get; set; } = "";
          public string templateName { get; set; } = "";
+         public string templateId { get; set; } = "";
          public string formName { get; set; } = "";
          public string formId { get; set; } = "";
          public string formDescription { get; set; } = "";
