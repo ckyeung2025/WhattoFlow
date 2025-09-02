@@ -5,11 +5,10 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using PurpleRice.Services;
+using PurpleRice.Services.WebhookServices;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
-using System.IO;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 
 namespace PurpleRice.Services
 {
@@ -18,12 +17,17 @@ namespace PurpleRice.Services
         private readonly IServiceProvider _serviceProvider;
         private readonly WhatsAppWorkflowService _whatsAppWorkflowService;
         private readonly LoggingService _loggingService;
+        private readonly IConfiguration _configuration;
+        private readonly EFormService _eFormService;
 
-        public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory)
+        public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, 
+            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService)
         {
             _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
             _loggingService = loggingServiceFactory("WorkflowEngine");
+            _configuration = configuration;
+            _eFormService = eFormService;
         }
 
         private void WriteLog(string message)
@@ -31,30 +35,76 @@ namespace PurpleRice.Services
             _loggingService.LogInformation(message);
         }
 
-        public async Task ExecuteWorkflowAsync(WorkflowExecution execution)
+        // 從等待節點繼續執行流程的方法
+        public async Task ContinueWorkflowFromWaitReply(WorkflowExecution execution, object inputData)
         {
             try
             {
-                // 解析流程 JSON（圖形結構）
-                var options = new JsonSerializerOptions
+                WriteLog($"=== 繼續執行工作流程 ===");
+                WriteLog($"執行 ID: {execution.Id}");
+                WriteLog($"當前步驟: {execution.CurrentStep}");
+                
+                // 確保 WorkflowDefinition 已加載
+                if (execution.WorkflowDefinition == null)
                 {
-                    PropertyNameCaseInsensitive = true
-                };
+                    WriteLog($"WorkflowDefinition 未加載，重新加載執行記錄");
+                    using var scope = _serviceProvider.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                    
+                    execution = await db.WorkflowExecutions
+                        .Include(e => e.WorkflowDefinition)
+                        .FirstOrDefaultAsync(e => e.Id == execution.Id);
+                    
+                    if (execution?.WorkflowDefinition == null)
+                    {
+                        WriteLog($"無法加載 WorkflowDefinition，執行 ID: {execution?.Id}");
+                        return;
+                    }
+                }
+                
+                // 解析流程 JSON
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
                 if (flowData?.Nodes == null || flowData?.Edges == null) return;
 
-                // 構建節點和邊的映射
-                var nodeMap = flowData.Nodes.ToDictionary(n => n.Id);
-                var edgeMap = flowData.Edges.ToDictionary(e => e.Id);
-                
                 // 構建鄰接表（有向圖）
-                var adjacencyList = new Dictionary<string, List<string>>();
-                foreach (var edge in flowData.Edges)
+                var adjacencyList = BuildAdjacencyList(flowData.Edges);
+
+                // 根據流程狀態決定如何繼續
+                if (execution.Status == "WaitingForFormApproval")
                 {
-                    if (!adjacencyList.ContainsKey(edge.Source))
-                        adjacencyList[edge.Source] = new List<string>();
-                    adjacencyList[edge.Source].Add(edge.Target);
+                    await ContinueFromFormApproval(execution, flowData, adjacencyList);
                 }
+                else
+                {
+                    await ContinueFromWaitReply(execution, flowData, adjacencyList);
+                }
+                
+                WriteLog($"=== 繼續執行完成 ===");
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"=== 繼續執行工作流程失敗 ===");
+                WriteLog($"錯誤: {ex.Message}");
+                WriteLog($"堆疊: {ex.StackTrace}");
+                
+                execution.Status = "Error";
+                execution.ErrorMessage = ex.Message;
+                await SaveExecution(execution);
+            }
+        }
+
+        public async Task ExecuteWorkflowAsync(WorkflowExecution execution, string userId = null)
+        {
+            try
+            {
+                // 解析流程 JSON
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
+                if (flowData?.Nodes == null || flowData?.Edges == null) return;
+
+                // 構建鄰接表
+                var adjacencyList = BuildAdjacencyList(flowData.Edges);
 
                 // 找到起始節點
                 var startNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "start");
@@ -66,8 +116,8 @@ namespace PurpleRice.Services
                 WriteLog($"邊數量: {flowData.Edges.Count}");
                 WriteLog($"起始節點: {startNode.Id}");
 
-                // 從起始節點開始執行
-                await ExecuteNodeRecursively(startNode.Id, nodeMap, adjacencyList, execution, flowData);
+                // 使用多分支執行引擎
+                await ExecuteMultiBranchWorkflow(startNode.Id, flowData.Nodes, adjacencyList, execution, userId);
                 
                 WriteLog($"=== 工作流程執行完成 ===");
             }
@@ -79,13 +129,10 @@ namespace PurpleRice.Services
                 
                 execution.Status = "Error";
                 execution.ErrorMessage = ex.Message;
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                await db.SaveChangesAsync();
+                await SaveExecution(execution);
             }
         }
 
-        // 新增：從 WorkflowDefinitionsController 調用的方法
         public async Task<WorkflowExecutionResult> ExecuteWorkflow(int executionId, object inputData)
         {
             try
@@ -93,30 +140,21 @@ namespace PurpleRice.Services
                 WriteLog($"=== ExecuteWorkflow 開始 ===");
                 WriteLog($"執行 ID: {executionId}");
 
-                // 使用 IServiceProvider 創建新的 DbContext 實例
                 using var scope = _serviceProvider.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
 
-                // 查找執行記錄
                 var execution = await db.WorkflowExecutions
                     .Include(e => e.WorkflowDefinition)
                     .FirstOrDefaultAsync(e => e.Id == executionId);
 
                 if (execution == null)
-                {
                     throw new Exception($"找不到執行記錄: {executionId}");
-                }
 
-                // 更新輸入數據
                 if (inputData != null)
-                {
                     execution.InputJson = JsonSerializer.Serialize(inputData);
-                }
 
-                // 執行工作流程
-                await ExecuteWorkflowAsync(execution);
+                await ExecuteWorkflowAsync(execution, null);
 
-                // 返回執行結果
                 return new WorkflowExecutionResult
                 {
                     Status = execution.Status,
@@ -135,28 +173,266 @@ namespace PurpleRice.Services
                 return new WorkflowExecutionResult
                 {
                     Status = "Failed",
-                    OutputData = new
-                    {
-                        error = ex.Message,
-                        stackTrace = ex.StackTrace
-                    }
+                    OutputData = new { error = ex.Message, stackTrace = ex.StackTrace }
                 };
             }
         }
 
-        private async Task ExecuteNodeRecursively(string nodeId, Dictionary<string, WorkflowNode> nodeMap, 
-            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, WorkflowGraph flowData = null)
+        // 構建鄰接表
+        private Dictionary<string, List<string>> BuildAdjacencyList(List<WorkflowEdge> edges)
+        {
+                var adjacencyList = new Dictionary<string, List<string>>();
+            foreach (var edge in edges)
+                {
+                    if (!adjacencyList.ContainsKey(edge.Source))
+                        adjacencyList[edge.Source] = new List<string>();
+                    adjacencyList[edge.Source].Add(edge.Target);
+            }
+            return adjacencyList;
+                }
+
+        // 從表單審批狀態繼續
+        private async Task ContinueFromFormApproval(WorkflowExecution execution, WorkflowGraph flowData, Dictionary<string, List<string>> adjacencyList)
+                {
+                    WriteLog($"流程狀態為 WaitingForFormApproval，尋找 sendEForm 節點");
+                    
+                    var sendEFormNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "sendEForm" || n.Data?.Type == "sendeform");
+                    if (sendEFormNode == null)
+                    {
+                        WriteLog($"錯誤: 找不到 sendEForm 節點");
+                        return;
+                    }
+
+                    var sendEFormNodeId = sendEFormNode.Id;
+                    WriteLog($"找到 sendEForm 節點: {sendEFormNodeId}");
+
+            // 重要：檢查是否已經有 sendEForm 步驟執行過
+            if (await IsNodeAlreadyExecuted(execution.Id, sendEFormNodeId, "sendEForm"))
+            {
+                WriteLog($"警告: sendEForm 節點 {sendEFormNodeId} 已經執行過，直接執行後續節點");
+                        }
+                        else
+                        {
+                // 標記 sendEForm 步驟完成
+                await MarkSendEFormStepComplete(execution.Id);
+            }
+
+            // 更新流程狀態
+            execution.Status = "Running";
+            execution.IsWaiting = false;
+            execution.WaitingSince = null;
+            execution.LastUserActivity = DateTime.Now;
+            execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
+            await SaveExecution(execution);
+
+            // 直接執行 sendEForm 節點的後續節點，而不是重新執行 sendEForm 節點本身
+            await ExecuteAllNextNodes(sendEFormNodeId, flowData.Nodes.ToDictionary(n => n.Id), adjacencyList, execution, execution.WaitingForUser);
+        }
+
+        // 從等待回覆狀態繼續
+        private async Task ContinueFromWaitReply(WorkflowExecution execution, WorkflowGraph flowData, Dictionary<string, List<string>> adjacencyList)
+        {
+                    WriteLog($"流程狀態為 {execution.Status}，使用等待用戶回覆邏輯");
+                    
+                    var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply");
+                    if (waitNode == null)
+                    {
+                        WriteLog($"錯誤: 找不到等待節點");
+                        return;
+                    }
+
+                    var waitNodeId = waitNode.Id;
+                    WriteLog($"找到等待節點: {waitNodeId}");
+
+            // 標記 waitReply 步驟完成
+            await MarkWaitReplyStepComplete(execution.Id);
+
+                    // 找到下一個節點
+                    if (adjacencyList.ContainsKey(waitNodeId))
+                    {
+                        var nextNodeId = adjacencyList[waitNodeId].FirstOrDefault();
+                        if (nextNodeId != null)
+                        {
+                            WriteLog($"找到下一個節點: {nextNodeId}");
+                            
+                            // 更新執行狀態
+                            execution.IsWaiting = false;
+                            execution.WaitingSince = null;
+                            execution.LastUserActivity = DateTime.Now;
+                            execution.Status = "Running";
+                            execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
+                    await SaveExecution(execution);
+
+                            WriteLog($"執行狀態已更新，開始執行下一個節點: {nextNodeId}");
+                    await ExecuteMultiBranchWorkflow(nextNodeId, flowData.Nodes, adjacencyList, execution, execution.WaitingForUser);
+                        }
+                        else
+                        {
+                            WriteLog($"錯誤: 等待節點 {waitNodeId} 沒有後續節點");
+                        }
+                    }
+                    else
+                    {
+                        WriteLog($"錯誤: 等待節點 {waitNodeId} 在鄰接表中找不到");
+                    }
+                }
+                
+        // 核心：多分支執行引擎
+        private async Task ExecuteMultiBranchWorkflow(string startNodeId, List<WorkflowNode> nodes, 
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId)
+        {
+            WriteLog($"=== 開始多分支執行引擎 ===");
+            WriteLog($"起始節點: {startNodeId}");
+            
+            // 創建節點映射
+            var nodeMap = nodes.ToDictionary(n => n.Id);
+            
+            // 從起始節點開始執行
+            await ExecuteNodeWithBranches(startNodeId, nodeMap, adjacencyList, execution, userId);
+            
+            WriteLog($"=== 多分支執行引擎完成 ===");
+        }
+
+        // 執行單個節點並處理其所有分支
+        private async Task ExecuteNodeWithBranches(string nodeId, Dictionary<string, WorkflowNode> nodeMap, 
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId)
         {
             if (!nodeMap.ContainsKey(nodeId)) return;
 
             var node = nodeMap[nodeId];
             var nodeData = node.Data;
 
-            // 為每個節點執行創建獨立的 DbContext 實例
+            WriteLog($"=== 執行節點: {nodeId} ===");
+            WriteLog($"節點類型: {nodeData?.Type}");
+            WriteLog($"任務名稱: {nodeData?.TaskName}");
+
+            // 重要：檢查是否已經執行過這個節點，防止循環
+            if (await IsNodeAlreadyExecuted(execution.Id, nodeId, nodeData?.Type))
+            {
+                WriteLog($"警告: 節點 {nodeId} ({nodeData?.Type}) 已經執行過，跳過以避免循環");
+                return;
+            }
+
+            // 創建步驟執行記錄
+            var stepExec = await CreateStepExecution(nodeId, nodeData, execution);
+            if (stepExec == null) return;
+
+            try
+            {
+                // 執行節點邏輯
+                var shouldContinue = await ExecuteNodeLogic(nodeId, nodeData, stepExec, execution, userId);
+                
+                if (!shouldContinue)
+                {
+                    WriteLog($"節點 {nodeId} 設置為等待狀態，暫停執行");
+                    return; // 節點設置為等待狀態，暫停執行
+                }
+
+                // 標記節點完成
+                stepExec.Status = "Completed";
+                stepExec.EndedAt = DateTime.Now;
+                await SaveStepExecution(stepExec);
+
+                // 找到並執行所有後續節點（多分支並行執行）
+                await ExecuteAllNextNodes(nodeId, nodeMap, adjacencyList, execution, userId);
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"執行節點 {nodeId} 時發生錯誤: {ex.Message}");
+                stepExec.Status = "Failed";
+                stepExec.EndedAt = DateTime.Now;
+                stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                await SaveStepExecution(stepExec);
+                
+                execution.Status = "Error";
+                execution.ErrorMessage = ex.Message;
+                await SaveExecution(execution);
+            }
+        }
+
+        // 執行節點邏輯
+        private async Task<bool> ExecuteNodeLogic(string nodeId, WorkflowNodeData nodeData, 
+            WorkflowStepExecution stepExec, WorkflowExecution execution, string userId)
+        {
+            switch (nodeData?.Type)
+            {
+                case "start":
+                    WriteLog("處理 Start 節點");
+                    return true;
+
+                case "sendWhatsApp":
+                    return await ExecuteSendWhatsApp(nodeData, stepExec, execution);
+
+                case "sendWhatsAppTemplate":
+                    return await ExecuteSendWhatsAppTemplate(nodeData, stepExec, execution);
+
+                case "waitReply":
+                case "waitForUserReply":
+                    return await ExecuteWaitReply(nodeData, stepExec, execution, userId);
+
+                case "sendEForm":
+                case "sendeform":
+                    return await ExecuteSendEForm(nodeData, stepExec, execution);
+
+                case "end":
+                    return await ExecuteEnd(nodeId, stepExec, execution);
+
+                default:
+                    WriteLog($"未處理的節點類型: {nodeData?.Type}");
+                    stepExec.Status = "UnknownStepType";
+                    return false;
+            }
+        }
+
+        // 執行所有後續節點（多分支並行執行）
+        private async Task ExecuteAllNextNodes(string currentNodeId, Dictionary<string, WorkflowNode> nodeMap, 
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId)
+        {
+            if (!adjacencyList.ContainsKey(currentNodeId))
+            {
+                WriteLog($"節點 {currentNodeId} 沒有後續節點");
+                return;
+            }
+
+            var nextNodeIds = adjacencyList[currentNodeId];
+            WriteLog($"=== 節點 {currentNodeId} 的後續節點分析 ===");
+            WriteLog($"後續節點數量: {nextNodeIds.Count}");
+            WriteLog($"後續節點列表: {string.Join(", ", nextNodeIds)}");
+
+            // 詳細檢查每個後續節點
+            foreach (var nextNodeId in nextNodeIds)
+            {
+                if (nodeMap.ContainsKey(nextNodeId))
+                {
+                    var nextNode = nodeMap[nextNodeId];
+                    WriteLog($"後續節點 {nextNodeId}: 類型={nextNode.Data?.Type}, 任務={nextNode.Data?.TaskName}");
+                }
+                else
+                {
+                    WriteLog($"警告: 後續節點 {nextNodeId} 不存在於節點映射中");
+                }
+            }
+
+            // 並行執行所有後續節點
+            var tasks = new List<Task>();
+            foreach (var nextNodeId in nextNodeIds)
+            {
+                WriteLog($"創建任務: {nextNodeId}");
+                var task = ExecuteNodeWithBranches(nextNodeId, nodeMap, adjacencyList, execution, userId);
+                tasks.Add(task);
+            }
+
+            WriteLog($"等待 {tasks.Count} 個並行任務完成...");
+            await Task.WhenAll(tasks);
+            WriteLog($"=== 所有 {tasks.Count} 個分支節點執行完成 ===");
+        }
+
+        // 創建步驟執行記錄
+        private async Task<WorkflowStepExecution> CreateStepExecution(string nodeId, WorkflowNodeData nodeData, WorkflowExecution execution)
+        {
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
 
-            // 記錄步驟執行
             var stepExec = new WorkflowStepExecution
             {
                 WorkflowExecutionId = execution.Id,
@@ -166,201 +442,387 @@ namespace PurpleRice.Services
                 InputJson = JsonSerializer.Serialize(nodeData),
                 StartedAt = DateTime.Now
             };
+
             db.WorkflowStepExecutions.Add(stepExec);
             await db.SaveChangesAsync();
 
-            WriteLog($"=== 執行節點: {nodeId} ===");
-            WriteLog($"節點類型: {nodeData?.Type}");
-            WriteLog($"任務名稱: {nodeData?.TaskName}");
-            WriteLog($"節點數據: {JsonSerializer.Serialize(nodeData)}");
+            return stepExec;
+        }
 
-            // 執行節點
-            switch (nodeData?.Type)
+        // 保存步驟執行記錄
+        private async Task SaveStepExecution(WorkflowStepExecution stepExec)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            var existingStep = await db.WorkflowStepExecutions.FindAsync(stepExec.Id);
+            if (existingStep != null)
             {
-                case "start":
-                    // 起始節點，繼續到下一個節點
-                    WriteLog("處理 Start 節點");
-                    break;
-                case "sendWhatsApp":
-                    WriteLog($"=== WorkflowEngine sendWhatsApp 節點處理 ===");
-                    WriteLog($"節點ID: {nodeId}");
-                    WriteLog($"nodeData.To: '{nodeData.To}'");
-                    WriteLog($"nodeData.Message: '{nodeData.Message}'");
-                    WriteLog($"nodeData.Type: '{nodeData.Type}'");
-                    WriteLog($"nodeData.TaskName: '{nodeData.TaskName}'");
-                    
-                    if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.Message))
-                    {
-                        WriteLog($"參數完整，開始發送 WhatsApp 消息到 {nodeData.To}");
-                        WriteLog($"消息內容: {nodeData.Message}");
-                        await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution, db);
-                        WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}");
-                    }
-                    else
-                    {
-                        WriteLog($"sendWhatsApp 步驟缺少必要參數: to={nodeData.To}, message={nodeData.Message}");
-                        // 記錄完整的節點數據以便調試
-                        var nodeDataJson = JsonSerializer.Serialize(nodeData);
-                        WriteLog($"完整節點數據: {nodeDataJson}");
-                    }
-                    break;
-                case "sendWhatsAppTemplate":
-                    if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.TemplateName))
-                    {
-                        await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateId, execution, db);
-                    }
-                    else
-                    {
-                        WriteLog($"sendWhatsAppTemplate 步驟缺少必要參數: to={nodeData.To}, templateName={nodeData.TemplateName}");
-                    }
-                    break;
-                case "waitReply":
-                case "waitForUserReply":
-                    // 等待用戶回覆，暫停流程
-                    execution.Status = "Waiting";
-                    execution.CurrentStep = stepExec.StepIndex;
-                    stepExec.Status = "Waiting";
-                    await db.SaveChangesAsync();
-                    return; // 暫停流程，等待外部觸發
-                case "dbQuery":
-                    // TODO: 執行資料庫查詢/更新
-                    break;
-                case "callApi":
-                    // TODO: 呼叫外部 API
-                    break;
-                case "sendEForm":
-                case "sendeform":
-                    WriteLog($"=== WorkflowEngine sendEForm 節點處理 ===");
-                    WriteLog($"nodeData.FormName: '{nodeData.FormName}'");
-                    WriteLog($"nodeData.FormId: '{nodeData.FormId}'");
-                    WriteLog($"nodeData.To: '{nodeData.To}'");
-                    WriteLog($"nodeData.Type: '{nodeData.Type}'");
-                    WriteLog($"nodeData.TaskName: '{nodeData.TaskName}'");
-                    
-                    if (!string.IsNullOrEmpty(nodeData.FormName) && !string.IsNullOrEmpty(nodeData.To))
-                    {
-                        WriteLog($"參數完整，開始處理 eForm 發送");
-                        // 这里应该调用 eForm 服务
-                        WriteLog($"eForm 節點處理完成，繼續到下一個節點");
+                existingStep.Status = stepExec.Status;
+                existingStep.OutputJson = stepExec.OutputJson;
+                existingStep.EndedAt = stepExec.EndedAt;
+                existingStep.IsWaiting = stepExec.IsWaiting;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // 保存執行記錄
+        private async Task SaveExecution(WorkflowExecution execution)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            var existingExecution = await db.WorkflowExecutions.FindAsync(execution.Id);
+            if (existingExecution != null)
+            {
+                existingExecution.Status = execution.Status;
+                existingExecution.ErrorMessage = execution.ErrorMessage;
+                existingExecution.EndedAt = execution.EndedAt;
+                existingExecution.IsWaiting = execution.IsWaiting;
+                existingExecution.WaitingSince = execution.WaitingSince;
+                existingExecution.WaitingForUser = execution.WaitingForUser;
+                existingExecution.LastUserActivity = execution.LastUserActivity;
+                existingExecution.CurrentStep = execution.CurrentStep;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // 標記 sendEForm 步驟完成
+        private async Task MarkSendEFormStepComplete(int executionId)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            var sendEFormStepExecution = await db.WorkflowStepExecutions
+                .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
+                .OrderByDescending(s => s.StartedAt)
+                .FirstOrDefaultAsync();
+            
+            if (sendEFormStepExecution != null)
+            {
+                sendEFormStepExecution.Status = "Completed";
+                sendEFormStepExecution.IsWaiting = false;
+                sendEFormStepExecution.EndedAt = DateTime.Now;
+                await db.SaveChangesAsync();
+                WriteLog($"sendEForm 步驟已標記為完成");
+            }
+        }
+
+        // 標記 waitReply 步驟完成
+        private async Task MarkWaitReplyStepComplete(int executionId)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            var waitStepExecution = await db.WorkflowStepExecutions
+                .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "waitReply")
+                .OrderByDescending(s => s.StartedAt)
+                .FirstOrDefaultAsync();
+            
+            if (waitStepExecution != null)
+            {
+                waitStepExecution.IsWaiting = false;
+                waitStepExecution.Status = "Completed";
+                waitStepExecution.EndedAt = DateTime.Now;
+                waitStepExecution.OutputJson = JsonSerializer.Serialize(new { 
+                    message = "User replied, continuing workflow",
+                    timestamp = DateTime.Now,
+                    userResponse = "User provided response"
+                });
+                await db.SaveChangesAsync();
+                WriteLog($"waitReply 節點狀態已更新為 Completed，步驟ID: {waitStepExecution.Id}");
+                                 }
+                                 else
+                                 {
+                WriteLog($"警告: 找不到 waitReply 步驟執行記錄");
+            }
+        }
+
+        // 執行 sendWhatsApp 節點
+        private async Task<bool> ExecuteSendWhatsApp(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
+        {
+            WriteLog($"=== 執行 sendWhatsApp 節點 ===");
+            
+            if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.Message))
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                
+                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution, db);
+                WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}");
+                
+                stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                    success = true, 
+                    message = "WhatsApp message sent successfully",
+                    to = nodeData.To,
+                    taskName = nodeData.TaskName
+                });
+                
+                return true;
+                             }
+                             else
+                             {
+                WriteLog($"sendWhatsApp 步驟缺少必要參數: to={nodeData.To}, message={nodeData.Message}");
+                stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                return false;
+            }
+        }
+
+        // 執行 sendWhatsAppTemplate 節點
+        private async Task<bool> ExecuteSendWhatsAppTemplate(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
+        {
+            WriteLog($"=== 執行 sendWhatsAppTemplate 節點 ===");
+            
+            if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.TemplateName))
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                
+                await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateId, execution, db);
+                WriteLog($"WhatsApp 模板消息發送完成: {nodeData.TaskName}");
+                
+                stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                    success = true, 
+                    message = "WhatsApp template message sent successfully",
+                    to = nodeData.To,
+                    templateName = nodeData.TemplateName
+                });
+                
+                return true;
+                            }
+                            else
+                            {
+                WriteLog($"sendWhatsAppTemplate 步驟缺少必要參數: to={nodeData.To}, templateName={nodeData.TemplateName}");
+                stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                return false;
+            }
+        }
+
+        // 執行 waitReply 節點
+        private async Task<bool> ExecuteWaitReply(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution, string userId)
+        {
+            WriteLog($"=== 執行 waitReply 節點 ===");
+            
+            // 設置等待狀態
+            execution.Status = "Waiting";
+            execution.IsWaiting = true;
+            execution.WaitingSince = DateTime.Now;
+            execution.WaitingForUser = userId ?? "85296366318";
+                        execution.LastUserActivity = DateTime.Now;
+            execution.CurrentStep = stepExec.StepIndex;
                         
-                        // 重要：更新步骤执行状态
-                        stepExec.Status = "Completed";
-                        stepExec.EndedAt = DateTime.Now;
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { success = true, message = "EForm sent successfully" });
-                        await db.SaveChangesAsync();
-                    }
-                    else
-                    {
-                        WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, to={nodeData.To}");
-                        var nodeDataJson = JsonSerializer.Serialize(nodeData);
-                        WriteLog($"完整節點數據: {nodeDataJson}");
+                        stepExec.Status = "Waiting";
+            stepExec.IsWaiting = true;
+            stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                message = "Waiting for user reply",
+                waitingSince = DateTime.Now,
+                waitingForUser = execution.WaitingForUser
+            });
+            
+            // 保存狀態
+            await SaveExecution(execution);
+            await SaveStepExecution(stepExec);
+            
+            // 發送提示消息
+            if (!string.IsNullOrEmpty(nodeData.Message))
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                
+                var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
+                if (company != null)
+                {
+                    var waId = nodeData.To ?? userId ?? "85296366318";
+                    await _whatsAppWorkflowService.SendWhatsAppMessageAsync(waId, nodeData.Message, execution, db);
+                    WriteLog($"成功發送等待提示訊息: '{nodeData.Message}' 到用戶: {waId}");
+                }
+            }
+            
+            WriteLog($"等待節點設置完成，流程暫停等待用戶回覆");
+            return false; // 返回 false 表示暫停執行
+        }
+
+        // 執行 sendEForm 節點
+        private async Task<bool> ExecuteSendEForm(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
+        {
+            WriteLog($"=== 執行 sendEForm 節點 ===");
                         
-                        // 标记步骤为失败
-                        stepExec.Status = "Failed";
-                        stepExec.EndedAt = DateTime.Now;
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
-                        await db.SaveChangesAsync();
-                        return; // 停止执行
-                    }
-                    break;
-                case "end":
-                    // 結束節點
+                        if (!string.IsNullOrEmpty(nodeData.FormName) && !string.IsNullOrEmpty(nodeData.To))
+                        {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                            
+                            try
+                            {
+                                // 獲取公司信息
+                                var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
+                                if (company == null)
+                                {
+                                    stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Company not found" });
+                        return false;
+                                }
+
+                                // 查詢表單定義
+                                var eFormDefinition = await db.eFormDefinitions
+                                    .FirstOrDefaultAsync(f => f.Name == nodeData.FormName && f.Status == "A");
+
+                                if (eFormDefinition == null)
+                                {
+                                    stepExec.OutputJson = JsonSerializer.Serialize(new { error = $"Form definition not found: {nodeData.FormName}" });
+                        return false;
+                                }
+
+                    // 查詢用戶回覆記錄
+                                var userMessages = await db.MessageValidations
+                                    .Where(m => m.WorkflowExecutionId == execution.Id && m.IsValid)
+                                    .OrderBy(m => m.CreatedAt)
+                                    .ToListAsync();
+
+                                // 創建表單實例
+                                var eFormInstance = new EFormInstance
+                                {
+                                    Id = Guid.NewGuid(),
+                                    EFormDefinitionId = eFormDefinition.Id,
+                                    WorkflowExecutionId = execution.Id,
+                                    WorkflowStepExecutionId = execution.CurrentStep ?? 0,
+                                    CompanyId = company.Id,
+                                    InstanceName = $"{nodeData.FormName}_{execution.Id}_{DateTime.Now:yyyyMMddHHmmss}",
+                                    OriginalHtmlCode = eFormDefinition.HtmlCode,
+                                    Status = "Pending",
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+
+                    // 如果有用戶回覆，使用 AI 填充表單
+                                if (userMessages.Any())
+                                {
+                                    var latestMessage = userMessages.Last();
+                                    eFormInstance.UserMessage = latestMessage.UserMessage;
+                                    var filledHtml = await _eFormService.FillFormWithAIAsync(eFormDefinition.HtmlCode, latestMessage.UserMessage);
+                                    eFormInstance.FilledHtmlCode = filledHtml;
+                                }
+                                else
+                                {
+                                    eFormInstance.FilledHtmlCode = eFormDefinition.HtmlCode;
+                                }
+
+                                // 生成表單 URL
+                                var formUrl = $"/eform-instance/{eFormInstance.Id}";
+                                eFormInstance.FormUrl = formUrl;
+
+                                // 保存到數據庫
+                                db.EFormInstances.Add(eFormInstance);
+                                await db.SaveChangesAsync();
+
+                                // 發送 WhatsApp 消息通知用戶
+                                var message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
+                                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, message, execution, db);
+
+                    // 設置為等待表單審批狀態
+                                 execution.Status = "WaitingForFormApproval";
+                                 stepExec.Status = "Waiting";
+                                 stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                                     success = true, 
+                                     message = "EForm sent successfully, waiting for approval",
+                                     formInstanceId = eFormInstance.Id,
+                                     waitingSince = DateTime.Now 
+                                 });
+                                 
+                                 // 保存狀態
+                    await SaveExecution(execution);
+                    await SaveStepExecution(stepExec);
+                    
+                    WriteLog($"eForm 節點設置為等待表單審批狀態");
+                    return false; // 返回 false 表示暫停執行
+                             }
+                             catch (Exception ex)
+                             {
+                                 WriteLog($"eForm 處理失敗: {ex.Message}");
+                                 stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                    return false;
+                             }
+                         }
+                         else
+                         {
+                             WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, to={nodeData.To}");
+                             stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                return false;
+            }
+        }
+
+        // 執行 end 節點
+        private async Task<bool> ExecuteEnd(string nodeId, WorkflowStepExecution stepExec, WorkflowExecution execution)
+        {
                     WriteLog($"=== 到達 End 節點: {nodeId} ===");
-                    stepExec.Status = "Completed";
-                    stepExec.EndedAt = DateTime.Now;
-                    await db.SaveChangesAsync();
-                    WriteLog($"End 節點 {nodeId} 標記為完成");
+            
+            stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                message = "End node reached",
+                nodeId = nodeId,
+                completedAt = DateTime.Now
+            });
                     
                     // 檢查是否所有分支都已完成
-                    var allEndNodes = flowData.Nodes.Where(n => n.Data?.Type == "end").ToList();
-                    var completedEndNodes = await db.WorkflowStepExecutions
-                        .Where(s => s.WorkflowExecutionId == execution.Id && 
-                                   s.StepType == "end" && 
-                                   s.Status == "Completed")
-                        .CountAsync();
+            var completedEndNodes = await CountCompletedEndNodes(execution.Id);
                     
                     WriteLog($"=== End 節點完成檢查 ===");
-                    WriteLog($"總 End 節點數: {allEndNodes.Count}");
                     WriteLog($"已完成 End 節點數: {completedEndNodes}");
-                    WriteLog($"所有 End 節點ID: {string.Join(", ", allEndNodes.Select(n => n.Id))}");
                     
-                    // 如果所有 End 節點都已完成，則標記整個流程為完成
-                    if (completedEndNodes >= allEndNodes.Count)
-                    {
+            // 標記整個流程為完成
                         execution.Status = "Completed";
                         execution.EndedAt = DateTime.Now;
-                        await db.SaveChangesAsync();
-                        WriteLog($"=== 所有分支都已完成，工作流程標記為完成 ===");
-                    }
-                    else
-                    {
-                        WriteLog($"還有 {allEndNodes.Count - completedEndNodes} 個分支未完成");
-                    }
-                    return;
-                default:
-                    stepExec.Status = "UnknownStepType";
-                    break;
-            }
+            await SaveExecution(execution);
+            WriteLog($"=== 工作流程標記為完成 ===");
+            
+            return false; // 返回 false 表示暫停執行
+        }
 
-            stepExec.Status = "Completed";
-            stepExec.EndedAt = DateTime.Now;
-            await db.SaveChangesAsync();
+        // 計算已完成的 End 節點數量
+        private async Task<int> CountCompletedEndNodes(int executionId)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            return await db.WorkflowStepExecutions
+                .Where(s => s.WorkflowExecutionId == executionId && 
+                           s.StepType == "end" && 
+                           s.Status == "Completed")
+                .CountAsync();
+        }
 
-            // 更新執行步驟
-            execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
+        // 檢查節點是否已經執行過，防止循環
+        private async Task<bool> IsNodeAlreadyExecuted(int executionId, string nodeId, string nodeType)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
 
-            // 找到下一個節點並並行執行
-            if (adjacencyList.ContainsKey(nodeId))
+            // 檢查是否已經有相同節點ID的執行記錄
+            var existingStep = await db.WorkflowStepExecutions
+                .Where(s => s.WorkflowExecutionId == executionId && 
+                           s.StepType == nodeType &&
+                           s.InputJson.Contains($"\"Id\":\"{nodeId}\""))
+                .FirstOrDefaultAsync();
+            
+            if (existingStep != null)
             {
-                var nextNodes = adjacencyList[nodeId];
-                WriteLog($"=== 節點 {nodeId} 的後續節點分析 ===");
-                WriteLog($"後續節點數量: {nextNodes.Count}");
-                WriteLog($"後續節點列表: {string.Join(", ", nextNodes)}");
-                
-                // 詳細檢查每個後續節點
-                foreach (var nextNodeId in nextNodes)
-                {
-                    if (nodeMap.ContainsKey(nextNodeId))
-                    {
-                        var nextNode = nodeMap[nextNodeId];
-                        WriteLog($"後續節點 {nextNodeId}: 類型={nextNode.Data?.Type}, 任務={nextNode.Data?.TaskName}");
-                    }
-                    else
-                    {
-                        WriteLog($"警告: 後續節點 {nextNodeId} 不存在於節點映射中");
-                    }
-                }
-                
-                if (nextNodes.Count == 1)
-                {
-                    // 單一分支，直接執行
-                    WriteLog($"單一分支執行: {nextNodes[0]}");
-                    await ExecuteNodeRecursively(nextNodes[0], nodeMap, adjacencyList, execution, flowData);
-                    WriteLog($"單一分支執行完成: {nextNodes[0]}");
-                }
-                else if (nextNodes.Count > 1)
-                {
-                    // 多個分支，並行執行
-                    WriteLog($"=== 開始並行執行 {nextNodes.Count} 個分支節點 ===");
-                    WriteLog($"分支節點: {string.Join(", ", nextNodes)}");
-                    
-                    var tasks = new List<Task>();
-                    foreach (var nextNodeId in nextNodes)
-                    {
-                        WriteLog($"創建任務: {nextNodeId}");
-                        var task = ExecuteNodeRecursively(nextNodeId, nodeMap, adjacencyList, execution, flowData);
-                        tasks.Add(task);
-                    }
-                    
-                    WriteLog($"等待 {tasks.Count} 個並行任務完成...");
-                    await Task.WhenAll(tasks);
-                    WriteLog($"=== 所有 {tasks.Count} 個分支節點執行完成 ===");
-                }
+                WriteLog($"發現重複執行: 節點 {nodeId} ({nodeType}) 已經在步驟 {existingStep.Id} 中執行過");
+                return true;
             }
-            else
+            
+            // 特別檢查 sendEForm 節點，防止重複創建表單
+            if (nodeType == "sendEForm" || nodeType == "sendeform")
             {
-                WriteLog($"節點 {nodeId} 沒有後續節點");
+                var existingEFormSteps = await db.WorkflowStepExecutions
+                    .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
+                            .CountAsync();
+                        
+                if (existingEFormSteps > 0)
+                {
+                    WriteLog($"發現重複的 sendEForm 節點: 已經有 {existingEFormSteps} 個 sendEForm 步驟執行過");
+                    return true;
+                }
             }
+            
+            return false;
         }
     }
 
@@ -440,7 +902,7 @@ namespace PurpleRice.Services
         public int MaxRetries { get; set; }
     }
 
-    // 新增：工作流程執行結果模型
+    // 工作流程執行結果模型
     public class WorkflowExecutionResult
     {
         public string Status { get; set; }

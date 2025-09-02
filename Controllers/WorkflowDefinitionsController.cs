@@ -251,7 +251,7 @@ namespace PurpleRice.Controllers
                 Name = $"{workflow.Name} - 複製",
                 Description = workflow.Description,
                 Json = workflow.Json,
-                Status = "啟用",
+                Status = "Enabled",
                 CreatedBy = workflow.CreatedBy,
                 UpdatedBy = workflow.UpdatedBy,
                 CreatedAt = DateTime.Now,
@@ -309,7 +309,7 @@ namespace PurpleRice.Controllers
                 return NotFound(new { error = "未找到要更新的流程" });
             }
 
-            var newStatus = request.IsActive ? "啟用" : "停用";
+            var newStatus = request.IsActive ? "Enabled" : "Disabled";
             foreach (var workflow in workflowsToUpdate)
             {
                 workflow.Status = newStatus;
@@ -340,7 +340,7 @@ namespace PurpleRice.Controllers
                 return NotFound(new { error = "找不到指定的流程" });
             }
 
-            if (workflow.Status != "Active" && workflow.Status != "啟用")
+            if (workflow.Status != "Active" && workflow.Status != "Enabled")
             {
                 return BadRequest(new { error = "Workflow is not active, cannot execute" });
             }

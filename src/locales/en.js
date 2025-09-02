@@ -856,6 +856,7 @@ const en = {
     
     // Status and other labels
     statusEnabled: 'Enabled',
+    statusDisabled: 'Disabled',
     designer: 'Designer',
     functionDescription: 'Function Description',
     

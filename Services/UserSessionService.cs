@@ -75,11 +75,33 @@ namespace PurpleRice.Services
         /// </summary>
         public async Task<WorkflowExecution> GetCurrentUserWorkflowAsync(string userWaId)
         {
+            // 直接查詢等待中的流程執行，而不是依賴 UserSession
+            var waitingWorkflow = await _context.WorkflowExecutions
+                .Where(w => w.WaitingForUser == userWaId && 
+                           w.Status == "Waiting" && 
+                           w.IsWaiting)
+                .OrderByDescending(w => w.WaitingSince)
+                .FirstOrDefaultAsync();
+
+            if (waitingWorkflow != null)
+            {
+                return waitingWorkflow;
+            }
+
+            // 如果沒有找到等待中的流程，再檢查 UserSession
             var session = await _context.UserSessions
                 .Include(s => s.CurrentWorkflowExecution)
                 .FirstOrDefaultAsync(s => s.UserWaId == userWaId && s.Status == "Active");
 
-            return session?.CurrentWorkflowExecution;
+            var workflow = session?.CurrentWorkflowExecution;
+            
+            // 檢查流程是否真的在等待狀態
+            if (workflow != null && workflow.Status == "Waiting" && workflow.IsWaiting)
+            {
+                return workflow;
+            }
+            
+            return null;
         }
 
         /// <summary>

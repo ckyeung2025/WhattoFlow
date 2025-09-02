@@ -1199,6 +1199,7 @@ const zhTC = {
     
     // 狀態和其他標籤
     statusEnabled: '啟用',
+    statusDisabled: '停用',
     designer: '設計者',
     functionDescription: '功能說明',
     

@@ -1008,6 +1008,7 @@ const zhSC = {
     
     // 状态和其他标签
     statusEnabled: '启用',
+    statusDisabled: '停用',
     designer: '设计者',
     functionDescription: '功能说明',
     
