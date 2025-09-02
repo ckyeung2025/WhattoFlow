@@ -165,7 +165,7 @@ const WhatsAppWorkflowDesigner = () => {
         { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
         { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
         { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
-        { type: 'eFormResult', label: 'eForm Approved/Rejected', icon: CheckCircleOutlined },
+
         { type: 'end', label: 'End', icon: StopOutlined },
       ];
     }
@@ -178,7 +178,7 @@ const WhatsAppWorkflowDesigner = () => {
       { type: 'dbQuery', label: t('workflowDesigner.dbQueryNode'), icon: DatabaseOutlined },
       { type: 'callApi', label: t('workflowDesigner.webhookNode'), icon: ApiOutlined },
       { type: 'sendEForm', label: t('workflowDesigner.formNode'), icon: FormOutlined },
-      { type: 'eFormResult', label: t('workflowDesigner.eFormResultNode'), icon: CheckCircleOutlined },
+
       { type: 'end', label: t('workflowDesigner.endNode'), icon: StopOutlined },
     ];
   }, [isReady, t]);
@@ -279,8 +279,7 @@ const WhatsAppWorkflowDesigner = () => {
           return { taskName: 'Trigger External API', url: '' };
         case 'sendEForm':
           return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '' };
-        case 'eFormResult':
-          return { taskName: 'eForm Approved/Rejected', result: '' };
+
         default:
           return { taskName: type };
       }
@@ -324,8 +323,7 @@ const WhatsAppWorkflowDesigner = () => {
         return { taskName: t('workflowDesigner.defaultCallApiNode'), url: '' };
       case 'sendEForm':
         return { taskName: t('workflowDesigner.defaultSendEFormNode'), formName: '', formId: '', formDescription: '', to: '' };
-      case 'eFormResult':
-        return { taskName: t('workflowDesigner.defaultEFormResultNode'), result: '' };
+
       default:
         return { taskName: type };
     }
@@ -2077,13 +2075,7 @@ const WhatsAppWorkflowDesigner = () => {
                   </Card>
                 </>
               )}
-              {selectedNode.data.type === 'eFormResult' && (
-                <Form.Item label={t('workflow.result')} name="result"><Select options={[
-                  { value: 'approved', label: t('workflow.approved') },
-                  { value: 'rejected', label: t('workflow.rejected') },
-                ]} />
-                </Form.Item>
-              )}
+
             </Form>
           )}
           {selectedNode && selectedNode.data.type === 'start' && (
