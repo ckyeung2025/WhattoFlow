@@ -5,12 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 using PurpleRice.Data;
 using PurpleRice.Models;
 using PurpleRice.Services;
+using PurpleRice.Services.WebhookServices;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
- using System.Collections.Generic;
- using System.Text.Json;
- using System.Text;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text;
 
 namespace PurpleRice.Controllers
 {
@@ -23,13 +24,15 @@ namespace PurpleRice.Controllers
          private readonly IServiceProvider _serviceProvider;
          private readonly WhatsAppWorkflowService _whatsAppWorkflowService;
          private readonly LoggingService _loggingService;
+         private readonly WebhookMessageProcessingService _webhookMessageProcessingService;
          
-         public EFormInstancesController(PurpleRiceDbContext db, IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory)
+         public EFormInstancesController(PurpleRiceDbContext db, IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory, WebhookMessageProcessingService webhookMessageProcessingService)
          {
              _db = db;
              _serviceProvider = serviceProvider;
              _whatsAppWorkflowService = whatsAppWorkflowService;
              _loggingService = loggingServiceFactory("EFormInstancesController");
+             _webhookMessageProcessingService = webhookMessageProcessingService;
          }
 
         // GET: api/eforminstances/{id} - 獲取表單實例
@@ -119,18 +122,17 @@ namespace PurpleRice.Controllers
 
                 // 繼續執行工作流程
                 _loggingService.LogInformation($"準備執行工作流程，WorkflowExecutionId: {instance.WorkflowExecutionId}");
-                var executionId = instance.WorkflowExecutionId;
                 
-                // 在主線程中執行，避免 disposed 問題
+                // 使用 WebhookMessageProcessingService 繼續流程
                 try
                 {
-                    _loggingService.LogInformation($"開始執行 ContinueWorkflowExecution");
-                    await ContinueWorkflowExecution(executionId);
-                    _loggingService.LogInformation($"ContinueWorkflowExecution 完成");
+                    _loggingService.LogInformation($"開始調用 WebhookMessageProcessingService 繼續流程");
+                    await _webhookMessageProcessingService.ContinueWorkflowAfterFormApprovalAsync(instance.Id, "Approved");
+                    _loggingService.LogInformation($"流程繼續完成");
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.LogError($"工作流程執行失敗: {ex.Message}", ex);
+                    _loggingService.LogError($"繼續流程失敗: {ex.Message}", ex);
                 }
 
                 _loggingService.LogInformation($"批准操作完成，返回成功響應");
@@ -202,19 +204,17 @@ namespace PurpleRice.Controllers
 
                 // 繼續執行工作流程
                 _loggingService.LogInformation($"準備執行工作流程，WorkflowExecutionId: {instance.WorkflowExecutionId}");
-                var executionId = instance.WorkflowExecutionId;
                 
-                // 在主線程中執行，避免 disposed 問題
+                // 使用 WebhookMessageProcessingService 繼續流程
                 try
                 {
-                    _loggingService.LogInformation($"開始執行 ContinueWorkflowExecution");
-                    await ContinueWorkflowExecution(executionId);
-                    _loggingService.LogInformation($"ContinueWorkflowExecution 完成");
+                    _loggingService.LogInformation($"開始調用 WebhookMessageProcessingService 繼續流程");
+                    await _webhookMessageProcessingService.ContinueWorkflowAfterFormApprovalAsync(instance.Id, "Rejected");
+                    _loggingService.LogInformation($"流程繼續完成");
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.LogError($"工作流程執行失敗: {ex.Message}");
-                    _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                    _loggingService.LogError($"繼續流程失敗: {ex.Message}", ex);
                 }
 
                 _loggingService.LogInformation($"拒絕操作完成，返回成功響應");
@@ -238,12 +238,13 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                _loggingService.LogInformation($"繼續執行工作流程，執行ID: {executionId}");
-                
+                _loggingService.LogInformation($"=== 繼續執行工作流程 ===");
+                _loggingService.LogInformation($"執行ID: {executionId}");
+
                 // 查找工作流程執行記錄
                 var execution = await _db.WorkflowExecutions
-                    .Include(e => e.StepExecutions)
-                    .FirstOrDefaultAsync(e => e.Id == executionId);
+                    .Include(w => w.WorkflowDefinition)
+                    .FirstOrDefaultAsync(w => w.Id == executionId);
 
                 if (execution == null)
                 {
@@ -253,88 +254,11 @@ namespace PurpleRice.Controllers
 
                 _loggingService.LogInformation($"找到工作流程執行記錄，當前狀態: {execution.Status}，當前步驟: {execution.CurrentStep}");
 
-                // 不要直接设置为Completed，而是继续执行后续节点
-                // execution.Status = "Completed";
-                // execution.EndedAt = DateTime.Now;
-                // await _db.SaveChangesAsync();
-                // _loggingService.LogInformation($"工作流程執行狀態已更新為 Completed");
-
-                // 查找sendEForm步骤执行记录
-                var sendEFormStep = await _db.WorkflowStepExecutions
-                    .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
-                    .FirstOrDefaultAsync();
-
-                if (sendEFormStep != null)
-                {
-                    // 更新sendEForm步骤状态为Completed
-                    sendEFormStep.Status = "Completed";
-                    sendEFormStep.EndedAt = DateTime.Now;
-                    sendEFormStep.OutputJson = System.Text.Json.JsonSerializer.Serialize(new { success = true, message = "EForm approved, continuing workflow" });
-                    await _db.SaveChangesAsync();
-                    _loggingService.LogInformation($"sendEForm 步驟狀態已更新為 Completed");
-                }
-
-                // 查找工作流程定義
-                var workflowDefinition = await _db.WorkflowDefinitions
-                    .FirstOrDefaultAsync(w => w.Id == execution.WorkflowDefinitionId);
-
-                if (workflowDefinition == null)
-                {
-                    _loggingService.LogError($"找不到工作流程定義，WorkflowDefinitionId: {execution.WorkflowDefinitionId}");
-                    return;
-                }
-
-                _loggingService.LogInformation($"找到工作流程定義: {workflowDefinition.Name}");
-                _loggingService.LogDebug($"工作流程定義 JSON: {workflowDefinition.Json}");
-
-                // 解析工作流程圖
-                var workflowNodes = System.Text.Json.JsonSerializer.Deserialize<WorkflowGraph>(workflowDefinition.Json);
-                if (workflowNodes == null)
-                {
-                    _loggingService.LogError("無法解析工作流程圖 JSON");
-                    return;
-                }
-
-                _loggingService.LogInformation($"流程圖節點數量: {workflowNodes.nodes.Count}");
-                _loggingService.LogInformation($"流程圖邊數量: {workflowNodes.edges.Count}");
-
-                // 找到需要處理的步驟
-                var stepsToProcess = FindNextSteps(workflowNodes, "sendEForm");
-                _loggingService.LogInformation($"找到 {stepsToProcess.Count} 個需要處理的步驟");
-
-                // 处理每个步骤
-                foreach (var step in stepsToProcess)
-                {
-                    _loggingService.LogInformation($"處理步驟: {step.type} (類型: {step.type})");
-                }
-
-                // 保存所有更改
-                await _db.SaveChangesAsync();
-                _loggingService.LogInformation($"開始處理工作流程步驟...");
-                await ProcessWorkflowSteps(execution, workflowNodes);
-                _loggingService.LogInformation($"所有步驟執行記錄已更新完成");
+                // 直接調用 WorkflowEngine 繼續執行工作流程
+                var workflowEngine = HttpContext.RequestServices.GetRequiredService<WorkflowEngine>();
+                await workflowEngine.ContinueWorkflowFromWaitReply(execution, new { message = "Continuing workflow" });
                 
-                // 检查是否所有步骤都已完成
-                var allSteps = await _db.WorkflowStepExecutions
-                    .Where(s => s.WorkflowExecutionId == executionId)
-                    .ToListAsync();
-                
-                var completedSteps = allSteps.Count(s => s.Status == "Completed");
-                var totalSteps = allSteps.Count;
-                
-                _loggingService.LogInformation($"步驟完成情況: {completedSteps}/{totalSteps}");
-                
-                if (completedSteps >= totalSteps)
-                {
-                    execution.Status = "Completed";
-                    execution.EndedAt = DateTime.Now;
-                    await _db.SaveChangesAsync();
-                    _loggingService.LogInformation($"所有步驟已完成，工作流程標記為 Completed");
-                }
-                else
-                {
-                    _loggingService.LogInformation($"還有 {totalSteps - completedSteps} 個步驟未完成，工作流程繼續執行");
-                }
+                _loggingService.LogInformation($"流程繼續完成");
             }
             catch (Exception ex)
             {

@@ -45,7 +45,7 @@ namespace PurpleRice.Controllers
             await _db.SaveChangesAsync();
 
             // 執行流程
-            await _engine.ExecuteWorkflowAsync(execution);
+            await _engine.ExecuteWorkflowAsync(execution, null);
 
             return Ok(new { executionId = execution.Id, status = execution.Status });
         }
@@ -130,7 +130,7 @@ namespace PurpleRice.Controllers
             if (exec.Status != "Waiting") return BadRequest("Workflow is not waiting");
             exec.Status = "Running";
             exec.InputJson = input != null ? JsonSerializer.Serialize(input) : null;
-            await _engine.ExecuteWorkflowAsync(exec);
+            await _engine.ExecuteWorkflowAsync(exec, null);
             return Ok(new { executionId = exec.Id, status = exec.Status });
         }
 

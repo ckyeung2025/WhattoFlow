@@ -68,6 +68,14 @@ builder.Services.AddScoped<LoggingService>(provider =>
 
 builder.Services.AddScoped<WorkflowEngine>(); // 改為 Scoped 以解決生命週期問題
 
+// 註冊 Webhook 服務
+builder.Services.AddScoped<PurpleRice.Services.WebhookServices.WebhookVerificationService>();
+builder.Services.AddScoped<PurpleRice.Services.WebhookServices.WebhookMessageProcessingService>();
+builder.Services.AddScoped<PurpleRice.Services.WebhookServices.WebhookDuplicateService>();
+
+// 註冊 EForm 服務
+builder.Services.AddScoped<EFormService>();
+
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();
 

@@ -64,7 +64,7 @@ const WorkflowListPage = () => {
     { title: t('workflow.createdBy'), dataIndex: 'createdBy', key: 'createdBy', width: 120, sorter: true },
     { title: t('workflow.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
     { title: t('workflow.updatedAt'), dataIndex: 'updatedAt', key: 'updatedAt', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
-    { title: t('workflow.status'), dataIndex: 'status', key: 'status', width: 80, sorter: true, render: (text) => <Tag color={text === '啟用' ? 'green' : 'red'}>{text}</Tag> },
+    { title: t('workflow.status'), dataIndex: 'status', key: 'status', width: 80, sorter: true, render: (text) => <Tag color={text === 'Enabled' ? 'green' : 'red'}>{text === 'Enabled' ? t('workflowDesigner.statusEnabled') : t('workflowDesigner.statusDisabled')}</Tag> },
     {
       title: t('workflow.action'),
       key: 'action',

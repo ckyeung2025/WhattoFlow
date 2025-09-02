@@ -862,7 +862,7 @@ const WhatsAppWorkflowDesigner = () => {
           setUpdatedAt(data.updatedAt || '');
           setCreatedBy(data.createdBy || '');
           setUpdatedBy(data.updatedBy || '');
-          setStatus(data.status || t('workflowDesigner.statusEnabled'));
+          setStatus(data.status || 'Enabled');
           if (data.json) {
             try {
               const flow = JSON.parse(data.json);
@@ -894,10 +894,10 @@ const WhatsAppWorkflowDesigner = () => {
     }
     }, [workflowId]);
   
-  // 語言系統準備好後設置狀態
+  // 語言系統準備好後設置狀態 - 統一使用英文
   useEffect(() => {
     if (t && typeof t === 'function') {
-      setStatus(t('workflowDesigner.statusEnabled'));
+      setStatus('Enabled');
     }
   }, [t]);
   
@@ -1100,7 +1100,7 @@ const WhatsAppWorkflowDesigner = () => {
             name: name,
             description: description,
             json: flowJson,
-            status: status || t('workflowDesigner.statusEnabled'),
+            status: status || 'Enabled',
             createdBy: createdBy || t('workflowDesigner.designer'),
             updatedBy: updatedBy || t('workflowDesigner.designer'),
             executions: []
@@ -1129,7 +1129,7 @@ const WhatsAppWorkflowDesigner = () => {
             name: name,
             description: description,
             json: flowJson,
-            status: status || t('workflowDesigner.statusEnabled'),
+            status: status || 'Enabled',
             createdBy: createdBy || t('workflowDesigner.designer'),
             updatedBy: updatedBy || t('workflowDesigner.designer'),
             executions: []

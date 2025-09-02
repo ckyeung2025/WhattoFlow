@@ -792,22 +792,159 @@ const InstanceDetailModal = ({ instance, onClose }) => {
               <p>{dayjs(instance.startedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
             </Timeline.Item>
             {instance.stepExecutions && instance.stepExecutions.length > 0 ? (
-              instance.stepExecutions.map((step, index) => (
-                <Timeline.Item 
-                  key={step.id} 
-                  color={step.status === 'completed' ? 'green' : step.status === 'failed' ? 'red' : 'blue'}
-                >
-                  <p>執行步驟: {step.stepName || `步驟 ${index + 1}`}</p>
-                  <p>狀態: {step.status}</p>
-                  <p>開始時間: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
-                  {step.completedAt && (
-                    <p>完成時間: {dayjs(step.completedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
-                  )}
-                  {step.errorMessage && (
-                    <p style={{ color: 'red' }}>錯誤: {step.errorMessage}</p>
-                  )}
-                </Timeline.Item>
-              ))
+              instance.stepExecutions.map((step, index) => {
+                // 調試信息：檢查步驟數據結構
+                console.log(`步驟 ${index + 1} 數據:`, step);
+                console.log(`步驟 ${index + 1} 可用字段:`, Object.keys(step));
+                console.log(`步驟 ${index + 1} outputJson:`, step.outputJson);
+                console.log(`步驟 ${index + 1} OutputJson:`, step.OutputJson);
+                console.log(`步驟 ${index + 1} output:`, step.output);
+                console.log(`步驟 ${index + 1} errorMessage:`, step.errorMessage);
+                
+                // 解析 OutputJson 來判斷是否為錯誤
+                let outputData = null;
+                let isError = false;
+                let displayMessage = '';
+                
+                // 嘗試多個可能的字段名稱
+                const jsonContent = step.outputJson || step.OutputJson || step.output;
+                
+                if (jsonContent) {
+                  try {
+                    outputData = JSON.parse(jsonContent);
+                    console.log(`步驟 ${index + 1} 解析後的數據:`, outputData);
+                    
+                    // 優先檢查 success 字段
+                    if (outputData.success === true) {
+                      isError = false;
+                      displayMessage = outputData.message || '操作成功';
+                      console.log(`步驟 ${index + 1} 檢測到 success: true，標記為非錯誤`);
+                    }
+                    // 檢查是否包含錯誤信息
+                    else if (outputData.error) {
+                      isError = true;
+                      displayMessage = outputData.error;
+                      console.log(`步驟 ${index + 1} 檢測到 error 字段，標記為錯誤`);
+                    } 
+                    // 檢查 message 字段
+                    else if (outputData.message) {
+                      // 檢查是否為成功的狀態更新消息
+                      if (outputData.message.includes("User replied, continuing workflow") || 
+                          outputData.message.includes("EForm sent successfully") ||
+                          outputData.message.includes("Form already processed") ||
+                          outputData.message.includes("waiting for approval") ||
+                          outputData.message.includes("Waiting for user reply")) {
+                        isError = false;
+                        displayMessage = outputData.message;
+                        console.log(`步驟 ${index + 1} 檢測到成功消息，標記為非錯誤`);
+                      } else {
+                        // 默認情況下，message 字段通常表示信息，不是錯誤
+                        isError = false;
+                        displayMessage = outputData.message;
+                        console.log(`步驟 ${index + 1} 檢測到普通消息，標記為非錯誤`);
+                      }
+                    }
+                    // 如果沒有明確的字段，檢查整個 JSON 內容
+                    else {
+                      // 如果沒有明確的錯誤標識，通常不是錯誤
+                      isError = false;
+                      displayMessage = JSON.stringify(outputData, null, 2);
+                      console.log(`步驟 ${index + 1} 沒有明確字段，標記為非錯誤`);
+                    }
+                  } catch (parseError) {
+                    console.error(`步驟 ${index + 1} 解析 JSON 失敗:`, parseError);
+                    // 如果解析失敗，將原始內容作為普通信息顯示
+                    displayMessage = jsonContent;
+                    isError = false; // 解析失敗不一定是錯誤
+                  }
+                } else {
+                  console.log(`步驟 ${index + 1} 沒有找到 JSON 內容字段`);
+                }
+                
+                console.log(`步驟 ${index + 1} 最終判斷結果:`, { isError, displayMessage });
+                
+                return (
+                  <Timeline.Item 
+                    key={step.id} 
+                    color={step.status === 'completed' ? 'green' : step.status === 'failed' ? 'red' : 'blue'}
+                  >
+                    <p>執行步驟: {step.stepName || `步驟 ${index + 1}`}</p>
+                    <p>狀態: {step.status}</p>
+                    <p>開始時間: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
+                    {step.endedAt && (
+                      <p>完成時間: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                    )}
+                    
+                    {/* 顯示輸出信息，正確區分錯誤和正常信息 */}
+                    {displayMessage && (
+                      <div style={{ 
+                        marginTop: '8px',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        lineHeight: '1.5',
+                        backgroundColor: isError ? '#fff2f0' : '#f6ffed',
+                        border: `1px solid ${isError ? '#ffccc7' : '#b7eb8f'}`,
+                        color: isError ? '#cf1322' : '#389e0d'
+                      }}>
+                        <strong>{isError ? '錯誤: ' : '信息: '}</strong>
+                        {displayMessage}
+                        
+                        {/* 如果有額外的輸出數據，顯示更多信息 */}
+                        {outputData && outputData.timestamp && (
+                          <div style={{ 
+                            marginTop: '4px', 
+                            fontSize: '12px', 
+                            opacity: 0.7 
+                          }}>
+                            時間: {new Date(outputData.timestamp).toLocaleString('zh-TW')}
+                          </div>
+                        )}
+                        
+                        {outputData && outputData.userResponse && (
+                          <div style={{ 
+                            marginTop: '4px', 
+                            fontSize: '12px', 
+                            opacity: 0.7 
+                          }}>
+                            用戶回應: {outputData.userResponse}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* 智能處理 errorMessage 字段，只顯示真正的錯誤信息 */}
+                    {step.errorMessage && (
+                      (() => {
+                        // 檢查 errorMessage 是否包含成功的狀態更新消息
+                        try {
+                          const errorData = JSON.parse(step.errorMessage);
+                          // 如果 errorMessage 包含 success: true 或特定的成功消息，則不顯示
+                          if (errorData.success === true || 
+                              (errorData.message && (
+                                errorData.message.includes("User replied, continuing workflow") ||
+                                errorData.message.includes("EForm sent successfully") ||
+                                errorData.message.includes("Form already processed") ||
+                                errorData.message.includes("waiting for approval") ||
+                                errorData.message.includes("Waiting for user reply")
+                              ))) {
+                            console.log(`步驟 ${index + 1} errorMessage 包含成功信息，不顯示為錯誤`);
+                            return null; // 不顯示
+                          }
+                        } catch (parseError) {
+                          // 如果解析失敗，可能是純文本錯誤信息，正常顯示
+                          console.log(`步驟 ${index + 1} errorMessage 解析失敗，作為純文本錯誤顯示`);
+                        }
+                        
+                        // 顯示真正的錯誤信息
+                        return (
+                          <p style={{ color: 'red' }}>錯誤: {step.errorMessage}</p>
+                        );
+                      })()
+                    )}
+                  </Timeline.Item>
+                );
+              })
             ) : (
               <Timeline.Item color="blue">
                 <p>暫無步驟執行記錄</p>
