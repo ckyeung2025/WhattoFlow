@@ -96,16 +96,7 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Send eForm", formName = "", formId = "", formDescription = "", to = "" }
             },
             
-            ["eformresult"] = new WorkflowNodeTypeDefinition
-            {
-                Type = "eFormResult",
-                Label = "eForm Approved/Rejected",
-                Category = "Form",
-                Description = "處理表單的批准/拒絕結果",
-                IsImplemented = true,
-                HasExecution = true,
-                DefaultData = new { taskName = "eForm Approved/Rejected", result = "" }
-            },
+
             
             ["end"] = new WorkflowNodeTypeDefinition
             {
