@@ -1052,6 +1052,355 @@ const zhSC = {
       anyUser: '任何用户',
       specificUser: '指定用户'
     }
+  },
+
+  // 工作流列表页面
+  workflowList: {
+    add: '新增',
+    batchDelete: '批量删除',
+    batchEnable: '批量启用',
+    batchDisable: '批量停用',
+    clearFilter: '清除筛选',
+    manualStart: '手动启动',
+    select: '选择',
+    clear: '清除',
+    confirmBatchDelete: '确认批量删除',
+    confirmBatchEnable: '确认批量启用',
+    confirmBatchDisable: '确认批量停用',
+    confirmDelete: '确认删除',
+    cancel: '取消',
+    confirmDeleteSelected: '确定要删除选中的',
+    confirmEnableSelected: '确定要启用选中的',
+    confirmDisableSelected: '确定要停用选中的',
+    workflows: '个流程',
+    cannotBeUndone: '此操作无法撤销！',
+    successfullyDeleted: '已成功删除',
+    successfullyEnabled: '已成功启用',
+    successfullyDisabled: '已成功停用',
+    batchDeleteFailed: '批量删除失败',
+    batchOperationFailed: '批量操作失败',
+    pleaseSelectWorkflows: '请选择要删除的流程',
+    pleaseSelectWorkflowsToOperate: '请选择要操作的流程',
+    workflowStarted: '已成功启动',
+    manualStartMessage: '手动启动的流程'
+  },
+
+  // Data Set 管理页面
+  dataSetManagement: {
+    title: 'Data Set 管理',
+    createDataSet: '创建 Data Set',
+    editDataSet: '编辑 Data Set',
+    createDataSetTitle: '创建 Data Set',
+    editDataSetTitle: '编辑 Data Set',
+    save: '保存',
+    cancel: '取消',
+    
+    // 表格列标题
+    name: '名称',
+    dataSourceType: '数据源类型',
+    status: '状态',
+    recordCount: '记录数',
+    lastUpdate: '最后更新',
+    actions: '操作',
+    
+    // 状态标签
+    active: '启用',
+    inactive: '停用',
+    error: '错误',
+    
+    // 数据源类型
+    sql: 'SQL',
+    excel: 'EXCEL',
+    googleDocs: 'GOOGLE_DOCS',
+    
+    // 操作按钮
+    viewRecords: '查看记录',
+    syncData: '同步数据',
+    edit: '编辑',
+    delete: '删除',
+    
+    // 确认对话框
+    confirmDelete: '确定要删除这个 DataSet 吗？',
+    confirmDeleteOk: '确定',
+    confirmDeleteCancel: '取消',
+    
+    // 分页
+    totalRecords: '共 {total} 条记录',
+    pageSizeOptions: ['10', '20', '50', '100'],
+    
+    // 标签页
+    basicInfo: '基本信息',
+    dataSourceConfig: '数据源配置',
+    columnDefinition: '字段定义',
+    
+    // 基本信息表单
+    nameLabel: '名称',
+    namePlaceholder: '输入 Data Set 名称',
+    nameRequired: '请输入名称',
+    description: '描述',
+    descriptionPlaceholder: '输入描述',
+    isScheduled: '定时更新',
+    updateInterval: '更新间隔（分钟）',
+    updateIntervalPlaceholder: '例如：60（1小时）',
+    updateIntervalRequired: '请设定更新间隔',
+    
+    // 数据源配置
+    dataSourceTypeLabel: '数据源类型',
+    dataSourceTypePlaceholder: '选择数据源类型',
+    dataSourceTypeRequired: '请选择数据源类型',
+    dataSourceTypeInfo: '数据源类型设定',
+    dataSourceTypeDescription: '请在「数据源配置」标签中选择数据源类型并进行相应配置。',
+    
+    // SQL 配置
+    connectionType: '连接方式',
+    usePresetConnection: '使用预设连接',
+    customConnection: '自定义连接',
+    presetDatabaseConnection: '预设数据库连接',
+    presetConnectionPlaceholder: '选择数据库连接',
+    erpDatabase: 'ERP 数据库',
+    purpleRiceDatabase: 'Purple Rice 数据库',
+    serverName: '服务器名称/IP',
+    serverNamePlaceholder: '例如：192.168.1.100',
+    serverNameRequired: '请输入服务器名称或IP',
+    port: '端口号',
+    portPlaceholder: '例如：1433',
+    databaseName: '数据库名称',
+    databaseNamePlaceholder: '例如：MyDatabase',
+    databaseNameRequired: '请输入数据库名称',
+    authenticationType: '认证方式',
+    sqlServerAuth: 'SQL Server 认证',
+    windowsAuth: 'Windows 认证',
+    username: '用户名',
+    usernamePlaceholder: '例如：sa',
+    usernameRequired: '请输入用户名',
+    password: '密码',
+    passwordPlaceholder: '输入密码',
+    passwordRequired: '请输入密码',
+    additionalOptions: '额外连接选项',
+    additionalOptionsPlaceholder: '例如：TrustServerCertificate=true;MultipleActiveResultSets=true',
+    connectionTest: '连接测试',
+    connectionTestDescription: '配置完成后，可以点击下方按钮测试连接是否成功。',
+    testConnection: '测试连接',
+    sqlQuery: 'SQL 查询语句',
+    sqlQueryPlaceholder: 'SELECT * FROM table_name WHERE condition',
+    sqlQueryRequired: '请输入 SQL 查询语句',
+    sqlParameters: 'SQL 参数（JSON 格式）',
+    sqlParametersPlaceholder: '{"param1": "value1", "param2": "value2"}',
+    
+    // Excel 配置
+    excelFilePath: 'Excel 文件路径',
+    excelFilePathPlaceholder: '例如：/uploads/excel/data.xlsx',
+    excelSheetName: '工作表名称',
+    excelSheetNamePlaceholder: '选择工作表',
+    excelUrl: 'Excel 文件 URL',
+    excelUrlPlaceholder: '例如：https://example.com/data.xlsx',
+    uploadExcelFile: '上传 Excel 文件',
+    excelUploadDescription: 'Excel 上传说明',
+    excelUploadInfo: '上传成功后，文件路径会自动填充。保存 DataSet 后，点击「同步数据」按钮来将 Excel 数据导入到数据库中。系统会自动根据 Excel 标题行生成字段定义。',
+    
+    // Google Docs 配置
+    googleDocsUrl: 'Google Docs URL',
+    googleDocsUrlPlaceholder: 'https://docs.google.com/spreadsheets/d/...',
+    googleDocsUrlRequired: '请输入 Google Docs URL',
+    googleDocsSheetName: '工作表名称',
+    googleDocsSheetNamePlaceholder: '例如：Sheet1',
+    googleDocsIntegration: 'Google Docs 整合说明',
+    googleDocsIntegrationDescription: '请确保 Google Docs 文件已设定为可公开读取，或已配置适当的认证信息。',
+    
+    // 自动更新
+    autoUpdate: '自动更新',
+    autoUpdateInterval: '更新间隔（分钟）',
+    autoUpdateIntervalPlaceholder: '例如：60（1小时）',
+    autoUpdateIntervalRequired: '请设定更新间隔',
+    
+    // 字段定义
+    columnDefinitionDescription: '字段定义说明',
+    columnDefinitionInfo: '对于 Excel 数据源，系统会自动根据 Excel 标题行生成字段定义。您可以在同步数据后手动调整字段属性。',
+    columnName: '字段名称',
+    columnNamePlaceholder: '例如：customer_id',
+    columnNameRequired: '请输入字段名称',
+    displayName: '显示名称',
+    displayNamePlaceholder: '例如：客户编号',
+    dataType: '数据类型',
+    dataTypePlaceholder: '选择数据类型',
+    dataTypeRequired: '请选择数据类型',
+    string: '字符串',
+    int: '整数',
+    decimal: '小数',
+    datetime: '日期时间',
+    boolean: '布尔值',
+    isPrimaryKey: '主键',
+    isPrimaryKeyNormal: '普通',
+    isSearchable: '可搜索',
+    isSearchableNot: '不可搜索',
+    isSortable: '可排序',
+    isSortableNot: '不可排序',
+    isIndexed: '建索引',
+    isIndexedNot: '不建索引',
+    defaultValue: '默认值',
+    defaultValuePlaceholder: '默认值',
+    sortOrder: '排序顺序',
+    addColumn: '添加字段',
+    removeColumn: '删除',
+    
+    // 记录查看
+    dataRecords: '数据记录',
+    advancedSearch: '高级搜索',
+    refresh: '重新整理',
+    recordId: 'ID',
+    primaryKeyValue: '主键值',
+    recordStatus: '状态',
+    createdAt: '创建时间',
+    nA: 'N/A',
+    
+    // 高级搜索
+    advancedSearchTitle: '高级搜索',
+    searchConditions: '搜索条件',
+    columnNameLabel: '字段名称',
+    columnNamePlaceholder: '选择字段',
+    columnNameRequired: '请选择字段',
+    operator: '操作符',
+    operatorPlaceholder: '选择操作符',
+    operatorRequired: '请选择操作符',
+    equals: '等于',
+    contains: '包含',
+    greaterThan: '大于',
+    lessThan: '小于',
+    dateRange: '日期范围',
+    value: '值',
+    valuePlaceholder: '输入搜索值',
+    valueRequired: '请输入值',
+    addSearchCondition: '添加搜索条件',
+    removeSearchCondition: '删除',
+    sortBy: '排序字段',
+    sortByPlaceholder: '选择排序字段',
+    sortOrder: '排序方向',
+    ascending: '升序',
+    descending: '降序',
+    executeSearch: '执行搜索',
+    
+    // 操作结果消息
+    deleteSuccess: '删除成功',
+    deleteFailed: '删除失败',
+    syncSuccess: '同步成功！共处理 {count} 条记录',
+    syncFailed: '同步失败',
+    createSuccess: '创建成功',
+    updateSuccess: '更新成功',
+    operationFailed: '操作失败',
+    fetchFailed: '获取 DataSet 列表失败',
+    fetchRecordsFailed: '获取记录失败',
+    searchFailed: '搜索失败',
+    foundRecords: '找到 {count} 条记录',
+    
+    // 错误消息
+    pleaseSelectDataSourceType: '请选择数据源类型',
+    pleaseEnterName: '请输入名称',
+    pleaseEnterServerName: '请输入服务器名称或IP',
+    pleaseEnterDatabaseName: '请输入数据库名称',
+    pleaseEnterUsername: '请输入用户名',
+    pleaseEnterPassword: '请输入密码',
+    pleaseEnterSqlQuery: '请先输入 SQL 查询语句',
+    pleaseSelectPresetConnection: '请选择预设连接',
+    pleaseEnterGoogleDocsUrl: '请输入 Google Docs URL',
+    pleaseEnterColumnName: '请输入字段名称',
+    pleaseSelectDataType: '请选择数据类型',
+    pleaseSelectColumn: '请选择字段',
+    pleaseSelectOperator: '请选择操作符',
+    pleaseEnterValue: '请输入值',
+    
+    // 文件上传
+    onlyExcelFiles: '只能上传 Excel 文件！',
+    fileSizeLimit: '文件大小不能超过 10MB！',
+    uploadSuccess: '上传成功',
+    uploadFailed: '上传失败',
+    processingFile: '正在处理文件，请稍候...',
+    getSheetNamesFailed: '获取工作表名称失败',
+    getColumnPreviewFailed: '获取字段预览失败',
+    autoGeneratedColumns: '已自动生成 {count} 个字段定义',
+    cannotAutoGenerateColumns: '无法自动生成字段定义',
+    pleaseManuallyConfigure: '请手动配置',
+    
+    // 连接测试
+    testingConnection: '正在测试连接...',
+    connectionTestSuccess: '连接测试成功！正在获取字段定义...',
+    connectionTestFailed: '连接测试失败',
+    presetConnectionConfigured: '预设连接配置完成',
+    
+    // 分页
+    pageRange: '第 {start}-{end} 条，共 {total} 条记录',
+    recordPageSizeOptions: ['20', '50', '100', '200']
+  },
+
+  // 流程变量管理
+  processVariables: {
+    title: '流程变量管理',
+    variableList: '流程变量列表',
+    addVariable: '添加变量',
+    editVariable: '编辑变量',
+    deleteVariable: '删除变量',
+    createVariable: '创建变量',
+    updateVariable: '更新变量',
+    cancel: '取消',
+    save: '保存',
+    
+    // 变量属性
+    variableName: '变量名称',
+    displayName: '显示名称',
+    dataType: '数据类型',
+    description: '描述',
+    isRequired: '是否必填',
+    defaultValue: '默认值',
+    validationRules: '验证规则',
+    jsonSchema: 'JSON Schema',
+    
+    // 数据类型选项
+    dataTypeString: '字符串 (string)',
+    dataTypeInt: '整数 (int)',
+    dataTypeDecimal: '小数 (decimal)',
+    dataTypeDatetime: '日期时间 (datetime)',
+    dataTypeBoolean: '布尔值 (boolean)',
+    dataTypeText: '长文本 (text)',
+    dataTypeJson: 'JSON 对象 (json)',
+    
+    // 表单提示
+    variableNamePlaceholder: '例如：customer_name',
+    displayNamePlaceholder: '例如：客户名称',
+    descriptionPlaceholder: '描述这个变量的用途',
+    defaultValuePlaceholder: '变量的默认值',
+    validationRulesPlaceholder: 'JSON 格式的验证规则',
+    jsonSchemaPlaceholder: 'JSON Schema 定义（仅 JSON 类型需要）',
+    
+    // 验证消息
+    variableNameRequired: '请输入变量名称',
+    variableNamePattern: '变量名称只能包含字母、数字和下划线，且不能以数字开头',
+    dataTypeRequired: '请选择数据类型',
+    
+    // 状态标签
+    required: '必填',
+    optional: '可选',
+    
+    // 操作结果
+    createSuccess: '流程变量创建成功',
+    updateSuccess: '流程变量更新成功',
+    deleteSuccess: '流程变量删除成功',
+    createFailed: '流程变量创建失败',
+    updateFailed: '流程变量更新失败',
+    deleteFailed: '流程变量删除失败',
+    saveFailed: '保存流程变量失败',
+    fetchFailed: '获取流程变量失败',
+    
+    // 确认对话框
+    confirmDelete: '确定要删除这个流程变量吗？',
+    confirmDeleteOk: '确定',
+    confirmDeleteCancel: '取消',
+    
+    // 空状态
+    noVariables: '暂无流程变量，点击「添加变量」开始创建',
+    noDisplayName: '无显示名称',
+    selectVariableToEdit: '请选择一个流程变量进行编辑，或点击「添加变量」创建新的流程变量',
+    
+    // 管理按钮
+    manageProcessVariables: '管理流程变量'
   }
 };
 

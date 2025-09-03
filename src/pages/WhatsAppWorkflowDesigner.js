@@ -3,8 +3,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import ReactFlow, {
   MiniMap, Controls, Background, addEdge, useNodesState, useEdgesState, Handle, Position, useReactFlow, getBezierPath
 } from 'react-flow-renderer';
-import { Button, Drawer, Form, Input, Select, message, Tooltip, Modal, Card, Tag, Space, Typography } from 'antd';
-import { SaveOutlined, ArrowLeftOutlined, MessageOutlined, SendOutlined, ClockCircleOutlined, DatabaseOutlined, ApiOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined, UpOutlined } from '@ant-design/icons';
+import { Button, Drawer, Form, Input, Select, message, Tooltip, Modal, Card, Tag, Space, Typography, Table, Popconfirm } from 'antd';
+import { SaveOutlined, ArrowLeftOutlined, MessageOutlined, SendOutlined, ClockCircleOutlined, DatabaseOutlined, ApiOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined, UpOutlined, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const { Title } = Typography;
@@ -158,16 +158,16 @@ const WhatsAppWorkflowDesigner = () => {
   const nodeTypes = useMemo(() => {
     if (!isReady) {
       return [
-        { type: 'start', label: 'Start', icon: PlayCircleOutlined },
-        { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
-        { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
-        { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
-        { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
-        { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
-        { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
+  { type: 'start', label: 'Start', icon: PlayCircleOutlined },
+  { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
+  { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
+  { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
+  { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
+  { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
+  { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
 
-        { type: 'end', label: 'End', icon: StopOutlined },
-      ];
+  { type: 'end', label: 'End', icon: StopOutlined },
+];
     }
     
     return [
@@ -230,6 +230,13 @@ const WhatsAppWorkflowDesigner = () => {
   const [nodeTypeDefinitions, setNodeTypeDefinitions] = useState([]);
   const [loadingNodeTypes, setLoadingNodeTypes] = useState(true);
   
+  // 流程變量管理狀態
+  const [processVariablesModalVisible, setProcessVariablesModalVisible] = useState(false);
+  const [processVariables, setProcessVariables] = useState([]);
+  const [selectedProcessVariable, setSelectedProcessVariable] = useState(null);
+  const [editingProcessVariable, setEditingProcessVariable] = useState(null);
+  const [processVariableForm] = Form.useForm();
+  
   const navigate = useNavigate();
   const reactFlowInstanceRef = useRef();
   
@@ -242,47 +249,47 @@ const WhatsAppWorkflowDesigner = () => {
   const defaultNodeData = useCallback((type) => {
     if (!isReady) {
       // 語言系統未準備好時使用英文
-      switch (type) {
-        case 'start':
-          return { 
-            taskName: 'Start',
+  switch (type) {
+    case 'start':
+      return { 
+        taskName: 'Start',
             activationType: 'manual',
-            webhookToken: '',
-            webhookUrl: '',
-            scheduledTable: '',
-            scheduledQuery: '',
+        webhookToken: '',
+        webhookUrl: '',
+        scheduledTable: '',
+        scheduledQuery: '',
             scheduledInterval: 300
-          };
-        case 'end':
-          return { taskName: 'End' };
-        case 'sendWhatsApp':
-          return { taskName: 'Send WhatsApp Message', message: '', to: '' };
-        case 'sendWhatsAppTemplate':
-          return { taskName: 'Send WhatsApp Template', templateId: '', templateName: '', variables: {} };
-        case 'waitReply':
-          return { 
-            taskName: 'Wait for User Reply', 
+      };
+    case 'end':
+      return { taskName: 'End' };
+    case 'sendWhatsApp':
+      return { taskName: 'Send WhatsApp Message', message: '', to: '' };
+    case 'sendWhatsAppTemplate':
+      return { taskName: 'Send WhatsApp Template', templateId: '', templateName: '', variables: {} };
+    case 'waitReply':
+      return { 
+        taskName: 'Wait for User Reply', 
             replyType: 'initiator',
             specifiedUsers: '',
             message: 'Please enter your reply',
-            validation: {
-              enabled: true,
-              validatorType: 'default',
+        validation: {
+          enabled: true,
+          validatorType: 'default',
               prompt: 'Please enter valid content',
               retryMessage: 'Input incorrect, please retry',
-              maxRetries: 3
-            }
-          };
-        case 'dbQuery':
-          return { taskName: 'Database Query/Update', sql: '' };
-        case 'callApi':
-          return { taskName: 'Trigger External API', url: '' };
-        case 'sendEForm':
-          return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '' };
+          maxRetries: 3
+        }
+      };
+    case 'dbQuery':
+      return { taskName: 'Database Query/Update', sql: '' };
+    case 'callApi':
+      return { taskName: 'Trigger External API', url: '' };
+    case 'sendEForm':
+      return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '' };
 
-        default:
-          return { taskName: type };
-      }
+    default:
+      return { taskName: type };
+  }
     }
     
     // 語言系統準備好時使用翻譯
@@ -486,158 +493,158 @@ const WhatsAppWorkflowDesigner = () => {
     
     // 語言系統準備好時使用翻譯
     return {
-    default: ({ id, data, selected }) => (
-      <div
-        style={{
-          padding: 8,
-          background: selected ? '#e6f7ff' : '#fff',
-          border: '1.5px solid #1890ff',
-          borderRadius: 6,
-          minWidth: 120,
-          position: 'relative',
-          boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
-          transition: 'box-shadow 0.2s',
+  default: ({ id, data, selected }) => (
+    <div
+      style={{
+        padding: 8,
+        background: selected ? '#e6f7ff' : '#fff',
+        border: '1.5px solid #1890ff',
+        borderRadius: 6,
+        minWidth: 120,
+        position: 'relative',
+        boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
+        transition: 'box-shadow 0.2s',
+      }}
+      className="custom-node"
+    >
+      {/* 一般節點 - 上方接入點，下方接出點 */}
+      {/* 上方接入點 - 橙色 */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top-target"
+        style={{ 
+          background: '#faad14', 
+          width: 14, 
+          height: 14, 
+          borderRadius: 7, 
+          top: -7, 
+          left: '50%', 
+          opacity: 0.9, 
+          border: '2px solid #fff',
+          cursor: 'crosshair',
+          transform: 'translateX(-50%)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
         }}
-        className="custom-node"
-      >
-        {/* 一般節點 - 上方接入點，下方接出點 */}
-        {/* 上方接入點 - 橙色 */}
-        <Handle
-          type="target"
-          position={Position.Top}
-          id="top-target"
-          style={{ 
-            background: '#faad14', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            top: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
           title={t('workflowDesigner.clickToSelectConnection')}
-        />
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-          <span>{data.taskName || data.label}</span>
-        </div>
-        
-        {/* 下方接出點 - 綠色 */}
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="bottom-source"
-          style={{ 
-            background: '#52c41a', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            bottom: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
+      />
+      
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+        <span>{data.taskName || data.label}</span>
+      </div>
+      
+      {/* 下方接出點 - 綠色 */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom-source"
+        style={{ 
+          background: '#52c41a', 
+          width: 14, 
+          height: 14, 
+          borderRadius: 7, 
+          bottom: -7, 
+          left: '50%', 
+          opacity: 0.9, 
+          border: '2px solid #fff',
+          cursor: 'crosshair',
+          transform: 'translateX(-50%)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
           title={t('workflowDesigner.clickToSelectConnection')}
-        />
-        
-        {selected && data.type !== 'start' && (
+      />
+      
+      {selected && data.type !== 'start' && (
           <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>{t('workflowDesigner.delete')}</button>
-        )}
+      )}
+    </div>
+  ),
+  input: ({ id, data, selected }) => (
+    <div
+      style={{
+        padding: 8,
+        background: '#f6ffed',
+        border: '2px solid #52c41a',
+        borderRadius: 6,
+        minWidth: 80,
+        position: 'relative',
+        boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
+        transition: 'box-shadow 0.2s',
+      }}
+      className="custom-node"
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+        <span>{data.taskName || data.label}</span>
       </div>
-    ),
-    input: ({ id, data, selected }) => (
-      <div
-        style={{
-          padding: 8,
-          background: '#f6ffed',
-          border: '2px solid #52c41a',
-          borderRadius: 6,
-          minWidth: 80,
-          position: 'relative',
-          boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
-          transition: 'box-shadow 0.2s',
+      {/* Start 節點 - 只有下方接出點 - 綠色 */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom-source"
+        style={{ 
+          background: '#52c41a', 
+          width: 14, 
+          height: 14, 
+          borderRadius: 7, 
+          bottom: -7, 
+          left: '50%', 
+          opacity: 0.9, 
+          border: '2px solid #fff',
+          cursor: 'crosshair',
+          transform: 'translateX(-50%)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
         }}
-        className="custom-node"
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-          <span>{data.taskName || data.label}</span>
-        </div>
-        {/* Start 節點 - 只有下方接出點 - 綠色 */}
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="bottom-source"
-          style={{ 
-            background: '#52c41a', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            bottom: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
           title={t('workflowDesigner.clickToSelectConnection')}
-        />
+      />
+    </div>
+  ),
+  output: ({ id, data, selected }) => (
+    <div
+      style={{
+        padding: 8,
+        background: '#fffbe6',
+        border: '2px solid #faad14',
+        borderRadius: 6,
+        minWidth: 80,
+        position: 'relative',
+        boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
+        transition: 'box-shadow 0.2s',
+      }}
+      className="custom-node"
+    >
+      {/* End 節點 - 只有上方接入點 - 橙色 */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top-target"
+        style={{ 
+          background: '#faad14', 
+          width: 14, 
+          height: 14, 
+          borderRadius: 7, 
+          top: -7, 
+          left: '50%', 
+          opacity: 0.9, 
+          border: '2px solid #fff',
+          cursor: 'crosshair',
+          transform: 'translateX(-50%)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+          title={t('workflowDesigner.clickToSelectConnection')}
+      />
+      
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
+        <span>{data.taskName || data.label}</span>
       </div>
-    ),
-    output: ({ id, data, selected }) => (
-      <div
-        style={{
-          padding: 8,
-          background: '#fffbe6',
-          border: '2px solid #faad14',
-          borderRadius: 6,
-          minWidth: 80,
-          position: 'relative',
-          boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
-          transition: 'box-shadow 0.2s',
-        }}
-        className="custom-node"
-      >
-        {/* End 節點 - 只有上方接入點 - 橙色 */}
-        <Handle
-          type="target"
-          position={Position.Top}
-          id="top-target"
-          style={{ 
-            background: '#faad14', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            top: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
-          title={t('workflowDesigner.clickToSelectConnection')}
-        />
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-          <span>{data.taskName || data.label}</span>
-        </div>
-        
-        {selected && (
+      
+      {selected && (
           <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>{t('workflowDesigner.delete')}</button>
-        )}
-      </div>
-    ),
+      )}
+    </div>
+  ),
   };
   }, [isReady, t]);
   
@@ -890,15 +897,15 @@ const WhatsAppWorkflowDesigner = () => {
           message.error('載入流程定義失敗');
         });
     }
-    }, [workflowId]);
-  
+  }, [workflowId]);
+
   // 語言系統準備好後設置狀態 - 統一使用英文
   useEffect(() => {
     if (t && typeof t === 'function') {
       setStatus('Enabled');
     }
   }, [t]);
-  
+
   // 刪除節點（Start 節點不可刪）
   const handleDeleteNode = useCallback((nodeId) => {
     setNodes(nds => nds.filter(n => n.id !== nodeId || n.data.type === 'start'));
@@ -1329,6 +1336,133 @@ const WhatsAppWorkflowDesigner = () => {
     return newName;
   };
 
+  // 流程變量管理函數
+  const fetchProcessVariables = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/processvariables/definitions?workflowDefinitionId=${workflowId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setProcessVariables(result.data);
+        }
+      }
+    } catch (error) {
+      console.error('獲取流程變量失敗:', error);
+      message.error('獲取流程變量失敗');
+    }
+  };
+
+  const handleAddProcessVariable = () => {
+    const newVariable = {
+      id: null,
+      workflowDefinitionId: workflowId,
+      variableName: '',
+      displayName: '',
+      dataType: 'string',
+      description: '',
+      isRequired: false,
+      defaultValue: '',
+      validationRules: '',
+      jsonSchema: ''
+    };
+    setEditingProcessVariable(newVariable);
+    setSelectedProcessVariable(newVariable);
+    processVariableForm.setFieldsValue(newVariable);
+  };
+
+  const handleEditProcessVariable = (variable) => {
+    setEditingProcessVariable(variable);
+    setSelectedProcessVariable(variable);
+    processVariableForm.setFieldsValue(variable);
+  };
+
+  const handleDeleteProcessVariable = async (variableId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/processvariables/definitions/${variableId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        message.success(t('processVariables.deleteSuccess'));
+        fetchProcessVariables();
+        if (selectedProcessVariable && selectedProcessVariable.id === variableId) {
+          setSelectedProcessVariable(null);
+          setEditingProcessVariable(null);
+          processVariableForm.resetFields();
+        }
+      } else {
+        message.error(t('processVariables.deleteFailed'));
+      }
+    } catch (error) {
+      console.error('刪除流程變量失敗:', error);
+      message.error(t('processVariables.deleteFailed'));
+    }
+  };
+
+  const handleSaveProcessVariable = async () => {
+    try {
+      const values = await processVariableForm.validateFields();
+      const token = localStorage.getItem('token');
+      
+      const variableData = {
+        ...values,
+        workflowDefinitionId: workflowId
+      };
+      
+      let response;
+      if (editingProcessVariable && editingProcessVariable.id) {
+        // 更新現有變量
+        response = await fetch(`/api/processvariables/definitions/${editingProcessVariable.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(variableData)
+        });
+      } else {
+        // 創建新變量
+        response = await fetch('/api/processvariables/definitions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(variableData)
+        });
+      }
+      
+      if (response.ok) {
+        message.success(editingProcessVariable && editingProcessVariable.id ? t('processVariables.updateSuccess') : t('processVariables.createSuccess'));
+        fetchProcessVariables();
+        setEditingProcessVariable(null);
+        setSelectedProcessVariable(null);
+        processVariableForm.resetFields();
+      } else {
+        message.error(editingProcessVariable && editingProcessVariable.id ? t('processVariables.updateFailed') : t('processVariables.createFailed'));
+      }
+    } catch (error) {
+      console.error('保存流程變量失敗:', error);
+      message.error(t('processVariables.saveFailed'));
+    }
+  };
+
+  const handleCancelProcessVariableEdit = () => {
+    setEditingProcessVariable(null);
+    setSelectedProcessVariable(null);
+    processVariableForm.resetFields();
+  };
+
   // 生成 Webhook Token
   const generateWebhookToken = () => {
     const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -1382,6 +1516,13 @@ const WhatsAppWorkflowDesigner = () => {
     }
   }, [selectedNode, form]);
 
+  // 當流程變量管理窗口打開時，載入流程變量數據
+  useEffect(() => {
+    if (processVariablesModalVisible && workflowId) {
+      fetchProcessVariables();
+    }
+  }, [processVariablesModalVisible, workflowId]);
+
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <style>{purpleButtonStyle}</style>
@@ -1418,6 +1559,16 @@ const WhatsAppWorkflowDesigner = () => {
               width: '32px',
               padding: '0'
             }}
+          />
+          <Button
+            icon={<SettingOutlined />}
+            onClick={() => setProcessVariablesModalVisible(true)}
+            style={{
+              height: '32px',
+              width: '32px',
+              padding: '0'
+            }}
+            title={t('processVariables.manageProcessVariables')}
           />
         </div>
         
@@ -1754,7 +1905,7 @@ const WhatsAppWorkflowDesigner = () => {
                 <Input placeholder={t('workflowDesigner.taskNamePlaceholder')} />
               </Form.Item>
               
-                            {selectedNode.data.type === 'sendWhatsApp' && (
+              {selectedNode.data.type === 'sendWhatsApp' && (
                 <>
                   <Form.Item label={t('workflow.to')}>
                     <Input 
@@ -1798,7 +1949,7 @@ const WhatsAppWorkflowDesigner = () => {
                   </Form.Item>
                 </>
               )}
-                            {selectedNode.data.type === 'sendWhatsAppTemplate' && (
+              {selectedNode.data.type === 'sendWhatsAppTemplate' && (
                 <>
                   <Form.Item label={t('workflow.to')}>
                     <Input 
@@ -1883,16 +2034,16 @@ const WhatsAppWorkflowDesigner = () => {
                                   handleNodeDataChange({ specifiedUsers: '' });
                                 }}
                               >
-                                清除
+                                {t('workflowList.clear')}
                               </Button>
                             )}
-                                                      <Button 
-                            type="text" 
-                            size="small" 
-                            onClick={() => setIsUserModalVisible(true)}
-                          >
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              onClick={() => setIsUserModalVisible(true)}
+                            >
                             {t('workflowDesigner.selectPerson')}
-                          </Button>
+                            </Button>
                           </Space>
                         }
                         style={{
@@ -1966,7 +2117,7 @@ const WhatsAppWorkflowDesigner = () => {
               )}
               {selectedNode.data.type === 'sendEForm' && (
                 <>
-                  <Form.Item label="選擇表單">
+                  <Form.Item label={t('workflowDesigner.selectForm')}>
                     <Input 
                       value={selectedNode.data.formName || ''}
                                               placeholder={t('workflowDesigner.selectEFormPlaceholder')} 
@@ -1987,7 +2138,7 @@ const WhatsAppWorkflowDesigner = () => {
                                 });
                               }}
                             >
-                              清除
+                              {t('workflowList.clear')}
                             </Button>
                           )}
                           <Button 
@@ -2008,7 +2159,7 @@ const WhatsAppWorkflowDesigner = () => {
                     />
                   </Form.Item>
                   
-                                    <Form.Item label={t('workflow.to')}>
+                  <Form.Item label={t('workflow.to')}>
                     <Input 
                       value={selectedNode.data.to || ''}
                       placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
@@ -2094,13 +2245,13 @@ const WhatsAppWorkflowDesigner = () => {
                 onValuesChange={(_, all) => handleNodeDataChange(all)}
               >
                 <Form.Item label={t('workflowDesigner.activationType')} name="activationType">
-                                      <Select
-                      options={[
+                  <Select
+                    options={[
                         { value: 'manual', label: t('workflowDesigner.manualActivation') },
                         { value: 'webhook', label: t('workflowDesigner.metaWebhookCall') },
                         { value: 'scheduled', label: t('workflowDesigner.scheduledTableWatch') }
-                      ]}
-                    />
+                    ]}
+                  />
                 </Form.Item>
                 
                 {selectedNode.data.activationType === 'webhook' && (
@@ -2176,7 +2327,7 @@ const WhatsAppWorkflowDesigner = () => {
                     <Tag color="orange">{template.language}</Tag>
                   </Space>
                 </div>
-                <Button type="primary" size="small">選擇</Button>
+                <Button type="primary" size="small">{t('workflowList.select')}</Button>
               </div>
             </Card>
           ))}
@@ -2210,7 +2361,7 @@ const WhatsAppWorkflowDesigner = () => {
                   <h4 style={{ margin: 0 }}>{user.name}</h4>
                   <p style={{ margin: '4px 0', color: '#666' }}>{user.phone}</p>
                 </div>
-                <Button type="primary" size="small">選擇</Button>
+                <Button type="primary" size="small">{t('workflowList.select')}</Button>
               </div>
             </Card>
           ))}
@@ -2255,7 +2406,7 @@ const WhatsAppWorkflowDesigner = () => {
                     )}
                   </Space>
                 </div>
-                <Button type="primary" size="small">選擇</Button>
+                <Button type="primary" size="small">{t('workflowList.select')}</Button>
               </div>
             </Card>
           ))}
@@ -2264,6 +2415,196 @@ const WhatsAppWorkflowDesigner = () => {
               {t('workflowDesigner.noEFormsAvailable')}
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* 流程變量管理 Modal */}
+      <Modal
+        title={t('processVariables.title')}
+        open={processVariablesModalVisible}
+        onCancel={() => setProcessVariablesModalVisible(false)}
+        width={1200}
+        footer={null}
+        destroyOnClose
+        style={{ top: 20 }}
+      >
+        <div style={{ display: 'flex', height: '70vh', minHeight: '600px' }}>
+          {/* 左側：變量列表 */}
+          <div style={{ width: '40%', borderRight: '1px solid #e8e8e8', paddingRight: '16px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <h4 style={{ margin: 0 }}>{t('processVariables.variableList')}</h4>
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />}
+                onClick={handleAddProcessVariable}
+                size="small"
+              >
+                {t('processVariables.addVariable')}
+              </Button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
+              {processVariables.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                  {t('processVariables.noVariables')}
+                </div>
+              ) : (
+                processVariables.map(variable => (
+                  <Card
+                    key={variable.id}
+                    size="small"
+                    style={{ 
+                      marginBottom: '8px',
+                      cursor: 'pointer',
+                      border: selectedProcessVariable && selectedProcessVariable.id === variable.id ? '2px solid #1890ff' : '1px solid #d9d9d9'
+                    }}
+                    onClick={() => handleEditProcessVariable(variable)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
+                          {variable.variableName}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          {variable.displayName || t('processVariables.noDisplayName')}
+                        </div>
+                        <Tag size="small" color="blue">
+                          {variable.dataType}
+                        </Tag>
+                        {variable.isRequired && (
+                          <Tag size="small" color="red">
+                            {t('processVariables.required')}
+                          </Tag>
+                        )}
+                      </div>
+                      <Popconfirm
+                        title={t('processVariables.confirmDelete')}
+                        onConfirm={() => handleDeleteProcessVariable(variable.id)}
+                        okText={t('processVariables.confirmDeleteOk')}
+                        cancelText={t('processVariables.confirmDeleteCancel')}
+                      >
+                        <Button 
+                          type="text" 
+                          danger 
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </Popconfirm>
+                    </div>
+                  </Card>
+                ))
+              )}
+            </div>
+          </div>
+          
+          {/* 右側：變量編輯表單 */}
+          <div style={{ width: '60%', paddingLeft: '16px', display: 'flex', flexDirection: 'column' }}>
+            {editingProcessVariable ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
+                  <Form
+                    form={processVariableForm}
+                    layout="vertical"
+                    onFinish={handleSaveProcessVariable}
+                  >
+                <Form.Item
+                  label={t('processVariables.variableName')}
+                  name="variableName"
+                  rules={[
+                    { required: true, message: t('processVariables.variableNameRequired') },
+                    { pattern: /^[a-zA-Z_][a-zA-Z0-9_]*$/, message: t('processVariables.variableNamePattern') }
+                  ]}
+                >
+                  <Input placeholder={t('processVariables.variableNamePlaceholder')} />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.displayName')}
+                  name="displayName"
+                >
+                  <Input placeholder={t('processVariables.displayNamePlaceholder')} />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.dataType')}
+                  name="dataType"
+                  rules={[{ required: true, message: t('processVariables.dataTypeRequired') }]}
+                >
+                  <Select
+                    options={[
+                      { value: 'string', label: t('processVariables.dataTypeString') },
+                      { value: 'int', label: t('processVariables.dataTypeInt') },
+                      { value: 'decimal', label: t('processVariables.dataTypeDecimal') },
+                      { value: 'datetime', label: t('processVariables.dataTypeDatetime') },
+                      { value: 'boolean', label: t('processVariables.dataTypeBoolean') },
+                      { value: 'text', label: t('processVariables.dataTypeText') },
+                      { value: 'json', label: t('processVariables.dataTypeJson') }
+                    ]}
+                  />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.description')}
+                  name="description"
+                >
+                  <Input.TextArea rows={2} placeholder={t('processVariables.descriptionPlaceholder')} />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.isRequired')}
+                  name="isRequired"
+                  valuePropName="checked"
+                >
+                  <input type="checkbox" />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.defaultValue')}
+                  name="defaultValue"
+                >
+                  <Input placeholder={t('processVariables.defaultValuePlaceholder')} />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.validationRules')}
+                  name="validationRules"
+                >
+                  <Input.TextArea rows={2} placeholder={t('processVariables.validationRulesPlaceholder')} />
+                </Form.Item>
+                
+                <Form.Item
+                  label={t('processVariables.jsonSchema')}
+                  name="jsonSchema"
+                >
+                  <Input.TextArea rows={4} placeholder={t('processVariables.jsonSchemaPlaceholder')} />
+                </Form.Item>
+                  </Form>
+                </div>
+                
+                {/* 固定在底部的按鈕區域 */}
+                <div style={{ 
+                  borderTop: '1px solid #e8e8e8', 
+                  paddingTop: '16px', 
+                  marginTop: '16px',
+                  flexShrink: 0
+                }}>
+                  <Space>
+                    <Button type="primary" onClick={handleSaveProcessVariable}>
+                      {editingProcessVariable && editingProcessVariable.id ? t('processVariables.updateVariable') : t('processVariables.createVariable')}
+                    </Button>
+                    <Button onClick={handleCancelProcessVariableEdit}>
+                      {t('processVariables.cancel')}
+                    </Button>
+                  </Space>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                {t('processVariables.selectVariableToEdit')}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
     </div>

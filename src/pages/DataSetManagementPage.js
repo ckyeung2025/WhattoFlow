@@ -78,11 +78,11 @@ const DataSetManagementPage = () => {
         }
       } else {
         console.error('fetchDataSets: API 返回失敗:', result.message);
-        message.error('獲取 DataSet 列表失敗: ' + result.message);
+        message.error(t('dataSetManagement.fetchFailed') + ': ' + result.message);
       }
     } catch (error) {
       console.error('fetchDataSets: 請求失敗:', error);
-      message.error('獲取 DataSet 列表失敗');
+      message.error(t('dataSetManagement.fetchFailed'));
     } finally {
       setLoading(false);
     }
@@ -218,14 +218,14 @@ const DataSetManagementPage = () => {
       console.log('handleDelete: 刪除結果:', result);
       
       if (result.success) {
-        message.success('刪除成功');
+        message.success(t('dataSetManagement.deleteSuccess'));
         fetchDataSets();
       } else {
-        message.error('刪除失敗: ' + result.message);
+        message.error(t('dataSetManagement.deleteFailed') + ': ' + result.message);
       }
     } catch (error) {
       console.error('handleDelete: 刪除請求失敗:', error);
-      message.error('刪除失敗');
+      message.error(t('dataSetManagement.deleteFailed'));
     }
   };
 
@@ -236,7 +236,7 @@ const DataSetManagementPage = () => {
     const syncButton = document.querySelector(`[data-sync-id="${id}"]`);
     if (syncButton) {
       syncButton.disabled = true;
-      syncButton.innerHTML = '<SyncOutlined spin /> 同步中...';
+      syncButton.innerHTML = `<SyncOutlined spin /> ${t('dataSetManagement.syncInProgress')}`;
     }
     
     try {
@@ -247,19 +247,19 @@ const DataSetManagementPage = () => {
       console.log('handleSync: 同步結果:', result);
       
       if (result.success) {
-        message.success(`同步成功！共處理 ${result.data?.totalRecords || 0} 條記錄`);
+        message.success(t('dataSetManagement.syncSuccess', { count: result.data?.totalRecords || 0 }));
         fetchDataSets();
       } else {
-        message.error('同步失敗: ' + (result.error || result.message));
+        message.error(t('dataSetManagement.syncFailed') + ': ' + (result.error || result.message));
       }
     } catch (error) {
       console.error('handleSync: 同步請求失敗:', error);
-      message.error('同步失敗: ' + error.message);
+      message.error(t('dataSetManagement.syncFailed') + ': ' + error.message);
     } finally {
       // 恢復按鈕狀態
       if (syncButton) {
         syncButton.disabled = false;
-        syncButton.innerHTML = '<SyncOutlined /> 同步數據';
+        syncButton.innerHTML = `<SyncOutlined /> ${t('dataSetManagement.syncData')}`;
       }
     }
   };
@@ -381,18 +381,18 @@ const DataSetManagementPage = () => {
         }
       } else {
         console.error('fetchRecords: 獲取記錄失敗:', result.message);
-        message.error('獲取記錄失敗: ' + result.message);
+        message.error(t('dataSetManagement.fetchRecordsFailed') + ': ' + result.message);
       }
     } catch (error) {
       console.error('fetchRecords: 請求失敗:', error);
       
       // 更詳細的錯誤信息
       if (error.message.includes('HTTP')) {
-        message.error(`獲取記錄失敗: ${error.message}`);
+        message.error(`${t('dataSetManagement.fetchRecordsFailed')}: ${error.message}`);
       } else if (error.name === 'SyntaxError') {
-        message.error('服務器返回了無效的數據格式，請檢查後端日誌');
+        message.error(t('dataSetManagement.serverInvalidData'));
       } else {
-        message.error('獲取記錄失敗: ' + error.message);
+        message.error(t('dataSetManagement.fetchRecordsFailed') + ': ' + error.message);
       }
     } finally {
       setRecordsLoading(false);
@@ -415,13 +415,13 @@ const DataSetManagementPage = () => {
       
       if (result.success) {
         setRecords(result.data);
-        message.success(`找到 ${result.totalCount} 條記錄`);
+        message.success(t('dataSetManagement.foundRecords', { count: result.totalCount }));
       } else {
-        message.error('搜尋失敗: ' + result.message);
+        message.error(t('dataSetManagement.searchFailed') + ': ' + result.message);
       }
     } catch (error) {
       console.error('handleSearch: 搜尋請求失敗:', error);
-      message.error('搜尋失敗');
+      message.error(t('dataSetManagement.searchFailed'));
     }
   };
 
@@ -440,7 +440,7 @@ const DataSetManagementPage = () => {
       const sourceType = dataSourceValues.sourceType;
       
       if (!sourceType) {
-        message.error('請選擇數據源類型');
+        message.error(t('dataSetManagement.pleaseSelectDataSourceType'));
         return;
       }
       
@@ -501,21 +501,21 @@ const DataSetManagementPage = () => {
       console.log('handleSubmit: 提交結果:', result);
       
       if (result.success) {
-        message.success(editingDataSet ? '更新成功' : '創建成功');
+        message.success(editingDataSet ? t('dataSetManagement.updateSuccess') : t('dataSetManagement.createSuccess'));
         setModalVisible(false);
         fetchDataSets();
       } else {
-        message.error('操作失敗: ' + result.message);
+        message.error(t('dataSetManagement.operationFailed') + ': ' + result.message);
       }
     } catch (error) {
       console.error('handleSubmit: 提交失敗:', error);
-      message.error('操作失敗');
+      message.error(t('dataSetManagement.operationFailed'));
     }
   };
 
   const columns = [
     {
-      title: '名稱',
+      title: t('dataSetManagement.name'),
       dataIndex: 'name',
       key: 'name',
       render: (text, record) => (
@@ -526,7 +526,7 @@ const DataSetManagementPage = () => {
       )
     },
     {
-      title: '數據源類型',
+      title: t('dataSetManagement.dataSourceType'),
       dataIndex: 'dataSourceType',
       key: 'dataSourceType',
       render: (type) => {
@@ -544,44 +544,44 @@ const DataSetManagementPage = () => {
       }
     },
     {
-      title: '狀態',
+      title: t('dataSetManagement.status'),
       dataIndex: 'status',
       key: 'status',
       render: (status) => {
         const statusConfig = {
-          'Active': { color: 'success', text: '啟用' },
-          'Inactive': { color: 'default', text: '停用' },
-          'Error': { color: 'error', text: '錯誤' }
+          'Active': { color: 'success', text: t('dataSetManagement.active') },
+          'Inactive': { color: 'default', text: t('dataSetManagement.inactive') },
+          'Error': { color: 'error', text: t('dataSetManagement.error') }
         };
         const config = statusConfig[status] || { color: 'default', text: status };
         return <Tag color={config.color}>{config.text}</Tag>;
       }
     },
     {
-      title: '記錄數',
+      title: t('dataSetManagement.recordCount'),
       dataIndex: 'totalRecords',
       key: 'totalRecords',
       render: (count) => <Text>{count || 0}</Text>
     },
     {
-      title: '最後更新',
+      title: t('dataSetManagement.lastUpdate'),
       dataIndex: 'lastDataSyncTime',
       key: 'lastDataSyncTime',
-      render: (time) => time ? new Date(time).toLocaleString('zh-TW') : '從未同步'
+      render: (time) => time ? new Date(time).toLocaleString('zh-TW') : t('dataSetManagement.neverSynced')
     },
     {
-      title: '操作',
+      title: t('dataSetManagement.actions'),
       key: 'actions',
       render: (_, record) => (
         <Space>
-          <Tooltip title="查看記錄">
+          <Tooltip title={t('dataSetManagement.viewRecords')}>
             <Button 
               type="text" 
               icon={<EyeOutlined />} 
               onClick={() => handleViewRecords(record)}
             />
           </Tooltip>
-                     <Tooltip title="同步數據">
+                     <Tooltip title={t('dataSetManagement.syncData')}>
              <Button 
                type="text" 
                icon={<SyncOutlined />} 
@@ -589,7 +589,7 @@ const DataSetManagementPage = () => {
                data-sync-id={record.id}
              />
            </Tooltip>
-          <Tooltip title="編輯">
+          <Tooltip title={t('dataSetManagement.edit')}>
             <Button 
               type="text" 
               icon={<EditOutlined />} 
@@ -597,12 +597,12 @@ const DataSetManagementPage = () => {
             />
           </Tooltip>
           <Popconfirm
-            title="確定要刪除這個 DataSet 嗎？"
+            title={t('dataSetManagement.confirmDelete')}
             onConfirm={() => handleDelete(record.id)}
-            okText="確定"
-            cancelText="取消"
+            okText={t('dataSetManagement.confirmDeleteOk')}
+            cancelText={t('dataSetManagement.confirmDeleteCancel')}
           >
-            <Tooltip title="刪除">
+            <Tooltip title={t('dataSetManagement.delete')}>
               <Button 
                 type="text" 
                 danger 
@@ -666,7 +666,7 @@ const DataSetManagementPage = () => {
           case 'int':
             return value.numericValue || value.stringValue || '-';
           case 'boolean':
-            return value.booleanValue ? '是' : '否';
+            return value.booleanValue ? t('dataSetManagement.yes') : t('dataSetManagement.no');
           default:
             return value.stringValue || value.textValue || '-';
         }
@@ -691,7 +691,7 @@ const DataSetManagementPage = () => {
     try {
       const filePath = dataSourceForm.getFieldValue('excelFilePath');
       if (!filePath) {
-        message.error('請先上傳 Excel 文件');
+        message.error(t('dataSetManagement.uploadExcelFirst'));
         return;
       }
       
@@ -730,13 +730,13 @@ const DataSetManagementPage = () => {
         }));
         
         columnsForm.setFieldsValue({ columns: columnsData });
-        message.success(`已自動生成 ${result.columns.length} 個欄位定義`);
+        message.success(t('dataSetManagement.autoGeneratedColumns', { count: result.columns.length }));
       } else {
-        message.error('獲取欄位預覽失敗: ' + result.message);
+        message.error(t('dataSetManagement.getColumnPreviewFailed') + ': ' + result.message);
       }
     } catch (error) {
       console.error('工作表變更處理失敗:', error);
-      message.error('處理失敗: ' + error.message);
+      message.error(t('dataSetManagement.processFailed') + ': ' + error.message);
     } finally {
       setSheetLoading(false);
     }
@@ -750,10 +750,10 @@ const DataSetManagementPage = () => {
       if (connectionType === 'preset') {
         const presetConnection = values.presetConnection;
         if (!presetConnection) {
-          message.error('請選擇預設連接');
+          message.error(t('dataSetManagement.presetConnectionRequired'));
           return;
         }
-        message.success(`預設連接配置完成: ${presetConnection}`);
+        message.success(t('dataSetManagement.presetConnectionConfigured') + `: ${presetConnection}`);
         return;
       } else if (connectionType === 'custom') {
         const serverName = values.serverName;
@@ -766,17 +766,17 @@ const DataSetManagementPage = () => {
         const sqlQuery = values.sqlQuery;
 
         if (!serverName || !databaseName) {
-          message.error('請輸入伺服器名稱和數據庫名稱');
+          message.error(t('dataSetManagement.serverAndDatabaseRequired'));
           return;
         }
 
         if (authType === 'sql' && (!username || !password)) {
-          message.error('請輸入 SQL Server 認證信息');
+          message.error(t('dataSetManagement.sqlAuthRequired'));
           return;
         }
 
         if (!sqlQuery) {
-          message.error('請先輸入 SQL 查詢語句');
+          message.error(t('dataSetManagement.sqlQueryRequired'));
           return;
         }
 
@@ -801,7 +801,7 @@ const DataSetManagementPage = () => {
         }
 
         // 顯示測試中的狀態
-        message.loading('正在測試連接...', 0);
+        message.loading(t('dataSetManagement.testingConnection'), 0);
 
         try {
           const response = await fetch('/api/datasets/test-sql-connection', {
@@ -814,7 +814,7 @@ const DataSetManagementPage = () => {
           
           if (result.success) {
             message.destroy();
-            message.success('連接測試成功！正在獲取欄位定義...');
+            message.success(t('dataSetManagement.connectionTestSuccess'));
             console.log('連接字符串:', connectionString);
             
             // 連接測試成功後，自動獲取欄位定義
@@ -822,17 +822,17 @@ const DataSetManagementPage = () => {
             
           } else {
             message.destroy();
-            message.error(`連接測試失敗: ${result.message}`);
+            message.error(`${t('dataSetManagement.connectionTestFailed')}: ${result.message}`);
           }
         } catch (error) {
           message.destroy();
           console.error('SQL 連接測試請求失敗:', error);
-          message.error('連接測試失敗: ' + error.message);
+          message.error(t('dataSetManagement.connectionTestFailed') + ': ' + error.message);
         }
       }
     } catch (error) {
       console.error('連接測試失敗:', error);
-      message.error('請先完成連接配置');
+      message.error(t('dataSetManagement.completeConnectionConfig'));
     }
   };
 
@@ -872,7 +872,7 @@ const DataSetManagementPage = () => {
         }));
         
         columnsForm.setFieldsValue({ columns: columnsData });
-        message.success(`已自動生成 ${result.columns.length} 個欄位定義`);
+        message.success(t('dataSetManagement.autoGeneratedColumns', { count: result.columns.length }));
         
         // 自動切換到欄位定義標籤
         const tabsElement = document.querySelector('.ant-tabs-tab[data-key="columns"]');
@@ -882,11 +882,11 @@ const DataSetManagementPage = () => {
         
       } else {
         console.error('獲取欄位定義失敗:', result.message);
-        message.warning('無法自動生成欄位定義: ' + result.message);
+        message.warning(t('dataSetManagement.cannotAutoGenerateColumns') + ': ' + result.message);
       }
     } catch (error) {
       console.error('生成欄位定義失敗:', error);
-      message.warning('無法自動生成欄位定義，請手動配置');
+      message.warning(t('dataSetManagement.cannotAutoGenerateColumnsManual'));
     }
   };
 
@@ -927,13 +927,13 @@ const DataSetManagementPage = () => {
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <Title level={3}>Data Set 管理</Title>
+        <Title level={3}>{t('dataSetManagement.title')}</Title>
         <Button 
           type="primary" 
           icon={<PlusOutlined />} 
           onClick={handleCreate}
         >
-          創建 Data Set
+          {t('dataSetManagement.createDataSet')}
         </Button>
       </div>
 
@@ -949,8 +949,8 @@ const DataSetManagementPage = () => {
             total: pagination.total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 條記錄`,
-            pageSizeOptions: ['10', '20', '50', '100'],
+            showTotal: (total) => t('dataSetManagement.totalRecords', { total }),
+            pageSizeOptions: t('dataSetManagement.pageSizeOptions'),
             showSizeChanger: true,
             showQuickJumper: true
           }}
@@ -960,36 +960,36 @@ const DataSetManagementPage = () => {
 
       {/* 創建/編輯 Modal */}
       <Modal
-        title={editingDataSet ? '編輯 Data Set' : '創建 Data Set'}
+        title={editingDataSet ? t('dataSetManagement.editDataSetTitle') : t('dataSetManagement.createDataSetTitle')}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={handleSubmit}
         width={900}
-        okText="保存"
-        cancelText="取消"
+        okText={t('dataSetManagement.save')}
+        cancelText={t('dataSetManagement.cancel')}
       >
         <Tabs defaultActiveKey="basic">
-          <TabPane tab="基本資訊" key="basic">
+          <TabPane tab={t('dataSetManagement.basicInfo')} key="basic">
             <Form form={form} layout="vertical">
               <Row gutter={16}>
                 <Col span={24}>
                   <Form.Item
                     name="name"
-                    label="名稱"
-                    rules={[{ required: true, message: '請輸入名稱' }]}
+                    label={t('dataSetManagement.nameLabel')}
+                    rules={[{ required: true, message: t('dataSetManagement.nameRequired') }]}
                   >
-                    <Input placeholder="輸入 Data Set 名稱" />
+                    <Input placeholder={t('dataSetManagement.namePlaceholder')} />
                   </Form.Item>
                 </Col>
               </Row>
               
-              <Form.Item name="description" label="描述">
-                <TextArea rows={3} placeholder="輸入描述" />
+              <Form.Item name="description" label={t('dataSetManagement.description')}>
+                <TextArea rows={3} placeholder={t('dataSetManagement.descriptionPlaceholder')} />
               </Form.Item>
               
               <Alert
-                message="數據源類型設定"
-                description="請在「數據源配置」標籤中選擇數據源類型並進行相應配置。"
+                message={t('dataSetManagement.dataSourceTypeInfo')}
+                description={t('dataSetManagement.dataSourceTypeDescription')}
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
@@ -997,26 +997,26 @@ const DataSetManagementPage = () => {
               
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Item name="isScheduled" label="定時更新">
+                  <Form.Item name="isScheduled" label={t('dataSetManagement.isScheduled')}>
                     <Switch />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item
                     name="updateIntervalMinutes"
-                    label="更新間隔（分鐘）"
+                    label={t('dataSetManagement.updateInterval')}
                     dependencies={['isScheduled']}
                     rules={[
                       {
                         required: form.getFieldValue('isScheduled'),
-                        message: '請設定更新間隔'
+                        message: t('dataSetManagement.updateIntervalRequired')
                       }
                     ]}
                   >
                     <InputNumber 
                       min={1} 
                       max={1440} 
-                      placeholder="例如：60（1小時）"
+                      placeholder={t('dataSetManagement.updateIntervalPlaceholder')}
                       disabled={!form.getFieldValue('isScheduled')}
                     />
                   </Form.Item>
@@ -1025,22 +1025,22 @@ const DataSetManagementPage = () => {
             </Form>
           </TabPane>
           
-          <TabPane tab="數據源配置" key="dataSource">
+          <TabPane tab={t('dataSetManagement.dataSourceConfig')} key="dataSource">
             <Form form={dataSourceForm} layout="vertical">
               <Form.Item
                 name="sourceType"
-                label="數據源類型"
-                rules={[{ required: true, message: '請選擇數據源類型' }]}
+                label={t('dataSetManagement.dataSourceTypeLabel')}
+                rules={[{ required: true, message: t('dataSetManagement.dataSourceTypeRequired') }]}
               >
                 <Select 
-                  placeholder="選擇數據源類型"
+                  placeholder={t('dataSetManagement.dataSourceTypePlaceholder')}
                   onChange={(value) => {
                     console.log('數據源類型變更為:', value);
                   }}
                 >
-                  <Select.Option value="SQL">SQL 查詢</Select.Option>
-                  <Select.Option value="EXCEL">Excel 文件</Select.Option>
-                  <Select.Option value="GOOGLE_DOCS">Google Docs</Select.Option>
+                  <Select.Option value="SQL">{t('dataSetManagement.sql')} 查詢</Select.Option>
+                  <Select.Option value="EXCEL">{t('dataSetManagement.excel')} 文件</Select.Option>
+                  <Select.Option value="GOOGLE_DOCS">{t('dataSetManagement.googleDocs')}</Select.Option>
                 </Select>
               </Form.Item>
               
@@ -1057,10 +1057,10 @@ const DataSetManagementPage = () => {
                   if (sourceType === 'SQL') {
                     return (
                       <>
-                        <Form.Item name="connectionType" label="連接方式">
+                        <Form.Item name="connectionType" label={t('dataSetManagement.connectionType')}>
                           <Radio.Group defaultValue="preset">
-                            <Radio value="preset">使用預設連接</Radio>
-                            <Radio value="custom">自定義連接</Radio>
+                            <Radio value="preset">{t('dataSetManagement.usePresetConnection')}</Radio>
+                            <Radio value="custom">{t('dataSetManagement.customConnection')}</Radio>
                           </Radio.Group>
                         </Form.Item>
                         
@@ -1076,10 +1076,10 @@ const DataSetManagementPage = () => {
                             
                             if (connectionType === 'preset') {
                               return (
-                                <Form.Item name="presetConnection" label="預設數據庫連接">
-                                  <Select placeholder="選擇數據庫連接">
-                                    <Select.Option value="erp_awh">ERP 數據庫</Select.Option>
-                                    <Select.Option value="purple_rice">Purple Rice 數據庫</Select.Option>
+                                <Form.Item name="presetConnection" label={t('dataSetManagement.presetDatabaseConnection')}>
+                                  <Select placeholder={t('dataSetManagement.presetConnectionPlaceholder')}>
+                                    <Select.Option value="erp_awh">{t('dataSetManagement.erpDatabase')}</Select.Option>
+                                    <Select.Option value="purple_rice">{t('dataSetManagement.purpleRiceDatabase')}</Select.Option>
                                   </Select>
                                 </Form.Item>
                               );
@@ -1092,19 +1092,19 @@ const DataSetManagementPage = () => {
                                     <Col span={12}>
                                       <Form.Item
                                         name="serverName"
-                                        label="伺服器名稱/IP"
-                                        rules={[{ required: true, message: '請輸入伺服器名稱或IP' }]}
+                                        label={t('dataSetManagement.serverName')}
+                                        rules={[{ required: true, message: t('dataSetManagement.serverNameRequired') }]}
                                       >
-                                        <Input placeholder="例如：192.168.1.100" />
+                                        <Input placeholder={t('dataSetManagement.serverNamePlaceholder')} />
                                       </Form.Item>
                                     </Col>
                                     <Col span={12}>
                                       <Form.Item
                                         name="port"
-                                        label="端口號"
+                                        label={t('dataSetManagement.port')}
                                         initialValue="1433"
                                       >
-                                        <Input placeholder="例如：1433" />
+                                        <Input placeholder={t('dataSetManagement.portPlaceholder')} />
                                       </Form.Item>
                                     </Col>
                                   </Row>
@@ -1113,21 +1113,21 @@ const DataSetManagementPage = () => {
                                     <Col span={12}>
                                       <Form.Item
                                         name="databaseName"
-                                        label="數據庫名稱"
-                                        rules={[{ required: true, message: '請輸入數據庫名稱' }]}
+                                        label={t('dataSetManagement.databaseName')}
+                                        rules={[{ required: true, message: t('dataSetManagement.databaseNameRequired') }]}
                                       >
-                                        <Input placeholder="例如：MyDatabase" />
+                                        <Input placeholder={t('dataSetManagement.databaseNamePlaceholder')} />
                                       </Form.Item>
                                     </Col>
                                     <Col span={12}>
                                       <Form.Item
                                         name="authenticationType"
-                                        label="認證方式"
+                                        label={t('dataSetManagement.authenticationType')}
                                         initialValue="sql"
                                       >
                                         <Select>
-                                          <Select.Option value="sql">SQL Server 認證</Select.Option>
-                                          <Select.Option value="windows">Windows 認證</Select.Option>
+                                          <Select.Option value="sql">{t('dataSetManagement.sqlServerAuth')}</Select.Option>
+                                          <Select.Option value="windows">{t('dataSetManagement.windowsAuth')}</Select.Option>
                                         </Select>
                                       </Form.Item>
                                     </Col>
@@ -1148,19 +1148,19 @@ const DataSetManagementPage = () => {
                                             <Col span={12}>
                                               <Form.Item
                                                 name="username"
-                                                label="用戶名"
-                                                rules={[{ required: true, message: '請輸入用戶名' }]}
+                                                label={t('dataSetManagement.username')}
+                                                rules={[{ required: true, message: t('dataSetManagement.usernameRequired') }]}
                                               >
-                                                <Input placeholder="例如：sa" />
+                                                <Input placeholder={t('dataSetManagement.usernamePlaceholder')} />
                                               </Form.Item>
                                             </Col>
                                             <Col span={12}>
                                               <Form.Item
                                                 name="password"
-                                                label="密碼"
-                                                rules={[{ required: true, message: '請輸入密碼' }]}
+                                                label={t('dataSetManagement.password')}
+                                                rules={[{ required: true, message: t('dataSetManagement.passwordRequired') }]}
                                               >
-                                                <Input.Password placeholder="輸入密碼" />
+                                                <Input.Password placeholder={t('dataSetManagement.passwordPlaceholder')} />
                                               </Form.Item>
                                             </Col>
                                           </Row>
@@ -1171,16 +1171,16 @@ const DataSetManagementPage = () => {
                                     }}
                                   </Form.Item>
                                   
-                                  <Form.Item name="additionalOptions" label="額外連接選項">
+                                  <Form.Item name="additionalOptions" label={t('dataSetManagement.additionalOptions')}>
                                     <TextArea 
                                       rows={2} 
-                                      placeholder="例如：TrustServerCertificate=true;MultipleActiveResultSets=true"
+                                      placeholder={t('dataSetManagement.additionalOptionsPlaceholder')}
                                     />
                                   </Form.Item>
                                   
                                   <Alert
-                                    message="連接測試"
-                                    description="配置完成後，可以點擊下方按鈕測試連接是否成功。"
+                                    message={t('dataSetManagement.connectionTest')}
+                                    description={t('dataSetManagement.connectionTestDescription')}
                                     type="info"
                                     showIcon
                                     style={{ marginBottom: 16 }}
@@ -1192,7 +1192,7 @@ const DataSetManagementPage = () => {
                                       onClick={() => testSqlConnection()}
                                       icon={<DatabaseOutlined />}
                                     >
-                                      測試連接
+                                      {t('dataSetManagement.testConnection')}
                                     </Button>
                                   </Form.Item>
                                 </>
@@ -1205,19 +1205,19 @@ const DataSetManagementPage = () => {
                         
                         <Form.Item
                           name="sqlQuery"
-                          label="SQL 查詢語句"
-                          rules={[{ required: true, message: '請輸入 SQL 查詢語句' }]}
+                          label={t('dataSetManagement.sqlQuery')}
+                          rules={[{ required: true, message: t('dataSetManagement.sqlQueryRequired') }]}
                         >
                           <TextArea 
                             rows={6} 
-                            placeholder="SELECT * FROM table_name WHERE condition"
+                            placeholder={t('dataSetManagement.sqlQueryPlaceholder')}
                           />
                         </Form.Item>
                         
-                        <Form.Item name="sqlParameters" label="SQL 參數（JSON 格式）">
+                        <Form.Item name="sqlParameters" label={t('dataSetManagement.sqlParameters')}>
                           <TextArea 
                             rows={3} 
-                            placeholder='{"param1": "value1", "param2": "value2"}'
+                            placeholder={t('dataSetManagement.sqlParametersPlaceholder')}
                           />
                         </Form.Item>
                       </>
@@ -1227,13 +1227,13 @@ const DataSetManagementPage = () => {
                   if (sourceType === 'EXCEL') {
                     return (
                       <>
-                        <Form.Item name="excelFilePath" label="Excel 文件路徑">
-                          <Input placeholder="例如：/uploads/excel/data.xlsx" />
+                        <Form.Item name="excelFilePath" label={t('dataSetManagement.excelFilePath')}>
+                          <Input placeholder={t('dataSetManagement.excelFilePathPlaceholder')} />
                         </Form.Item>
                         
-                                                 <Form.Item name="excelSheetName" label="工作表名稱">
+                                                 <Form.Item name="excelSheetName" label={t('dataSetManagement.excelSheetName')}>
                            <Select 
-                             placeholder="選擇工作表"
+                             placeholder={t('dataSetManagement.excelSheetNamePlaceholder')}
                              onChange={(value) => handleSheetChange(value)}
                              loading={sheetLoading}
                            >
@@ -1245,8 +1245,8 @@ const DataSetManagementPage = () => {
                            </Select>
                          </Form.Item>
                         
-                        <Form.Item name="excelUrl" label="Excel 文件 URL">
-                          <Input placeholder="例如：https://example.com/data.xlsx" />
+                        <Form.Item name="excelUrl" label={t('dataSetManagement.excelUrl')}>
+                          <Input placeholder={t('dataSetManagement.excelUrlPlaceholder')} />
                         </Form.Item>
                         
                         <Upload
@@ -1258,14 +1258,14 @@ const DataSetManagementPage = () => {
                             const isExcel = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
                                           file.type === 'application/vnd.ms-excel';
                             if (!isExcel) {
-                              message.error('只能上傳 Excel 文件！');
+                              message.error(t('dataSetManagement.onlyExcelFiles'));
                               return false;
                             }
                             
                             // 檢查文件大小（限制為 10MB）
                             const isLt10M = file.size / 1024 / 1024 < 10;
                             if (!isLt10M) {
-                              message.error('文件大小不能超過 10MB！');
+                              message.error(t('dataSetManagement.fileSizeLimit'));
                               return false;
                             }
                             
@@ -1286,7 +1286,7 @@ const DataSetManagementPage = () => {
                               });
                               
                               if (!uploadResponse.ok) {
-                                throw new Error('文件上傳失敗');
+                                throw new Error(t('dataSetManagement.uploadFailed'));
                               }
                               
                               const uploadResult = await uploadResponse.json();
@@ -1325,21 +1325,21 @@ const DataSetManagementPage = () => {
                                     }
                                   } else {
                                     console.error('獲取工作表名稱失敗:', sheetsResult.message);
-                                    message.warning('無法自動獲取工作表名稱: ' + sheetsResult.message);
+                                    message.warning(t('dataSetManagement.cannotGetSheetNames') + ': ' + sheetsResult.message);
                                   }
                                 } catch (error) {
                                   console.error('獲取工作表名稱失敗:', error);
-                                  message.warning('無法自動獲取工作表名稱，請手動選擇');
+                                  message.warning(t('dataSetManagement.cannotGetSheetNamesManual'));
                                 }
                                 
-                                message.success(`${file.name} 上傳成功`);
+                                message.success(`${file.name} ${t('dataSetManagement.uploadSuccess')}`);
                                 onSuccess(uploadResult);
                               } else {
-                                throw new Error(uploadResult.message || '上傳失敗');
+                                throw new Error(uploadResult.message || t('dataSetManagement.uploadFailed'));
                               }
                             } catch (error) {
                               console.error('文件上傳錯誤:', error);
-                              message.error(`上傳失敗: ${error.message}`);
+                              message.error(`${t('dataSetManagement.uploadFailed')}: ${error.message}`);
                               onError(error);
                             }
                           }}
@@ -1352,12 +1352,12 @@ const DataSetManagementPage = () => {
                             }
                           }}
                         >
-                          <Button icon={<UploadOutlined />}>上傳 Excel 文件</Button>
+                          <Button icon={<UploadOutlined />}>{t('dataSetManagement.uploadExcelFile')}</Button>
                         </Upload>
                         
                                                  <Alert
-                           message="Excel 上傳說明"
-                           description="上傳成功後，文件路徑會自動填充。保存 DataSet 後，點擊「同步數據」按鈕來將 Excel 數據導入到數據庫中。系統會自動根據 Excel 標題行生成欄位定義。"
+                           message={t('dataSetManagement.excelUploadDescription')}
+                           description={t('dataSetManagement.excelUploadInfo')}
                            type="info"
                            showIcon
                            style={{ marginTop: 8 }}
@@ -1371,19 +1371,19 @@ const DataSetManagementPage = () => {
                       <>
                         <Form.Item
                           name="googleDocsUrl"
-                          label="Google Docs URL"
-                          rules={[{ required: true, message: '請輸入 Google Docs URL' }]}
+                          label={t('dataSetManagement.googleDocsUrl')}
+                          rules={[{ required: true, message: t('dataSetManagement.googleDocsUrlRequired') }]}
                         >
-                          <Input placeholder="https://docs.google.com/spreadsheets/d/..." />
+                          <Input placeholder={t('dataSetManagement.googleDocsUrlPlaceholder')} />
                         </Form.Item>
                         
-                        <Form.Item name="googleDocsSheetName" label="工作表名稱">
-                          <Input placeholder="例如：Sheet1" />
+                        <Form.Item name="googleDocsSheetName" label={t('dataSetManagement.googleDocsSheetName')}>
+                          <Input placeholder={t('dataSetManagement.googleDocsSheetNamePlaceholder')} />
                         </Form.Item>
                         
                         <Alert
-                          message="Google Docs 整合說明"
-                          description="請確保 Google Docs 文件已設定為可公開讀取，或已配置適當的認證信息。"
+                          message={t('dataSetManagement.googleDocsIntegration')}
+                          description={t('dataSetManagement.googleDocsIntegrationDescription')}
                           type="info"
                           showIcon
                           style={{ marginBottom: 16 }}
@@ -1398,36 +1398,36 @@ const DataSetManagementPage = () => {
               
               <Divider />
               
-              <Form.Item name="autoUpdate" label="自動更新">
+              <Form.Item name="autoUpdate" label={t('dataSetManagement.autoUpdate')}>
                 <Switch />
               </Form.Item>
               
               <Form.Item
                 name="updateIntervalMinutes"
-                label="更新間隔（分鐘）"
+                label={t('dataSetManagement.autoUpdateInterval')}
                 dependencies={['autoUpdate']}
                 rules={[
                   {
                     required: dataSourceForm.getFieldValue('autoUpdate'),
-                    message: '請設定更新間隔'
+                    message: t('dataSetManagement.autoUpdateIntervalRequired')
                   }
                 ]}
               >
                 <InputNumber 
                   min={1} 
                   max={1440} 
-                  placeholder="例如：60（1小時）"
+                  placeholder={t('dataSetManagement.autoUpdateIntervalPlaceholder')}
                   disabled={!dataSourceForm.getFieldValue('autoUpdate')}
                 />
               </Form.Item>
             </Form>
           </TabPane>
           
-                     <TabPane tab="欄位定義" key="columns">
+                     <TabPane tab={t('dataSetManagement.columnDefinition')} key="columns">
              <Form form={columnsForm} layout="vertical">
                <Alert
-                 message="欄位定義說明"
-                 description="對於 Excel 數據源，系統會自動根據 Excel 標題行生成欄位定義。您可以在同步數據後手動調整欄位屬性。"
+                 message={t('dataSetManagement.columnDefinitionDescription')}
+                 description={t('dataSetManagement.columnDefinitionInfo')}
                  type="info"
                  showIcon
                  style={{ marginBottom: 16 }}
@@ -1446,7 +1446,7 @@ const DataSetManagementPage = () => {
                             danger 
                             onClick={() => remove(name)}
                           >
-                            刪除
+                            {t('dataSetManagement.removeColumn')}
                           </Button>
                         }
                       >
@@ -1455,34 +1455,34 @@ const DataSetManagementPage = () => {
                             <Form.Item
                               {...restField}
                               name={[name, 'columnName']}
-                              label="欄位名稱"
-                              rules={[{ required: true, message: '請輸入欄位名稱' }]}
+                              label={t('dataSetManagement.columnName')}
+                              rules={[{ required: true, message: t('dataSetManagement.columnNameRequired') }]}
                             >
-                              <Input placeholder="例如：customer_id" />
+                              <Input placeholder={t('dataSetManagement.columnNamePlaceholder')} />
                             </Form.Item>
                           </Col>
                           <Col span={8}>
                             <Form.Item
                               {...restField}
                               name={[name, 'displayName']}
-                              label="顯示名稱"
+                              label={t('dataSetManagement.displayName')}
                             >
-                              <Input placeholder="例如：客戶編號" />
+                              <Input placeholder={t('dataSetManagement.displayNamePlaceholder')} />
                             </Form.Item>
                           </Col>
                           <Col span={8}>
                             <Form.Item
                               {...restField}
                               name={[name, 'dataType']}
-                              label="數據類型"
-                              rules={[{ required: true, message: '請選擇數據類型' }]}
+                              label={t('dataSetManagement.dataType')}
+                              rules={[{ required: true, message: t('dataSetManagement.dataTypeRequired') }]}
                             >
-                              <Select placeholder="選擇數據類型">
-                                <Select.Option value="string">字串</Select.Option>
-                                <Select.Option value="int">整數</Select.Option>
-                                <Select.Option value="decimal">小數</Select.Option>
-                                <Select.Option value="datetime">日期時間</Select.Option>
-                                <Select.Option value="boolean">布林值</Select.Option>
+                              <Select placeholder={t('dataSetManagement.dataTypePlaceholder')}>
+                                <Select.Option value="string">{t('dataSetManagement.string')}</Select.Option>
+                                <Select.Option value="int">{t('dataSetManagement.int')}</Select.Option>
+                                <Select.Option value="decimal">{t('dataSetManagement.decimal')}</Select.Option>
+                                <Select.Option value="datetime">{t('dataSetManagement.datetime')}</Select.Option>
+                                <Select.Option value="boolean">{t('dataSetManagement.boolean')}</Select.Option>
                               </Select>
                             </Form.Item>
                           </Col>
@@ -1495,7 +1495,7 @@ const DataSetManagementPage = () => {
                               name={[name, 'isPrimaryKey']}
                               valuePropName="checked"
                             >
-                              <Switch checkedChildren="主鍵" unCheckedChildren="普通" />
+                              <Switch checkedChildren={t('dataSetManagement.isPrimaryKey')} unCheckedChildren={t('dataSetManagement.isPrimaryKeyNormal')} />
                             </Form.Item>
                           </Col>
                           <Col span={6}>
@@ -1504,7 +1504,7 @@ const DataSetManagementPage = () => {
                               name={[name, 'isSearchable']}
                               valuePropName="checked"
                             >
-                              <Switch checkedChildren="可搜尋" unCheckedChildren="不可搜尋" />
+                              <Switch checkedChildren={t('dataSetManagement.isSearchable')} unCheckedChildren={t('dataSetManagement.isSearchableNot')} />
                             </Form.Item>
                           </Col>
                           <Col span={6}>
@@ -1513,7 +1513,7 @@ const DataSetManagementPage = () => {
                               name={[name, 'isSortable']}
                               valuePropName="checked"
                             >
-                              <Switch checkedChildren="可排序" unCheckedChildren="不可排序" />
+                              <Switch checkedChildren={t('dataSetManagement.isSortable')} unCheckedChildren={t('dataSetManagement.isSortableNot')} />
                             </Form.Item>
                           </Col>
                           <Col span={6}>
@@ -1522,7 +1522,7 @@ const DataSetManagementPage = () => {
                               name={[name, 'isIndexed']}
                               valuePropName="checked"
                             >
-                              <Switch checkedChildren="建索引" unCheckedChildren="不建索引" />
+                              <Switch checkedChildren={t('dataSetManagement.isIndexed')} unCheckedChildren={t('dataSetManagement.isIndexedNot')} />
                             </Form.Item>
                           </Col>
                         </Row>
@@ -1532,16 +1532,16 @@ const DataSetManagementPage = () => {
                             <Form.Item
                               {...restField}
                               name={[name, 'defaultValue']}
-                              label="預設值"
+                              label={t('dataSetManagement.defaultValue')}
                             >
-                              <Input placeholder="預設值" />
+                              <Input placeholder={t('dataSetManagement.defaultValuePlaceholder')} />
                             </Form.Item>
                           </Col>
                           <Col span={12}>
                             <Form.Item
                               {...restField}
                               name={[name, 'sortOrder']}
-                              label="排序順序"
+                              label={t('dataSetManagement.sortOrder')}
                             >
                               <InputNumber min={0} placeholder="0" />
                             </Form.Item>
@@ -1556,7 +1556,7 @@ const DataSetManagementPage = () => {
                       block 
                       icon={<PlusOutlined />}
                     >
-                      添加欄位
+                      {t('dataSetManagement.addColumn')}
                     </Button>
                   </>
                 )}
@@ -1568,7 +1568,7 @@ const DataSetManagementPage = () => {
 
       {/* 記錄查看 Drawer */}
       <Drawer
-        title={`${selectedDataSet?.name} - 數據記錄`}
+        title={`${selectedDataSet?.name} - ${t('dataSetManagement.dataRecords')}`}
         placement="right"
         open={drawerVisible}
         onClose={() => setDrawerVisible(false)}
@@ -1580,13 +1580,13 @@ const DataSetManagementPage = () => {
               icon={<SearchOutlined />} 
               onClick={() => setSearchDrawerVisible(true)}
             >
-              進階搜尋
+              {t('dataSetManagement.advancedSearch')}
             </Button>
             <Button 
               icon={<SyncOutlined />} 
               onClick={() => selectedDataSet && fetchRecords(selectedDataSet.id)}
             >
-              重新整理
+              {t('dataSetManagement.refresh')}
             </Button>
           </Space>
         }
@@ -1594,31 +1594,31 @@ const DataSetManagementPage = () => {
         <Table
           columns={[
             {
-              title: 'ID',
+              title: t('dataSetManagement.recordId'),
               dataIndex: 'id',
               key: 'id',
               width: 80,
               render: (id) => id.substring(0, 8) + '...'
             },
             {
-              title: '主鍵值',
+              title: t('dataSetManagement.primaryKeyValue'),
               dataIndex: 'primaryKeyValue',
               key: 'primaryKeyValue',
               width: 120
             },
             {
-              title: '狀態',
+              title: t('dataSetManagement.recordStatus'),
               dataIndex: 'status',
               key: 'status',
               width: 80,
               render: (status) => (
                 <Tag color={status === 'Active' ? 'success' : 'default'}>
-                  {status || 'N/A'}
+                  {status || t('dataSetManagement.nA')}
                 </Tag>
               )
             },
             {
-              title: '建立時間',
+              title: t('dataSetManagement.createdAt'),
               dataIndex: 'createdAt',
               key: 'createdAt',
               width: 150,
@@ -1636,8 +1636,8 @@ const DataSetManagementPage = () => {
             total: recordsPagination.total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 條，共 ${total} 條記錄`,
-            pageSizeOptions: ['20', '50', '100', '200'],
+            showTotal: (total, range) => t('dataSetManagement.pageRange', { start: range[0], end: range[1], total }),
+            pageSizeOptions: t('dataSetManagement.recordPageSizeOptions'),
             onChange: (page, pageSize) => {
               console.log('記錄分頁變更:', { page, pageSize });
               setRecordsPagination(prev => ({ ...prev, current: page, pageSize }));
@@ -1659,7 +1659,7 @@ const DataSetManagementPage = () => {
 
       {/* 進階搜尋 Drawer */}
       <Drawer
-        title="進階搜尋"
+        title={t('dataSetManagement.advancedSearchTitle')}
         placement="left"
         open={searchDrawerVisible}
         onClose={() => setSearchDrawerVisible(false)}
@@ -1681,7 +1681,7 @@ const DataSetManagementPage = () => {
                         size="small"
                         onClick={() => remove(name)}
                       >
-                        刪除
+                        {t('dataSetManagement.removeSearchCondition')}
                       </Button>
                     }
                   >
@@ -1690,10 +1690,10 @@ const DataSetManagementPage = () => {
                         <Form.Item
                           {...restField}
                           name={[name, 'columnName']}
-                          label="欄位名稱"
-                          rules={[{ required: true, message: '請選擇欄位' }]}
+                          label={t('dataSetManagement.columnNameLabel')}
+                          rules={[{ required: true, message: t('dataSetManagement.columnNameRequired') }]}
                         >
-                          <Select placeholder="選擇欄位">
+                          <Select placeholder={t('dataSetManagement.columnNamePlaceholder')}>
                             {selectedDataSet?.columns?.map(col => (
                               <Select.Option key={col.columnName} value={col.columnName}>
                                 {col.displayName || col.columnName}
@@ -1706,15 +1706,15 @@ const DataSetManagementPage = () => {
                         <Form.Item
                           {...restField}
                           name={[name, 'operator']}
-                          label="操作符"
-                          rules={[{ required: true, message: '請選擇操作符' }]}
+                          label={t('dataSetManagement.operator')}
+                          rules={[{ required: true, message: t('dataSetManagement.operatorRequired') }]}
                         >
-                          <Select placeholder="選擇操作符">
-                            <Select.Option value="equals">等於</Select.Option>
-                            <Select.Option value="contains">包含</Select.Option>
-                            <Select.Option value="greater_than">大於</Select.Option>
-                            <Select.Option value="less_than">小於</Select.Option>
-                            <Select.Option value="date_range">日期範圍</Select.Option>
+                          <Select placeholder={t('dataSetManagement.operatorPlaceholder')}>
+                            <Select.Option value="equals">{t('dataSetManagement.equals')}</Select.Option>
+                            <Select.Option value="contains">{t('dataSetManagement.contains')}</Select.Option>
+                            <Select.Option value="greater_than">{t('dataSetManagement.greaterThan')}</Select.Option>
+                            <Select.Option value="less_than">{t('dataSetManagement.lessThan')}</Select.Option>
+                            <Select.Option value="date_range">{t('dataSetManagement.dateRange')}</Select.Option>
                           </Select>
                         </Form.Item>
                       </Col>
@@ -1723,10 +1723,10 @@ const DataSetManagementPage = () => {
                     <Form.Item
                       {...restField}
                       name={[name, 'value']}
-                      label="值"
-                      rules={[{ required: true, message: '請輸入值' }]}
+                      label={t('dataSetManagement.value')}
+                      rules={[{ required: true, message: t('dataSetManagement.valueRequired') }]}
                     >
-                      <Input placeholder="輸入搜尋值" />
+                      <Input placeholder={t('dataSetManagement.valuePlaceholder')} />
                     </Form.Item>
                   </Card>
                 ))}
@@ -1737,7 +1737,7 @@ const DataSetManagementPage = () => {
                   block 
                   icon={<PlusOutlined />}
                 >
-                  添加搜尋條件
+                  {t('dataSetManagement.addSearchCondition')}
                 </Button>
               </>
             )}
@@ -1747,8 +1747,8 @@ const DataSetManagementPage = () => {
           
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="sortBy" label="排序欄位">
-                <Select placeholder="選擇排序欄位" allowClear>
+              <Form.Item name="sortBy" label={t('dataSetManagement.sortBy')}>
+                <Select placeholder={t('dataSetManagement.sortByPlaceholder')} allowClear>
                   {selectedDataSet?.columns?.filter(col => col.isSortable).map(col => (
                     <Select.Option key={col.columnName} value={col.columnName}>
                       {col.displayName || col.columnName}
@@ -1758,10 +1758,10 @@ const DataSetManagementPage = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="sortOrder" label="排序方向">
+              <Form.Item name="sortOrder" label={t('dataSetManagement.sortOrder')}>
                 <Select defaultValue="asc">
-                  <Select.Option value="asc">升序</Select.Option>
-                  <Select.Option value="desc">降序</Select.Option>
+                  <Select.Option value="asc">{t('dataSetManagement.ascending')}</Select.Option>
+                  <Select.Option value="desc">{t('dataSetManagement.descending')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -1769,7 +1769,7 @@ const DataSetManagementPage = () => {
           
           <Form.Item>
             <Button type="primary" htmlType="submit" block>
-              執行搜尋
+              {t('dataSetManagement.executeSearch')}
             </Button>
           </Form.Item>
         </Form>

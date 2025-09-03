@@ -1054,6 +1054,355 @@ const en = {
     notifyOnError: 'Notify on Error',
     notifyOnCompletion: 'Notify on Completion',
     notifyOnDelay: 'Notify on Delay'
+  },
+
+  // Workflow List Page
+  workflowList: {
+    add: 'Add',
+    batchDelete: 'Batch Delete',
+    batchEnable: 'Batch Enable',
+    batchDisable: 'Batch Disable',
+    clearFilter: 'Clear Filter',
+    manualStart: 'Manual Start',
+    select: 'Select',
+    clear: 'Clear',
+    confirmBatchDelete: 'Confirm Batch Delete',
+    confirmBatchEnable: 'Confirm Batch Enable',
+    confirmBatchDisable: 'Confirm Batch Disable',
+    confirmDelete: 'Confirm Delete',
+    cancel: 'Cancel',
+    confirmDeleteSelected: 'Are you sure you want to delete the selected',
+    confirmEnableSelected: 'Are you sure you want to enable the selected',
+    confirmDisableSelected: 'Are you sure you want to disable the selected',
+    workflows: ' workflows',
+    cannotBeUndone: 'This action cannot be undone!',
+    successfullyDeleted: 'Successfully deleted',
+    successfullyEnabled: 'Successfully enabled',
+    successfullyDisabled: 'Successfully disabled',
+    batchDeleteFailed: 'Batch delete failed',
+    batchOperationFailed: 'Batch operation failed',
+    pleaseSelectWorkflows: 'Please select workflows to delete',
+    pleaseSelectWorkflowsToOperate: 'Please select workflows to operate on',
+    workflowStarted: 'Successfully started',
+    manualStartMessage: 'Manually started workflow'
+  },
+
+  // Process Variables Management
+  processVariables: {
+    title: 'Process Variables Management',
+    variableList: 'Process Variables List',
+    addVariable: 'Add Variable',
+    editVariable: 'Edit Variable',
+    deleteVariable: 'Delete Variable',
+    createVariable: 'Create Variable',
+    updateVariable: 'Update Variable',
+    cancel: 'Cancel',
+    save: 'Save',
+    
+    // Variable Properties
+    variableName: 'Variable Name',
+    displayName: 'Display Name',
+    dataType: 'Data Type',
+    description: 'Description',
+    isRequired: 'Is Required',
+    defaultValue: 'Default Value',
+    validationRules: 'Validation Rules',
+    jsonSchema: 'JSON Schema',
+    
+    // Data Type Options
+    dataTypeString: 'String (string)',
+    dataTypeInt: 'Integer (int)',
+    dataTypeDecimal: 'Decimal (decimal)',
+    dataTypeDatetime: 'Date Time (datetime)',
+    dataTypeBoolean: 'Boolean (boolean)',
+    dataTypeText: 'Long Text (text)',
+    dataTypeJson: 'JSON Object (json)',
+    
+    // Form Placeholders
+    variableNamePlaceholder: 'e.g.: customer_name',
+    displayNamePlaceholder: 'e.g.: Customer Name',
+    descriptionPlaceholder: 'Describe the purpose of this variable',
+    defaultValuePlaceholder: 'Default value for the variable',
+    validationRulesPlaceholder: 'JSON format validation rules',
+    jsonSchemaPlaceholder: 'JSON Schema definition (required for JSON type only)',
+    
+    // Validation Messages
+    variableNameRequired: 'Please enter variable name',
+    variableNamePattern: 'Variable name can only contain letters, numbers and underscores, and cannot start with a number',
+    dataTypeRequired: 'Please select data type',
+    
+    // Status Labels
+    required: 'Required',
+    optional: 'Optional',
+    
+    // Operation Results
+    createSuccess: 'Process variable created successfully',
+    updateSuccess: 'Process variable updated successfully',
+    deleteSuccess: 'Process variable deleted successfully',
+    createFailed: 'Process variable creation failed',
+    updateFailed: 'Process variable update failed',
+    deleteFailed: 'Process variable deletion failed',
+    saveFailed: 'Save process variable failed',
+    fetchFailed: 'Failed to fetch process variables',
+    
+    // Confirmation Dialogs
+    confirmDelete: 'Are you sure you want to delete this process variable?',
+    confirmDeleteOk: 'Confirm',
+    confirmDeleteCancel: 'Cancel',
+    
+    // Empty States
+    noVariables: 'No process variables yet, click "Add Variable" to start creating',
+    noDisplayName: 'No display name',
+    selectVariableToEdit: 'Please select a process variable to edit, or click "Add Variable" to create a new process variable',
+    
+    // Management Button
+    manageProcessVariables: 'Manage Process Variables'
+  },
+
+  // Data Set Management Page
+  dataSetManagement: {
+    title: 'Data Set Management',
+    createDataSet: 'Create Data Set',
+    editDataSet: 'Edit Data Set',
+    createDataSetTitle: 'Create Data Set',
+    editDataSetTitle: 'Edit Data Set',
+    save: 'Save',
+    cancel: 'Cancel',
+    
+    // Table column headers
+    name: 'Name',
+    dataSourceType: 'Data Source Type',
+    status: 'Status',
+    recordCount: 'Record Count',
+    lastUpdate: 'Last Update',
+    actions: 'Actions',
+    
+    // Status labels
+    active: 'Active',
+    inactive: 'Inactive',
+    error: 'Error',
+    
+    // Data source types
+    sql: 'SQL',
+    excel: 'EXCEL',
+    googleDocs: 'GOOGLE_DOCS',
+    
+    // Action buttons
+    viewRecords: 'View Records',
+    syncData: 'Sync Data',
+    edit: 'Edit',
+    delete: 'Delete',
+    
+    // Confirmation dialogs
+    confirmDelete: 'Are you sure you want to delete this DataSet?',
+    confirmDeleteOk: 'Confirm',
+    confirmDeleteCancel: 'Cancel',
+    
+    // Pagination
+    totalRecords: 'Total {total} records',
+    pageSizeOptions: ['10', '20', '50', '100'],
+    
+    // Tabs
+    basicInfo: 'Basic Information',
+    dataSourceConfig: 'Data Source Configuration',
+    columnDefinition: 'Column Definition',
+    
+    // Basic information form
+    nameLabel: 'Name',
+    namePlaceholder: 'Enter Data Set name',
+    nameRequired: 'Please enter name',
+    description: 'Description',
+    descriptionPlaceholder: 'Enter description',
+    isScheduled: 'Scheduled Update',
+    updateInterval: 'Update Interval (minutes)',
+    updateIntervalPlaceholder: 'e.g.: 60 (1 hour)',
+    updateIntervalRequired: 'Please set update interval',
+    
+    // Data source configuration
+    dataSourceTypeLabel: 'Data Source Type',
+    dataSourceTypePlaceholder: 'Select data source type',
+    dataSourceTypeRequired: 'Please select data source type',
+    dataSourceTypeInfo: 'Data Source Type Settings',
+    dataSourceTypeDescription: 'Please select the data source type in the "Data Source Configuration" tab and configure accordingly.',
+    
+    // SQL configuration
+    connectionType: 'Connection Type',
+    usePresetConnection: 'Use Preset Connection',
+    customConnection: 'Custom Connection',
+    presetDatabaseConnection: 'Preset Database Connection',
+    presetConnectionPlaceholder: 'Select database connection',
+    erpDatabase: 'ERP Database',
+    purpleRiceDatabase: 'Purple Rice Database',
+    serverName: 'Server Name/IP',
+    serverNamePlaceholder: 'e.g.: 192.168.1.100',
+    serverNameRequired: 'Please enter server name or IP',
+    port: 'Port',
+    portPlaceholder: 'e.g.: 1433',
+    databaseName: 'Database Name',
+    databaseNamePlaceholder: 'e.g.: MyDatabase',
+    databaseNameRequired: 'Please enter database name',
+    authenticationType: 'Authentication Type',
+    sqlServerAuth: 'SQL Server Authentication',
+    windowsAuth: 'Windows Authentication',
+    username: 'Username',
+    usernamePlaceholder: 'e.g.: sa',
+    usernameRequired: 'Please enter username',
+    password: 'Password',
+    passwordPlaceholder: 'Enter password',
+    passwordRequired: 'Please enter password',
+    additionalOptions: 'Additional Connection Options',
+    additionalOptionsPlaceholder: 'e.g.: TrustServerCertificate=true;MultipleActiveResultSets=true',
+    connectionTest: 'Connection Test',
+    connectionTestDescription: 'After configuration, you can click the button below to test the connection.',
+    testConnection: 'Test Connection',
+    sqlQuery: 'SQL Query Statement',
+    sqlQueryPlaceholder: 'SELECT * FROM table_name WHERE condition',
+    sqlQueryRequired: 'Please enter SQL query statement',
+    sqlParameters: 'SQL Parameters (JSON format)',
+    sqlParametersPlaceholder: '{"param1": "value1", "param2": "value2"}',
+    
+    // Excel configuration
+    excelFilePath: 'Excel File Path',
+    excelFilePathPlaceholder: 'e.g.: /uploads/excel/data.xlsx',
+    excelSheetName: 'Sheet Name',
+    excelSheetNamePlaceholder: 'Select sheet',
+    excelUrl: 'Excel File URL',
+    excelUrlPlaceholder: 'e.g.: https://example.com/data.xlsx',
+    uploadExcelFile: 'Upload Excel File',
+    excelUploadDescription: 'Excel Upload Instructions',
+    excelUploadInfo: 'After successful upload, the file path will be automatically filled. After saving the DataSet, click the "Sync Data" button to import Excel data into the database. The system will automatically generate column definitions based on Excel headers.',
+    
+    // Google Docs configuration
+    googleDocsUrl: 'Google Docs URL',
+    googleDocsUrlPlaceholder: 'https://docs.google.com/spreadsheets/d/...',
+    googleDocsUrlRequired: 'Please enter Google Docs URL',
+    googleDocsSheetName: 'Sheet Name',
+    googleDocsSheetNamePlaceholder: 'e.g.: Sheet1',
+    googleDocsIntegration: 'Google Docs Integration Instructions',
+    googleDocsIntegrationDescription: 'Please ensure that the Google Docs file is set to publicly readable, or configure appropriate authentication information.',
+    
+    // Auto update
+    autoUpdate: 'Auto Update',
+    autoUpdateInterval: 'Update Interval (minutes)',
+    autoUpdateIntervalPlaceholder: 'e.g.: 60 (1 hour)',
+    autoUpdateIntervalRequired: 'Please set update interval',
+    
+    // Column definition
+    columnDefinitionDescription: 'Column Definition Instructions',
+    columnDefinitionInfo: 'For Excel data sources, the system will automatically generate column definitions based on Excel headers. You can manually adjust column properties after syncing data.',
+    columnName: 'Column Name',
+    columnNamePlaceholder: 'e.g.: customer_id',
+    columnNameRequired: 'Please enter column name',
+    displayName: 'Display Name',
+    displayNamePlaceholder: 'e.g.: Customer ID',
+    dataType: 'Data Type',
+    dataTypePlaceholder: 'Select data type',
+    dataTypeRequired: 'Please select data type',
+    string: 'String',
+    int: 'Integer',
+    decimal: 'Decimal',
+    datetime: 'DateTime',
+    boolean: 'Boolean',
+    isPrimaryKey: 'Primary Key',
+    isPrimaryKeyNormal: 'Normal',
+    isSearchable: 'Searchable',
+    isSearchableNot: 'Not Searchable',
+    isSortable: 'Sortable',
+    isSortableNot: 'Not Sortable',
+    isIndexed: 'Indexed',
+    isIndexedNot: 'Not Indexed',
+    defaultValue: 'Default Value',
+    defaultValuePlaceholder: 'Default value',
+    sortOrder: 'Sort Order',
+    addColumn: 'Add Column',
+    removeColumn: 'Remove',
+    
+    // Record viewing
+    dataRecords: 'Data Records',
+    advancedSearch: 'Advanced Search',
+    refresh: 'Refresh',
+    recordId: 'ID',
+    primaryKeyValue: 'Primary Key Value',
+    recordStatus: 'Status',
+    createdAt: 'Created At',
+    nA: 'N/A',
+    
+    // Advanced search
+    advancedSearchTitle: 'Advanced Search',
+    searchConditions: 'Search Conditions',
+    columnNameLabel: 'Column Name',
+    columnNamePlaceholder: 'Select column',
+    columnNameRequired: 'Please select column',
+    operator: 'Operator',
+    operatorPlaceholder: 'Select operator',
+    operatorRequired: 'Please select operator',
+    equals: 'Equals',
+    contains: 'Contains',
+    greaterThan: 'Greater Than',
+    lessThan: 'Less Than',
+    dateRange: 'Date Range',
+    value: 'Value',
+    valuePlaceholder: 'Enter search value',
+    valueRequired: 'Please enter value',
+    addSearchCondition: 'Add Search Condition',
+    removeSearchCondition: 'Remove',
+    sortBy: 'Sort By',
+    sortByPlaceholder: 'Select sort column',
+    sortOrder: 'Sort Order',
+    ascending: 'Ascending',
+    descending: 'Descending',
+    executeSearch: 'Execute Search',
+    
+    // Operation result messages
+    deleteSuccess: 'Delete successful',
+    deleteFailed: 'Delete failed',
+    syncSuccess: 'Sync successful! Processed {count} records',
+    syncFailed: 'Sync failed',
+    createSuccess: 'Create successful',
+    updateSuccess: 'Update successful',
+    operationFailed: 'Operation failed',
+    fetchFailed: 'Failed to fetch DataSet list',
+    fetchRecordsFailed: 'Failed to fetch records',
+    searchFailed: 'Search failed',
+    foundRecords: 'Found {count} records',
+    
+    // Error messages
+    pleaseSelectDataSourceType: 'Please select data source type',
+    pleaseEnterName: 'Please enter name',
+    pleaseEnterServerName: 'Please enter server name or IP',
+    pleaseEnterDatabaseName: 'Please enter database name',
+    pleaseEnterUsername: 'Please enter username',
+    pleaseEnterPassword: 'Please enter password',
+    pleaseEnterSqlQuery: 'Please enter SQL query statement first',
+    pleaseSelectPresetConnection: 'Please select preset connection',
+    pleaseEnterGoogleDocsUrl: 'Please enter Google Docs URL',
+    pleaseEnterColumnName: 'Please enter column name',
+    pleaseSelectDataType: 'Please select data type',
+    pleaseSelectColumn: 'Please select column',
+    pleaseSelectOperator: 'Please select operator',
+    pleaseEnterValue: 'Please enter value',
+    
+    // File upload
+    onlyExcelFiles: 'Only Excel files can be uploaded!',
+    fileSizeLimit: 'File size cannot exceed 10MB!',
+    uploadSuccess: 'Upload successful',
+    uploadFailed: 'Upload failed',
+    processingFile: 'Processing file, please wait...',
+    getSheetNamesFailed: 'Failed to get sheet names',
+    getColumnPreviewFailed: 'Failed to get column preview',
+    autoGeneratedColumns: 'Auto-generated {count} column definitions',
+    cannotAutoGenerateColumns: 'Cannot auto-generate column definitions',
+    pleaseManuallyConfigure: 'Please configure manually',
+    
+    // Connection test
+    testingConnection: 'Testing connection...',
+    connectionTestSuccess: 'Connection test successful! Getting column definitions...',
+    connectionTestFailed: 'Connection test failed',
+    presetConnectionConfigured: 'Preset connection configured',
+    
+    // Pagination
+    pageRange: 'Records {start}-{end} of {total}',
+    recordPageSizeOptions: ['20', '50', '100', '200']
   }
 };
 

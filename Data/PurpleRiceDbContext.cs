@@ -32,6 +32,10 @@ namespace PurpleRice.Data
         public DbSet<DataSetDataSource> DataSetDataSources { get; set; }
         public DbSet<DataSetRecord> DataSetRecords { get; set; }
         public DbSet<DataSetRecordValue> DataSetRecordValues { get; set; }
+        
+        // 流程變量相關 DbSet
+        public DbSet<ProcessVariableDefinition> ProcessVariableDefinitions { get; set; }
+        public DbSet<ProcessVariableValue> ProcessVariableValues { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -471,6 +475,73 @@ namespace PurpleRice.Data
                 entity.HasOne(v => v.Record)
                       .WithMany(r => r.Values)
                       .HasForeignKey(v => v.RecordId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // 流程變量定義配置
+            modelBuilder.Entity<ProcessVariableDefinition>(entity =>
+            {
+                entity.ToTable("process_variable_definitions");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.WorkflowDefinitionId).HasColumnName("workflow_definition_id");
+                entity.Property(e => e.VariableName).HasColumnName("variable_name").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.DisplayName).HasColumnName("display_name").HasMaxLength(200);
+                entity.Property(e => e.DataType).HasColumnName("data_type").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(500);
+                entity.Property(e => e.IsRequired).HasColumnName("is_required");
+                entity.Property(e => e.DefaultValue).HasColumnName("default_value").HasMaxLength(500);
+                entity.Property(e => e.ValidationRules).HasColumnName("validation_rules").HasMaxLength(1000);
+                entity.Property(e => e.JsonSchema).HasColumnName("json_schema");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").HasMaxLength(100);
+                
+                // 索引配置
+                entity.HasIndex(e => e.WorkflowDefinitionId);
+                entity.HasIndex(e => e.VariableName);
+                entity.HasIndex(e => e.DataType);
+                entity.HasIndex(e => new { e.WorkflowDefinitionId, e.VariableName }).IsUnique();
+                
+                // 外鍵關係
+                entity.HasOne(e => e.WorkflowDefinition)
+                      .WithMany()
+                      .HasForeignKey(e => e.WorkflowDefinitionId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // 流程變量值配置
+            modelBuilder.Entity<ProcessVariableValue>(entity =>
+            {
+                entity.ToTable("process_variable_values");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.WorkflowExecutionId).HasColumnName("workflow_execution_id");
+                entity.Property(e => e.VariableName).HasColumnName("variable_name").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.DataType).HasColumnName("data_type").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.StringValue).HasColumnName("string_value").HasMaxLength(500);
+                entity.Property(e => e.NumericValue).HasColumnName("numeric_value").HasColumnType("decimal(18,4)");
+                entity.Property(e => e.DateValue).HasColumnName("date_value");
+                entity.Property(e => e.BooleanValue).HasColumnName("boolean_value");
+                entity.Property(e => e.TextValue).HasColumnName("text_value");
+                entity.Property(e => e.JsonValue).HasColumnName("json_value");
+                entity.Property(e => e.SetAt).HasColumnName("set_at");
+                entity.Property(e => e.SetBy).HasColumnName("set_by").HasMaxLength(100);
+                entity.Property(e => e.SourceType).HasColumnName("source_type").HasMaxLength(50);
+                entity.Property(e => e.SourceReference).HasColumnName("source_reference").HasMaxLength(500);
+                
+                // 索引配置
+                entity.HasIndex(e => e.WorkflowExecutionId);
+                entity.HasIndex(e => e.VariableName);
+                entity.HasIndex(e => e.SetAt);
+                entity.HasIndex(e => e.SourceType);
+                entity.HasIndex(e => new { e.WorkflowExecutionId, e.VariableName });
+                
+                // 外鍵關係
+                entity.HasOne(e => e.WorkflowExecution)
+                      .WithMany()
+                      .HasForeignKey(e => e.WorkflowExecutionId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

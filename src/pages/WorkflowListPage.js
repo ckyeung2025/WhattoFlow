@@ -78,7 +78,7 @@ const WorkflowListPage = () => {
               onClick={() => handleEdit(record)}
             />
           </Tooltip>
-          <Tooltip title="手動啟動">
+          <Tooltip title={t('workflowList.manualStart')}>
             <Button 
               type="text" 
               icon={<PlayCircleOutlined />} 
@@ -242,7 +242,7 @@ const WorkflowListPage = () => {
         },
         body: JSON.stringify({
           inputData: {
-            message: '手動啟動的流程',
+            message: t('workflowList.manualStartMessage'),
             timestamp: new Date().toISOString(),
             userId: 'manual-user'
           }
@@ -251,7 +251,7 @@ const WorkflowListPage = () => {
 
       if (response.ok) {
         const result = await response.json();
-        message.success(`流程 "${record.name}" 已成功啟動`);
+        message.success(`流程 "${record.name}" ${t('workflowList.workflowStarted')}`);
         console.log('流程執行結果:', result);
       } else {
         message.error('啟動流程失敗');
@@ -268,7 +268,7 @@ const WorkflowListPage = () => {
   // 批量刪除
   const handleBatchDelete = async () => {
     if (selectedWorkflows.length === 0) {
-      message.warning('請選擇要刪除的流程');
+      message.warning(t('workflowList.pleaseSelectWorkflows'));
       return;
     }
 
@@ -286,21 +286,21 @@ const WorkflowListPage = () => {
       });
 
       if (response.ok) {
-        message.success(`已成功刪除 ${selectedWorkflows.length} 個流程`);
+        message.success(`${t('workflowList.successfullyDeleted')} ${selectedWorkflows.length} ${t('workflowList.workflows')}`);
         setSelectedWorkflows([]);
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
-        message.error('批量刪除失敗');
+        message.error(t('workflowList.batchDeleteFailed'));
       }
     } catch (error) {
-      message.error('批量刪除失敗');
+      message.error(t('workflowList.batchDeleteFailed'));
     }
   };
 
   // 批量啟用/停用
   const handleBatchStatus = async () => {
     if (selectedWorkflows.length === 0) {
-      message.warning('請選擇要操作的流程');
+      message.warning(t('workflowList.pleaseSelectWorkflowsToOperate'));
       return;
     }
 
@@ -319,15 +319,15 @@ const WorkflowListPage = () => {
       });
 
       if (response.ok) {
-        const actionText = batchStatusAction === 'enable' ? '啟用' : '停用';
-        message.success(`已成功${actionText} ${selectedWorkflows.length} 個流程`);
+        const actionText = batchStatusAction === 'enable' ? t('workflowList.successfullyEnabled') : t('workflowList.successfullyDisabled');
+        message.success(`${actionText} ${selectedWorkflows.length} ${t('workflowList.workflows')}`);
         setSelectedWorkflows([]);
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
-        message.error('批量操作失敗');
+        message.error(t('workflowList.batchOperationFailed'));
       }
     } catch (error) {
-      message.error('批量操作失敗');
+      message.error(t('workflowList.batchOperationFailed'));
     }
   };
 
@@ -338,16 +338,16 @@ const WorkflowListPage = () => {
         <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} style={{ padding: '0 12px' }}>
-              新增
+              {t('workflowList.add')}
             </Button>
             <Button 
               type="default" 
               icon={<DeleteOutlined />} 
               onClick={() => setIsBatchDeleteModalVisible(true)}
               disabled={selectedWorkflows.length === 0}
-              title="批量刪除"
+              title={t('workflowList.batchDelete')}
             >
-              批量刪除 ({selectedWorkflows.length})
+              {t('workflowList.batchDelete')} ({selectedWorkflows.length})
             </Button>
             <Button 
               type="default" 
@@ -357,9 +357,9 @@ const WorkflowListPage = () => {
                 setIsBatchStatusModalVisible(true);
               }}
               disabled={selectedWorkflows.length === 0}
-              title="批量啟用"
+              title={t('workflowList.batchEnable')}
             >
-              批量啟用 ({selectedWorkflows.length})
+              {t('workflowList.batchEnable')} ({selectedWorkflows.length})
             </Button>
             <Button 
               type="default" 
@@ -369,9 +369,9 @@ const WorkflowListPage = () => {
                 setIsBatchStatusModalVisible(true);
               }}
               disabled={selectedWorkflows.length === 0}
-              title="批量停用"
+              title={t('workflowList.batchDisable')}
             >
-              批量停用 ({selectedWorkflows.length})
+              {t('workflowList.batchDisable')} ({selectedWorkflows.length})
             </Button>
           </Space>
           
@@ -401,7 +401,7 @@ const WorkflowListPage = () => {
                 setPagination(prev => ({ ...prev, current: 1 }));
               }}
             >
-              清除篩選
+              {t('workflowList.clearFilter')}
             </Button>
           </Space>
         </Card>
@@ -434,28 +434,28 @@ const WorkflowListPage = () => {
 
       {/* 批量刪除確認對話框 */}
       <Modal
-        title="確認批量刪除"
+        title={t('workflowList.confirmBatchDelete')}
         open={isBatchDeleteModalVisible}
         onOk={handleBatchDelete}
         onCancel={() => setIsBatchDeleteModalVisible(false)}
-        okText="確認刪除"
-        cancelText="取消"
+        okText={t('workflowList.confirmDelete')}
+        cancelText={t('workflowList.cancel')}
         okType="danger"
       >
-        <p>確定要刪除選中的 {selectedWorkflows.length} 個流程嗎？</p>
-        <p style={{ color: '#ff4d4f', fontSize: '12px' }}>此操作無法撤銷！</p>
+        <p>{t('workflowList.confirmDeleteSelected')} {selectedWorkflows.length} {t('workflowList.workflows')}？</p>
+        <p style={{ color: '#ff4d4f', fontSize: '12px' }}>{t('workflowList.cannotBeUndone')}</p>
       </Modal>
 
       {/* 批量啟用/停用確認對話框 */}
       <Modal
-        title={`確認批量${batchStatusAction === 'enable' ? '啟用' : '停用'}`}
+        title={batchStatusAction === 'enable' ? t('workflowList.confirmBatchEnable') : t('workflowList.confirmBatchDisable')}
         open={isBatchStatusModalVisible}
         onOk={handleBatchStatus}
         onCancel={() => setIsBatchStatusModalVisible(false)}
-        okText={`確認${batchStatusAction === 'enable' ? '啟用' : '停用'}`}
-        cancelText="取消"
+        okText={batchStatusAction === 'enable' ? t('workflowList.confirmBatchEnable') : t('workflowList.confirmBatchDisable')}
+        cancelText={t('workflowList.cancel')}
       >
-        <p>確定要{batchStatusAction === 'enable' ? '啟用' : '停用'}選中的 {selectedWorkflows.length} 個流程嗎？</p>
+        <p>{batchStatusAction === 'enable' ? t('workflowList.confirmEnableSelected') : t('workflowList.confirmDisableSelected')} {selectedWorkflows.length} {t('workflowList.workflows')}？</p>
       </Modal>
     </div>
   );

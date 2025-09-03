@@ -1397,6 +1397,355 @@ const zhTC = {
     notifyOnError: '錯誤時通知',
     notifyOnCompletion: '完成時通知',
     notifyOnDelay: '延遲時通知'
+  },
+
+  // 流程變量管理
+  processVariables: {
+    title: '流程變量管理',
+    variableList: '流程變量列表',
+    addVariable: '添加變量',
+    editVariable: '編輯變量',
+    deleteVariable: '刪除變量',
+    createVariable: '創建變量',
+    updateVariable: '更新變量',
+    cancel: '取消',
+    save: '保存',
+    
+    // 變量屬性
+    variableName: '變量名稱',
+    displayName: '顯示名稱',
+    dataType: '數據類型',
+    description: '描述',
+    isRequired: '是否必填',
+    defaultValue: '默認值',
+    validationRules: '驗證規則',
+    jsonSchema: 'JSON Schema',
+    
+    // 數據類型選項
+    dataTypeString: '字符串 (string)',
+    dataTypeInt: '整數 (int)',
+    dataTypeDecimal: '小數 (decimal)',
+    dataTypeDatetime: '日期時間 (datetime)',
+    dataTypeBoolean: '布爾值 (boolean)',
+    dataTypeText: '長文本 (text)',
+    dataTypeJson: 'JSON 對象 (json)',
+    
+    // 表單提示
+    variableNamePlaceholder: '例如：customer_name',
+    displayNamePlaceholder: '例如：客戶名稱',
+    descriptionPlaceholder: '描述這個變量的用途',
+    defaultValuePlaceholder: '變量的默認值',
+    validationRulesPlaceholder: 'JSON 格式的驗證規則',
+    jsonSchemaPlaceholder: 'JSON Schema 定義（僅 JSON 類型需要）',
+    
+    // 驗證訊息
+    variableNameRequired: '請輸入變量名稱',
+    variableNamePattern: '變量名稱只能包含字母、數字和下劃線，且不能以數字開頭',
+    dataTypeRequired: '請選擇數據類型',
+    
+    // 狀態標籤
+    required: '必填',
+    optional: '可選',
+    
+    // 操作結果
+    createSuccess: '流程變量創建成功',
+    updateSuccess: '流程變量更新成功',
+    deleteSuccess: '流程變量刪除成功',
+    createFailed: '流程變量創建失敗',
+    updateFailed: '流程變量更新失敗',
+    deleteFailed: '流程變量刪除失敗',
+    saveFailed: '保存流程變量失敗',
+    fetchFailed: '獲取流程變量失敗',
+    
+    // 確認對話框
+    confirmDelete: '確定要刪除這個流程變量嗎？',
+    confirmDeleteOk: '確定',
+    confirmDeleteCancel: '取消',
+    
+    // 空狀態
+    noVariables: '暫無流程變量，點擊「添加變量」開始創建',
+    noDisplayName: '無顯示名稱',
+    selectVariableToEdit: '請選擇一個流程變量進行編輯，或點擊「添加變量」創建新的流程變量',
+    
+    // 管理按鈕
+    manageProcessVariables: '管理流程變量'
+  },
+
+  // 工作流列表頁面
+  workflowList: {
+    add: '新增',
+    batchDelete: '批量刪除',
+    batchEnable: '批量啟用',
+    batchDisable: '批量停用',
+    clearFilter: '清除篩選',
+    manualStart: '手動啟動',
+    select: '選擇',
+    clear: '清除',
+    confirmBatchDelete: '確認批量刪除',
+    confirmBatchEnable: '確認批量啟用',
+    confirmBatchDisable: '確認批量停用',
+    confirmDelete: '確認刪除',
+    cancel: '取消',
+    confirmDeleteSelected: '確定要刪除選中的',
+    confirmEnableSelected: '確定要啟用選中的',
+    confirmDisableSelected: '確定要停用選中的',
+    workflows: '個流程',
+    cannotBeUndone: '此操作無法撤銷！',
+    successfullyDeleted: '已成功刪除',
+    successfullyEnabled: '已成功啟用',
+    successfullyDisabled: '已成功停用',
+    batchDeleteFailed: '批量刪除失敗',
+    batchOperationFailed: '批量操作失敗',
+    pleaseSelectWorkflows: '請選擇要刪除的流程',
+    pleaseSelectWorkflowsToOperate: '請選擇要操作的流程',
+    workflowStarted: '已成功啟動',
+    manualStartMessage: '手動啟動的流程'
+  },
+
+  // Data Set 管理頁面
+  dataSetManagement: {
+    title: 'Data Set 管理',
+    createDataSet: '創建 Data Set',
+    editDataSet: '編輯 Data Set',
+    createDataSetTitle: '創建 Data Set',
+    editDataSetTitle: '編輯 Data Set',
+    save: '保存',
+    cancel: '取消',
+    
+    // 表格列標題
+    name: '名稱',
+    dataSourceType: '數據源類型',
+    status: '狀態',
+    recordCount: '記錄數',
+    lastUpdate: '最後更新',
+    actions: '操作',
+    
+    // 狀態標籤
+    active: '啟用',
+    inactive: '停用',
+    error: '錯誤',
+    
+    // 數據源類型
+    sql: 'SQL',
+    excel: 'EXCEL',
+    googleDocs: 'GOOGLE_DOCS',
+    
+    // 操作按鈕
+    viewRecords: '查看記錄',
+    syncData: '同步數據',
+    edit: '編輯',
+    delete: '刪除',
+    
+    // 確認對話框
+    confirmDelete: '確定要刪除這個 DataSet 嗎？',
+    confirmDeleteOk: '確定',
+    confirmDeleteCancel: '取消',
+    
+    // 分頁
+    totalRecords: '共 {total} 條記錄',
+    pageSizeOptions: ['10', '20', '50', '100'],
+    
+    // 標籤頁
+    basicInfo: '基本資訊',
+    dataSourceConfig: '數據源配置',
+    columnDefinition: '欄位定義',
+    
+    // 基本資訊表單
+    nameLabel: '名稱',
+    namePlaceholder: '輸入 Data Set 名稱',
+    nameRequired: '請輸入名稱',
+    description: '描述',
+    descriptionPlaceholder: '輸入描述',
+    isScheduled: '定時更新',
+    updateInterval: '更新間隔（分鐘）',
+    updateIntervalPlaceholder: '例如：60（1小時）',
+    updateIntervalRequired: '請設定更新間隔',
+    
+    // 數據源配置
+    dataSourceTypeLabel: '數據源類型',
+    dataSourceTypePlaceholder: '選擇數據源類型',
+    dataSourceTypeRequired: '請選擇數據源類型',
+    dataSourceTypeInfo: '數據源類型設定',
+    dataSourceTypeDescription: '請在「數據源配置」標籤中選擇數據源類型並進行相應配置。',
+    
+    // SQL 配置
+    connectionType: '連接方式',
+    usePresetConnection: '使用預設連接',
+    customConnection: '自定義連接',
+    presetDatabaseConnection: '預設數據庫連接',
+    presetConnectionPlaceholder: '選擇數據庫連接',
+    erpDatabase: 'ERP 數據庫',
+    purpleRiceDatabase: 'Purple Rice 數據庫',
+    serverName: '伺服器名稱/IP',
+    serverNamePlaceholder: '例如：192.168.1.100',
+    serverNameRequired: '請輸入伺服器名稱或IP',
+    port: '端口號',
+    portPlaceholder: '例如：1433',
+    databaseName: '數據庫名稱',
+    databaseNamePlaceholder: '例如：MyDatabase',
+    databaseNameRequired: '請輸入數據庫名稱',
+    authenticationType: '認證方式',
+    sqlServerAuth: 'SQL Server 認證',
+    windowsAuth: 'Windows 認證',
+    username: '用戶名',
+    usernamePlaceholder: '例如：sa',
+    usernameRequired: '請輸入用戶名',
+    password: '密碼',
+    passwordPlaceholder: '輸入密碼',
+    passwordRequired: '請輸入密碼',
+    additionalOptions: '額外連接選項',
+    additionalOptionsPlaceholder: '例如：TrustServerCertificate=true;MultipleActiveResultSets=true',
+    connectionTest: '連接測試',
+    connectionTestDescription: '配置完成後，可以點擊下方按鈕測試連接是否成功。',
+    testConnection: '測試連接',
+    sqlQuery: 'SQL 查詢語句',
+    sqlQueryPlaceholder: 'SELECT * FROM table_name WHERE condition',
+    sqlQueryRequired: '請輸入 SQL 查詢語句',
+    sqlParameters: 'SQL 參數（JSON 格式）',
+    sqlParametersPlaceholder: '{"param1": "value1", "param2": "value2"}',
+    
+    // Excel 配置
+    excelFilePath: 'Excel 文件路徑',
+    excelFilePathPlaceholder: '例如：/uploads/excel/data.xlsx',
+    excelSheetName: '工作表名稱',
+    excelSheetNamePlaceholder: '選擇工作表',
+    excelUrl: 'Excel 文件 URL',
+    excelUrlPlaceholder: '例如：https://example.com/data.xlsx',
+    uploadExcelFile: '上傳 Excel 文件',
+    excelUploadDescription: 'Excel 上傳說明',
+    excelUploadInfo: '上傳成功後，文件路徑會自動填充。保存 DataSet 後，點擊「同步數據」按鈕來將 Excel 數據導入到數據庫中。系統會自動根據 Excel 標題行生成欄位定義。',
+    
+    // Google Docs 配置
+    googleDocsUrl: 'Google Docs URL',
+    googleDocsUrlPlaceholder: 'https://docs.google.com/spreadsheets/d/...',
+    googleDocsUrlRequired: '請輸入 Google Docs URL',
+    googleDocsSheetName: '工作表名稱',
+    googleDocsSheetNamePlaceholder: '例如：Sheet1',
+    googleDocsIntegration: 'Google Docs 整合說明',
+    googleDocsIntegrationDescription: '請確保 Google Docs 文件已設定為可公開讀取，或已配置適當的認證信息。',
+    
+    // 自動更新
+    autoUpdate: '自動更新',
+    autoUpdateInterval: '更新間隔（分鐘）',
+    autoUpdateIntervalPlaceholder: '例如：60（1小時）',
+    autoUpdateIntervalRequired: '請設定更新間隔',
+    
+    // 欄位定義
+    columnDefinitionDescription: '欄位定義說明',
+    columnDefinitionInfo: '對於 Excel 數據源，系統會自動根據 Excel 標題行生成欄位定義。您可以在同步數據後手動調整欄位屬性。',
+    columnName: '欄位名稱',
+    columnNamePlaceholder: '例如：customer_id',
+    columnNameRequired: '請輸入欄位名稱',
+    displayName: '顯示名稱',
+    displayNamePlaceholder: '例如：客戶編號',
+    dataType: '數據類型',
+    dataTypePlaceholder: '選擇數據類型',
+    dataTypeRequired: '請選擇數據類型',
+    string: '字串',
+    int: '整數',
+    decimal: '小數',
+    datetime: '日期時間',
+    boolean: '布林值',
+    isPrimaryKey: '主鍵',
+    isPrimaryKeyNormal: '普通',
+    isSearchable: '可搜尋',
+    isSearchableNot: '不可搜尋',
+    isSortable: '可排序',
+    isSortableNot: '不可排序',
+    isIndexed: '建索引',
+    isIndexedNot: '不建索引',
+    defaultValue: '預設值',
+    defaultValuePlaceholder: '預設值',
+    sortOrder: '排序順序',
+    addColumn: '添加欄位',
+    removeColumn: '刪除',
+    
+    // 記錄查看
+    dataRecords: '數據記錄',
+    advancedSearch: '進階搜尋',
+    refresh: '重新整理',
+    recordId: 'ID',
+    primaryKeyValue: '主鍵值',
+    recordStatus: '狀態',
+    createdAt: '建立時間',
+    nA: 'N/A',
+    
+    // 進階搜尋
+    advancedSearchTitle: '進階搜尋',
+    searchConditions: '搜尋條件',
+    columnNameLabel: '欄位名稱',
+    columnNamePlaceholder: '選擇欄位',
+    columnNameRequired: '請選擇欄位',
+    operator: '操作符',
+    operatorPlaceholder: '選擇操作符',
+    operatorRequired: '請選擇操作符',
+    equals: '等於',
+    contains: '包含',
+    greaterThan: '大於',
+    lessThan: '小於',
+    dateRange: '日期範圍',
+    value: '值',
+    valuePlaceholder: '輸入搜尋值',
+    valueRequired: '請輸入值',
+    addSearchCondition: '添加搜尋條件',
+    removeSearchCondition: '刪除',
+    sortBy: '排序欄位',
+    sortByPlaceholder: '選擇排序欄位',
+    sortOrder: '排序方向',
+    ascending: '升序',
+    descending: '降序',
+    executeSearch: '執行搜尋',
+    
+    // 操作結果訊息
+    deleteSuccess: '刪除成功',
+    deleteFailed: '刪除失敗',
+    syncSuccess: '同步成功！共處理 {count} 條記錄',
+    syncFailed: '同步失敗',
+    createSuccess: '創建成功',
+    updateSuccess: '更新成功',
+    operationFailed: '操作失敗',
+    fetchFailed: '獲取 DataSet 列表失敗',
+    fetchRecordsFailed: '獲取記錄失敗',
+    searchFailed: '搜尋失敗',
+    foundRecords: '找到 {count} 條記錄',
+    
+    // 錯誤訊息
+    pleaseSelectDataSourceType: '請選擇數據源類型',
+    pleaseEnterName: '請輸入名稱',
+    pleaseEnterServerName: '請輸入伺服器名稱或IP',
+    pleaseEnterDatabaseName: '請輸入數據庫名稱',
+    pleaseEnterUsername: '請輸入用戶名',
+    pleaseEnterPassword: '請輸入密碼',
+    pleaseEnterSqlQuery: '請先輸入 SQL 查詢語句',
+    pleaseSelectPresetConnection: '請選擇預設連接',
+    pleaseEnterGoogleDocsUrl: '請輸入 Google Docs URL',
+    pleaseEnterColumnName: '請輸入欄位名稱',
+    pleaseSelectDataType: '請選擇數據類型',
+    pleaseSelectColumn: '請選擇欄位',
+    pleaseSelectOperator: '請選擇操作符',
+    pleaseEnterValue: '請輸入值',
+    
+    // 文件上傳
+    onlyExcelFiles: '只能上傳 Excel 文件！',
+    fileSizeLimit: '文件大小不能超過 10MB！',
+    uploadSuccess: '上傳成功',
+    uploadFailed: '上傳失敗',
+    processingFile: '正在處理文件，請稍候...',
+    getSheetNamesFailed: '獲取工作表名稱失敗',
+    getColumnPreviewFailed: '獲取欄位預覽失敗',
+    autoGeneratedColumns: '已自動生成 {count} 個欄位定義',
+    cannotAutoGenerateColumns: '無法自動生成欄位定義',
+    pleaseManuallyConfigure: '請手動配置',
+    
+    // 連接測試
+    testingConnection: '正在測試連接...',
+    connectionTestSuccess: '連接測試成功！正在獲取欄位定義...',
+    connectionTestFailed: '連接測試失敗',
+    presetConnectionConfigured: '預設連接配置完成',
+    
+    // 分頁
+    pageRange: '第 {start}-{end} 條，共 {total} 條記錄',
+    recordPageSizeOptions: ['20', '50', '100', '200']
   }
 };
 
