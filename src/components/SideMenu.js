@@ -70,7 +70,7 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
     {
       key: 'dataSets',
       icon: <DatabaseOutlined />,
-      label: 'Data Set 管理',
+      label: t('dataSetManagement.title'),
       url: '/data-sets',
     },
     {

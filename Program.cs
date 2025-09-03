@@ -76,6 +76,9 @@ builder.Services.AddScoped<PurpleRice.Services.WebhookServices.WebhookDuplicateS
 // 註冊 EForm 服務
 builder.Services.AddScoped<EFormService>();
 
+// 註冊 ProcessVariable 服務
+builder.Services.AddScoped<IProcessVariableService, ProcessVariableService>();
+
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();
 
