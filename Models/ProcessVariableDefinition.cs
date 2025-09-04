@@ -64,7 +64,5 @@ namespace PurpleRice.Models
         // 導航屬性
         [ForeignKey("WorkflowDefinitionId")]
         public virtual WorkflowDefinition? WorkflowDefinition { get; set; }
-
-        public virtual ICollection<ProcessVariableValue> Values { get; set; } = new List<ProcessVariableValue>();
     }
 }

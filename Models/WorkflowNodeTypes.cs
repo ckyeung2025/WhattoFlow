@@ -96,6 +96,44 @@ namespace PurpleRice.Models
                 DefaultData = new { taskName = "Send eForm", formName = "", formId = "", formDescription = "", to = "" }
             },
             
+            ["waitforqrcode"] = new WorkflowNodeTypeDefinition
+            {
+                Type = "waitForQRCode",
+                Label = "Wait for QR Code",
+                Category = "Interaction",
+                Description = "等待用戶上傳包含 QR Code 的圖片並掃描",
+                IsImplemented = true,
+                HasExecution = true,
+                DefaultData = new { 
+                    taskName = "Wait for QR Code", 
+                    qrCodeVariable = "",
+                    message = "請上傳包含 QR Code 的圖片",
+                    timeout = 300
+                }
+            },
+            
+            ["switch"] = new WorkflowNodeTypeDefinition
+            {
+                Type = "switch",
+                Label = "Switch",
+                Category = "Control",
+                Description = "根據條件選擇不同的執行路徑",
+                IsImplemented = true,
+                HasExecution = true,
+                DefaultData = new { 
+                    taskName = "Switch", 
+                    conditions = new[] { 
+                        new { 
+                            id = "condition1",
+                            variableName = "",
+                            @operator = "equals",
+                            value = "",
+                            label = "條件1"
+                        }
+                    },
+                    defaultPath = "default"
+                }
+            },
 
             
             ["end"] = new WorkflowNodeTypeDefinition

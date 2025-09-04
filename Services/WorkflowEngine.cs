@@ -19,15 +19,17 @@ namespace PurpleRice.Services
         private readonly LoggingService _loggingService;
         private readonly IConfiguration _configuration;
         private readonly EFormService _eFormService;
+        private readonly ISwitchConditionService _switchConditionService;
 
         public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, 
-            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService)
+            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService)
         {
             _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
             _loggingService = loggingServiceFactory("WorkflowEngine");
             _configuration = configuration;
             _eFormService = eFormService;
+            _switchConditionService = switchConditionService;
         }
 
         private void WriteLog(string message)
@@ -333,8 +335,16 @@ namespace PurpleRice.Services
                 stepExec.EndedAt = DateTime.Now;
                 await SaveStepExecution(stepExec);
 
-                // 找到並執行所有後續節點（多分支並行執行）
-                await ExecuteAllNextNodes(nodeId, nodeMap, adjacencyList, execution, userId);
+                // 根據節點類型選擇執行方式
+                if (nodeData?.Type == "switch")
+                {
+                    await ExecuteSwitchNextNodes(nodeId, nodeMap, adjacencyList, execution, userId, stepExec);
+                }
+                else
+                {
+                    // 找到並執行所有後續節點（多分支並行執行）
+                    await ExecuteAllNextNodes(nodeId, nodeMap, adjacencyList, execution, userId);
+                }
             }
             catch (Exception ex)
             {
@@ -373,6 +383,9 @@ namespace PurpleRice.Services
                 case "sendEForm":
                 case "sendeform":
                     return await ExecuteSendEForm(nodeData, stepExec, execution);
+
+                case "switch":
+                    return await ExecuteSwitch(nodeData, stepExec, execution, userId);
 
                 case "end":
                     return await ExecuteEnd(nodeId, stepExec, execution);
@@ -776,6 +789,175 @@ namespace PurpleRice.Services
             return false; // 返回 false 表示暫停執行
         }
 
+        // 執行 Switch 節點
+        private async Task<bool> ExecuteSwitch(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution, string userId)
+        {
+            WriteLog($"=== 執行 Switch 節點 ===");
+            WriteLog($"節點數據: {JsonSerializer.Serialize(nodeData)}");
+
+            try
+            {
+                // 獲取條件群組
+                var conditionGroups = GetConditionGroupsFromNodeData(nodeData);
+                var defaultPath = GetDefaultPathFromNodeData(nodeData);
+
+                WriteLog($"條件群組數量: {conditionGroups?.Count ?? 0}");
+                WriteLog($"默認路徑: {defaultPath}");
+
+                // 評估條件群組 - 支持多個條件同時滿足
+                var selectedPaths = new List<string>();
+                if (conditionGroups != null && conditionGroups.Any())
+                {
+                    foreach (var group in conditionGroups)
+                    {
+                        WriteLog($"評估條件群組: {group.Id}, 關係: {group.Relation}");
+                        
+                        bool groupResult = await EvaluateConditionGroup(execution.Id, group);
+                        if (groupResult)
+                        {
+                            selectedPaths.Add(group.OutputPath);
+                            WriteLog($"條件群組 {group.Id} 滿足，添加路徑: {group.OutputPath}");
+                        }
+                    }
+                }
+
+                // 如果沒有條件滿足，使用默認路徑
+                if (!selectedPaths.Any())
+                {
+                    if (!string.IsNullOrEmpty(defaultPath))
+                    {
+                        selectedPaths.Add(defaultPath);
+                        WriteLog($"沒有條件滿足，使用默認路徑: {defaultPath}");
+                    }
+                }
+
+                // 記錄執行結果
+                stepExec.OutputJson = JsonSerializer.Serialize(new
+                {
+                    selectedPaths = selectedPaths,
+                    selectedPath = selectedPaths.FirstOrDefault(), // 保持向後兼容
+                    evaluatedAt = DateTime.Now,
+                    conditionGroupsCount = conditionGroups?.Count ?? 0,
+                    defaultPathUsed = !selectedPaths.Any() || selectedPaths.Contains(defaultPath)
+                });
+
+                WriteLog($"Switch 節點執行完成，選擇路徑數量: {selectedPaths.Count}");
+                return true; // 返回 true 表示繼續執行
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"執行 Switch 節點時發生錯誤: {ex.Message}");
+                stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                return false;
+            }
+        }
+
+        // 從節點數據中獲取條件群組
+        private List<SwitchConditionGroup> GetConditionGroupsFromNodeData(WorkflowNodeData nodeData)
+        {
+            try
+            {
+                if (nodeData.ConditionGroups != null)
+                {
+                    return nodeData.ConditionGroups;
+                }
+
+                // 如果 ConditionGroups 為 null，嘗試從 JSON 中解析
+                if (!string.IsNullOrEmpty(nodeData.Json))
+                {
+                    var jsonData = JsonSerializer.Deserialize<Dictionary<string, object>>(nodeData.Json);
+                    if (jsonData.ContainsKey("conditionGroups"))
+                    {
+                        var conditionGroupsJson = JsonSerializer.Serialize(jsonData["conditionGroups"]);
+                        return JsonSerializer.Deserialize<List<SwitchConditionGroup>>(conditionGroupsJson);
+                    }
+                }
+
+                return new List<SwitchConditionGroup>();
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"解析條件群組時發生錯誤: {ex.Message}");
+                return new List<SwitchConditionGroup>();
+            }
+        }
+
+        // 從節點數據中獲取默認路徑
+        private string GetDefaultPathFromNodeData(WorkflowNodeData nodeData)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(nodeData.DefaultPath))
+                {
+                    return nodeData.DefaultPath;
+                }
+
+                // 如果 DefaultPath 為空，嘗試從 JSON 中解析
+                if (!string.IsNullOrEmpty(nodeData.Json))
+                {
+                    var jsonData = JsonSerializer.Deserialize<Dictionary<string, object>>(nodeData.Json);
+                    if (jsonData.ContainsKey("defaultPath"))
+                    {
+                        return jsonData["defaultPath"]?.ToString();
+                    }
+                }
+
+                return "default";
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"解析默認路徑時發生錯誤: {ex.Message}");
+                return "default";
+            }
+        }
+
+        // 評估條件群組
+        private async Task<bool> EvaluateConditionGroup(int executionId, SwitchConditionGroup group)
+        {
+            if (group.Conditions == null || !group.Conditions.Any())
+            {
+                WriteLog($"條件群組 {group.Id} 沒有條件，返回 false");
+                return false;
+            }
+
+            WriteLog($"評估條件群組 {group.Id}，條件數量: {group.Conditions.Count}，關係: {group.Relation}");
+
+            if (group.Relation?.ToLower() == "and")
+            {
+                // AND 關係：所有條件都必須滿足
+                foreach (var condition in group.Conditions)
+                {
+                    bool conditionResult = await _switchConditionService.EvaluateConditionAsync(executionId, condition);
+                    WriteLog($"條件 {condition.VariableName} {condition.Operator} {condition.Value}: {conditionResult}");
+                    
+                    if (!conditionResult)
+                    {
+                        WriteLog($"條件群組 {group.Id} 的 AND 關係不滿足");
+                        return false;
+                    }
+                }
+                WriteLog($"條件群組 {group.Id} 的 AND 關係滿足");
+                return true;
+            }
+            else
+            {
+                // OR 關係：任一條件滿足即可
+                foreach (var condition in group.Conditions)
+                {
+                    bool conditionResult = await _switchConditionService.EvaluateConditionAsync(executionId, condition);
+                    WriteLog($"條件 {condition.VariableName} {condition.Operator} {condition.Value}: {conditionResult}");
+                    
+                    if (conditionResult)
+                    {
+                        WriteLog($"條件群組 {group.Id} 的 OR 關係滿足");
+                        return true;
+                    }
+                }
+                WriteLog($"條件群組 {group.Id} 的 OR 關係不滿足");
+                return false;
+            }
+        }
+
         // 計算已完成的 End 節點數量
         private async Task<int> CountCompletedEndNodes(int executionId)
         {
@@ -823,6 +1005,116 @@ namespace PurpleRice.Services
             }
             
             return false;
+        }
+        
+        // 從路徑中提取目標節點 ID
+        private string GetTargetNodeIdFromPath(string path, Dictionary<string, List<string>> adjacencyList)
+        {
+            // 路徑格式通常是: "reactflow__edge-switch_xxxbottom-source-sendWhatsApp_xxxtop-target"
+            // 需要提取 sendWhatsApp_xxx 部分
+            
+            if (string.IsNullOrEmpty(path))
+                return null;
+                
+            // 查找 "source-" 和 "top-target" 之間的部分
+            var sourceIndex = path.IndexOf("source-");
+            var targetIndex = path.IndexOf("top-target");
+            
+            if (sourceIndex >= 0 && targetIndex > sourceIndex)
+            {
+                var nodeId = path.Substring(sourceIndex + 7, targetIndex - sourceIndex - 7);
+                WriteLog($"從路徑 {path} 提取節點 ID: {nodeId}");
+                return nodeId;
+            }
+            
+            WriteLog($"無法從路徑 {path} 提取節點 ID");
+            return null;
+        }
+        
+        // 執行 Switch 節點的後續節點（根據條件結果選擇性執行）
+        private async Task ExecuteSwitchNextNodes(string currentNodeId, Dictionary<string, WorkflowNode> nodeMap, 
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId, WorkflowStepExecution stepExec)
+        {
+            try
+            {
+                // 從 stepExec.OutputJson 中獲取 selectedPaths
+                var outputData = JsonSerializer.Deserialize<Dictionary<string, object>>(stepExec.OutputJson ?? "{}");
+                var selectedPaths = new List<string>();
+                
+                // 支持新的多路徑格式和向後兼容
+                if (outputData?.ContainsKey("selectedPaths") == true)
+                {
+                    var pathsArray = outputData["selectedPaths"] as JsonElement?;
+                    if (pathsArray?.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var path in pathsArray.Value.EnumerateArray())
+                        {
+                            if (path.ValueKind == JsonValueKind.String)
+                            {
+                                selectedPaths.Add(path.GetString() ?? "");
+                            }
+                        }
+                    }
+                }
+                else if (outputData?.ContainsKey("selectedPath") == true)
+                {
+                    // 向後兼容單一路徑
+                    var singlePath = outputData["selectedPath"]?.ToString();
+                    if (!string.IsNullOrEmpty(singlePath))
+                    {
+                        selectedPaths.Add(singlePath);
+                    }
+                }
+                
+                WriteLog($"=== Switch 節點後續處理 ===");
+                WriteLog($"選擇的路徑數量: {selectedPaths.Count}");
+                WriteLog($"選擇的路徑: {string.Join(", ", selectedPaths)}");
+                
+                if (!selectedPaths.Any())
+                {
+                    WriteLog("沒有選擇路徑，跳過後續節點執行");
+                    return;
+                }
+                
+                // 並行執行所有選中的路徑
+                var tasks = new List<Task>();
+                foreach (var path in selectedPaths)
+                {
+                    var targetNodeId = GetTargetNodeIdFromPath(path, adjacencyList);
+                    
+                    if (string.IsNullOrEmpty(targetNodeId))
+                    {
+                        WriteLog($"無法從路徑 {path} 找到目標節點");
+                        continue;
+                    }
+                    
+                    WriteLog($"目標節點: {targetNodeId}");
+                    
+                    // 執行目標節點
+                    if (nodeMap.ContainsKey(targetNodeId))
+                    {
+                        WriteLog($"開始執行目標節點: {targetNodeId}");
+                        var task = ExecuteNodeWithBranches(targetNodeId, nodeMap, adjacencyList, execution, userId);
+                        tasks.Add(task);
+                    }
+                    else
+                    {
+                        WriteLog($"警告: 目標節點 {targetNodeId} 不存在於節點映射中");
+                    }
+                }
+                
+                // 等待所有選中的節點完成
+                if (tasks.Any())
+                {
+                    WriteLog($"等待 {tasks.Count} 個選中的節點完成...");
+                    await Task.WhenAll(tasks);
+                    WriteLog($"所有選中的節點執行完成");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"執行 Switch 後續節點時發生錯誤: {ex.Message}");
+            }
         }
     }
 
@@ -877,6 +1169,28 @@ namespace PurpleRice.Services
         
         [System.Text.Json.Serialization.JsonPropertyName("formId")]
         public string FormId { get; set; }
+        
+        // Switch 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("conditionGroups")]
+        public List<SwitchConditionGroup> ConditionGroups { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("defaultPath")]
+        public string DefaultPath { get; set; }
+        
+        // QR Code 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeVariable")]
+        public string QrCodeVariable { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("timeout")]
+        public int? Timeout { get; set; }
+        
+        // e-Form 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]
+        public string ApprovalResultVariable { get; set; }
+        
+        // 通用 JSON 數據存儲
+        [System.Text.Json.Serialization.JsonPropertyName("json")]
+        public string Json { get; set; }
     }
 
     public class WorkflowPosition
@@ -905,7 +1219,7 @@ namespace PurpleRice.Services
     // 工作流程執行結果模型
     public class WorkflowExecutionResult
     {
-        public string Status { get; set; }
-        public object OutputData { get; set; }
+        public string? Status { get; set; }
+        public object? OutputData { get; set; }
     }
 } 

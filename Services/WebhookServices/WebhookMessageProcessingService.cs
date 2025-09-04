@@ -347,7 +347,8 @@ namespace PurpleRice.Services.WebhookServices
                 CurrentStep = 0,
                 InputJson = JsonSerializer.Serialize(messageData),
                 StartedAt = DateTime.Now,
-                CreatedBy = "MetaWebhook"
+                CreatedBy = "MetaWebhook",
+                InitiatedBy = messageData.WaId // 記錄觸發的 WhatsApp 用戶電話號碼
             };
 
             _context.WorkflowExecutions.Add(execution);
@@ -463,6 +464,7 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"=== 檢查表單審批後的流程繼續 ===");
                 _loggingService.LogInformation($"表單實例ID: {formInstanceId}");
                 _loggingService.LogInformation($"新狀態: {newStatus}");
+                _loggingService.LogInformation($"調用時間: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
 
                 // 查找對應的流程執行記錄
                 var formInstance = await _context.EFormInstances
@@ -513,6 +515,9 @@ namespace PurpleRice.Services.WebhookServices
                 formInstance.Status = newStatus;
                 formInstance.UpdatedAt = DateTime.UtcNow;
 
+                // 將審批結果寫入流程變量
+                await SetApprovalResultToProcessVariable(execution, newStatus);
+
                 // 重要：不要提前改變流程狀態，讓 ContinueWorkflowFromWaitReply 來處理
                 // 這樣可以確保狀態檢查正確
                 _loggingService.LogInformation($"表單狀態已更新為: {newStatus}");
@@ -531,6 +536,185 @@ namespace PurpleRice.Services.WebhookServices
             {
                 _loggingService.LogError($"繼續表單審批後流程失敗: {ex.Message}");
                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// 將審批結果寫入流程變量
+        /// </summary>
+        /// <param name="execution">工作流執行記錄</param>
+        /// <param name="approvalStatus">審批狀態 (Approved/Rejected)</param>
+        private async Task SetApprovalResultToProcessVariable(WorkflowExecution execution, string approvalStatus)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 開始設置審批結果到流程變量 ===");
+                _loggingService.LogInformation($"工作流執行ID: {execution.Id}");
+                _loggingService.LogInformation($"審批狀態: {approvalStatus}");
+
+                // 解析工作流定義
+                if (string.IsNullOrEmpty(execution.WorkflowDefinition?.Json))
+                {
+                    _loggingService.LogWarning("工作流定義 JSON 為空，無法解析 e-Form 節點配置");
+                    return;
+                }
+
+                var workflowJson = JsonSerializer.Deserialize<Dictionary<string, object>>(execution.WorkflowDefinition.Json);
+                if (workflowJson == null || !workflowJson.ContainsKey("nodes"))
+                {
+                    _loggingService.LogWarning("工作流定義中沒有找到 nodes 數據");
+                    return;
+                }
+
+                // 解析節點數據
+                var nodesJson = JsonSerializer.Serialize(workflowJson["nodes"]);
+                var nodes = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(nodesJson);
+                
+                if (nodes == null)
+                {
+                    _loggingService.LogWarning("無法解析工作流節點數據");
+                    return;
+                }
+
+                // 查找 e-Form 節點
+                _loggingService.LogInformation($"開始查找 e-Form 節點，節點數量: {nodes.Count}");
+                
+                // 先記錄所有節點的類型，用於調試
+                foreach (var node in nodes)
+                {
+                    var nodeType = node.ContainsKey("type") ? node["type"]?.ToString() : "null";
+                    _loggingService.LogInformation($"節點頂層類型: {nodeType}");
+                    
+                    if (node.ContainsKey("data"))
+                    {
+                        var nodeDataObj = node["data"];
+                        _loggingService.LogInformation($"節點 data 對象類型: {nodeDataObj?.GetType().Name}");
+                        _loggingService.LogInformation($"節點 data 對象內容: {JsonSerializer.Serialize(nodeDataObj)}");
+                        
+                        if (nodeDataObj is Dictionary<string, object> data)
+                        {
+                            var dataType = data.ContainsKey("type") ? data["type"]?.ToString() : "null";
+                            _loggingService.LogInformation($"節點 data.type: {dataType}");
+                            
+                            if (data.ContainsKey("approvalResultVariable"))
+                            {
+                                var approvalVar = data["approvalResultVariable"]?.ToString();
+                                _loggingService.LogInformation($"找到審批結果變量配置: {approvalVar}");
+                            }
+                        }
+                        else if (nodeDataObj is JsonElement jsonElement)
+                        {
+                            _loggingService.LogInformation($"節點 data 是 JsonElement，嘗試解析...");
+                            if (jsonElement.TryGetProperty("type", out var typeProperty))
+                            {
+                                var dataType = typeProperty.GetString();
+                                _loggingService.LogInformation($"節點 data.type (JsonElement): {dataType}");
+                                
+                                if (jsonElement.TryGetProperty("approvalResultVariable", out var approvalVarProperty))
+                                {
+                                    var approvalVar = approvalVarProperty.GetString();
+                                    _loggingService.LogInformation($"找到審批結果變量配置 (JsonElement): {approvalVar}");
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                var eFormNode = nodes.FirstOrDefault(node => 
+                {
+                    // 檢查 data.type 字段
+                    if (node.ContainsKey("data"))
+                    {
+                        var nodeDataObj = node["data"];
+                        
+                        if (nodeDataObj is Dictionary<string, object> data)
+                        {
+                            var nodeType = data.ContainsKey("type") ? data["type"]?.ToString() : "null";
+                            _loggingService.LogInformation($"檢查節點 data.type (Dictionary): {nodeType}");
+                            return data.ContainsKey("type") && 
+                                   (data["type"]?.ToString() == "sendEForm" || 
+                                    data["type"]?.ToString() == "sendeform");
+                        }
+                        else if (nodeDataObj is JsonElement jsonElement)
+                        {
+                            if (jsonElement.TryGetProperty("type", out var typeProperty))
+                            {
+                                var nodeType = typeProperty.GetString();
+                                _loggingService.LogInformation($"檢查節點 data.type (JsonElement): {nodeType}");
+                                return nodeType == "sendEForm" || nodeType == "sendeform";
+                            }
+                        }
+                    }
+                    
+                    // 也檢查頂層 type 字段（以防萬一）
+                    var topLevelType = node.ContainsKey("type") ? node["type"]?.ToString() : "null";
+                    _loggingService.LogInformation($"檢查節點頂層 type: {topLevelType}");
+                    return node.ContainsKey("type") && 
+                           (node["type"]?.ToString() == "sendEForm" || 
+                            node["type"]?.ToString() == "sendeform");
+                });
+
+                if (eFormNode == null)
+                {
+                    _loggingService.LogWarning("工作流中沒有找到 e-Form 節點");
+                    return;
+                }
+
+                // 獲取 e-Form 節點的數據
+                var dataObj = eFormNode["data"];
+                Dictionary<string, object> nodeData = null;
+                
+                if (dataObj is Dictionary<string, object> dictData)
+                {
+                    nodeData = dictData;
+                }
+                else if (dataObj is JsonElement jsonElement)
+                {
+                    // 將 JsonElement 轉換為 Dictionary
+                    nodeData = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonElement.GetRawText());
+                }
+                
+                if (nodeData == null)
+                {
+                    _loggingService.LogWarning("e-Form 節點數據為空或無法解析");
+                    _loggingService.LogInformation($"e-Form 節點 data 對象類型: {dataObj?.GetType().Name}");
+                    return;
+                }
+
+                _loggingService.LogInformation($"e-Form 節點數據: {JsonSerializer.Serialize(nodeData)}");
+
+                // 檢查是否配置了審批結果變量
+                if (!nodeData.ContainsKey("approvalResultVariable") || 
+                    string.IsNullOrEmpty(nodeData["approvalResultVariable"]?.ToString()))
+                {
+                    _loggingService.LogInformation("e-Form 節點沒有配置審批結果變量，跳過設置");
+                    _loggingService.LogInformation($"可用的節點數據字段: {string.Join(", ", nodeData.Keys)}");
+                    return;
+                }
+
+                var approvalResultVariable = nodeData["approvalResultVariable"].ToString();
+                _loggingService.LogInformation($"找到審批結果變量配置: {approvalResultVariable}");
+
+                // 獲取 ProcessVariableService
+                using var scope = _serviceProvider.CreateScope();
+                var processVariableService = scope.ServiceProvider.GetRequiredService<IProcessVariableService>();
+
+                // 設置審批結果到流程變量
+                await processVariableService.SetVariableValueAsync(
+                    execution.Id,
+                    approvalResultVariable,
+                    approvalStatus,
+                    setBy: "System",
+                    sourceType: "EFormApproval",
+                    sourceReference: execution.Id.ToString()
+                );
+
+                _loggingService.LogInformation($"審批結果已成功寫入流程變量: {approvalResultVariable} = {approvalStatus}");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"設置審批結果到流程變量失敗: {ex.Message}", ex);
+                // 不拋出異常，避免影響主流程
             }
         }
 

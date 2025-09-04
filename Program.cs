@@ -79,6 +79,18 @@ builder.Services.AddScoped<EFormService>();
 // 註冊 ProcessVariable 服務
 builder.Services.AddScoped<IProcessVariableService, ProcessVariableService>();
 
+// 註冊 QR Code 服務
+builder.Services.AddScoped<IQRCodeService, QRCodeService>();
+
+// 註冊 WorkflowExecution 服務
+builder.Services.AddScoped<IWorkflowExecutionService, WorkflowExecutionService>();
+
+// 註冊 VariableReplacement 服務
+builder.Services.AddScoped<IVariableReplacementService, VariableReplacementService>();
+
+// 註冊 SwitchCondition 服務
+builder.Services.AddScoped<ISwitchConditionService, SwitchConditionService>();
+
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();
 
