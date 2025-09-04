@@ -25,7 +25,7 @@ namespace PurpleRice.Services.WebhookServices
         /// </summary>
         /// <param name="messageId">消息 ID</param>
         /// <returns>是否已處理</returns>
-        public async Task<bool> IsMessageAlreadyProcessed(string messageId)
+        public Task<bool> IsMessageAlreadyProcessed(string messageId)
         {
             lock (_lockObject)
             {
@@ -46,7 +46,7 @@ namespace PurpleRice.Services.WebhookServices
                     _loggingService.LogWarning($"檢測到重複消息！消息 ID: {messageId}");
                 }
                 
-                return isProcessed;
+                return Task.FromResult(isProcessed);
             }
         }
 
@@ -54,13 +54,14 @@ namespace PurpleRice.Services.WebhookServices
         /// 標記消息為已處理
         /// </summary>
         /// <param name="messageId">消息 ID</param>
-        public async Task MarkMessageAsProcessed(string messageId)
+        public Task MarkMessageAsProcessed(string messageId)
         {
             lock (_lockObject)
             {
                 _processedMessages[messageId] = DateTime.Now;
             }
             _loggingService.LogInformation($"消息 {messageId} 已標記為已處理，時間: {DateTime.Now}");
+            return Task.CompletedTask;
         }
 
         /// <summary>

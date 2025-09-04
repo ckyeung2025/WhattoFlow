@@ -24,5 +24,8 @@ namespace PurpleRice.Models
         public DateTime? LastUserActivity { get; set; }
         public int? CurrentWaitingStep { get; set; }
         public string? WaitingForUser { get; set; }
+        
+        // 記錄工作流啟動者（Meta Webhook 用戶電話號碼或手動啟動者）
+        public string? InitiatedBy { get; set; }
     }
 } 

@@ -9,6 +9,23 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const { Title } = Typography;
 
+// 變量引用語法處理工具函數
+const processVariableReferences = (text, processVariables) => {
+  if (!text || !processVariables) return text;
+  
+  // 匹配 ${variable_name} 格式的變量引用
+  const variablePattern = /\$\{([^}]+)\}/g;
+  
+  return text.replace(variablePattern, (match, variableName) => {
+    const variable = processVariables.find(pv => pv.variableName === variableName.trim());
+    if (variable) {
+      // 返回變量的示例值或類型信息
+      return `[${variable.variableName}: ${variable.dataType}]`;
+    }
+    return match; // 如果找不到變量，保持原樣
+  });
+};
+
 // 添加紫色返回按鈕的 hover 樣式
 const purpleButtonStyle = `
   .purple-back-button:hover {
@@ -162,6 +179,8 @@ const WhatsAppWorkflowDesigner = () => {
   { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
   { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
   { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
+  { type: 'waitForQRCode', label: 'Wait for QR Code', icon: ClockCircleOutlined },
+  { type: 'switch', label: 'Switch', icon: CheckCircleOutlined },
   { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
   { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
   { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
@@ -175,6 +194,8 @@ const WhatsAppWorkflowDesigner = () => {
       { type: 'sendWhatsApp', label: t('workflowDesigner.sendMessageNode'), icon: SendOutlined },
       { type: 'sendWhatsAppTemplate', label: t('workflowDesigner.sendTemplateNode'), icon: MessageOutlined },
       { type: 'waitReply', label: t('workflowDesigner.waitReplyNode'), icon: ClockCircleOutlined },
+      { type: 'waitForQRCode', label: t('workflowDesigner.waitForQRCodeNode'), icon: ClockCircleOutlined },
+      { type: 'switch', label: t('workflowDesigner.switchNode'), icon: CheckCircleOutlined },
       { type: 'dbQuery', label: t('workflowDesigner.dbQueryNode'), icon: DatabaseOutlined },
       { type: 'callApi', label: t('workflowDesigner.webhookNode'), icon: ApiOutlined },
       { type: 'sendEForm', label: t('workflowDesigner.formNode'), icon: FormOutlined },
@@ -189,6 +210,7 @@ const WhatsAppWorkflowDesigner = () => {
     console.log('isReady:', isReady);
     console.log('t function available:', typeof t === 'function');
     console.log('startNode translation:', t('workflowDesigner.startNode'));
+    console.log('switchConditions translation:', t('workflowDesigner.switchConditions'));
     console.log('nodeTypes:', nodeTypes);
     console.log('nodeTypes[0].label:', nodeTypes[0]?.label);
     console.log('nodeTypes[1].label:', nodeTypes[1]?.label);
@@ -236,6 +258,15 @@ const WhatsAppWorkflowDesigner = () => {
   const [selectedProcessVariable, setSelectedProcessVariable] = useState(null);
   const [editingProcessVariable, setEditingProcessVariable] = useState(null);
   const [processVariableForm] = Form.useForm();
+  
+  // Switch 節點條件管理狀態
+  const [conditionModalVisible, setConditionModalVisible] = useState(false);
+  const [conditionGroupModalVisible, setConditionGroupModalVisible] = useState(false);
+  const [defaultPathModalVisible, setDefaultPathModalVisible] = useState(false);
+  const [editingCondition, setEditingCondition] = useState(null);
+  const [editingConditionGroup, setEditingConditionGroup] = useState(null);
+  const [conditionForm] = Form.useForm();
+  const [conditionGroupForm] = Form.useForm();
   
   const navigate = useNavigate();
   const reactFlowInstanceRef = useRef();
@@ -285,7 +316,7 @@ const WhatsAppWorkflowDesigner = () => {
     case 'callApi':
       return { taskName: 'Trigger External API', url: '' };
     case 'sendEForm':
-      return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '' };
+      return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '', approvalResultVariable: '' };
 
     default:
       return { taskName: type };
@@ -324,12 +355,32 @@ const WhatsAppWorkflowDesigner = () => {
             maxRetries: 3
           }
         };
+      case 'waitForQRCode':
+        return { 
+          taskName: t('workflowDesigner.defaultWaitForQRCodeNode'), 
+          qrCodeVariable: '', // 存儲 QR Code 值的流程變量
+          message: t('workflowDesigner.defaultQRCodeMessage'),
+          timeout: 300 // 超時時間（秒）
+        };
+      case 'switch':
+        return { 
+          taskName: t('workflowDesigner.defaultSwitchNode'), 
+          conditionGroups: [
+            {
+              id: 'group1',
+              relation: 'and',
+              conditions: [],
+              outputPath: ''
+            }
+          ],
+          defaultPath: 'default'
+        };
       case 'dbQuery':
         return { taskName: t('workflowDesigner.defaultDbQueryNode'), sql: '' };
       case 'callApi':
         return { taskName: t('workflowDesigner.defaultCallApiNode'), url: '' };
       case 'sendEForm':
-        return { taskName: t('workflowDesigner.defaultSendEFormNode'), formName: '', formId: '', formDescription: '', to: '' };
+        return { taskName: t('workflowDesigner.defaultSendEFormNode'), formName: '', formId: '', formDescription: '', to: '', approvalResultVariable: '' };
 
       default:
         return { taskName: type };
@@ -847,6 +898,11 @@ const WhatsAppWorkflowDesigner = () => {
     fetchUsers();
     fetchEForms();
     
+    // 如果有 workflowId，載入流程變量
+    if (workflowId) {
+      fetchProcessVariables();
+    }
+    
     if (workflowId) {
       const token = localStorage.getItem('token');
       fetch(`/api/workflowdefinitions/${workflowId}`, {
@@ -1336,6 +1392,30 @@ const WhatsAppWorkflowDesigner = () => {
     return newName;
   };
 
+  // 獲取可用的輸出路徑（從當前節點出發的連線）
+  const getAvailableOutputPaths = (nodeId) => {
+    if (!nodeId) return [];
+    
+    const outgoingEdges = edges.filter(edge => edge.source === nodeId);
+    const paths = outgoingEdges.map(edge => {
+      const targetNode = nodes.find(n => n.id === edge.target);
+      return {
+        id: edge.id,
+        label: targetNode ? targetNode.data.taskName || targetNode.data.label : `Node ${edge.target}`,
+        targetNodeId: edge.target
+      };
+    });
+    
+    // 添加默認路徑選項
+    paths.push({
+      id: 'default',
+      label: t('workflowDesigner.defaultPath'),
+      targetNodeId: null
+    });
+    
+    return paths;
+  };
+
   // 流程變量管理函數
   const fetchProcessVariables = async () => {
     try {
@@ -1350,7 +1430,12 @@ const WhatsAppWorkflowDesigner = () => {
         const result = await response.json();
         if (result.success) {
           setProcessVariables(result.data);
+          console.log('流程變量載入成功:', result.data);
+        } else {
+          console.log('流程變量載入失敗:', result.message);
         }
+      } else {
+        console.log('流程變量 API 請求失敗:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('獲取流程變量失敗:', error);
@@ -1503,6 +1588,7 @@ const WhatsAppWorkflowDesigner = () => {
         scheduledInterval: selectedNode.data.scheduledInterval || 300,
         replyType: selectedNode.data.replyType || 'initiator',
         specifiedUsers: selectedNode.data.specifiedUsers || '',
+        approvalResultVariable: selectedNode.data.approvalResultVariable || '',
         validation: selectedNode.data.validation || {
           enabled: true,
           validatorType: 'default',
@@ -1514,7 +1600,7 @@ const WhatsAppWorkflowDesigner = () => {
       
       form.setFieldsValue(initialValues);
     }
-  }, [selectedNode, form]);
+  }, [selectedNode, form, t]);
 
   // 當流程變量管理窗口打開時，載入流程變量數據
   useEffect(() => {
@@ -1522,6 +1608,44 @@ const WhatsAppWorkflowDesigner = () => {
       fetchProcessVariables();
     }
   }, [processVariablesModalVisible, workflowId]);
+
+  // 當條件編輯彈窗打開時，載入流程變量數據
+  useEffect(() => {
+    if (conditionModalVisible && workflowId) {
+      fetchProcessVariables();
+    }
+  }, [conditionModalVisible, workflowId]);
+
+  // 當條件編輯彈窗打開時，設置表單初始值
+  useEffect(() => {
+    if (conditionModalVisible && editingCondition && conditionForm) {
+      console.log('Setting condition form initial values:', editingCondition);
+      conditionForm.setFieldsValue({
+        variableName: editingCondition.variableName || '',
+        operator: editingCondition.operator || '',
+        value: editingCondition.value || '',
+        label: editingCondition.label || ''
+      });
+    }
+  }, [conditionModalVisible, editingCondition, conditionForm]);
+
+  // 當條件群組編輯彈窗打開時，載入流程變量數據
+  useEffect(() => {
+    if (conditionGroupModalVisible && workflowId) {
+      fetchProcessVariables();
+    }
+  }, [conditionGroupModalVisible, workflowId]);
+
+  // 當條件群組編輯彈窗打開時，設置表單初始值
+  useEffect(() => {
+    if (conditionGroupModalVisible && editingConditionGroup && conditionGroupForm) {
+      console.log('Setting condition group form initial values:', editingConditionGroup);
+      conditionGroupForm.setFieldsValue({
+        relation: editingConditionGroup.relation || 'and',
+        outputPath: editingConditionGroup.outputPath || ''
+      });
+    }
+  }, [conditionGroupModalVisible, editingConditionGroup, conditionGroupForm]);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -1885,6 +2009,7 @@ const WhatsAppWorkflowDesigner = () => {
         >
           {selectedNode && selectedNode.data.type !== 'start' && (
             <Form
+              form={form}
               key={selectedNode.id} // 添加 key 強制重新渲染
               layout="vertical"
               initialValues={{
@@ -1945,8 +2070,44 @@ const WhatsAppWorkflowDesigner = () => {
                     />
                   </Form.Item>
                   <Form.Item label={t('workflow.message')} name="message">
-                    <Input.TextArea rows={3} />
+                    <Input.TextArea 
+                      rows={3} 
+                      placeholder={t('workflowDesigner.messageWithVariablesPlaceholder')}
+                      onChange={(e) => {
+                        // 實時預覽變量引用
+                        const processedText = processVariableReferences(e.target.value, processVariables);
+                        // 可以在這裡添加預覽功能
+                      }}
+                    />
                   </Form.Item>
+                  {processVariables && processVariables.length > 0 && (
+                    <Form.Item label={t('workflowDesigner.availableVariables')}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                        {t('workflowDesigner.variableSyntaxHelp')}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {processVariables.map(pv => (
+                          <Tag 
+                            key={pv.id} 
+                            style={{ cursor: 'pointer' }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const currentValue = form.getFieldValue('message') || '';
+                              const newValue = currentValue + `\${${pv.variableName}}`;
+                              // 更新表單值
+                              form.setFieldValue('message', newValue);
+                              // 觸發節點數據更新
+                              handleNodeDataChange({ message: newValue });
+                              console.log('Clicked variable:', pv.variableName, 'New value:', newValue);
+                            }}
+                          >
+                            {pv.variableName} ({pv.dataType})
+                          </Tag>
+                        ))}
+                      </div>
+                    </Form.Item>
+                  )}
                 </>
               )}
               {selectedNode.data.type === 'sendWhatsAppTemplate' && (
@@ -2060,8 +2221,41 @@ const WhatsAppWorkflowDesigner = () => {
                     <Input.TextArea 
                       rows={3} 
                       placeholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
+                      onChange={(e) => {
+                        // 實時預覽變量引用
+                        const processedText = processVariableReferences(e.target.value, processVariables);
+                        // 可以在這裡添加預覽功能
+                      }}
                     />
                   </Form.Item>
+                  {processVariables && processVariables.length > 0 && (
+                    <Form.Item label={t('workflowDesigner.availableVariables')}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                        {t('workflowDesigner.variableSyntaxHelp')}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {processVariables.map(pv => (
+                          <Tag 
+                            key={pv.id} 
+                            style={{ cursor: 'pointer' }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const currentValue = form.getFieldValue('message') || '';
+                              const newValue = currentValue + `\${${pv.variableName}}`;
+                              // 更新表單值
+                              form.setFieldValue('message', newValue);
+                              // 觸發節點數據更新
+                              handleNodeDataChange({ message: newValue });
+                              console.log('Clicked variable:', pv.variableName, 'New value:', newValue);
+                            }}
+                          >
+                            {pv.variableName} ({pv.dataType})
+                          </Tag>
+                        ))}
+                      </div>
+                    </Form.Item>
+                  )}
                   <Form.Item label={t('workflowDesigner.validationConfig')}>
                     <Card size="small" title={t('workflowDesigner.validationSettings')} style={{ marginBottom: 16 }}>
                       <Form.Item label={t('workflowDesigner.enableValidation')} name={['validation', 'enabled']}>
@@ -2105,6 +2299,238 @@ const WhatsAppWorkflowDesigner = () => {
                     </p>
                     <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
                       {t('workflowDesigner.waitReplyDescription4')}
+                    </p>
+                  </Card>
+                </>
+              )}
+              {selectedNode.data.type === 'waitForQRCode' && (
+                <>
+                  <Form.Item label={t('workflowDesigner.qrCodeVariable')} name="qrCodeVariable">
+                    <Select
+                      placeholder={t('workflowDesigner.selectProcessVariable')}
+                      allowClear
+                    >
+                      {processVariables.map(pv => (
+                        <Select.Option key={pv.id} value={pv.variableName}>
+                          {pv.variableName} ({pv.dataType})
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                  
+                  <Form.Item label={t('workflowDesigner.promptMessage')} name="message">
+                    <Input.TextArea 
+                      rows={3} 
+                      placeholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
+                      onChange={(e) => {
+                        // 實時預覽變量引用
+                        const processedText = processVariableReferences(e.target.value, processVariables);
+                        // 可以在這裡添加預覽功能
+                      }}
+                    />
+                  </Form.Item>
+                  {processVariables && processVariables.length > 0 && (
+                    <Form.Item label={t('workflowDesigner.availableVariables')}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                        {t('workflowDesigner.variableSyntaxHelp')}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {processVariables.map(pv => (
+                          <Tag 
+                            key={pv.id} 
+                            style={{ cursor: 'pointer' }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const currentValue = form.getFieldValue('message') || '';
+                              const newValue = currentValue + `\${${pv.variableName}}`;
+                              // 更新表單值
+                              form.setFieldValue('message', newValue);
+                              // 觸發節點數據更新
+                              handleNodeDataChange({ message: newValue });
+                              console.log('Clicked variable:', pv.variableName, 'New value:', newValue);
+                            }}
+                          >
+                            {pv.variableName} ({pv.dataType})
+                          </Tag>
+                        ))}
+                      </div>
+                    </Form.Item>
+                  )}
+                  
+                  <Form.Item label={t('workflowDesigner.timeout')} name="timeout">
+                    <Input 
+                      type="number" 
+                      placeholder="300" 
+                      addonAfter={t('workflowDesigner.seconds')}
+                    />
+                  </Form.Item>
+                  
+                  <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.qrCodeDescription1')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.qrCodeDescription2')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                      {t('workflowDesigner.qrCodeDescription3')}
+                    </p>
+                  </Card>
+                </>
+              )}
+              {selectedNode.data.type === 'switch' && (
+                <>
+                  {(() => {
+                    console.log('=== SWITCH NODE CONFIGURATION ===');
+                    console.log('Selected node ID:', selectedNode?.id);
+                    console.log('Selected node data:', selectedNode?.data);
+                    console.log('Condition groups in node data:', selectedNode?.data?.conditionGroups);
+                    return null;
+                  })()}
+                  <Form.Item label={t('workflowDesigner.conditionGroups')}>
+                    <div style={{ marginBottom: '16px' }}>
+                      {(() => {
+                        // 從 nodes 狀態中獲取最新的節點數據
+                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                        const currentConditionGroups = currentNode?.data?.conditionGroups || [];
+                        console.log('Rendering condition groups for switch node:', selectedNode?.id);
+                        console.log('Current condition groups from nodes state:', currentConditionGroups);
+                        console.log('Number of groups:', currentConditionGroups.length);
+                        return null;
+                      })()}
+                      {(() => {
+                        // 從 nodes 狀態中獲取最新的節點數據
+                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                        const currentConditionGroups = currentNode?.data?.conditionGroups || [];
+                        return currentConditionGroups.map((group, groupIndex) => {
+                        console.log(`Rendering group ${groupIndex}:`, group);
+                        return (
+                        <Card 
+                          key={group.id} 
+                          size="small" 
+                          style={{ 
+                            marginBottom: '8px', 
+                            border: '1px solid #d9d9d9',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            setEditingConditionGroup({ ...group, groupIndex });
+                            setConditionGroupModalVisible(true);
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
+                                {t('workflowDesigner.conditionGroup')} {groupIndex + 1}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                                {t('workflowDesigner.conditions')}: {group.conditions?.length || 0}
+                                {group.relation && ` • ${group.relation.toUpperCase()}`}
+                              </div>
+                              {group.conditions && group.conditions.length > 0 && (
+                                <div style={{ fontSize: '11px', color: '#999' }}>
+                                  {group.conditions.slice(0, 2).map(condition => 
+                                    `${condition.variableName} ${condition.operator} ${condition.value}`
+                                  ).join(', ')}
+                                  {group.conditions.length > 2 && ` +${group.conditions.length - 2} more`}
+                                </div>
+                              )}
+                              {group.outputPath && selectedNode && (
+                                <div style={{ fontSize: '11px', color: '#1890ff', marginTop: '2px' }}>
+                                  → {getAvailableOutputPaths(selectedNode.id).find(p => p.id === group.outputPath)?.label || group.outputPath}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <Button 
+                                type="text" 
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  console.log('Editing condition group:', group, 'at index:', groupIndex);
+                                  setEditingConditionGroup({ ...group, groupIndex });
+                                  setConditionGroupModalVisible(true);
+                                }}
+                              />
+                              <Button 
+                                type="text" 
+                                danger 
+                                size="small"
+                                icon={<DeleteOutlined />}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                                  const currentGroups = currentNode?.data?.conditionGroups || [];
+                                  const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
+                                  setNodes(prev => prev.map(node => 
+                                    node.id === selectedNode?.id 
+                                      ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
+                                      : node
+                                  ));
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </Card>
+                        );
+                        });
+                      })()}
+                      
+                      <Button 
+                        type="dashed" 
+                        onClick={() => {
+                          const newGroup = {
+                            id: `group${Date.now()}`,
+                            relation: 'and',
+                            conditions: [],
+                            outputPath: ''
+                          };
+                          console.log('Creating new condition group:', newGroup);
+                          setEditingConditionGroup({ ...newGroup, groupIndex: -1 });
+                          setConditionGroupModalVisible(true);
+                        }}
+                        style={{ width: '100%' }}
+                      >
+                        {t('workflowDesigner.addConditionGroup')}
+                      </Button>
+                    </div>
+                  </Form.Item>
+                  
+                  <Form.Item label={t('workflowDesigner.defaultPath')}>
+                    <div style={{ 
+                      padding: '8px 12px', 
+                      border: '1px solid #d9d9d9', 
+                      borderRadius: '6px',
+                      backgroundColor: '#fafafa',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => {
+                      setDefaultPathModalVisible(true);
+                    }}
+                    >
+                      {selectedNode?.data?.defaultPath ? (
+                        <span style={{ color: '#1890ff' }}>
+                          → {selectedNode && getAvailableOutputPaths(selectedNode.id).find(p => p.id === selectedNode.data.defaultPath)?.label || selectedNode?.data?.defaultPath}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#999' }}>
+                          {t('workflowDesigner.clickToSelectDefaultPath')}
+                        </span>
+                      )}
+                    </div>
+                  </Form.Item>
+                  
+                  <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.switchDescription1')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.switchDescription2')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                      {t('workflowDesigner.switchDescription3')}
                     </p>
                   </Card>
                 </>
@@ -2207,6 +2633,21 @@ const WhatsAppWorkflowDesigner = () => {
                     </Card>
                   )}
                   
+                  <Form.Item label={t('workflowDesigner.approvalResultVariable')} name="approvalResultVariable">
+                    <Select
+                      placeholder={t('workflowDesigner.selectApprovalResultVariable')}
+                      allowClear
+                    >
+                      {processVariables.map(pv => (
+                        <Select.Option key={pv.id} value={pv.variableName}>
+                          {pv.variableName} ({pv.dataType})
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                  
+                  
+                  
                   <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
                       {t('workflowDesigner.eFormDescription1')}
@@ -2220,8 +2661,14 @@ const WhatsAppWorkflowDesigner = () => {
                     <p style={{ fontSize: '12px', margin: '4px 0' }}>
                       {t('workflowDesigner.eFormDescription4')}
                     </p>
-                    <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
                       {t('workflowDesigner.eFormDescription5')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.eFormDescription6')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                      {t('workflowDesigner.eFormDescription7')}
                     </p>
                   </Card>
                 </>
@@ -2418,6 +2865,429 @@ const WhatsAppWorkflowDesigner = () => {
         </div>
       </Modal>
 
+      {/* 條件群組編輯 Modal */}
+      <Modal
+        title={editingConditionGroup && editingConditionGroup.groupIndex === -1 ? 
+          t('workflowDesigner.addConditionGroup') : 
+          t('workflowDesigner.editConditionGroup')
+        }
+        open={conditionGroupModalVisible}
+        onCancel={() => {
+          setConditionGroupModalVisible(false);
+          setEditingConditionGroup(null);
+          conditionGroupForm.resetFields();
+        }}
+        width={800}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          form={conditionGroupForm}
+          layout="vertical"
+          onFinish={(values) => {
+            console.log('Condition group form submitted with values:', values);
+            console.log('Current editingConditionGroup:', editingConditionGroup);
+            
+            if (editingConditionGroup) {
+              const newGroups = [...(selectedNode.data.conditionGroups || [])];
+              const group = {
+                id: editingConditionGroup.id || `group${Date.now()}`,
+                relation: values.relation || 'and',
+                conditions: editingConditionGroup.conditions || [],
+                outputPath: values.outputPath || ''
+              };
+              
+              // 確保 conditions 數組存在
+              if (!group.conditions) {
+                group.conditions = [];
+              }
+              
+              console.log('New group to save:', group);
+              
+              // 檢查群組是否已經被保存（通過檢查當前節點數據中是否已存在該群組）
+              const currentNode = nodes.find(node => node.id === selectedNode?.id);
+              const currentGroups = currentNode?.data?.conditionGroups || [];
+              const groupAlreadyExists = currentGroups.some(g => g.id === group.id);
+              
+              if (editingConditionGroup.groupIndex === -1 && !groupAlreadyExists) {
+                // 新增群組
+                newGroups.push(group);
+                console.log('Adding new group, newGroups:', newGroups);
+                console.log('New group will be at index:', newGroups.length - 1);
+                
+                // 更新 editingConditionGroup 的 groupIndex
+                setEditingConditionGroup(prev => ({ ...prev, groupIndex: newGroups.length - 1 }));
+              } else {
+                // 編輯現有群組（包括已經通過 Add Condition 保存的群組）
+                const targetIndex = groupAlreadyExists ? 
+                  currentGroups.findIndex(g => g.id === group.id) : 
+                  editingConditionGroup.groupIndex;
+                newGroups[targetIndex] = group;
+                console.log('Updating existing group at index', targetIndex, 'newGroups:', newGroups);
+              }
+              
+              setNodes(prev => prev.map(node => 
+                node.id === selectedNode?.id 
+                  ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
+                  : node
+              ));
+              
+              console.log('Updated nodes with new condition groups');
+              console.log('Final newGroups array:', newGroups);
+              console.log('Updated node data:', nodes.find(node => node.id === selectedNode?.id)?.data);
+            }
+            
+            setConditionGroupModalVisible(false);
+            setEditingConditionGroup(null);
+            conditionGroupForm.resetFields();
+          }}
+        >
+          <Form.Item
+            label={t('workflowDesigner.groupRelation')}
+            name="relation"
+            rules={[{ required: true, message: t('workflowDesigner.groupRelationRequired') }]}
+          >
+            <Select>
+              <Select.Option value="and">AND - 所有條件都必須滿足</Select.Option>
+              <Select.Option value="or">OR - 任一條件滿足即可</Select.Option>
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label={t('workflowDesigner.outputPath')}
+            name="outputPath"
+            rules={[{ required: true, message: t('workflowDesigner.outputPathRequired') }]}
+          >
+            <Select placeholder={t('workflowDesigner.selectOutputPath')}>
+              {selectedNode && getAvailableOutputPaths(selectedNode.id).map(path => (
+                <Select.Option key={path.id} value={path.id}>
+                  {path.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          <Form.Item label={t('workflowDesigner.conditions')}>
+            <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
+              {(editingConditionGroup?.conditions || []).map((condition, condIndex) => (
+                <div key={condition.id} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  marginBottom: '8px',
+                  padding: '8px',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '4px'
+                }}>
+                  <div style={{ flex: 1, fontSize: '14px' }}>
+                    <strong>{condition.variableName}</strong> {condition.operator} <strong>{condition.value}</strong>
+                    {condition.label && <div style={{ fontSize: '12px', color: '#666' }}>{condition.label}</div>}
+                  </div>
+                  <Button 
+                    type="text" 
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => {
+                      // 對於新創建的群組，我們需要先保存群組，然後再編輯條件
+                      if (editingConditionGroup.groupIndex === -1) {
+                        // 先從表單中獲取當前的值，確保包含最新的 outputPath
+                        const formValues = conditionGroupForm.getFieldsValue();
+                        const updatedGroup = {
+                          ...editingConditionGroup,
+                          relation: formValues.relation || editingConditionGroup.relation,
+                          outputPath: formValues.outputPath || editingConditionGroup.outputPath
+                        };
+                        
+                        // 先保存群組到節點數據中
+                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                        const currentGroups = currentNode?.data?.conditionGroups || [];
+                        const newGroups = [...currentGroups, updatedGroup];
+                        
+                        // 更新節點數據
+                        setNodes(prev => prev.map(node => 
+                          node.id === selectedNode?.id 
+                            ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
+                            : node
+                        ));
+                        
+                        // 使用新保存的群組索引
+                        const actualGroupIndex = newGroups.length - 1;
+                        console.log('Saved new group and editing condition with group index:', actualGroupIndex, 'condition index:', condIndex);
+                        
+                        // 更新 editingConditionGroup 的 groupIndex 和表單值
+                        setEditingConditionGroup(prev => ({ ...updatedGroup, groupIndex: actualGroupIndex }));
+                        
+                        setEditingCondition({ ...condition, groupIndex: actualGroupIndex, condIndex });
+                      } else {
+                        // 編輯現有群組中的條件
+                        console.log('Editing condition with existing group index:', editingConditionGroup.groupIndex, 'condition index:', condIndex);
+                        setEditingCondition({ ...condition, groupIndex: editingConditionGroup.groupIndex, condIndex });
+                      }
+                      
+                      setConditionModalVisible(true);
+                    }}
+                  />
+                  <Button 
+                    type="text" 
+                    danger 
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={() => {
+                      const currentConditions = editingConditionGroup.conditions || [];
+                      const newConditions = currentConditions.filter((_, i) => i !== condIndex);
+                      setEditingConditionGroup({ ...editingConditionGroup, conditions: newConditions });
+                    }}
+                  />
+                </div>
+              ))}
+              
+              {(!editingConditionGroup?.conditions || editingConditionGroup.conditions.length === 0) && (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+                  {t('workflowDesigner.noConditions')}
+                </div>
+              )}
+              
+              <Button 
+                type="dashed" 
+                onClick={() => {
+                  // 對於新創建的群組，我們需要先保存群組，然後再添加條件
+                  if (editingConditionGroup.groupIndex === -1) {
+                    // 先從表單中獲取當前的值，確保包含最新的 outputPath
+                    const formValues = conditionGroupForm.getFieldsValue();
+                    const updatedGroup = {
+                      ...editingConditionGroup,
+                      relation: formValues.relation || editingConditionGroup.relation,
+                      outputPath: formValues.outputPath || editingConditionGroup.outputPath
+                    };
+                    
+                    // 先保存群組到節點數據中
+                    const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                    const currentGroups = currentNode?.data?.conditionGroups || [];
+                    const newGroups = [...currentGroups, updatedGroup];
+                    
+                    // 更新節點數據
+                    setNodes(prev => prev.map(node => 
+                      node.id === selectedNode?.id 
+                        ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
+                        : node
+                    ));
+                    
+                    // 使用新保存的群組索引
+                    const actualGroupIndex = newGroups.length - 1;
+                    console.log('Saved new group and setting editing condition with group index:', actualGroupIndex);
+                    
+                    // 更新 editingConditionGroup 的 groupIndex 和表單值
+                    setEditingConditionGroup(prev => ({ ...updatedGroup, groupIndex: actualGroupIndex }));
+                    
+                    setEditingCondition({ groupIndex: actualGroupIndex, condIndex: -1 });
+                  } else {
+                    // 編輯現有群組
+                    console.log('Setting editing condition with existing group index:', editingConditionGroup.groupIndex);
+                    setEditingCondition({ groupIndex: editingConditionGroup.groupIndex, condIndex: -1 });
+                  }
+                  
+                  setConditionModalVisible(true);
+                }}
+                style={{ width: '100%' }}
+              >
+                {t('workflowDesigner.addCondition')}
+              </Button>
+            </div>
+          </Form.Item>
+          
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => {
+                setConditionGroupModalVisible(false);
+                setEditingConditionGroup(null);
+                conditionGroupForm.resetFields();
+              }}>
+                {t('workflowDesigner.cancel')}
+              </Button>
+              <Button type="primary" htmlType="submit">
+                {editingConditionGroup && editingConditionGroup.groupIndex === -1 ? t('workflowDesigner.add') : t('workflowDesigner.update')}
+              </Button>
+            </Space>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* 條件編輯 Modal */}
+      <Modal
+        title={t('workflowDesigner.editCondition')}
+        open={conditionModalVisible}
+        onCancel={() => {
+          setConditionModalVisible(false);
+          setEditingCondition(null);
+          conditionForm.resetFields();
+        }}
+        width={600}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          form={conditionForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (editingCondition) {
+              // 獲取最新的節點數據，包括可能剛創建的條件群組
+              const currentNode = nodes.find(node => node.id === selectedNode?.id);
+              const currentGroups = currentNode?.data?.conditionGroups || [];
+              const newGroups = [...currentGroups];
+              
+              const condition = {
+                id: editingCondition.id || `condition${Date.now()}`,
+                variableName: values.variableName,
+                operator: values.operator,
+                value: values.value,
+                label: values.label || `${values.variableName} ${values.operator} ${values.value}`
+              };
+              
+              console.log('Adding condition to group index:', editingCondition.groupIndex);
+              console.log('Current groups:', newGroups);
+              console.log('Target group:', newGroups[editingCondition.groupIndex]);
+              
+              // 確保目標群組存在
+              if (!newGroups[editingCondition.groupIndex]) {
+                console.error('Target group does not exist at index:', editingCondition.groupIndex);
+                return;
+              }
+              
+              if (editingCondition.condIndex === -1) {
+                // 新增條件
+                if (!newGroups[editingCondition.groupIndex].conditions) {
+                  newGroups[editingCondition.groupIndex].conditions = [];
+                }
+                newGroups[editingCondition.groupIndex].conditions.push(condition);
+                console.log('Added new condition, group now has:', newGroups[editingCondition.groupIndex].conditions.length, 'conditions');
+              } else {
+                // 編輯現有條件
+                if (!newGroups[editingCondition.groupIndex].conditions) {
+                  newGroups[editingCondition.groupIndex].conditions = [];
+                }
+                newGroups[editingCondition.groupIndex].conditions[editingCondition.condIndex] = condition;
+                console.log('Updated existing condition at index:', editingCondition.condIndex);
+              }
+              
+              setNodes(prev => prev.map(node => 
+                node.id === selectedNode?.id 
+                  ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
+                  : node
+              ));
+            }
+            
+            setConditionModalVisible(false);
+            setEditingCondition(null);
+            conditionForm.resetFields();
+          }}
+        >
+          <Form.Item
+            label={t('workflowDesigner.selectProcessVariable')}
+            name="variableName"
+            rules={[{ required: true, message: t('workflowDesigner.selectProcessVariableRequired') }]}
+          >
+            <Select placeholder={t('workflowDesigner.selectProcessVariable')}>
+              {processVariables.length > 0 ? (
+                processVariables.map(pv => (
+                  <Select.Option key={pv.id} value={pv.variableName}>
+                    {pv.variableName} ({pv.dataType})
+                  </Select.Option>
+                ))
+              ) : (
+                <Select.Option value="" disabled>
+                  {t('workflowDesigner.noProcessVariables')}
+                </Select.Option>
+              )}
+            </Select>
+            {processVariables.length === 0 && (
+              <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                {t('workflowDesigner.noProcessVariablesHint')}
+              </div>
+            )}
+          </Form.Item>
+          
+          <Form.Item
+            label={t('workflowDesigner.operator')}
+            name="operator"
+            rules={[{ required: true, message: t('workflowDesigner.operatorRequired') }]}
+          >
+            <Select>
+              <Select.Option value="equals">{t('workflowDesigner.equals')}</Select.Option>
+              <Select.Option value="notEquals">{t('workflowDesigner.notEquals')}</Select.Option>
+              <Select.Option value="greaterThan">{t('workflowDesigner.greaterThan')}</Select.Option>
+              <Select.Option value="lessThan">{t('workflowDesigner.lessThan')}</Select.Option>
+              <Select.Option value="contains">{t('workflowDesigner.contains')}</Select.Option>
+              <Select.Option value="isEmpty">{t('workflowDesigner.isEmpty')}</Select.Option>
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            label={t('workflowDesigner.conditionValue')}
+            name="value"
+            rules={[{ required: true, message: t('workflowDesigner.conditionValueRequired') }]}
+          >
+            <Input placeholder={t('workflowDesigner.conditionValuePlaceholder')} />
+          </Form.Item>
+          
+          <Form.Item
+            label={t('workflowDesigner.conditionLabel')}
+            name="label"
+          >
+            <Input placeholder={t('workflowDesigner.conditionLabelPlaceholder')} />
+          </Form.Item>
+          
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => {
+                setConditionModalVisible(false);
+                setEditingCondition(null);
+                conditionForm.resetFields();
+              }}>
+                {t('workflowDesigner.cancel')}
+              </Button>
+              <Button type="primary" htmlType="submit">
+                {editingCondition && editingCondition.condIndex !== -1 ? t('workflowDesigner.update') : t('workflowDesigner.add')}
+              </Button>
+            </Space>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* 默認路徑選擇 Modal */}
+      <Modal
+        title={t('workflowDesigner.selectDefaultPath')}
+        open={defaultPathModalVisible}
+        onCancel={() => setDefaultPathModalVisible(false)}
+        width={500}
+        footer={null}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '16px', color: '#666' }}>
+            {t('workflowDesigner.defaultPathDescription')}
+          </p>
+          <Select 
+            value={selectedNode?.data?.defaultPath} 
+            placeholder={t('workflowDesigner.selectDefaultPath')}
+            style={{ width: '100%' }}
+            onChange={(value) => {
+              setNodes(prev => prev.map(node => 
+                node.id === selectedNode?.id 
+                  ? { ...node, data: { ...node.data, defaultPath: value } }
+                  : node
+              ));
+              setDefaultPathModalVisible(false);
+            }}
+          >
+            {selectedNode && getAvailableOutputPaths(selectedNode.id).map(path => (
+              <Select.Option key={path.id} value={path.id}>
+                {path.label}
+              </Select.Option>
+            ))}
+          </Select>
+        </div>
+      </Modal>
+
       {/* 流程變量管理 Modal */}
       <Modal
         title={t('processVariables.title')}
@@ -2444,7 +3314,7 @@ const WhatsAppWorkflowDesigner = () => {
             </div>
             
             <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }}>
-              {processVariables.length === 0 ? (
+              {!processVariables || processVariables.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
                   {t('processVariables.noVariables')}
                 </div>
