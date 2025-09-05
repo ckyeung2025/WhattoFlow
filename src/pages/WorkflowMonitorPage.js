@@ -72,7 +72,6 @@ const WorkflowMonitorPage = () => {
   const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [instances, setInstances] = useState([]);
-  const [filteredInstances, setFilteredInstances] = useState([]);
   const [selectedInstances, setSelectedInstances] = useState([]);
   const [pagination, setPagination] = useState({
     current: 1,
@@ -116,40 +115,10 @@ const WorkflowMonitorPage = () => {
     }
   }, [autoRefresh, refreshInterval]);
 
-  // 篩選實例
+  // 當篩選條件改變時，重新載入數據
   useEffect(() => {
-    let filtered = [...instances];
-    
-    if (filters.status !== 'all') {
-      filtered = filtered.filter(instance => instance.status === filters.status);
-    }
-    
-    if (filters.workflowName) {
-      filtered = filtered.filter(instance => 
-        instance.workflowName.toLowerCase().includes(filters.workflowName.toLowerCase())
-      );
-    }
-    
-    if (filters.searchText) {
-      filtered = filtered.filter(instance => 
-        instance.workflowName.toLowerCase().includes(filters.searchText.toLowerCase()) ||
-        instance.id.toString().includes(filters.searchText) ||
-        instance.createdBy.toLowerCase().includes(filters.searchText.toLowerCase())
-      );
-    }
-    
-    if (filters.dateRange && filters.dateRange.length === 2) {
-      filtered = filtered.filter(instance => {
-        const startDate = dayjs(filters.dateRange[0]);
-        const endDate = dayjs(filters.dateRange[1]);
-        const instanceDate = dayjs(instance.startedAt);
-        return instanceDate.isAfter(startDate) && instanceDate.isBefore(endDate);
-      });
-    }
-    
-    setFilteredInstances(filtered);
-    setPagination(prev => ({ ...prev, total: filtered.length, current: 1 }));
-  }, [instances, filters]);
+    loadInstances();
+  }, [filters, pagination.current, pagination.pageSize]);
 
   const loadInstances = async () => {
     setLoading(true);
@@ -173,6 +142,9 @@ const WorkflowMonitorPage = () => {
         params.append('endDate', filters.dateRange[1].toISOString());
       }
 
+      console.log('發送請求到:', `/api/workflowexecutions/monitor?${params}`);
+      console.log('當前分頁參數:', { current: pagination.current, pageSize: pagination.pageSize });
+
       const response = await fetch(`/api/workflowexecutions/monitor?${params}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -186,6 +158,7 @@ const WorkflowMonitorPage = () => {
       const data = await response.json();
       console.log('從監控 API 獲取到的數據:', data);
       console.log('實例數據結構:', data.data);
+      console.log('分頁信息:', { page: data.page, pageSize: data.pageSize, total: data.total });
       
       // 檢查第一個實例是否包含 InputJson 字段
       if (data.data && data.data.length > 0) {
@@ -204,7 +177,12 @@ const WorkflowMonitorPage = () => {
       }
       
       setInstances(data.data);
-      setPagination(prev => ({ ...prev, total: data.total }));
+      setPagination(prev => ({ 
+        ...prev, 
+        total: data.total,
+        current: data.page,
+        pageSize: data.pageSize
+      }));
     } catch (error) {
       message.error('載入實例失敗: ' + error.message);
     } finally {
@@ -233,14 +211,17 @@ const WorkflowMonitorPage = () => {
 
   const handleStatusFilter = (value) => {
     setFilters(prev => ({ ...prev, status: value }));
+    setPagination(prev => ({ ...prev, current: 1 }));
   };
 
   const handleSearch = (value) => {
     setFilters(prev => ({ ...prev, searchText: value }));
+    setPagination(prev => ({ ...prev, current: 1 }));
   };
 
   const handleDateRangeChange = (dates) => {
     setFilters(prev => ({ ...prev, dateRange: dates }));
+    setPagination(prev => ({ ...prev, current: 1 }));
   };
 
   const handleInstanceAction = async (action, instance) => {
@@ -605,7 +586,7 @@ const WorkflowMonitorPage = () => {
           <div style={{ marginBottom: 16 }}>
             <Space>
               <Text strong>實例列表</Text>
-              <Badge count={filteredInstances.length} showZero />
+              <Badge count={instances.length} showZero />
               
               {selectedInstances.length > 0 && (
                 <Text type="secondary">
@@ -617,7 +598,7 @@ const WorkflowMonitorPage = () => {
           
           <Table
             columns={columns}
-            dataSource={filteredInstances}
+            dataSource={instances}
             rowKey="id"
             loading={loading}
             pagination={{

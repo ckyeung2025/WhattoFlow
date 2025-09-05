@@ -150,6 +150,45 @@ const purpleButtonStyle = `
   .react-flow__handle.connecting {
     animation: pulse 0.6s ease-in-out !important;
   }
+  
+  /* 移除 ReactFlow 預設的節點外框 */
+  .react-flow__node {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  
+  .react-flow__node:focus {
+    outline: none !important;
+  }
+  
+  .react-flow__node:focus-visible {
+    outline: none !important;
+  }
+  
+  /* 統一的刪除按鈕樣式 */
+  .delete-button {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+    border: 2px solid #fff !important;
+    background-color: #ff4d4f !important;
+    color: #fff !important;
+    font-weight: bold !important;
+    border-radius: 4px !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .delete-button:hover {
+    background-color: #ff7875 !important;
+    transform: scale(1.05) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+  }
+  
+  .delete-button:active {
+    transform: scale(0.95) !important;
+  }
 `;
 
 
@@ -395,14 +434,15 @@ const WhatsAppWorkflowDesigner = () => {
         default: ({ id, data, selected }) => (
           <div
             style={{
-              padding: 8,
+              padding: 12,
               background: selected ? '#e6f7ff' : '#fff',
-              border: '1.5px solid #1890ff',
-              borderRadius: 6,
+              border: selected ? '2px solid #1890ff' : '1.5px solid #1890ff',
+              borderRadius: 12,
               minWidth: 120,
               position: 'relative',
-              boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
-              transition: 'box-shadow 0.2s',
+              boxShadow: selected ? '0 4px 12px rgba(24, 144, 255, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
+              transition: 'all 0.2s ease',
+              cursor: 'grab',
             }}
             className="custom-node"
           >
@@ -452,21 +492,28 @@ const WhatsAppWorkflowDesigner = () => {
             />
             
             {selected && data.type !== 'start' && (
-              <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>Delete</button>
+              <button 
+                className="delete-button"
+                style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
+                onClick={() => onDelete(id)}
+              >
+                Delete
+              </button>
             )}
           </div>
         ),
         input: ({ id, data, selected }) => (
           <div
             style={{
-              padding: 8,
-              background: '#f6ffed',
-              border: '2px solid #52c41a',
-              borderRadius: 6,
-              minWidth: 80,
-              position: 'relative',
-              boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
-              transition: 'box-shadow 0.2s',
+                       padding: 12,
+         background: '#f6ffed',
+         border: selected ? '2px solid #52c41a' : '1.5px solid #52c41a',
+         borderRadius: 12,
+         minWidth: 80,
+         position: 'relative',
+         boxShadow: selected ? '0 4px 12px rgba(82, 196, 26, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
+         transition: 'all 0.2s ease',
+         cursor: 'grab',
             }}
             className="custom-node"
           >
@@ -498,14 +545,15 @@ const WhatsAppWorkflowDesigner = () => {
         output: ({ id, data, selected }) => (
           <div
             style={{
-              padding: 8,
-              background: '#fffbe6',
-              border: '2px solid #faad14',
-              borderRadius: 6,
-              minWidth: 80,
-              position: 'relative',
-              boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
-              transition: 'box-shadow 0.2s',
+                       padding: 12,
+         background: '#fffbe6',
+         border: selected ? '2px solid #faad14' : '1.5px solid #faad14',
+         borderRadius: 12,
+         minWidth: 80,
+         position: 'relative',
+         boxShadow: selected ? '0 4px 12px rgba(250, 173, 20, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
+         transition: 'all 0.2s ease',
+         cursor: 'grab',
             }}
             className="custom-node"
           >
@@ -535,29 +583,36 @@ const WhatsAppWorkflowDesigner = () => {
             </div>
             
             {selected && (
-              <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>Delete</button>
+              <button 
+                className="delete-button"
+                style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
+                onClick={() => onDelete(id)}
+              >
+                Delete
+              </button>
             )}
           </div>
         ),
       };
     }
     
-    // 語言系統準備好時使用翻譯
-    return {
-  default: ({ id, data, selected }) => (
-    <div
-      style={{
-        padding: 8,
-        background: selected ? '#e6f7ff' : '#fff',
-        border: '1.5px solid #1890ff',
-        borderRadius: 6,
-        minWidth: 120,
-        position: 'relative',
-        boxShadow: selected ? '0 0 8px #1890ff55' : '0 1px 4px #0001',
-        transition: 'box-shadow 0.2s',
-      }}
-      className="custom-node"
-    >
+      // 語言系統準備好時使用翻譯
+  return {
+ default: ({ id, data, selected }) => (
+   <div
+     style={{
+       padding: 12,
+       background: selected ? '#e6f7ff' : '#fff',
+       border: selected ? '2px solid #1890ff' : '1.5px solid #1890ff',
+       borderRadius: 12,
+       minWidth: 120,
+       position: 'relative',
+       boxShadow: selected ? '0 4px 12px rgba(24, 144, 255, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
+       transition: 'all 0.2s ease',
+       cursor: 'grab',
+     }}
+     className="custom-node"
+   >
       {/* 一般節點 - 上方接入點，下方接出點 */}
       {/* 上方接入點 - 橙色 */}
       <Handle
@@ -607,21 +662,28 @@ const WhatsAppWorkflowDesigner = () => {
       />
       
       {selected && data.type !== 'start' && (
-          <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>{t('workflowDesigner.delete')}</button>
+          <button 
+            className="delete-button"
+            style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
+            onClick={() => onDelete(id)}
+          >
+            {t('workflowDesigner.delete')}
+          </button>
       )}
     </div>
   ),
   input: ({ id, data, selected }) => (
     <div
       style={{
-        padding: 8,
-        background: '#f6ffed',
-        border: '2px solid #52c41a',
-        borderRadius: 6,
-        minWidth: 80,
-        position: 'relative',
-        boxShadow: selected ? '0 0 8px #52c41a88' : '0 1px 4px #0001',
-        transition: 'box-shadow 0.2s',
+                 padding: 12,
+         background: '#f6ffed',
+         border: selected ? '2px solid #52c41a' : '1.5px solid #52c41a',
+         borderRadius: 12,
+         minWidth: 80,
+         position: 'relative',
+         boxShadow: selected ? '0 4px 12px rgba(82, 196, 26, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
+         transition: 'all 0.2s ease',
+         cursor: 'grab',
       }}
       className="custom-node"
     >
@@ -654,14 +716,15 @@ const WhatsAppWorkflowDesigner = () => {
   output: ({ id, data, selected }) => (
     <div
       style={{
-        padding: 8,
-        background: '#fffbe6',
-        border: '2px solid #faad14',
-        borderRadius: 6,
-        minWidth: 80,
-        position: 'relative',
-        boxShadow: selected ? '0 0 8px #faad1488' : '0 1px 4px #0001',
-        transition: 'box-shadow 0.2s',
+                 padding: 12,
+         background: '#fffbe6',
+         border: selected ? '2px solid #faad14' : '1.5px solid #faad14',
+         borderRadius: 12,
+         minWidth: 80,
+         position: 'relative',
+         boxShadow: selected ? '0 4px 12px rgba(250, 173, 20, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
+         transition: 'all 0.2s ease',
+         cursor: 'grab',
       }}
       className="custom-node"
     >
@@ -692,7 +755,13 @@ const WhatsAppWorkflowDesigner = () => {
       </div>
       
       {selected && (
-          <button style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} onClick={() => onDelete(id)}>{t('workflowDesigner.delete')}</button>
+          <button 
+            className="delete-button"
+            style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
+            onClick={() => onDelete(id)}
+          >
+            {t('workflowDesigner.delete')}
+          </button>
       )}
     </div>
   ),
@@ -1933,13 +2002,7 @@ const WhatsAppWorkflowDesigner = () => {
                     danger
                     size="small"
                     onClick={() => onEdgeDelete(selectedEdge.id)}
-                    style={{
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                      border: '2px solid #fff',
-                      backgroundColor: '#ff4d4f',
-                      color: '#fff',
-                      fontWeight: 'bold'
-                    }}
+                    className="delete-button"
                   >
                     {t('workflowDesigner.delete')}
                   </Button>
