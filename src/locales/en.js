@@ -917,6 +917,14 @@ const en = {
     },
     
     // Missing translation keys
+    conditionLabel: 'Condition Label',
+    conditionLabelPlaceholder: 'Please enter condition label (optional)',
+    cancel: 'Cancel',
+    add: 'Add',
+    selectDefaultPath: 'Select Default Path',
+    defaultPath: 'Default Path',
+    defaultPathDescription: 'When all condition groups are not met, this default path will be executed',
+    conditionValuePlaceholder: 'Please enter condition value',
     selectProcessVariable: 'Select Process Variable',
     qrCodeVariable: 'QR Code Variable',
     qrCodeMessagePlaceholder: 'Enter prompt message, e.g.: Please upload an image containing QR Code',
@@ -975,7 +983,8 @@ const en = {
     groupRelationRequired: 'Please select group relation',
     outputPathRequired: 'Please select output path',
     noConditions: 'No conditions',
-    defaultPathDescription: 'When all condition groups are not met, this default path will be executed'
+    defaultPathDescription: 'When all condition groups are not met, this default path will be executed',
+    
   },
   
   // Workflow Monitor
