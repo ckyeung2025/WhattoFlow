@@ -9,6 +9,240 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const { Title } = Typography;
 
+// 通用樣式常量和配置
+const NODE_STYLES = {
+  default: {
+    padding: 12,
+    borderRadius: 12,
+    minWidth: 120,
+    position: 'relative',
+    transition: 'all 0.2s ease',
+    cursor: 'grab',
+  },
+  selected: {
+    background: '#e6f7ff',
+    border: '2px solid #1890ff',
+    boxShadow: '0 4px 12px rgba(24, 144, 255, 0.3)',
+  },
+  unselected: {
+    background: '#fff',
+    border: '1.5px solid #1890ff',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+  },
+  input: {
+    background: '#f6ffed',
+    border: '1.5px solid #52c41a',
+  },
+  inputSelected: {
+    background: '#f6ffed',
+    border: '2px solid #52c41a',
+    boxShadow: '0 4px 12px rgba(82, 196, 26, 0.3)',
+  },
+  output: {
+    background: '#fffbe6',
+    border: '1.5px solid #faad14',
+  },
+  outputSelected: {
+    background: '#fffbe6',
+    border: '2px solid #faad14',
+    boxShadow: '0 4px 12px rgba(250, 173, 20, 0.3)',
+  }
+};
+
+const HANDLE_STYLES = {
+  width: 14,
+  height: 14,
+  borderRadius: 7,
+  opacity: 0.9,
+  border: '2px solid #fff',
+  cursor: 'crosshair',
+  transform: 'translateX(-50%)',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+  transition: 'all 0.2s ease',
+};
+
+const DELETE_BUTTON_STYLES = {
+  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+  border: '2px solid #fff',
+  backgroundColor: '#ff4d4f',
+  color: '#fff',
+  fontWeight: 'bold',
+  borderRadius: '4px',
+  padding: '4px 8px',
+  fontSize: '12px',
+  transition: 'all 0.2s ease',
+};
+
+// 模擬數據配置
+const MOCK_DATA = {
+  templates: [
+    { id: 'template1', name: '歡迎訊息', description: '新用戶歡迎訊息模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
+    { id: 'template2', name: '訂單確認', description: '訂單確認通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
+    { id: 'template3', name: '活動邀請', description: '活動邀請通知模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
+    { id: 'template4', name: '系統通知', description: '系統重要通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
+    { id: 'template5', name: '客戶服務', description: '客戶服務回覆模板', category: 'Service', templateType: 'Text', language: 'zh-TW', status: 'Active' }
+  ],
+  users: [
+    { id: 'user1', name: '張三', phone: '85291234567', email: 'zhang@example.com' },
+    { id: 'user2', name: '李四', phone: '85298765432', email: 'li@example.com' },
+    { id: 'user3', name: '王五', phone: '85295556666', email: 'wang@example.com' },
+    { id: 'user4', name: '趙六', phone: '85294448888', email: 'zhao@example.com' },
+    { id: 'user5', name: '錢七', phone: '85293337777', email: 'qian@example.com' }
+  ],
+  eforms: [
+    { id: 'form1', name: '請假申請表', description: '員工請假申請表單', status: 'A' },
+    { id: 'form2', name: '採購申請表', description: '部門採購申請表單', status: 'A' },
+    { id: 'form3', name: '報銷申請表', description: '員工報銷申請表單', status: 'A' },
+    { id: 'form4', name: '設備申請表', description: 'IT設備申請表單', status: 'A' },
+    { id: 'form5', name: '會議申請表', description: '會議室預約申請表單', status: 'A' }
+  ]
+};
+
+// 通用組件
+const CommonHandle = ({ type, position, id, style, title, t }) => (
+  <Handle
+    type={type}
+    position={position}
+    id={id}
+    style={{ 
+      ...HANDLE_STYLES, 
+      ...style,
+      ...(type === 'target' ? { background: '#faad14' } : { background: '#52c41a' })
+    }}
+    title={title || t('workflowDesigner.clickToSelectConnection')}
+  />
+);
+
+const DeleteButton = ({ onClick, t }) => (
+  <button 
+    className="delete-button"
+    style={{ 
+      position: 'absolute', 
+      top: 2, 
+      right: 2, 
+      zIndex: 2,
+      ...DELETE_BUTTON_STYLES
+    }} 
+    onClick={onClick}
+  >
+    {t('workflowDesigner.delete')}
+  </button>
+);
+
+const UserSelectInput = ({ value, onChange, onClear, t, isSpecified = false, onOpenModal }) => (
+  <Input 
+    value={value || ''}
+    placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
+    readOnly
+    onClick={onOpenModal}
+    suffix={
+      <Space>
+        {value && (
+          <Button 
+            type="text" 
+            size="small" 
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange('');
+            }}
+          >
+            {t('workflowDesigner.clear')}
+          </Button>
+        )}
+        <Button 
+          type="text" 
+          size="small" 
+          onClick={onOpenModal}
+        >
+          {isSpecified ? t('workflowDesigner.selectPerson') : t('workflowDesigner.selectUser')}
+        </Button>
+      </Space>
+    }
+    style={{
+      color: value ? '#000' : '#999',
+      backgroundColor: value ? '#fff' : '#f5f5f5',
+      width: '100%',
+      minWidth: '300px'
+    }}
+  />
+);
+
+const VariableTags = ({ processVariables, form, fieldName, onUpdate, t }) => (
+  <Form.Item label={t('workflowDesigner.availableVariables')}>
+    <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+      {t('workflowDesigner.variableSyntaxHelp')}
+    </div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+      {processVariables.map(pv => (
+        <Tag 
+          key={pv.id} 
+          style={{ cursor: 'pointer' }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const currentValue = form.getFieldValue(fieldName) || '';
+            const newValue = currentValue + `\${${pv.variableName}}`;
+            form.setFieldValue(fieldName, newValue);
+            onUpdate({ [fieldName]: newValue });
+          }}
+        >
+          {pv.variableName} ({pv.dataType})
+        </Tag>
+      ))}
+    </div>
+  </Form.Item>
+);
+
+// 通用錯誤處理函數
+const handleApiError = (error, fallbackData, setter, errorMessage) => {
+  console.error(errorMessage, error);
+  setter(fallbackData);
+};
+
+// 條件群組管理 Hook
+const useConditionGroups = (selectedNode, nodes, setNodes) => {
+  const getCurrentConditionGroups = useCallback(() => {
+    const currentNode = nodes.find(node => node.id === selectedNode?.id);
+    return currentNode?.data?.conditionGroups || [];
+  }, [selectedNode, nodes]);
+
+  const updateConditionGroups = useCallback((newGroups) => {
+    setNodes(prev => prev.map(node => 
+      node.id === selectedNode?.id 
+        ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
+        : node
+    ));
+  }, [selectedNode, setNodes]);
+
+  const addConditionGroup = useCallback((group) => {
+    const currentGroups = getCurrentConditionGroups();
+    const newGroups = [...currentGroups, group];
+    updateConditionGroups(newGroups);
+    return newGroups.length - 1; // 返回新群組的索引
+  }, [getCurrentConditionGroups, updateConditionGroups]);
+
+  const updateConditionGroup = useCallback((groupIndex, group) => {
+    const currentGroups = getCurrentConditionGroups();
+    const newGroups = [...currentGroups];
+    newGroups[groupIndex] = group;
+    updateConditionGroups(newGroups);
+  }, [getCurrentConditionGroups, updateConditionGroups]);
+
+  const removeConditionGroup = useCallback((groupIndex) => {
+    const currentGroups = getCurrentConditionGroups();
+    const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
+    updateConditionGroups(newGroups);
+  }, [getCurrentConditionGroups, updateConditionGroups]);
+
+  return {
+    getCurrentConditionGroups,
+    updateConditionGroups,
+    addConditionGroup,
+    updateConditionGroup,
+    removeConditionGroup
+  };
+};
+
 // 變量引用語法處理工具函數
 const processVariableReferences = (text, processVariables) => {
   if (!text || !processVariables) return text;
@@ -210,37 +444,27 @@ const WhatsAppWorkflowDesigner = () => {
     },
   ], [isReady, t]);
   
+  // 節點類型配置
+  const nodeTypeConfigs = [
+    { type: 'start', labelKey: 'workflowDesigner.startNode', fallbackLabel: 'Start', icon: PlayCircleOutlined },
+    { type: 'sendWhatsApp', labelKey: 'workflowDesigner.sendMessageNode', fallbackLabel: 'Send WhatsApp Message', icon: SendOutlined },
+    { type: 'sendWhatsAppTemplate', labelKey: 'workflowDesigner.sendTemplateNode', fallbackLabel: 'Send WhatsApp Template', icon: MessageOutlined },
+    { type: 'waitReply', labelKey: 'workflowDesigner.waitReplyNode', fallbackLabel: 'Wait for User Reply', icon: ClockCircleOutlined },
+    { type: 'waitForQRCode', labelKey: 'workflowDesigner.waitForQRCodeNode', fallbackLabel: 'Wait for QR Code', icon: ClockCircleOutlined },
+    { type: 'switch', labelKey: 'workflowDesigner.switchNode', fallbackLabel: 'Switch', icon: CheckCircleOutlined },
+    { type: 'dbQuery', labelKey: 'workflowDesigner.dbQueryNode', fallbackLabel: 'Database Query/Update', icon: DatabaseOutlined },
+    { type: 'callApi', labelKey: 'workflowDesigner.webhookNode', fallbackLabel: 'Trigger External API', icon: ApiOutlined },
+    { type: 'sendEForm', labelKey: 'workflowDesigner.formNode', fallbackLabel: 'Send eForm', icon: FormOutlined },
+    { type: 'end', labelKey: 'workflowDesigner.endNode', fallbackLabel: 'End', icon: StopOutlined },
+  ];
+
   // 在組件內部定義 nodeTypes，這樣可以使用 t() 函數
   const nodeTypes = useMemo(() => {
-    if (!isReady) {
-      return [
-  { type: 'start', label: 'Start', icon: PlayCircleOutlined },
-  { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
-  { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
-  { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
-  { type: 'waitForQRCode', label: 'Wait for QR Code', icon: ClockCircleOutlined },
-  { type: 'switch', label: 'Switch', icon: CheckCircleOutlined },
-  { type: 'dbQuery', label: 'Database Query/Update', icon: DatabaseOutlined },
-  { type: 'callApi', label: 'Trigger External API', icon: ApiOutlined },
-  { type: 'sendEForm', label: 'Send eForm', icon: FormOutlined },
-
-  { type: 'end', label: 'End', icon: StopOutlined },
-];
-    }
-    
-    return [
-      { type: 'start', label: t('workflowDesigner.startNode'), icon: PlayCircleOutlined },
-      { type: 'sendWhatsApp', label: t('workflowDesigner.sendMessageNode'), icon: SendOutlined },
-      { type: 'sendWhatsAppTemplate', label: t('workflowDesigner.sendTemplateNode'), icon: MessageOutlined },
-      { type: 'waitReply', label: t('workflowDesigner.waitReplyNode'), icon: ClockCircleOutlined },
-      { type: 'waitForQRCode', label: t('workflowDesigner.waitForQRCodeNode'), icon: ClockCircleOutlined },
-      { type: 'switch', label: t('workflowDesigner.switchNode'), icon: CheckCircleOutlined },
-      { type: 'dbQuery', label: t('workflowDesigner.dbQueryNode'), icon: DatabaseOutlined },
-      { type: 'callApi', label: t('workflowDesigner.webhookNode'), icon: ApiOutlined },
-      { type: 'sendEForm', label: t('workflowDesigner.formNode'), icon: FormOutlined },
-
-      { type: 'end', label: t('workflowDesigner.endNode'), icon: StopOutlined },
-    ];
+    return nodeTypeConfigs.map(config => ({
+      type: config.type,
+      label: isReady ? t(config.labelKey) : config.fallbackLabel,
+      icon: config.icon
+    }));
   }, [isReady, t]);
   
   // 調試語言系統 - 只在開發模式下輸出
@@ -309,6 +533,15 @@ const WhatsAppWorkflowDesigner = () => {
   
   const navigate = useNavigate();
   const reactFlowInstanceRef = useRef();
+  
+  // 使用條件群組管理 Hook
+  const {
+    getCurrentConditionGroups,
+    updateConditionGroups,
+    addConditionGroup,
+    updateConditionGroup,
+    removeConditionGroup
+  } = useConditionGroups(selectedNode, nodes, setNodes);
   
   // 工具欄收合切換
   const toggleToolbar = () => {
@@ -426,347 +659,108 @@ const WhatsAppWorkflowDesigner = () => {
     }
   }, [isReady, t]);
   
+  // 創建節點樣式函數
+  const getNodeStyle = (nodeType, selected) => {
+    const baseStyle = { ...NODE_STYLES.default };
+    
+    switch (nodeType) {
+      case 'input':
+      return {
+          ...baseStyle,
+          ...NODE_STYLES.input,
+          ...(selected ? NODE_STYLES.inputSelected : {})
+        };
+      case 'output':
+        return {
+          ...baseStyle,
+          ...NODE_STYLES.output,
+          ...(selected ? NODE_STYLES.outputSelected : {})
+        };
+      default:
+        return {
+          ...baseStyle,
+          ...NODE_STYLES.unselected,
+          ...(selected ? NODE_STYLES.selected : {})
+        };
+    }
+  };
+
   // 在組件內部定義 createNodeTypesObj 函數，這樣可以使用 t() 函數
   const createNodeTypesObj = useCallback((onDelete) => {
-    if (!isReady) {
-      // 語言系統未準備好時使用英文
-      return {
-        default: ({ id, data, selected }) => (
-          <div
-            style={{
-              padding: 12,
-              background: selected ? '#e6f7ff' : '#fff',
-              border: selected ? '2px solid #1890ff' : '1.5px solid #1890ff',
-              borderRadius: 12,
-              minWidth: 120,
-              position: 'relative',
-              boxShadow: selected ? '0 4px 12px rgba(24, 144, 255, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
-              transition: 'all 0.2s ease',
-              cursor: 'grab',
-            }}
-            className="custom-node"
-          >
-            <Handle
-              type="target"
-              position={Position.Top}
-              id="top-target"
-              style={{ 
-                background: '#faad14', 
-                width: 14, 
-                height: 14, 
-                borderRadius: 7, 
-                top: -7, 
-                left: '50%', 
-                opacity: 0.9, 
-                border: '2px solid #fff',
-                cursor: 'crosshair',
-                transform: 'translateX(-50%)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-              }}
-              title="Click to select connection"
-            />
-            
+    const NodeContent = ({ data }) => (
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
               <span>{data.taskName || data.label}</span>
             </div>
-            
-            <Handle
-              type="source"
-              position={Position.Bottom}
-              id="bottom-source"
-              style={{ 
-                background: '#52c41a', 
-                width: 14, 
-                height: 14, 
-                borderRadius: 7, 
-                bottom: -7, 
-                left: '50%', 
-                opacity: 0.9, 
-                border: '2px solid #fff',
-                cursor: 'crosshair',
-                transform: 'translateX(-50%)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-              }}
-              title="Click to select connection"
-            />
-            
-            {selected && data.type !== 'start' && (
-              <button 
-                className="delete-button"
-                style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
-                onClick={() => onDelete(id)}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        ),
-        input: ({ id, data, selected }) => (
-          <div
-            style={{
-                       padding: 12,
-         background: '#f6ffed',
-         border: selected ? '2px solid #52c41a' : '1.5px solid #52c41a',
-         borderRadius: 12,
-         minWidth: 80,
-         position: 'relative',
-         boxShadow: selected ? '0 4px 12px rgba(82, 196, 26, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
-         transition: 'all 0.2s ease',
-         cursor: 'grab',
-            }}
-            className="custom-node"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-              <span>{data.taskName || data.label}</span>
-            </div>
-            <Handle
-              type="source"
-              position={Position.Bottom}
-              id="bottom-source"
-              style={{ 
-                background: '#52c41a', 
-                width: 14, 
-                height: 14, 
-                borderRadius: 7, 
-                bottom: -7, 
-                left: '50%', 
-                opacity: 0.9, 
-                border: '2px solid #fff',
-                cursor: 'crosshair',
-                transform: 'translateX(-50%)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-              }}
-              title="Click to select connection"
-            />
-          </div>
-        ),
-        output: ({ id, data, selected }) => (
-          <div
-            style={{
-                       padding: 12,
-         background: '#fffbe6',
-         border: selected ? '2px solid #faad14' : '1.5px solid #faad14',
-         borderRadius: 12,
-         minWidth: 80,
-         position: 'relative',
-         boxShadow: selected ? '0 4px 12px rgba(250, 173, 20, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
-         transition: 'all 0.2s ease',
-         cursor: 'grab',
-            }}
-            className="custom-node"
-          >
-            <Handle
-              type="target"
-              position={Position.Top}
-              id="top-target"
-              style={{ 
-                background: '#faad14', 
-                width: 14, 
-                height: 14, 
-                borderRadius: 7, 
-                top: -7, 
-                left: '50%', 
-                opacity: 0.9, 
-                border: '2px solid #fff',
-                cursor: 'crosshair',
-                transform: 'translateX(-50%)',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-              }}
-              title="Click to select connection"
-            />
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-              <span>{data.taskName || data.label}</span>
-            </div>
-            
-            {selected && (
-              <button 
-                className="delete-button"
-                style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
-                onClick={() => onDelete(id)}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        ),
-      };
-    }
-    
-      // 語言系統準備好時使用翻譯
+    );
+
   return {
  default: ({ id, data, selected }) => (
    <div
-     style={{
-       padding: 12,
-       background: selected ? '#e6f7ff' : '#fff',
-       border: selected ? '2px solid #1890ff' : '1.5px solid #1890ff',
-       borderRadius: 12,
-       minWidth: 120,
-       position: 'relative',
-       boxShadow: selected ? '0 4px 12px rgba(24, 144, 255, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
-       transition: 'all 0.2s ease',
-       cursor: 'grab',
-     }}
+          style={getNodeStyle('default', selected)}
      className="custom-node"
    >
-      {/* 一般節點 - 上方接入點，下方接出點 */}
-      {/* 上方接入點 - 橙色 */}
-      <Handle
+          <CommonHandle
         type="target"
         position={Position.Top}
         id="top-target"
-        style={{ 
-          background: '#faad14', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          top: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-          title={t('workflowDesigner.clickToSelectConnection')}
-      />
-      
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-        <span>{data.taskName || data.label}</span>
-      </div>
-      
-      {/* 下方接出點 - 綠色 */}
-      <Handle
+            style={{ top: -7, left: '50%' }}
+            t={t}
+          />
+          
+          <NodeContent data={data} />
+          
+          <CommonHandle
         type="source"
         position={Position.Bottom}
         id="bottom-source"
-        style={{ 
-          background: '#52c41a', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          bottom: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-          title={t('workflowDesigner.clickToSelectConnection')}
+            style={{ bottom: -7, left: '50%' }}
+            t={t}
       />
       
       {selected && data.type !== 'start' && (
-          <button 
-            className="delete-button"
-            style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
-            onClick={() => onDelete(id)}
-          >
-            {t('workflowDesigner.delete')}
-          </button>
+            <DeleteButton onClick={() => onDelete(id)} t={t} />
       )}
     </div>
   ),
   input: ({ id, data, selected }) => (
     <div
-      style={{
-                 padding: 12,
-         background: '#f6ffed',
-         border: selected ? '2px solid #52c41a' : '1.5px solid #52c41a',
-         borderRadius: 12,
-         minWidth: 80,
-         position: 'relative',
-         boxShadow: selected ? '0 4px 12px rgba(82, 196, 26, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
-         transition: 'all 0.2s ease',
-         cursor: 'grab',
-      }}
+          style={getNodeStyle('input', selected)}
       className="custom-node"
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-        <span>{data.taskName || data.label}</span>
-      </div>
-      {/* Start 節點 - 只有下方接出點 - 綠色 */}
-      <Handle
+          <NodeContent data={data} />
+          
+          <CommonHandle
         type="source"
         position={Position.Bottom}
         id="bottom-source"
-        style={{ 
-          background: '#52c41a', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          bottom: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-          title={t('workflowDesigner.clickToSelectConnection')}
+            style={{ bottom: -7, left: '50%' }}
+            t={t}
       />
     </div>
   ),
   output: ({ id, data, selected }) => (
     <div
-      style={{
-                 padding: 12,
-         background: '#fffbe6',
-         border: selected ? '2px solid #faad14' : '1.5px solid #faad14',
-         borderRadius: 12,
-         minWidth: 80,
-         position: 'relative',
-         boxShadow: selected ? '0 4px 12px rgba(250, 173, 20, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.1)',
-         transition: 'all 0.2s ease',
-         cursor: 'grab',
-      }}
+          style={getNodeStyle('output', selected)}
       className="custom-node"
     >
-      {/* End 節點 - 只有上方接入點 - 橙色 */}
-      <Handle
+          <CommonHandle
         type="target"
         position={Position.Top}
         id="top-target"
-        style={{ 
-          background: '#faad14', 
-          width: 14, 
-          height: 14, 
-          borderRadius: 7, 
-          top: -7, 
-          left: '50%', 
-          opacity: 0.9, 
-          border: '2px solid #fff',
-          cursor: 'crosshair',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-          title={t('workflowDesigner.clickToSelectConnection')}
-      />
-      
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '14px', color: '#666' } })}
-        <span>{data.taskName || data.label}</span>
-      </div>
+            style={{ top: -7, left: '50%' }}
+            t={t}
+          />
+          
+          <NodeContent data={data} />
       
       {selected && (
-          <button 
-            className="delete-button"
-            style={{ position: 'absolute', top: 2, right: 2, zIndex: 2 }} 
-            onClick={() => onDelete(id)}
-          >
-            {t('workflowDesigner.delete')}
-          </button>
+            <DeleteButton onClick={() => onDelete(id)} t={t} />
       )}
     </div>
   ),
   };
-  }, [isReady, t]);
+  }, [t]);
   
   const handleInit = (instance) => {
     reactFlowInstanceRef.current = instance;
@@ -794,37 +788,23 @@ const WhatsAppWorkflowDesigner = () => {
           setTemplates(result.data);
           console.log('WhatsApp 模板已載入:', result.data);
         } else {
-          console.error(t('workflowDesigner.getTemplatesFailed'), result.message || t('workflowDesigner.unknownError'));
-          // 使用模擬數據作為後備
-          setTemplates([
-            { id: 'template1', name: '歡迎訊息', description: '新用戶歡迎訊息模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-            { id: 'template2', name: '訂單確認', description: '訂單確認通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-            { id: 'template3', name: '活動邀請', description: '活動邀請通知模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-            { id: 'template4', name: '系統通知', description: '系統重要通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-            { id: 'template5', name: '客戶服務', description: '客戶服務回覆模板', category: 'Service', templateType: 'Text', language: 'zh-TW', status: 'Active' }
-          ]);
+          handleApiError(
+            new Error(result.message || t('workflowDesigner.unknownError')),
+            MOCK_DATA.templates,
+            setTemplates,
+            t('workflowDesigner.getTemplatesFailed')
+          );
         }
       } else {
-        console.error(t('workflowDesigner.getTemplatesFailed'), response.statusText);
-        // 使用模擬數據作為後備
-        setTemplates([
-          { id: 'template1', name: '歡迎訊息', description: '新用戶歡迎訊息模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-          { id: 'template2', name: '訂單確認', description: '訂單確認通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-          { id: 'template3', name: '活動邀請', description: '活動邀請通知模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-          { id: 'template4', name: '系統通知', description: '系統重要通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-          { id: 'template5', name: '客戶服務', description: '客戶服務回覆模板', category: 'Service', templateType: 'Text', language: 'zh-TW', status: 'Active' }
-        ]);
+        handleApiError(
+          new Error(response.statusText),
+          MOCK_DATA.templates,
+          setTemplates,
+          t('workflowDesigner.getTemplatesFailed')
+        );
       }
     } catch (error) {
-      console.error('獲取模板列表錯誤:', error);
-      // 使用模擬數據作為後備
-      setTemplates([
-        { id: 'template1', name: '歡迎訊息', description: '新用戶歡迎訊息模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-        { id: 'template2', name: '訂單確認', description: '訂單確認通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-        { id: 'template3', name: '活動邀請', description: '活動邀請通知模板', category: 'Marketing', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-        { id: 'template4', name: '系統通知', description: '系統重要通知模板', category: 'Notification', templateType: 'Text', language: 'zh-TW', status: 'Active' },
-        { id: 'template5', name: '客戶服務', description: '客戶服務回覆模板', category: 'Service', templateType: 'Text', language: 'zh-TW', status: 'Active' }
-        ]);
+      handleApiError(error, MOCK_DATA.templates, setTemplates, '獲取模板列表錯誤');
     }
   };
 
@@ -840,25 +820,15 @@ const WhatsAppWorkflowDesigner = () => {
         const activeUsers = users.filter(user => user.phone && user.isActive);
         setUsers(activeUsers);
       } else {
-        // 如果 API 不存在，使用模擬數據
-        setUsers([
-          { id: 'user1', name: '張三', phone: '85291234567', email: 'zhang@example.com' },
-          { id: 'user2', name: '李四', phone: '85298765432', email: 'li@example.com' },
-          { id: 'user3', name: '王五', phone: '85295556666', email: 'wang@example.com' },
-          { id: 'user4', name: '趙六', phone: '85294448888', email: 'zhao@example.com' },
-          { id: 'user5', name: '錢七', phone: '85293337777', email: 'qian@example.com' }
-        ]);
+        handleApiError(
+          new Error(response.statusText),
+          MOCK_DATA.users,
+          setUsers,
+          '獲取用戶列表失敗'
+        );
       }
     } catch (error) {
-      console.error('獲取用戶列表錯誤:', error);
-      // 使用模擬數據作為後備
-      setUsers([
-        { id: 'user1', name: '張三', phone: '85291234567', email: 'zhang@example.com' },
-        { id: 'user2', name: '李四', phone: '85298765432', email: 'li@example.com' },
-        { id: 'user3', name: '王五', phone: '85295556666', email: 'wang@example.com' },
-        { id: 'user4', name: '趙六', phone: '85294448888', email: 'zhao@example.com' },
-        { id: 'user5', name: '錢七', phone: '85293337777', email: 'qian@example.com' }
-      ]);
+      handleApiError(error, MOCK_DATA.users, setUsers, '獲取用戶列表錯誤');
     }
   };
 
@@ -879,26 +849,15 @@ const WhatsAppWorkflowDesigner = () => {
         forms = forms.filter(form => form.status === 'A' || form.status === 'Active');
         setEforms(forms);
       } else {
-        console.error('獲取 EForm 列表失敗:', response.statusText);
-        // 使用模擬數據作為後備
-        setEforms([
-          { id: 'form1', name: '請假申請表', description: '員工請假申請表單', status: 'A' },
-          { id: 'form2', name: '採購申請表', description: '部門採購申請表單', status: 'A' },
-          { id: 'form3', name: '報銷申請表', description: '員工報銷申請表單', status: 'A' },
-          { id: 'form4', name: '設備申請表', description: 'IT設備申請表單', status: 'A' },
-          { id: 'form5', name: '會議申請表', description: '會議室預約申請表單', status: 'A' }
-        ]);
+        handleApiError(
+          new Error(response.statusText),
+          MOCK_DATA.eforms,
+          setEforms,
+          '獲取 EForm 列表失敗'
+        );
       }
     } catch (error) {
-      console.error('獲取 EForm 列表錯誤:', error);
-      // 使用模擬數據作為後備
-      setEforms([
-        { id: 'form1', name: '請假申請表', description: '員工請假申請表單', status: 'A' },
-        { id: 'form2', name: '採購申請表', description: '部門採購申請表單', status: 'A' },
-        { id: 'form3', name: '報銷申請表', description: '員工報銷申請表單', status: 'A' },
-        { id: 'form4', name: '設備申請表', description: 'IT設備申請表單', status: 'A' },
-        { id: 'form5', name: '會議申請表', description: '會議室預約申請表單', status: 'A' }
-      ]);
+      handleApiError(error, MOCK_DATA.eforms, setEforms, '獲取 EForm 列表錯誤');
     }
   };
 
@@ -1338,6 +1297,13 @@ const WhatsAppWorkflowDesigner = () => {
 
   // 點選節點顯示屬性編輯
   const onNodeClick = (event, node) => {
+    // 單擊時只選中節點，不打開屬性編輯
+    setSelectedNode(node);
+    setSelectedEdge(null);
+  };
+
+  // 雙擊節點顯示屬性編輯
+  const onNodeDoubleClick = (event, node) => {
     setSelectedNode(node);
     setDrawerOpen(true);
     setSelectedEdge(null);
@@ -1939,6 +1905,7 @@ const WhatsAppWorkflowDesigner = () => {
             onDrop={onDrop}
             onDragOver={onDragOver}
             onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
             onEdgeClick={onEdgeClick}
             onEdgeMouseEnter={onEdgeMouseEnter}
             onEdgeMouseLeave={onEdgeMouseLeave}
@@ -2096,40 +2063,11 @@ const WhatsAppWorkflowDesigner = () => {
               {selectedNode.data.type === 'sendWhatsApp' && (
                 <>
                   <Form.Item label={t('workflow.to')}>
-                    <Input 
-                      value={selectedNode.data.to || ''}
-                      placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
-                      readOnly
-                      onClick={() => setIsUserModalVisible(true)}
-                      suffix={
-                        <Space>
-                          {selectedNode.data.to && (
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleNodeDataChange({ to: '' });
-                              }}
-                            >
-                              {t('workflowDesigner.clear')}
-                            </Button>
-                          )}
-                          <Button 
-                            type="text" 
-                            size="small" 
-                            onClick={() => setIsUserModalVisible(true)}
-                          >
-                            {t('workflowDesigner.selectUser')}
-                          </Button>
-                        </Space>
-                      }
-                      style={{
-                        color: selectedNode.data.to ? '#000' : '#999',
-                        backgroundColor: selectedNode.data.to ? '#fff' : '#f5f5f5',
-                        width: '100%',
-                        minWidth: '300px'
-                      }}
+                    <UserSelectInput
+                      value={selectedNode.data.to}
+                      onChange={(value) => handleNodeDataChange({ to: value })}
+                      t={t}
+                      onOpenModal={() => setIsUserModalVisible(true)}
                     />
                   </Form.Item>
                   <Form.Item label={t('workflow.message')} name="message">
@@ -2144,72 +2082,24 @@ const WhatsAppWorkflowDesigner = () => {
                     />
                   </Form.Item>
                   {processVariables && processVariables.length > 0 && (
-                    <Form.Item label={t('workflowDesigner.availableVariables')}>
-                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-                        {t('workflowDesigner.variableSyntaxHelp')}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {processVariables.map(pv => (
-                          <Tag 
-                            key={pv.id} 
-                            style={{ cursor: 'pointer' }}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const currentValue = form.getFieldValue('message') || '';
-                              const newValue = currentValue + `\${${pv.variableName}}`;
-                              // 更新表單值
-                              form.setFieldValue('message', newValue);
-                              // 觸發節點數據更新
-                              handleNodeDataChange({ message: newValue });
-                              console.log('Clicked variable:', pv.variableName, 'New value:', newValue);
-                            }}
-                          >
-                            {pv.variableName} ({pv.dataType})
-                          </Tag>
-                        ))}
-                      </div>
-                    </Form.Item>
+                    <VariableTags
+                      processVariables={processVariables}
+                      form={form}
+                      fieldName="message"
+                      onUpdate={handleNodeDataChange}
+                      t={t}
+                    />
                   )}
                 </>
               )}
               {selectedNode.data.type === 'sendWhatsAppTemplate' && (
                 <>
                   <Form.Item label={t('workflow.to')}>
-                    <Input 
-                      value={selectedNode.data.to || ''}
-                      placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
-                      readOnly
-                      onClick={() => setIsUserModalVisible(true)}
-                      suffix={
-                        <Space>
-                          {selectedNode.data.to && (
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleNodeDataChange({ to: '' });
-                              }}
-                            >
-                              {t('workflowDesigner.clear')}
-                            </Button>
-                          )}
-                          <Button 
-                            type="text" 
-                            size="small" 
-                            onClick={() => setIsUserModalVisible(true)}
-                          >
-                            {t('workflowDesigner.selectUser')}
-                          </Button>
-                        </Space>
-                      }
-                      style={{
-                        color: selectedNode.data.to ? '#000' : '#999',
-                        backgroundColor: selectedNode.data.to ? '#fff' : '#f5f5f5',
-                        width: '100%',
-                        minWidth: '300px'
-                      }}
+                    <UserSelectInput
+                      value={selectedNode.data.to}
+                      onChange={(value) => handleNodeDataChange({ to: value })}
+                      t={t}
+                      onOpenModal={() => setIsUserModalVisible(true)}
                     />
                   </Form.Item>
                   <Form.Item label="模板">
@@ -2242,40 +2132,12 @@ const WhatsAppWorkflowDesigner = () => {
                   
                   {selectedNode.data.replyType === 'specified' && (
                     <Form.Item label={t('workflowDesigner.specifiedPerson')}>
-                      <Input 
-                        value={selectedNode.data.specifiedUsers || ''}
-                        placeholder={t('workflowDesigner.selectSpecifiedPerson')} 
-                        readOnly 
-                        onClick={() => setIsUserModalVisible(true)}
-                        suffix={
-                          <Space>
-                            {selectedNode.data.specifiedUsers && (
-                              <Button 
-                                type="text" 
-                                size="small" 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleNodeDataChange({ specifiedUsers: '' });
-                                }}
-                              >
-                                {t('workflowList.clear')}
-                              </Button>
-                            )}
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              onClick={() => setIsUserModalVisible(true)}
-                            >
-                            {t('workflowDesigner.selectPerson')}
-                            </Button>
-                          </Space>
-                        }
-                        style={{
-                          color: selectedNode.data.specifiedUsers ? '#000' : '#999',
-                          backgroundColor: selectedNode.data.specifiedUsers ? '#fff' : '#f5f5f5',
-                          width: '100%',
-                          minWidth: '300px'
-                        }}
+                      <UserSelectInput
+                        value={selectedNode.data.specifiedUsers}
+                        onChange={(value) => handleNodeDataChange({ specifiedUsers: value })}
+                        t={t}
+                        isSpecified={true}
+                        onOpenModal={() => setIsUserModalVisible(true)}
                       />
                     </Form.Item>
                   )}
@@ -2292,32 +2154,13 @@ const WhatsAppWorkflowDesigner = () => {
                     />
                   </Form.Item>
                   {processVariables && processVariables.length > 0 && (
-                    <Form.Item label={t('workflowDesigner.availableVariables')}>
-                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-                        {t('workflowDesigner.variableSyntaxHelp')}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {processVariables.map(pv => (
-                          <Tag 
-                            key={pv.id} 
-                            style={{ cursor: 'pointer' }}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const currentValue = form.getFieldValue('message') || '';
-                              const newValue = currentValue + `\${${pv.variableName}}`;
-                              // 更新表單值
-                              form.setFieldValue('message', newValue);
-                              // 觸發節點數據更新
-                              handleNodeDataChange({ message: newValue });
-                              console.log('Clicked variable:', pv.variableName, 'New value:', newValue);
-                            }}
-                          >
-                            {pv.variableName} ({pv.dataType})
-                          </Tag>
-                        ))}
-                      </div>
-                    </Form.Item>
+                    <VariableTags
+                      processVariables={processVariables}
+                      form={form}
+                      fieldName="message"
+                      onUpdate={handleNodeDataChange}
+                      t={t}
+                    />
                   )}
                   <Form.Item label={t('workflowDesigner.validationConfig')}>
                     <Card size="small" title={t('workflowDesigner.validationSettings')} style={{ marginBottom: 16 }}>
@@ -2393,32 +2236,13 @@ const WhatsAppWorkflowDesigner = () => {
                     />
                   </Form.Item>
                   {processVariables && processVariables.length > 0 && (
-                    <Form.Item label={t('workflowDesigner.availableVariables')}>
-                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-                        {t('workflowDesigner.variableSyntaxHelp')}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {processVariables.map(pv => (
-                          <Tag 
-                            key={pv.id} 
-                            style={{ cursor: 'pointer' }}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const currentValue = form.getFieldValue('message') || '';
-                              const newValue = currentValue + `\${${pv.variableName}}`;
-                              // 更新表單值
-                              form.setFieldValue('message', newValue);
-                              // 觸發節點數據更新
-                              handleNodeDataChange({ message: newValue });
-                              console.log('Clicked variable:', pv.variableName, 'New value:', newValue);
-                            }}
-                          >
-                            {pv.variableName} ({pv.dataType})
-                          </Tag>
-                        ))}
-                      </div>
-                    </Form.Item>
+                    <VariableTags
+                      processVariables={processVariables}
+                      form={form}
+                      fieldName="message"
+                      onUpdate={handleNodeDataChange}
+                      t={t}
+                    />
                   )}
                   
                   <Form.Item label={t('workflowDesigner.timeout')} name="timeout">
@@ -2453,22 +2277,7 @@ const WhatsAppWorkflowDesigner = () => {
                   })()}
                   <Form.Item label={t('workflowDesigner.conditionGroups')}>
                     <div style={{ marginBottom: '16px' }}>
-                      {(() => {
-                        // 從 nodes 狀態中獲取最新的節點數據
-                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                        const currentConditionGroups = currentNode?.data?.conditionGroups || [];
-                        console.log('Rendering condition groups for switch node:', selectedNode?.id);
-                        console.log('Current condition groups from nodes state:', currentConditionGroups);
-                        console.log('Number of groups:', currentConditionGroups.length);
-                        return null;
-                      })()}
-                      {(() => {
-                        // 從 nodes 狀態中獲取最新的節點數據
-                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                        const currentConditionGroups = currentNode?.data?.conditionGroups || [];
-                        return currentConditionGroups.map((group, groupIndex) => {
-                        console.log(`Rendering group ${groupIndex}:`, group);
-                        return (
+                      {getCurrentConditionGroups().map((group, groupIndex) => (
                         <Card 
                           key={group.id} 
                           size="small" 
@@ -2512,7 +2321,6 @@ const WhatsAppWorkflowDesigner = () => {
                                 icon={<EditOutlined />}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  console.log('Editing condition group:', group, 'at index:', groupIndex);
                                   setEditingConditionGroup({ ...group, groupIndex });
                                   setConditionGroupModalVisible(true);
                                 }}
@@ -2524,22 +2332,13 @@ const WhatsAppWorkflowDesigner = () => {
                                 icon={<DeleteOutlined />}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                                  const currentGroups = currentNode?.data?.conditionGroups || [];
-                                  const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
-                                  setNodes(prev => prev.map(node => 
-                                    node.id === selectedNode?.id 
-                                      ? { ...node, data: { ...node.data, conditionGroups: newGroups } }
-                                      : node
-                                  ));
+                                  removeConditionGroup(groupIndex);
                                 }}
                               />
                             </div>
                           </div>
                         </Card>
-                        );
-                        });
-                      })()}
+                      ))}
                       
                       <Button 
                         type="dashed" 
@@ -2649,40 +2448,11 @@ const WhatsAppWorkflowDesigner = () => {
                   </Form.Item>
                   
                   <Form.Item label={t('workflow.to')}>
-                    <Input 
-                      value={selectedNode.data.to || ''}
-                      placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
-                      readOnly
-                      onClick={() => setIsUserModalVisible(true)}
-                      suffix={
-                        <Space>
-                          {selectedNode.data.to && (
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleNodeDataChange({ to: '' });
-                              }}
-                            >
-                              {t('workflowDesigner.clear')}
-                            </Button>
-                          )}
-                          <Button 
-                            type="text" 
-                            size="small" 
-                            onClick={() => setIsUserModalVisible(true)}
-                          >
-                            {t('workflowDesigner.selectUser')}
-                          </Button>
-                        </Space>
-                      }
-                      style={{
-                        color: selectedNode.data.to ? '#000' : '#999',
-                        backgroundColor: selectedNode.data.to ? '#fff' : '#f5f5f5',
-                        width: '100%',
-                        minWidth: '300px'
-                      }}
+                    <UserSelectInput
+                      value={selectedNode.data.to}
+                      onChange={(value) => handleNodeDataChange({ to: value })}
+                      t={t}
+                      onOpenModal={() => setIsUserModalVisible(true)}
                     />
                   </Form.Item>
                   

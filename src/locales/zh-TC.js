@@ -1086,7 +1086,6 @@ const zhTC = {
     descriptionRequired: '請輸入工作流程描述',
     
     // 按鈕和操作
-    delete: '刪除',
     clear: '清除',
     selectUser: '選擇用戶',
     selectPerson: '選擇人員',
@@ -1095,7 +1094,6 @@ const zhTC = {
     
     // 表單標籤和提示
     taskNameLabel: '任務名稱',
-    taskNamePlaceholder: '輸入任務名稱',
     phoneNumberPlaceholder: '輸入電話號碼 (例如: 85296366318) 或點擊選擇用戶',
     selectSpecifiedPerson: '選擇指定人員',
     waitReplyMessagePlaceholder: '輸入等待用戶回覆時的提示訊息',
@@ -1162,7 +1160,6 @@ const zhTC = {
     
     // 模態框
     selectWhatsAppTemplate: '選擇 WhatsApp 模板',
-    selectUser: '選擇用戶',
     selectEForm: '選擇 e-Form 表單',
     noTemplatesAvailable: '暫無可用的模板，請先創建模板',
     noUsersAvailable: '暫無可用的用戶，請先添加用戶',
@@ -1256,7 +1253,45 @@ const zhTC = {
       initiator: '流程啟動人',
       anyUser: '任何用戶',
       specificUser: '指定用戶'
-    }
+    },
+    
+    // 缺少的翻譯鍵
+    conditionLabel: '條件標籤',
+    conditionLabelPlaceholder: '請輸入條件標籤（可選）',
+    cancel: '取消',
+    add: '添加',
+    selectDefaultPath: '選擇默認路徑',
+    defaultPath: '默認路徑',
+    defaultPathDescription: '當所有條件群組都不滿足時，將執行此默認路徑',
+    conditionValuePlaceholder: '請輸入條件值',
+    
+    // Switch 節點相關翻譯鍵
+    switchConditions: '條件設置',
+    editConditionGroup: '編輯條件群組',
+    groupRelation: '群組關係',
+    groupRelationRequired: '請選擇群組關係',
+    outputPath: '輸出路徑',
+    outputPathRequired: '請選擇輸出路徑',
+    selectOutputPath: '選擇輸出路徑',
+    conditions: '條件',
+    noConditions: '暫無條件',
+    addCondition: '添加條件',
+    update: '更新',
+    editCondition: '編輯條件',
+    selectProcessVariable: '選擇流程變量',
+    selectProcessVariableRequired: '請選擇流程變量',
+    noProcessVariables: '暫無流程變量',
+    noProcessVariablesHint: '請先在流程變量管理中創建流程變量',
+    operator: '運算符',
+    operatorRequired: '請選擇運算符',
+    equals: '等於',
+    notEquals: '不等於',
+    greaterThan: '大於',
+    lessThan: '小於',
+    contains: '包含',
+    isEmpty: '為空',
+    conditionValue: '條件值',
+    conditionValueRequired: '請輸入條件值'
   },
   
   // 流程實例監控
@@ -1468,15 +1503,8 @@ const zhTC = {
     defaultPathDescription: '當所有條件群組都不滿足時，將執行此默認路徑',
     noProcessVariables: '暫無流程變量',
     noProcessVariablesHint: '請先在流程變量管理中創建流程變量',
-    timeout: '超時時間',
-    selectProcessVariable: '選擇流程變量',
-    selectProcessVariableRequired: '請選擇流程變量',
-    qrCodeVariable: 'QR Code 變量',
-    qrCodeMessagePlaceholder: '請輸入等待 QR Code 掃描的提示訊息',
-    seconds: '秒',
-    qrCodeDescription1: '此節點會等待用戶上傳包含 QR Code 的圖片',
-    qrCodeDescription2: '成功掃描後，QR Code 的值將保存到指定的流程變量中',
-    qrCodeDescription3: '然後流程將繼續執行後續節點'
+    timeout: '超時時間'
+    
   },
 
   // 流程變量管理

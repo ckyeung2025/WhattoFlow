@@ -1051,7 +1051,17 @@ const zhSC = {
       initiator: '流程启动人',
       anyUser: '任何用户',
       specificUser: '指定用户'
-    }
+    },
+    
+    // 缺少的翻译键
+    conditionLabel: '条件标签',
+    conditionLabelPlaceholder: '请输入条件标签（可选）',
+    cancel: '取消',
+    add: '添加',
+    selectDefaultPath: '选择默认路径',
+    defaultPath: '默认路径',
+    defaultPathDescription: '当所有条件群组都不满足时，将执行此默认路径',
+    conditionValuePlaceholder: '请输入条件值'
   },
 
   // 工作流列表页面
@@ -1401,6 +1411,501 @@ const zhSC = {
     
     // 管理按钮
     manageProcessVariables: '管理流程变量'
+  },
+
+  // WhatsApp Workflow Designer
+  workflowDesigner: {
+    title: '工作流程设计器',
+    workflowInfo: '工作流程信息',
+    workflowName: '工作流程名称',
+    workflowDescription: '工作流程描述',
+    workflowNamePlaceholder: '请输入工作流程名称',
+    workflowDescriptionPlaceholder: '请输入工作流程描述',
+    nodeTypes: '节点类型',
+    loadingNodeTypes: '加载节点类型中...',
+    nodeConfiguration: '节点配置',
+    connection: '连线',
+    node: '节点',
+    flow: '流程',
+    startNode: '开始节点',
+    endNode: '结束节点',
+    waitReplyNode: '等待回复节点',
+    waitForQRCodeNode: '等待 QR Code 节点',
+    switchNode: '切换节点',
+    sendMessageNode: '发送消息节点',
+    sendTemplateNode: '发送模板节点',
+    conditionNode: '条件节点',
+    formNode: '表单节点',
+    webhookNode: 'Webhook 节点',
+    dbQueryNode: '数据库查询节点',
+    eFormResultNode: '表单结果节点',
+    defaultStartNode: '开始',
+    statusEnabled: '启用',
+    taskName: '任务名称',
+    taskNamePlaceholder: '请输入任务名称',
+    description: '描述',
+    descriptionPlaceholder: '请输入描述（可选）',
+    assignTo: '指定给',
+    assignToPlaceholder: '请选择指定人员',
+    messageContent: '消息内容',
+    messageContentPlaceholder: '请输入消息内容',
+    condition: '条件',
+    conditionPlaceholder: '请输入条件',
+    formSelection: '表单选择',
+    formSelectionPlaceholder: '请选择表单',
+    webhookUrl: 'Webhook URL',
+    webhookUrlPlaceholder: '请输入 Webhook URL',
+    save: '保存',
+    saveSuccess: '工作流程已保存！',
+    saveFailed: '保存失败',
+    validationErrors: '验证错误',
+    validationWarnings: '验证警告',
+    mustHaveStartEnd: '工作流程必须包含开始和结束节点',
+    mustHaveConnection: '请建立节点连线',
+    hasCycle: '发现循环连接',
+    isolatedNode: '发现孤立节点',
+    startNodeNoOutput: '开始节点没有输出连接',
+    endNodeNoInput: '结束节点没有输入连接',
+    cannotConnectToSelf: '不能连接节点到自己',
+    connectionAlreadyExists: '节点之间已经存在连接',
+    workflowValidationFailed: '工作流程验证失败',
+    workflowValidationWarning: '工作流程警告',
+    continueSave: '是否继续保存？',
+    back: '返回',
+    design: '设计',
+    copy: '复制',
+    delete: '删除',
+    confirmDelete: '确定要删除此工作流程吗？',
+    copySuccess: '已复制工作流程',
+    deleteSuccess: '已删除工作流程',
+    deleteFailed: '删除失败',
+    copyFailed: '复制失败',
+    nameRequired: '请输入工作流程名称',
+    descriptionRequired: '请输入工作流程描述',
+    
+    // 按钮和操作
+    clear: '清除',
+    selectUser: '选择用户',
+    selectPerson: '选择人员',
+    selectForm: '选择表单',
+    selectTemplate: '选择模板',
+    
+    // 表单标签和提示
+    taskNameLabel: '任务名称',
+    phoneNumberPlaceholder: '输入电话号码 (例如: 85296366318) 或点击选择用户',
+    selectSpecifiedPerson: '选择指定人员',
+    waitReplyMessagePlaceholder: '输入等待用户回复时的提示消息',
+    selectEFormPlaceholder: '选择要发送的 e-Form',
+    
+    // 节点配置
+    replyType: '回复类型',
+    initiator: '流程启动人',
+    specifiedPerson: '指定人员',
+    promptMessage: '提示消息',
+    validationConfig: '验证配置',
+    validationSettings: '验证设置',
+    enableValidation: '启用验证',
+    yes: '是',
+    no: '否',
+    validatorType: '验证器类型',
+    defaultValidator: '预设验证器',
+    customValidator: '自定义验证器',
+    openaiValidation: 'OpenAI 验证',
+    xaiValidation: 'XAI 验证',
+    promptText: '提示文字',
+    retryMessage: '重试消息',
+    maxRetries: '最大重试次数',
+    
+    // 功能说明
+    waitReplyDescription1: '1. 流程执行到此节点时会暂停等待用户回复',
+    waitReplyDescription2: '2. 只有指定的用户回复才会继续执行流程',
+    waitReplyDescription3: '3. 如果启用验证，会检查用户输入是否符合要求',
+    waitReplyDescription4: '4. 验证失败时会要求用户重新输入',
+    eFormDescription1: '1. 选择要发送的 e-Form 表单',
+    eFormDescription2: '2. 选择接收表单的用户（电话号码）',
+    eFormDescription3: '3. 系统会将表单链接发送给指定用户',
+    eFormDescription4: '4. 用户可以点击链接填写表单',
+    eFormDescription5: '5. 表单提交后会触发后续流程',
+    eFormDescription6: '6. 可设置审批结果变量来记录审批状态（approve/reject/pending）',
+    eFormDescription7: '7. 审批结果可用于后续 Switch 节点进行流程分支',
+    
+    // 审批结果收集
+    approvalResultVariable: '审批结果流程变量',
+    selectApprovalResultVariable: '选择流程变量来记录审批结果',
+    approvalResultInfo: '审批结果信息',
+    approvalResultDescription1: '1. 当表单审批完成时，系统会自动将审批结果写入选定的流程变量',
+    approvalResultDescription2: '2. 审批结果值：approve（已批准）、reject（已拒绝）、pending（待审批）',
+    approvalResultDescription3: '3. 此变量可用于后续 Switch 节点进行流程分支',
+    
+    // 启动方式配置
+    activationConfig: '启动方式配置',
+    activationType: '启动方式',
+    manualActivation: '手动启动',
+    metaWebhookCall: 'Meta Webhook 调用',
+    scheduledTableWatch: '定时监看数据表',
+    watchTable: '监看数据表',
+    queryCondition: '查询条件',
+    checkInterval: '检查间隔 (秒)',
+    
+    // 配置说明
+    metaWebhookConfigTitle: 'Meta Webhook 配置说明',
+    metaWebhookConfig1: '1. 请在公司设置页面配置 Meta Webhook URL',
+    metaWebhookConfig2: '2. 当收到 WhatsApp 消息时，系统会回复菜单让用户选择功能',
+    metaWebhookConfig3: '3. 根据用户选择启动对应的流程',
+    metaWebhookConfig4: '4. 此流程将在用户选择后执行',
+    scheduledWatchTitle: '定时监看说明',
+    scheduledWatchDescription: '此功能正在开发中，将在后续版本中实现',
+    
+    // 模态框
+    selectWhatsAppTemplate: '选择 WhatsApp 模板',
+    selectEForm: '选择 e-Form 表单',
+    noTemplatesAvailable: '暂无可用的模板，请先创建模板',
+    noUsersAvailable: '暂无可用的用户，请先添加用户',
+    noEFormsAvailable: '暂无可用的 e-Form 表单，请先创建表单',
+    
+    // 其他界面元素
+    inDevelopment: '开发中',
+    clickToSelectConnection: '点击选择连接线',
+    template: '模板',
+    templateInfo: '模板信息',
+    templateId: '模板ID：',
+    templateName: '模板名称：',
+    formInfo: '表单信息',
+    formId: '表单ID：',
+    formName: '表单名称：',
+    formDescription: '描述：',
+    
+    // 默认值和提示
+    enterValidContent: '请输入有效内容',
+    inputIncorrectRetry: '输入不正确，请重新输入',
+    dateFormatExample: '例如：请输入请假日期，格式：YYYY-MM-DD',
+    formatExample: '例如：格式不正确，请重新输入，例如：2024-01-15',
+    tableExample: '例如: dbo.SoOrderManage',
+    queryExample: '例如: WHERE status = \'PENDING\' AND created_at > @lastCheckTime',
+    
+    // 默认节点数据
+    defaultStartNode: '开始',
+    defaultEndNode: '结束',
+    defaultSendWhatsAppNode: '发送 WhatsApp 消息',
+    defaultSendTemplateNode: '发送 WhatsApp 模板',
+    defaultWaitReplyNode: '等待用户回复',
+    defaultWaitForQRCodeNode: '等待 QR Code 扫描',
+    defaultQRCodeMessage: '请上传包含 QR Code 的图片',
+    defaultSwitchNode: '条件分支',
+    defaultDbQueryNode: '数据库查询/更新',
+    defaultCallApiNode: '触发外部 API',
+    defaultSendEFormNode: '发送 e-Form',
+    defaultEFormResultNode: 'e-Form 核准/拒绝',
+    
+    // 验证消息
+    defaultReplyMessage: '请输入您的回复',
+    defaultValidationPrompt: '请输入有效内容',
+    defaultRetryMessage: '输入不正确，请重新输入',
+    
+    // 注释说明
+    specifiedUsersComment: '指定人员的电话号码，用逗号分隔',
+    scheduledIntervalComment: '5分钟',
+    
+    // 状态和其他标签
+    statusEnabled: '启用',
+    statusDisabled: '停用',
+    designer: '设计者',
+    functionDescription: '功能说明',
+    
+    // 错误消息
+    saveFailed: '保存失败',
+    updateFailed: '更新失败',
+    createFailed: '创建失败',
+    getTemplatesFailed: '获取模板列表失败',
+    unknownError: '未知错误',
+    
+    // 验证错误消息
+    missingStartNode: '缺少开始节点 (Start)',
+    missingEndNode: '缺少结束节点 (End)',
+    noConnections: '没有连接线',
+    circularConnection: '发现循环连接：节点 "{nodeName}" 参与循环',
+    isolatedNodes: '发现孤立节点：{nodeNames}',
+    startNodeNoOutput: '开始节点 "{nodeName}" 没有输出连接',
+    endNodeNoInput: '结束节点 "{nodeName}" 没有输入连接',
+    
+    // 节点类型说明
+    nodeDescriptions: {
+      start: '流程的开始点，只能有一个',
+      end: '流程的结束点，可以有多个',
+      waitReply: '等待用户回复的节点',
+      sendMessage: '发送消息给用户的节点',
+      condition: '根据条件决定流程方向的节点',
+      form: '显示表单给用户填写的节点',
+      webhook: '调用外部 API 的节点'
+    },
+    // 节点配置说明
+    nodeConfigDescriptions: {
+      waitReply: '1. 流程执行到此节点时会暂停等待用户回复\n2. 只有指定的用户回复才会继续执行流程',
+      sendMessage: '1. 发送消息给用户\n2. 可以包含文字、图片、文件等\n3. 支持变量替换',
+      condition: '1. 根据条件决定下一步流程\n2. 支持多个分支\n3. 可以根据用户输入、时间等条件判断',
+      form: '1. 显示表单给用户填写\n2. 支持多种表单类型\n3. 表单提交后会触发后续流程',
+      webhook: '1. 调用外部 API\n2. 可以发送数据到其他系统\n3. 根据 API 响应决定流程方向'
+    },
+    // 流程启动人选项
+    initiatorOptions: {
+      initiator: '流程启动人',
+      anyUser: '任何用户',
+      specificUser: '指定用户'
+    },
+    
+    // 缺少的翻译键
+    conditionLabel: '条件标签',
+    conditionLabelPlaceholder: '请输入条件标签（可选）',
+    cancel: '取消',
+    add: '添加',
+    selectDefaultPath: '选择默认路径',
+    defaultPath: '默认路径',
+    defaultPathDescription: '当所有条件群组都不满足时，将执行此默认路径',
+    conditionValuePlaceholder: '请输入条件值',
+    selectProcessVariable: '选择流程变量',
+    qrCodeVariable: 'QR Code 变量',
+    qrCodeMessagePlaceholder: '输入提示消息，例如：请上传包含 QR Code 的图片',
+    qrCodeDescription1: '此节点会等待用户上传包含 QR Code 的图片',
+    qrCodeDescription2: '系统会自动扫描图片中的 QR Code 并提取内容',
+    qrCodeDescription3: '扫描结果会保存到指定的流程变量中供后续节点使用',
+    seconds: '秒',
+    messageWithVariablesPlaceholder: '输入消息内容，使用 ${variableName} 引用流程变量',
+    availableVariables: '可用变量',
+    variableSyntaxHelp: '点击变量标签插入到消息中，使用 ${variableName} 语法',
+    switchConditions: '条件设置',
+    equals: '等于',
+    notEquals: '不等于',
+    greaterThan: '大于',
+    lessThan: '小于',
+    contains: '包含',
+    isEmpty: '为空',
+    conditionValue: '条件值',
+    conditionLabel: '条件标签',
+    remove: '移除',
+    addCondition: '添加条件',
+    newCondition: '新条件',
+    defaultPath: '默认路径',
+    defaultPathPlaceholder: '所有条件都不满足时的路径',
+    switchDescription1: '此节点根据流程变量值决定执行路径',
+    switchDescription2: '可设置多个条件，系统会按顺序检查每个条件',
+    switchDescription3: '如果所有条件都不满足，将执行默认路径',
+    timeout: '超时时间',
+    condition1: '条件 1',
+    
+    // Switch 节点新 UI 翻译键
+    conditionGroups: '条件群组',
+    conditionGroup: '条件群组',
+    conditions: '条件',
+    outputPath: '输出路径',
+    selectOutputPath: '选择输出路径',
+    selectDefaultPath: '选择默认路径',
+    addConditionGroup: '添加条件群组',
+    editCondition: '编辑条件',
+    operator: '操作符',
+    operatorRequired: '请选择操作符',
+    selectProcessVariableRequired: '请选择流程变量',
+    noProcessVariables: '暂无可用的流程变量',
+    noProcessVariablesHint: '请先在流程变量管理中创建流程变量',
+    conditionValueRequired: '请输入条件值',
+    conditionValuePlaceholder: '请输入条件值',
+    conditionLabelPlaceholder: '请输入条件标签（可选）',
+    cancel: '取消',
+    update: '更新',
+    add: '添加',
+    
+    // 简化 UI 翻译键
+    clickToSelectDefaultPath: '点击选择默认路径',
+    editConditionGroup: '编辑条件群组',
+    groupRelation: '群组关系',
+    groupRelationRequired: '请选择群组关系',
+    outputPathRequired: '请选择输出路径',
+    noConditions: '暂无条件',
+    defaultPathDescription: '当所有条件群组都不满足时，将执行此默认路径'
+  },
+
+  // Workflow Monitor
+  workflowMonitor: {
+    title: '流程实例监控',
+    overview: '概览',
+    activeInstances: '活跃实例',
+    completedInstances: '已完成实例',
+    failedInstances: '失败实例',
+    totalInstances: '总实例数',
+    runningInstances: '运行中实例',
+    waitingInstances: '等待中实例',
+    errorInstances: '错误实例',
+    
+    // Instance list
+    instanceList: '实例列表',
+    workflowName: '流程名称',
+    instanceId: '实例ID',
+    status: '状态',
+    currentStep: '当前步骤',
+    startedAt: '开始时间',
+    endedAt: '结束时间',
+    duration: '执行时间',
+    createdBy: '创建者',
+    errorMessage: '错误消息',
+    
+    // Status
+    statusRunning: '运行中',
+    statusCompleted: '已完成',
+    statusFailed: '失败',
+    statusWaiting: '等待中',
+    statusPaused: '已暂停',
+    statusCancelled: '已取消',
+    
+    // Actions
+    viewDetails: '查看详情',
+    pause: '暂停',
+    resume: '恢复',
+    cancel: '取消',
+    retry: '重试',
+    viewLogs: '查看日志',
+    
+    // Filters
+    filterAll: '全部',
+    filterRunning: '运行中',
+    filterCompleted: '已完成',
+    filterFailed: '失败',
+    filterWaiting: '等待中',
+    searchPlaceholder: '搜索流程名称、实例ID...',
+    
+    // Instance details
+    instanceDetails: '实例详情',
+    basicInfo: '基本信息',
+    executionHistory: '执行历史',
+    stepDetails: '步骤详情',
+    formInstances: '表单实例',
+    inputData: '输入数据',
+    outputData: '输出数据',
+    
+    // Step details
+    stepIndex: '步骤索引',
+    stepType: '步骤类型',
+    stepStatus: '步骤状态',
+    stepStartedAt: '开始时间',
+    stepEndedAt: '结束时间',
+    stepDuration: '执行时间',
+    stepInput: '输入数据',
+    stepOutput: '输出数据',
+    stepError: '错误消息',
+    
+    // Form instances
+    formName: '表单名称',
+    formStatus: '表单状态',
+    formSubmittedAt: '提交时间',
+    formApprovedAt: '批准时间',
+    formRejectedAt: '拒绝时间',
+    formApprovedBy: '批准者',
+    formRejectedBy: '拒绝者',
+    formApprovalNote: '批准备注',
+    formRejectNote: '拒绝备注',
+    
+    // Statistics
+    statistics: '统计信息',
+    todayInstances: '今日实例',
+    weekInstances: '本周实例',
+    monthInstances: '本月实例',
+    averageExecutionTime: '平均执行时间',
+    successRate: '成功率',
+    errorRate: '错误率',
+    
+    // Action confirmations
+    confirmPause: '确定要暂停此流程实例吗？',
+    confirmResume: '确定要恢复此流程实例吗？',
+    confirmCancel: '确定要取消此流程实例吗？',
+    confirmRetry: '确定要重试此流程实例吗？',
+    
+    // Action results
+    pauseSuccess: '流程实例已暂停',
+    resumeSuccess: '流程实例已恢复',
+    cancelSuccess: '流程实例已取消',
+    retrySuccess: '流程实例重试已开始',
+    operationFailed: '操作失败',
+    
+    // Real-time updates
+    realTimeUpdate: '实时更新',
+    autoRefresh: '自动刷新',
+    refreshInterval: '刷新间隔',
+    lastUpdated: '最后更新',
+    
+    // Export functionality
+    exportData: '导出数据',
+    exportToExcel: '导出到Excel',
+    exportToCsv: '导出到CSV',
+    exportToPdf: '导出到PDF',
+    
+    // Batch operations
+    batchOperations: '批量操作',
+    batchPause: '批量暂停',
+    batchResume: '批量恢复',
+    batchCancel: '批量取消',
+    selectInstances: '选择实例',
+    selectedCount: '已选择 {count} 个实例',
+    
+    // Log viewing
+    executionLogs: '执行日志',
+    logLevel: '日志级别',
+    logTime: '时间',
+    logMessage: '消息',
+    logDetails: '详情',
+    
+    // Performance monitoring
+    performanceMetrics: '性能指标',
+    responseTime: '响应时间',
+    throughput: '吞吐量',
+    resourceUsage: '资源使用',
+    memoryUsage: '内存使用',
+    cpuUsage: 'CPU使用',
+    
+    // Error handling
+    errorHandling: '错误处理',
+    errorCount: '错误数量',
+    errorTrend: '错误趋势',
+    errorDetails: '错误详情',
+    errorResolution: '错误解决',
+    
+    // Notification settings
+    notifications: '通知设置',
+    emailNotifications: '邮件通知',
+    smsNotifications: '短信通知',
+    webhookNotifications: 'Webhook通知',
+    notificationEvents: '通知事件',
+    notifyOnError: '错误时通知',
+    notifyOnCompletion: '完成时通知',
+    notifyOnDelay: '延迟时通知'
+  },
+
+  // Workflow List Page
+  workflowList: {
+    add: '新增',
+    batchDelete: '批量删除',
+    batchEnable: '批量启用',
+    batchDisable: '批量停用',
+    clearFilter: '清除筛选',
+    manualStart: '手动启动',
+    select: '选择',
+    clear: '清除',
+    confirmBatchDelete: '确认批量删除',
+    confirmBatchEnable: '确认批量启用',
+    confirmBatchDisable: '确认批量停用',
+    confirmDelete: '确认删除',
+    cancel: '取消',
+    confirmDeleteSelected: '确定要删除选中的',
+    confirmEnableSelected: '确定要启用选中的',
+    confirmDisableSelected: '确定要停用选中的',
+    workflows: '个流程',
+    cannotBeUndone: '此操作无法撤销！',
+    successfullyDeleted: '已成功删除',
+    successfullyEnabled: '已成功启用',
+    successfullyDisabled: '已成功停用',
+    batchDeleteFailed: '批量删除失败',
+    batchOperationFailed: '批量操作失败',
+    pleaseSelectWorkflows: '请选择要删除的流程',
+    pleaseSelectWorkflowsToOperate: '请选择要操作的流程',
+    workflowStarted: '已成功启动',
+    manualStartMessage: '手动启动的流程'
   }
 };
 
