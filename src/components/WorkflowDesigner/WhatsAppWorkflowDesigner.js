@@ -164,7 +164,7 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     handleSelectTemplate,
     handleSelectUser,
     handleSelectEForm,
-  } = useNodeHandlers(nodeTypes, setNodes, setSelectedNode, selectedNode, handleNodeDataChange);
+  } = useNodeHandlers(nodeTypes, setNodes, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t);
 
   // 使用邊處理 Hook
   const {
