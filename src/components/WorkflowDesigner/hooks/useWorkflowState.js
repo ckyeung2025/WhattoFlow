@@ -108,7 +108,7 @@ export const useWorkflowState = (isNodeSelected) => {
         // 移除 onDoubleClick，使用單擊直接打開屬性視窗
       >
         {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
-        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.label}</div>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
         <Handle
           type="source"
           position={Position.Bottom}
@@ -169,7 +169,7 @@ export const useWorkflowState = (isNodeSelected) => {
         // 移除 onDoubleClick，使用單擊直接打開屬性視窗
       >
         {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
-        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.label}</div>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
         <Handle
           type="target"
           position={Position.Top}
@@ -230,7 +230,7 @@ export const useWorkflowState = (isNodeSelected) => {
         // 移除 onDoubleClick，使用單擊直接打開屬性視窗
       >
         {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
-        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.label}</div>
+        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
         <Handle
           type="target"
           position={Position.Top}

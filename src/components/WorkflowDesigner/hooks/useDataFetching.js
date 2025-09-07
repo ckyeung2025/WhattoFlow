@@ -169,6 +169,7 @@ export const useDataFetching = () => {
                   ...node.data,
                   icon: nodeType ? nodeType.icon : null,
                   label: node.data.label || nodeType?.label || node.data.type,
+                  taskName: node.data.taskName || node.data.label || nodeType?.label || node.data.type, // 確保 taskName 被設置
                   onDelete: node.data.type === 'start' ? null : handleDeleteNode // Start 節點不能刪除，其他節點使用 handleDeleteNode
                 }
               };

@@ -3,8 +3,8 @@ import { message } from 'antd';
 import { useNodeData } from './useNodeData';
 
 // 節點處理函數管理 Hook
-export const useNodeHandlers = (nodeTypes, setNodes, setSelectedNode, selectedNode, handleNodeDataChange) => {
-  const { defaultNodeData } = useNodeData();
+export const useNodeHandlers = (nodeTypes, setNodes, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t) => {
+  const { defaultNodeData } = useNodeData(isReady, t);
   
   // 刪除節點（Start 節點不可刪）
   const handleDeleteNode = useCallback((nodeId) => {

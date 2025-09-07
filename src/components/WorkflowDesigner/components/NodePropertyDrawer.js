@@ -90,10 +90,24 @@ const NodePropertyDrawer = ({
           form={form}
           key={selectedNode.id}
           layout="vertical"
-          onValuesChange={(_, all) => handleNodeDataChange(all)}
+          onValuesChange={(changedValues, allValues) => {
+            // 只更新非 taskName 字段，taskName 使用 onBlur 事件處理
+            const { taskName, ...otherValues } = changedValues;
+            if (Object.keys(otherValues).length > 0) {
+              handleNodeDataChange(otherValues);
+            }
+          }}
         >
           <Form.Item label={t('workflowDesigner.taskNameLabel')} name="taskName">
-            <Input placeholder={t('workflowDesigner.taskNamePlaceholder')} />
+            <Input 
+              placeholder={t('workflowDesigner.taskNamePlaceholder')}
+              onBlur={(e) => {
+                const value = e.target.value;
+                if (value !== selectedNode.data.taskName) {
+                  handleNodeDataChange({ taskName: value });
+                }
+              }}
+            />
           </Form.Item>
           
           {/* 發送 WhatsApp 消息節點 */}
