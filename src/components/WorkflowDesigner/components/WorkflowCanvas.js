@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import ReactFlow, { MiniMap, Controls, Background } from 'react-flow-renderer';
-import { Button } from 'antd';
+import { Button, Tooltip } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
 
 // 定義空的 edgeTypes 對象，避免每次渲染重新創建
 const emptyEdgeTypes = {};
@@ -162,20 +163,28 @@ const WorkflowCanvas = ({
                 transform: 'translate(-50%, -50%)'
               }}
             >
-              <Button
-                danger
-                size="small"
-                onClick={() => onEdgeDelete(selectedEdge.id)}
-                style={{
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                  border: '2px solid #fff',
-                  backgroundColor: '#ff4d4f',
-                  color: '#fff',
-                  fontWeight: 'bold'
-                }}
-              >
-                {t('workflowDesigner.delete')}
-              </Button>
+              <Tooltip title={t('workflowDesigner.delete')} placement="top">
+                <Button
+                  danger
+                  size="small"
+                  onClick={() => onEdgeDelete(selectedEdge.id)}
+                  icon={<DeleteOutlined />}
+                  style={{
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    border: '2px solid #fff',
+                    backgroundColor: '#ff4d4f',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0'
+                  }}
+                />
+              </Tooltip>
             </div>
           );
         })()}
