@@ -1,5 +1,5 @@
 import React from 'react';
-import { Handle, Position } from 'react-flow-renderer';
+import { Handle, Position } from '@xyflow/react';
 import { NODE_STYLES } from '../constants';
 import CommonHandle from './CommonHandle';
 import DeleteButton from './DeleteButton';

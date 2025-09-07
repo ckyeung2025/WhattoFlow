@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { addEdge } from 'react-flow-renderer';
+import { addEdge } from '@xyflow/react';
 import { notification } from 'antd';
 
 // 邊處理函數管理 Hook

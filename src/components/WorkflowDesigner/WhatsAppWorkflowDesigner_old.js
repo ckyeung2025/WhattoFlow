@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
-import ReactFlow, {
-  MiniMap, Controls, Background, addEdge, useNodesState, useEdgesState, Handle, Position, useReactFlow, getBezierPath
-} from 'react-flow-renderer';
+import {
+  ReactFlow, MiniMap, Controls, Background, addEdge, useNodesState, useEdgesState, Handle, Position, useReactFlow, getBezierPath
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { Button, Drawer, Form, Input, Select, message, Tooltip, Modal, Card, Tag, Space, Typography, Table, Popconfirm } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined, MessageOutlined, SendOutlined, ClockCircleOutlined, DatabaseOutlined, ApiOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined, UpOutlined, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useSearchParams, useNavigate } from 'react-router-dom';

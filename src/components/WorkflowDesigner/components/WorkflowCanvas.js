@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import ReactFlow, { MiniMap, Controls, Background } from 'react-flow-renderer';
+import { ReactFlow, MiniMap, Controls, Background } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { Button, Tooltip } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 

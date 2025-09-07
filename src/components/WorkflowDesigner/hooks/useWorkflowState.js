@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { useNodesState, useEdgesState, Handle, Position } from 'react-flow-renderer';
+import { useNodesState, useEdgesState, Handle, Position } from '@xyflow/react';
 import { Form, Tooltip } from 'antd';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { 
