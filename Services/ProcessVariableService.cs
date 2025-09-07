@@ -136,7 +136,28 @@ namespace PurpleRice.Services
                 existing.UpdatedAt = DateTime.UtcNow;
                 existing.UpdatedBy = definition.UpdatedBy;
 
-                await _context.SaveChangesAsync();
+                // 使用事務來處理數據庫觸發器問題
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                catch (Exception ex) when (ex.Message.Contains("database triggers"))
+                {
+                    await transaction.RollbackAsync();
+                    // 嘗試使用原始 SQL 更新
+                    await _context.Database.ExecuteSqlRawAsync(@"
+                        UPDATE process_variable_definitions 
+                        SET variable_name = {0}, display_name = {1}, data_type = {2}, 
+                            description = {3}, is_required = {4}, default_value = {5}, 
+                            validation_rules = {6}, json_schema = {7}, updated_at = {8}, updated_by = {9}
+                        WHERE id = {10}",
+                        existing.VariableName, existing.DisplayName, existing.DataType,
+                        existing.Description, existing.IsRequired, existing.DefaultValue,
+                        existing.ValidationRules, existing.JsonSchema, existing.UpdatedAt, existing.UpdatedBy,
+                        existing.Id);
+                }
 
                 _loggingService.LogInformation($"更新流程變量定義成功: {definition.VariableName}");
                 return existing;
@@ -160,8 +181,21 @@ namespace PurpleRice.Services
                     return false;
                 }
 
-                _context.ProcessVariableDefinitions.Remove(definition);
-                await _context.SaveChangesAsync();
+                // 使用事務來處理數據庫觸發器問題
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    _context.ProcessVariableDefinitions.Remove(definition);
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                catch (Exception ex) when (ex.Message.Contains("database triggers"))
+                {
+                    await transaction.RollbackAsync();
+                    // 嘗試使用原始 SQL 刪除
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "DELETE FROM process_variable_definitions WHERE id = {0}", id);
+                }
 
                 _loggingService.LogInformation($"刪除流程變量定義成功: {definition.VariableName}");
                 return true;

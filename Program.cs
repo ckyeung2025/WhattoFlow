@@ -5,6 +5,7 @@ using System.Text;
 using PurpleRice.Data;
 using PurpleRice.Services;
 using PurpleRice.Models;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 
 var builder = WebApplication.CreateBuilder(args);

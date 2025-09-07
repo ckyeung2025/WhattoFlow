@@ -1061,7 +1061,22 @@ const zhSC = {
     selectDefaultPath: '选择默认路径',
     defaultPath: '默认路径',
     defaultPathDescription: '当所有条件群组都不满足时，将执行此默认路径',
-    conditionValuePlaceholder: '请输入条件值'
+    conditionValuePlaceholder: '请输入条件值',
+    
+    // 高级功能翻译键
+    copyNodes: '复制节点',
+    pasteNodes: '粘贴节点',
+    align: '对齐',
+    alignNodes: '对齐节点',
+    alignLeft: '左对齐',
+    alignCenter: '居中对齐',
+    alignRight: '右对齐',
+    alignTop: '顶部对齐',
+    alignMiddle: '垂直居中',
+    alignBottom: '底部对齐',
+    
+    // 节点类型标签
+    sendEFormNode: '发送 e-Form'
   },
 
   // 工作流列表页面
@@ -1433,6 +1448,7 @@ const zhSC = {
     waitForQRCodeNode: '等待 QR Code 节点',
     switchNode: '切换节点',
     sendMessageNode: '发送消息节点',
+    sendWhatsAppNode: '发送 WhatsApp 节点',
     sendTemplateNode: '发送模板节点',
     conditionNode: '条件节点',
     formNode: '表单节点',
@@ -1442,7 +1458,14 @@ const zhSC = {
     defaultStartNode: '开始',
     statusEnabled: '启用',
     taskName: '任务名称',
+    taskNameLabel: '任务名称',
     taskNamePlaceholder: '请输入任务名称',
+    phoneNumberPlaceholder: '请输入手机号码',
+    clear: '清除',
+    selectUser: '选择用户',
+    messageWithVariablesPlaceholder: '请输入消息内容，可使用变量如 {变量名}',
+    availableVariables: '可用变量',
+    variableSyntaxHelp: '使用 {变量名} 语法来插入变量',
     description: '描述',
     descriptionPlaceholder: '请输入描述（可选）',
     assignTo: '指定给',
@@ -1720,7 +1743,22 @@ const zhSC = {
     groupRelationRequired: '请选择群组关系',
     outputPathRequired: '请选择输出路径',
     noConditions: '暂无条件',
-    defaultPathDescription: '当所有条件群组都不满足时，将执行此默认路径'
+    defaultPathDescription: '当所有条件群组都不满足时，将执行此默认路径',
+    
+    // 高级功能翻译键
+    copyNodes: '复制节点',
+    pasteNodes: '粘贴节点',
+    align: '对齐',
+    alignNodes: '对齐节点',
+    alignLeft: '左对齐',
+    alignCenter: '居中对齐',
+    alignRight: '右对齐',
+    alignTop: '顶部对齐',
+    alignMiddle: '垂直居中',
+    alignBottom: '底部对齐',
+    
+    // 节点类型标签
+    sendEFormNode: '发送 e-Form'
   },
 
   // Workflow Monitor
