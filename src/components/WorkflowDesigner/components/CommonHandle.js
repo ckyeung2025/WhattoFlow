@@ -1,5 +1,5 @@
 import React from 'react';
-import { Handle, Position } from 'react-flow-renderer';
+import { Handle, Position } from '@xyflow/react';
 import { HANDLE_STYLES } from '../constants';
 
 // 通用連接點組件
