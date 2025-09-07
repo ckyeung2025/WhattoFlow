@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useNodesState, useEdgesState, Handle, Position } from 'react-flow-renderer';
-import { Form } from 'antd';
+import { Form, Tooltip } from 'antd';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { 
   PlayCircleOutlined, 
@@ -11,7 +11,8 @@ import {
   DatabaseOutlined, 
   ApiOutlined, 
   FormOutlined, 
-  StopOutlined 
+  StopOutlined,
+  DeleteOutlined 
 } from '@ant-design/icons';
 
 // 工作流程狀態管理 Hook
@@ -95,8 +96,7 @@ export const useWorkflowState = (isNodeSelected) => {
           border: selected || isMultiSelected ? '2px solid #52c41a' : '2px solid #52c41a',
           outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
           outlineOffset: selected || isMultiSelected ? '2px' : '0px',
-          transition: 'box-shadow 0.2s',
-          overflow: 'hidden'
+          transition: 'box-shadow 0.2s'
         }}
         onMouseDown={(e) => {
           console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
@@ -156,8 +156,7 @@ export const useWorkflowState = (isNodeSelected) => {
           border: selected || isMultiSelected ? '2px solid #ff4d4f' : '2px solid #ff4d4f',
           outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
           outlineOffset: selected || isMultiSelected ? '2px' : '0px',
-          transition: 'box-shadow 0.2s',
-          overflow: 'hidden'
+          transition: 'box-shadow 0.2s'
         }}
         onMouseDown={(e) => {
           console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
@@ -190,6 +189,39 @@ export const useWorkflowState = (isNodeSelected) => {
           title="Click to select connection"
         />
         
+        {selected && (
+          <Tooltip title={t('workflowDesigner.delete')} placement="top">
+            <button 
+              style={{ 
+                position: 'absolute', 
+                top: -8, 
+                right: -8, 
+                zIndex: 1000,
+                background: '#ff4d4f',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: 24,
+                height: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                padding: '0'
+              }} 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (data.onDelete) {
+                  data.onDelete(id);
+                }
+              }}
+            >
+              <DeleteOutlined style={{ fontSize: '12px' }} />
+            </button>
+          </Tooltip>
+        )}
+        
         {/* 移除 resize 手柄 */}
       </div>
       );
@@ -217,8 +249,7 @@ export const useWorkflowState = (isNodeSelected) => {
           border: selected || isMultiSelected ? '2px solid #1890ff' : '2px solid #1890ff',
           outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
           outlineOffset: selected || isMultiSelected ? '2px' : '0px',
-          transition: 'box-shadow 0.2s',
-          overflow: 'hidden'
+          transition: 'box-shadow 0.2s'
         }}
         onMouseDown={(e) => {
           console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
@@ -270,30 +301,36 @@ export const useWorkflowState = (isNodeSelected) => {
           title="Click to select connection"
         />
         {selected && data.type !== 'start' && (
-          <button 
-            style={{ 
-              position: 'absolute', 
-              top: 2, 
-              right: 2, 
-              zIndex: 2,
-              background: '#ff4d4f',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '2px 6px',
-              fontSize: '10px',
-              cursor: 'pointer',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-            }} 
-            onClick={(e) => {
-              e.stopPropagation();
-              if (data.onDelete) {
-                data.onDelete(id);
-              }
-            }}
-          >
-            刪除
-          </button>
+          <Tooltip title={t('workflowDesigner.delete')} placement="top">
+            <button 
+              style={{ 
+                position: 'absolute', 
+                top: -8, 
+                right: -8, 
+                zIndex: 1000,
+                background: '#ff4d4f',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: 24,
+                height: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                padding: '0'
+              }} 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (data.onDelete) {
+                  data.onDelete(id);
+                }
+              }}
+            >
+              <DeleteOutlined style={{ fontSize: '12px' }} />
+            </button>
+          </Tooltip>
         )}
         
         {/* 移除 resize 手柄 */}
