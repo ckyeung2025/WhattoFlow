@@ -693,6 +693,7 @@ const en = {
     waitForQRCodeNode: 'Wait for QR Code Node',
     switchNode: 'Switch Node',
     sendMessageNode: 'Send Message Node',
+    sendWhatsAppNode: 'Send WhatsApp Node',
     sendTemplateNode: 'Send Template Node',
     conditionNode: 'Condition Node',
     formNode: 'Form Node',
@@ -702,7 +703,14 @@ const en = {
     defaultStartNode: 'Start',
     statusEnabled: 'Enabled',
     taskName: 'Task Name',
+    taskNameLabel: 'Task Name',
     taskNamePlaceholder: 'Please enter task name',
+    phoneNumberPlaceholder: 'Please enter phone number',
+    clear: 'Clear',
+    selectUser: 'Select User',
+    messageWithVariablesPlaceholder: 'Please enter message content, you can use variables like {variableName}',
+    availableVariables: 'Available Variables',
+    variableSyntaxHelp: 'Use {variableName} syntax to insert variables',
     description: 'Description',
     descriptionPlaceholder: 'Please enter description (optional)',
     assignTo: 'Assign To',
@@ -984,6 +992,21 @@ const en = {
     outputPathRequired: 'Please select output path',
     noConditions: 'No conditions',
     defaultPathDescription: 'When all condition groups are not met, this default path will be executed',
+    
+    // Advanced features translation keys
+    copyNodes: 'Copy Nodes',
+    pasteNodes: 'Paste Nodes',
+    align: 'Align',
+    alignNodes: 'Align Nodes',
+    alignLeft: 'Align Left',
+    alignCenter: 'Align Center',
+    alignRight: 'Align Right',
+    alignTop: 'Align Top',
+    alignMiddle: 'Align Middle',
+    alignBottom: 'Align Bottom',
+    
+    // Node type labels
+    sendEFormNode: 'Send eForm',
     
   },
   

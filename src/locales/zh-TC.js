@@ -1037,6 +1037,7 @@ const zhTC = {
     waitForQRCodeNode: '等待 QR Code 掃描',
     switchNode: '條件分支節點',
     sendMessageNode: '發送訊息節點',
+    sendWhatsAppNode: '發送 WhatsApp 節點',
     sendTemplateNode: '發送模板節點',
     conditionNode: '條件節點',
     formNode: '表單節點',
@@ -1044,7 +1045,14 @@ const zhTC = {
     dbQueryNode: '資料庫查詢節點',
     eFormResultNode: '表單結果節點',
     taskName: '任務名稱',
+    taskNameLabel: '任務名稱',
     taskNamePlaceholder: '請輸入任務名稱',
+    phoneNumberPlaceholder: '請輸入手機號碼',
+    clear: '清除',
+    selectUser: '選擇用戶',
+    messageWithVariablesPlaceholder: '請輸入訊息內容，可使用變量如 {變量名}',
+    availableVariables: '可用變量',
+    variableSyntaxHelp: '使用 {變量名} 語法來插入變量',
     description: '描述',
     descriptionPlaceholder: '請輸入描述（可選）',
     assignTo: '指定給',
@@ -1086,8 +1094,6 @@ const zhTC = {
     descriptionRequired: '請輸入工作流程描述',
     
     // 按鈕和操作
-    clear: '清除',
-    selectUser: '選擇用戶',
     selectPerson: '選擇人員',
     selectForm: '選擇表單',
     selectTemplate: '選擇模板',
@@ -1264,6 +1270,22 @@ const zhTC = {
     defaultPath: '默認路徑',
     defaultPathDescription: '當所有條件群組都不滿足時，將執行此默認路徑',
     conditionValuePlaceholder: '請輸入條件值',
+    
+    // 新增的高級功能翻譯鍵
+    copyNodes: '複製節點',
+    pasteNodes: '貼上節點',
+    paste: '貼上',
+    align: '對齊',
+    alignNodes: '對齊節點',
+    alignLeft: '左對齊',
+    alignCenter: '居中對齊',
+    alignRight: '右對齊',
+    alignTop: '頂部對齊',
+    alignMiddle: '垂直居中',
+    alignBottom: '底部對齊',
+    
+    // 節點類型標籤
+    sendEFormNode: '發送 e-Form',
     
     // Switch 節點相關翻譯鍵
     switchConditions: '條件設置',
@@ -1446,7 +1468,6 @@ const zhTC = {
     notifyOnError: '錯誤時通知',
     notifyOnCompletion: '完成時通知',
     notifyOnDelay: '延遲時通知',
-    selectProcessVariable: '選擇流程變量',
     qrCodeVariable: 'QR Code 變量',
     qrCodeMessagePlaceholder: '請輸入提示訊息，例如：請上傳包含 QR Code 的圖片',
     qrCodeDescription1: '此節點會等待用戶上傳包含 QR Code 的圖片',
@@ -1466,7 +1487,6 @@ const zhTC = {
     conditionValue: '條件值',
     conditionLabel: '條件標籤',
     remove: '移除',
-    addCondition: '添加條件',
     newCondition: '新條件',
     defaultPath: '默認路徑',
     defaultPathPlaceholder: '當所有條件都不滿足時的路徑',
@@ -1477,12 +1497,8 @@ const zhTC = {
     // Switch 節點新 UI 翻譯鍵
     conditionGroups: '條件群組',
     conditionGroup: '條件群組',
-    conditions: '條件',
-    outputPath: '輸出路徑',
-    selectOutputPath: '選擇輸出路徑',
     selectDefaultPath: '選擇默認路徑',
     addConditionGroup: '添加條件群組',
-    editCondition: '編輯條件',
     operator: '運算符',
     operatorRequired: '請選擇運算符',
     selectProcessVariableRequired: '請選擇流程變量',
@@ -1490,8 +1506,6 @@ const zhTC = {
     conditionValuePlaceholder: '請輸入條件值',
     conditionLabelPlaceholder: '請輸入條件標籤（可選）',
     cancel: '取消',
-    update: '更新',
-    add: '添加',
     
     // 簡化 UI 翻譯鍵
     clickToSelectDefaultPath: '點擊選擇默認路徑',
@@ -1499,12 +1513,10 @@ const zhTC = {
     groupRelation: '群組關係',
     groupRelationRequired: '請選擇群組關係',
     outputPathRequired: '請選擇輸出路徑',
-    noConditions: '暫無條件',
     defaultPathDescription: '當所有條件群組都不滿足時，將執行此默認路徑',
     noProcessVariables: '暫無流程變量',
     noProcessVariablesHint: '請先在流程變量管理中創建流程變量',
     timeout: '超時時間'
-    
   },
 
   // 流程變量管理

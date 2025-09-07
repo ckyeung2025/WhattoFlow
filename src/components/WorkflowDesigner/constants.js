@@ -1,0 +1,217 @@
+// 節點樣式配置
+export const NODE_STYLES = {
+  default: {
+    padding: 8,
+    background: '#fff',
+    border: '1.5px solid #1890ff',
+    borderRadius: 6,
+    minWidth: 140,
+    position: 'relative',
+    boxShadow: '0 1px 4px #0001',
+    transition: 'box-shadow 0.2s',
+  },
+  input: {
+    padding: 8,
+    background: '#f6ffed',
+    border: '2px solid #52c41a',
+    borderRadius: 6,
+    minWidth: 100,
+    position: 'relative',
+    boxShadow: '0 1px 4px #0001',
+    transition: 'box-shadow 0.2s',
+  },
+  output: {
+    padding: 8,
+    background: '#fffbe6',
+    border: '2px solid #faad14',
+    borderRadius: 6,
+    minWidth: 100,
+    position: 'relative',
+    boxShadow: '0 1px 4px #0001',
+    transition: 'box-shadow 0.2s',
+  },
+  selected: {
+    background: '#e6f7ff',
+    boxShadow: '0 0 8px #1890ff55',
+  },
+  inputSelected: {
+    background: '#f6ffed',
+    boxShadow: '0 0 8px #52c41a88',
+  },
+  outputSelected: {
+    background: '#fffbe6',
+    boxShadow: '0 0 8px #faad1488',
+  },
+  unselected: {
+    background: '#fff',
+  },
+};
+
+// 連接點樣式
+export const HANDLE_STYLES = {
+  source: {
+    background: '#52c41a',
+    border: '2px solid #389e0d',
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+  },
+  target: {
+    background: '#1890ff',
+    border: '2px solid #096dd9',
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+  },
+};
+
+// 刪除按鈕樣式
+export const DELETE_BUTTON_STYLES = {
+  position: 'absolute',
+  top: -8,
+  right: -8,
+  background: '#ff4d4f',
+  border: 'none',
+  borderRadius: '50%',
+  width: 24,
+  height: 24,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+  zIndex: 1000,
+  fontSize: '12px',
+  color: '#fff',
+  fontWeight: 'bold',
+  padding: '0',
+  minWidth: '50px',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+};
+
+// 模擬數據
+export const MOCK_DATA = {
+  templates: [
+    { id: 1, name: '歡迎訊息', content: '歡迎使用我們的服務！' },
+    { id: 2, name: '確認通知', content: '您的訂單已確認' },
+    { id: 3, name: '提醒訊息', content: '請記得完成您的任務' },
+  ],
+  users: [
+    { id: 1, name: '張三', phone: '+85212345678', email: 'zhang@example.com' },
+    { id: 2, name: '李四', phone: '+85287654321', email: 'li@example.com' },
+    { id: 3, name: '王五', phone: '+85211223344', email: 'wang@example.com' },
+  ],
+  eforms: [
+    { id: 1, name: '客戶資料表', description: '收集客戶基本資料', fields: ['姓名', '電話', '地址'] },
+    { id: 2, name: '意見回饋表', description: '收集用戶意見', fields: ['評分', '建議', '聯絡方式'] },
+    { id: 3, name: '申請表', description: '處理各種申請', fields: ['申請類型', '申請人', '申請內容'] },
+  ],
+};
+
+// 節點類型配置
+export const NODE_TYPE_CONFIGS = [
+  {
+    type: 'start',
+    labelKey: 'workflowDesigner.startNode',
+    fallbackLabel: 'Start',
+    icon: 'PlayCircleOutlined',
+    category: 'Control',
+    description: '工作流程開始節點',
+    isImplemented: true,
+    hasExecution: false,
+  },
+  {
+    type: 'sendWhatsApp',
+    labelKey: 'workflowDesigner.sendMessageNode',
+    fallbackLabel: 'Send WhatsApp Message',
+    icon: 'SendOutlined',
+    category: 'Communication',
+    description: '發送 WhatsApp 訊息',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'sendWhatsAppTemplate',
+    labelKey: 'workflowDesigner.sendTemplateNode',
+    fallbackLabel: 'Send WhatsApp Template',
+    icon: 'MessageOutlined',
+    category: 'Communication',
+    description: '發送 WhatsApp 模板訊息',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'waitReply',
+    labelKey: 'workflowDesigner.waitReplyNode',
+    fallbackLabel: 'Wait for User Reply',
+    icon: 'ClockCircleOutlined',
+    category: 'Control',
+    description: '等待用戶回覆',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'waitForQRCode',
+    labelKey: 'workflowDesigner.waitForQRCodeNode',
+    fallbackLabel: 'Wait for QR Code',
+    icon: 'ClockCircleOutlined',
+    category: 'Control',
+    description: '等待 QR Code 掃描',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'switch',
+    labelKey: 'workflowDesigner.switchNode',
+    fallbackLabel: 'Switch',
+    icon: 'CheckCircleOutlined',
+    category: 'Control',
+    description: '條件分支節點',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'dbQuery',
+    labelKey: 'workflowDesigner.dbQueryNode',
+    fallbackLabel: 'Database Query/Update',
+    icon: 'DatabaseOutlined',
+    category: 'Data',
+    description: '資料庫查詢或更新',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'callApi',
+    labelKey: 'workflowDesigner.callApiNode',
+    fallbackLabel: 'Trigger External API',
+    icon: 'ApiOutlined',
+    category: 'Integration',
+    description: '調用外部 API',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'sendEForm',
+    labelKey: 'workflowDesigner.sendEFormNode',
+    fallbackLabel: 'Send eForm',
+    icon: 'FormOutlined',
+    category: 'Form',
+    description: '發送電子表單',
+    isImplemented: true,
+    hasExecution: true,
+  },
+  {
+    type: 'end',
+    labelKey: 'workflowDesigner.endNode',
+    fallbackLabel: 'End',
+    icon: 'StopOutlined',
+    category: 'Control',
+    description: '工作流程結束節點',
+    isImplemented: true,
+    hasExecution: false,
+  },
+];
+
