@@ -313,7 +313,7 @@ namespace PurpleRice.Services
         {
                     WriteLog($"流程狀態為 {execution.Status}，使用等待用戶回覆邏輯");
                     
-                    var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply");
+                    var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply" || n.Data?.Type == "waitForQRCode" || n.Data?.Type == "waitforqrcode");
                     if (waitNode == null)
                     {
                         WriteLog($"錯誤: 找不到等待節點");
@@ -456,6 +456,10 @@ namespace PurpleRice.Services
                 case "waitReply":
                 case "waitForUserReply":
                     return await ExecuteWaitReply(nodeData, stepExec, execution, userId);
+
+                case "waitForQRCode":
+                case "waitforqrcode":
+                    return await ExecuteWaitForQRCode(nodeData, stepExec, execution, userId);
 
                 case "sendEForm":
                 case "sendeform":
@@ -729,6 +733,57 @@ namespace PurpleRice.Services
             }
             
             WriteLog($"等待節點設置完成，流程暫停等待用戶回覆");
+            return false; // 返回 false 表示暫停執行
+        }
+
+        // 執行 waitForQRCode 節點
+        private async Task<bool> ExecuteWaitForQRCode(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution, string userId)
+        {
+            WriteLog($"=== 執行 waitForQRCode 節點 ===");
+            WriteLog($"QR Code 變量: {nodeData.QrCodeVariable}");
+            WriteLog($"提示訊息: {nodeData.Message}");
+            WriteLog($"成功訊息: {nodeData.QrCodeSuccessMessage}");
+            WriteLog($"錯誤訊息: {nodeData.QrCodeErrorMessage}");
+            WriteLog($"超時時間: {nodeData.Timeout} 秒");
+            
+            // 設置等待狀態
+            execution.Status = "WaitingForQRCode";
+            execution.IsWaiting = true;
+            execution.WaitingSince = DateTime.Now;
+            execution.WaitingForUser = userId ?? "85296366318";
+            execution.LastUserActivity = DateTime.Now;
+            execution.CurrentStep = stepExec.StepIndex;
+            
+            stepExec.Status = "Waiting";
+            stepExec.IsWaiting = true;
+            stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                message = "Waiting for QR Code upload",
+                qrCodeVariable = nodeData.QrCodeVariable,
+                timeout = nodeData.Timeout,
+                waitingSince = DateTime.Now,
+                waitingForUser = execution.WaitingForUser
+            });
+            
+            // 保存狀態
+            await SaveExecution(execution);
+            await SaveStepExecution(stepExec);
+            
+            // 發送提示消息
+            if (!string.IsNullOrEmpty(nodeData.Message))
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                
+                var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
+                if (company != null)
+                {
+                    var waId = nodeData.To ?? userId ?? "85296366318";
+                    await _whatsAppWorkflowService.SendWhatsAppMessageAsync(waId, nodeData.Message, execution, db);
+                    WriteLog($"成功發送 QR Code 等待提示訊息: '{nodeData.Message}' 到用戶: {waId}");
+                }
+            }
+            
+            WriteLog($"QR Code 等待節點設置完成，流程暫停等待 QR Code 上傳");
             return false; // 返回 false 表示暫停執行
         }
 
@@ -1264,6 +1319,12 @@ namespace PurpleRice.Services
         
         [System.Text.Json.Serialization.JsonPropertyName("timeout")]
         public int? Timeout { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessage")]
+        public string QrCodeSuccessMessage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessage")]
+        public string QrCodeErrorMessage { get; set; }
         
         // e-Form 節點相關屬性
         [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]

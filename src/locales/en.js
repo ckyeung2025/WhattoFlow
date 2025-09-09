@@ -957,6 +957,8 @@ const en = {
     qrCodeDescription1: 'This node will wait for user to upload an image containing QR Code',
     qrCodeDescription2: 'System will automatically scan the QR Code in the image and extract content',
     qrCodeDescription3: 'Scan result will be saved to the specified process variable for use by subsequent nodes',
+    qrCodeSuccessMessage: 'QR Code Success Message',
+    qrCodeErrorMessage: 'QR Code Error Message',
     seconds: 'seconds',
     messageWithVariablesPlaceholder: 'Enter message content, use ${variableName} to reference process variables',
     availableVariables: 'Available Variables',

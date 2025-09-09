@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -82,6 +83,7 @@ namespace PurpleRice.Services
             try
             {
                 var execution = await _context.WorkflowExecutions
+                    .Include(e => e.WorkflowDefinition)
                     .FirstOrDefaultAsync(e => e.Id == executionId);
 
                 if (execution == null)
@@ -90,9 +92,10 @@ namespace PurpleRice.Services
                     return false;
                 }
 
-                if (execution.Status != "Running")
+                // 檢查是否在等待 QR Code 狀態
+                if (execution.Status != "WaitingForQRCode" && execution.Status != "Running")
                 {
-                    _logger.LogWarning("Workflow execution is not running: {ExecutionId}, Status: {Status}", executionId, execution.Status);
+                    _logger.LogWarning("Workflow execution is not in correct status: {ExecutionId}, Status: {Status}", executionId, execution.Status);
                     return false;
                 }
 
@@ -113,18 +116,47 @@ namespace PurpleRice.Services
                     return false;
                 }
 
-                // 這裡需要根據節點配置來確定要設置的變量
-                // 暫時使用一個默認的變量名，實際應該從節點配置中獲取
-                await _processVariableService.SetVariableValueAsync(executionId, "qrCodeResult", scannedValue);
+                // 從工作流程定義中獲取節點配置
+                string qrCodeVariableName = "qrCodeResult"; // 默認變量名
+                
+                if (execution.WorkflowDefinition != null && !string.IsNullOrEmpty(execution.WorkflowDefinition.Json))
+                {
+                    try
+                    {
+                        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
+                        
+                        if (flowData?.Nodes != null)
+                        {
+                            var targetNode = flowData.Nodes.FirstOrDefault(n => n.Id == nodeId);
+                            if (targetNode?.Data != null && !string.IsNullOrEmpty(targetNode.Data.QrCodeVariable))
+                            {
+                                qrCodeVariableName = targetNode.Data.QrCodeVariable;
+                                _logger.LogInformation("Found QR Code variable name from node config: {VariableName}", qrCodeVariableName);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning("Failed to parse workflow definition JSON: {Error}", ex.Message);
+                    }
+                }
 
-                // 更新執行狀態，移動到下一個節點
-                // 注意：CurrentNodeId 和 LastUpdatedAt 欄位已移除，此處僅保留註釋
-                // execution.CurrentNodeId = GetNextNodeId(execution, nodeId);
-                // execution.LastUpdatedAt = DateTime.UtcNow;
+                // 設置流程變量
+                await _processVariableService.SetVariableValueAsync(executionId, qrCodeVariableName, scannedValue, 
+                    setBy: "QRCodeInput", sourceType: "QRCodeScan", sourceReference: nodeId);
+
+                // 更新執行狀態，恢復流程執行
+                execution.Status = "Running";
+                execution.IsWaiting = false;
+                execution.WaitingSince = null;
+                execution.LastUserActivity = DateTime.UtcNow;
+                execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("QR Code processed successfully for execution: {ExecutionId}, Value: {Value}", executionId, scannedValue);
+                _logger.LogInformation("QR Code processed successfully for execution: {ExecutionId}, Variable: {VariableName}, Value: {Value}", 
+                    executionId, qrCodeVariableName, scannedValue);
                 return true;
             }
             catch (Exception ex)

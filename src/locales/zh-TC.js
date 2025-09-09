@@ -1493,6 +1493,8 @@ const zhTC = {
     qrCodeDescription1: '此節點會等待用戶上傳包含 QR Code 的圖片',
     qrCodeDescription2: '系統會自動掃描圖片中的 QR Code 並提取內容',
     qrCodeDescription3: '掃描結果會保存到指定的流程變量中，供後續節點使用',
+    qrCodeSuccessMessage: 'QR Code 成功訊息',
+    qrCodeErrorMessage: 'QR Code 錯誤訊息',
     seconds: '秒',
     messageWithVariablesPlaceholder: '輸入消息內容，可使用 ${變量名} 引用流程變量',
     availableVariables: '可用變量',

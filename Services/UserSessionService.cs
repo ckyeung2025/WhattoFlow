@@ -80,10 +80,10 @@ namespace PurpleRice.Services
         /// </summary>
         public async Task<WorkflowExecution> GetCurrentUserWorkflowAsync(string userWaId)
         {
-            // 直接查詢等待中的流程執行，而不是依賴 UserSession
+            // 直接查詢等待中的流程執行，包括 Waiting 和 WaitingForQRCode 狀態
             var waitingWorkflow = await _context.WorkflowExecutions
                 .Where(w => w.WaitingForUser == userWaId && 
-                           w.Status == "Waiting" && 
+                           (w.Status == "Waiting" || w.Status == "WaitingForQRCode") && 
                            w.IsWaiting)
                 .OrderByDescending(w => w.WaitingSince)
                 .FirstOrDefaultAsync();
@@ -101,7 +101,7 @@ namespace PurpleRice.Services
             var workflow = session?.CurrentWorkflowExecution;
             
             // 檢查流程是否真的在等待狀態
-            if (workflow != null && workflow.Status == "Waiting" && workflow.IsWaiting)
+            if (workflow != null && (workflow.Status == "Waiting" || workflow.Status == "WaitingForQRCode") && workflow.IsWaiting)
             {
                 return workflow;
             }

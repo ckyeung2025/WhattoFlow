@@ -1691,6 +1691,8 @@ const zhSC = {
     qrCodeDescription1: '此节点会等待用户上传包含 QR Code 的图片',
     qrCodeDescription2: '系统会自动扫描图片中的 QR Code 并提取内容',
     qrCodeDescription3: '扫描结果会保存到指定的流程变量中供后续节点使用',
+    qrCodeSuccessMessage: 'QR Code 成功消息',
+    qrCodeErrorMessage: 'QR Code 错误消息',
     seconds: '秒',
     messageWithVariablesPlaceholder: '输入消息内容，使用 ${variableName} 引用流程变量',
     availableVariables: '可用变量',

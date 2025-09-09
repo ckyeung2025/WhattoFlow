@@ -63,6 +63,8 @@ const NodePropertyDrawer = ({
         replyType: selectedNode.data.replyType || '',
         specifiedUsers: selectedNode.data.specifiedUsers || '',
         qrCodeVariable: selectedNode.data.qrCodeVariable || '',
+        qrCodeSuccessMessage: selectedNode.data.qrCodeSuccessMessage || 'QR Code 掃描成功！流程將繼續執行。',
+        qrCodeErrorMessage: selectedNode.data.qrCodeErrorMessage || '無法處理您上傳的圖片，請重新上傳。',
         approvalResultVariable: selectedNode.data.approvalResultVariable || '',
         activationType: selectedNode.data.activationType || 'manual',
         webhookToken: selectedNode.data.webhookToken || '',
@@ -432,6 +434,20 @@ const NodePropertyDrawer = ({
                   type="number" 
                   placeholder="300" 
                   addonAfter={t('workflowDesigner.seconds')}
+                />
+              </Form.Item>
+              
+              <Form.Item label={t('workflowDesigner.qrCodeSuccessMessage')} name="qrCodeSuccessMessage">
+                <Input.TextArea 
+                  rows={2} 
+                  placeholder="QR Code 掃描成功！流程將繼續執行。"
+                />
+              </Form.Item>
+              
+              <Form.Item label={t('workflowDesigner.qrCodeErrorMessage')} name="qrCodeErrorMessage">
+                <Input.TextArea 
+                  rows={2} 
+                  placeholder="無法處理您上傳的圖片，請重新上傳。"
                 />
               </Form.Item>
               
