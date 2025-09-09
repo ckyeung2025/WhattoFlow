@@ -83,6 +83,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     onMove,
     handleInit,
     toggleToolbar,
+    handleEdgeSwitch,
+    edgeTypes,
     setGlobalDragHandler,
   } = useWorkflowState(isNodeSelected);
 
@@ -97,6 +99,26 @@ const WhatsAppWorkflowDesignerRefactored = () => {
 
   // 包裝鍵盤事件處理
   const handleKeyDown = useCallback((event) => {
+    // 檢查是否在輸入框、文本區域或可編輯元素中
+    const target = event.target;
+    const isInputElement = target.tagName === 'INPUT' || 
+                          target.tagName === 'TEXTAREA' || 
+                          target.contentEditable === 'true' ||
+                          target.isContentEditable ||
+                          // 檢查是否在 Ant Design 的輸入組件中
+                          target.closest('.ant-input') ||
+                          target.closest('.ant-input-affix-wrapper') ||
+                          target.closest('.ant-select-selector') ||
+                          target.closest('.ant-cascader-picker') ||
+                          target.closest('.ant-picker') ||
+                          target.closest('.ant-mentions') ||
+                          target.closest('.ant-upload');
+    
+    // 如果在輸入元素中，不攔截鍵盤事件
+    if (isInputElement) {
+      return; // 讓瀏覽器處理輸入事件
+    }
+    
     originalHandleKeyDown(event);
     
     // 處理全選功能
@@ -174,7 +196,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     onEdgeMouseEnter: onEdgeMouseEnterHandler,
     onEdgeMouseLeave: onEdgeMouseLeaveHandler,
     onMove: onMoveHandler,
-  } = useEdgeHandlers(nodes, edges, setEdges, setSelectedEdge, setHoveredEdge);
+    onEdgeSwitch: onEdgeSwitchHandler,
+  } = useEdgeHandlers(nodes, edges, setEdges, setSelectedEdge, setHoveredEdge, handleEdgeSwitch);
 
   // 使用工作流程保存 Hook
   const { handleSave } = useWorkflowSave(
@@ -237,15 +260,15 @@ const WhatsAppWorkflowDesignerRefactored = () => {
   // 初始化數據
   useEffect(() => {
     if (isReady) {
-      initializeData(nodeTypes, setNodes, setEdges, handleDeleteNode);
+      initializeData(nodeTypes, setNodes, setEdges, handleDeleteNode, onEdgeSwitchHandler);
     }
-  }, [isReady, initializeData, handleDeleteNode]);
+  }, [isReady, initializeData]);
 
   // 確保所有節點都有正確的 onDelete 函數
   useEffect(() => {
     setNodes(nds => nds.map(n => {
       if (n.data.type === 'start') {
-        return { ...n, data: { ...n.data, onDelete: null } };
+        return { ...n, data: { ...n.data, onDelete: null }, draggable: true };
       } else if (!n.data.onDelete) {
         return { ...n, data: { ...n.data, onDelete: handleDeleteNode } };
       }
@@ -342,6 +365,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
           onEdgeMouseLeave={handleEdgeMouseLeave}
           nodeTypes={nodeTypes}
           nodeTypesComponents={nodeTypesComponents}
+          edgeTypes={edgeTypes}
+          onEdgeSwitch={onEdgeSwitchHandler}
           onMove={handleMove}
           handleInit={handleInit}
           selectedEdge={selectedEdge}

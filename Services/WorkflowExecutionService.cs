@@ -25,17 +25,20 @@ namespace PurpleRice.Services
         private readonly IQRCodeService _qrCodeService;
         private readonly IProcessVariableService _processVariableService;
         private readonly ILogger<WorkflowExecutionService> _logger;
+        private readonly UserSessionService _userSessionService;
 
         public WorkflowExecutionService(
             PurpleRiceDbContext context,
             IQRCodeService qrCodeService,
             IProcessVariableService processVariableService,
-            ILogger<WorkflowExecutionService> logger)
+            ILogger<WorkflowExecutionService> logger,
+            UserSessionService userSessionService)
         {
             _context = context;
             _qrCodeService = qrCodeService;
             _processVariableService = processVariableService;
             _logger = logger;
+            _userSessionService = userSessionService;
         }
 
         public async Task<WorkflowExecution> StartWorkflowAsync(int workflowDefinitionId, string initiatedBy, Dictionary<string, object> initialVariables = null)
@@ -165,6 +168,9 @@ namespace PurpleRice.Services
                 execution.EndedAt = DateTime.UtcNow;
                 
                 await _context.SaveChangesAsync();
+                
+                // 清理用戶會話中的已完成流程
+                await _userSessionService.ClearCompletedWorkflowFromSessionAsync(execution.Id);
                 
                 _logger.LogInformation("Workflow execution completed: {ExecutionId}", execution.Id);
             }

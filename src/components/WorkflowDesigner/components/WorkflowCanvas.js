@@ -23,6 +23,8 @@ const WorkflowCanvas = ({
   onEdgeMouseLeave,
   nodeTypes,
   nodeTypesComponents,
+  edgeTypes,
+  onEdgeSwitch,
   onMove,
   handleInit,
   selectedEdge,
@@ -83,6 +85,14 @@ const WorkflowCanvas = ({
     }
   };
 
+  // 處理畫布右鍵點擊 - 觸發 fit view
+  const handlePaneContextMenu = (event) => {
+    event.preventDefault();
+    if (reactFlowInstanceRef?.current) {
+      reactFlowInstanceRef.current.fitView({ padding: 0.1 });
+    }
+  };
+
 
   return (
     <div style={{ flex: 1, position: 'relative' }}>
@@ -93,24 +103,45 @@ const WorkflowCanvas = ({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={(event, { nodeId, handleId, handleType }) => {
+          console.log('🚀 onConnectStart:', { nodeId, handleId, handleType });
+        }}
+        onConnectEnd={(event, { nodeId, handleId, handleType }) => {
+          console.log('🏁 onConnectEnd:', { nodeId, handleId, handleType });
+        }}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
         onPaneClick={onCanvasClick}
+        onPaneContextMenu={handlePaneContextMenu}
         onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter}
         onEdgeMouseLeave={onEdgeMouseLeave}
         nodeTypes={nodeTypesComponents}
-        edgeTypes={emptyEdgeTypes}
+        edgeTypes={edgeTypes || emptyEdgeTypes}
         style={{ height: '100%', width: '100%' }}
         onMove={onMove}
-        selectionOnDrag={true}
-        panOnDrag={[1, 2]}
+        selectionOnDrag={false}
+        panOnDrag={[0]}
         selectionMode="partial"
         selectionKeyCode="Shift"
         multiSelectionKeyCode="Control"
         onSelectionChange={onSelectionChange}
+        panOnScroll={false}
+        zoomOnScroll={true}
+        zoomOnPinch={true}
+        zoomActivationKeyCode={null}
+        zoomOnDoubleClick={false}
+        onDoubleClick={(e) => {
+          // 明確阻止雙擊縮放
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        nodesDraggable={true}
+        nodesConnectable={true}
+        elementsSelectable={true}
+        preventScrolling={false}
         defaultEdgeOptions={{
           type: 'smoothstep',
           animated: true,
@@ -124,6 +155,7 @@ const WorkflowCanvas = ({
             height: 12,
             color: '#1890ff',
           },
+          data: { onEdgeSwitch },
         }}
       >
         <MiniMap />

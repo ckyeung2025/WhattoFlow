@@ -20,9 +20,10 @@ namespace PurpleRice.Services
         private readonly IConfiguration _configuration;
         private readonly EFormService _eFormService;
         private readonly ISwitchConditionService _switchConditionService;
+        private readonly UserSessionService _userSessionService;
 
         public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, 
-            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService)
+            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService)
         {
             _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
@@ -30,6 +31,7 @@ namespace PurpleRice.Services
             _configuration = configuration;
             _eFormService = eFormService;
             _switchConditionService = switchConditionService;
+            _userSessionService = userSessionService;
         }
 
         private void WriteLog(string message)
@@ -104,6 +106,15 @@ namespace PurpleRice.Services
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
                 if (flowData?.Nodes == null || flowData?.Edges == null) return;
+
+                // 驗證邊緣
+                if (!ValidateWorkflowEdges(flowData.Edges, flowData.Nodes))
+                {
+                    execution.Status = "Error";
+                    execution.ErrorMessage = "工作流程邊緣驗證失敗";
+                    await SaveExecution(execution);
+                    return;
+                }
 
                 // 構建鄰接表
                 var adjacencyList = BuildAdjacencyList(flowData.Edges);
@@ -183,15 +194,81 @@ namespace PurpleRice.Services
         // 構建鄰接表
         private Dictionary<string, List<string>> BuildAdjacencyList(List<WorkflowEdge> edges)
         {
-                var adjacencyList = new Dictionary<string, List<string>>();
+            var adjacencyList = new Dictionary<string, List<string>>();
+            
             foreach (var edge in edges)
+            {
+                // 確保 Source 和 Target 不為空
+                if (string.IsNullOrEmpty(edge.Source) || string.IsNullOrEmpty(edge.Target))
                 {
-                    if (!adjacencyList.ContainsKey(edge.Source))
-                        adjacencyList[edge.Source] = new List<string>();
-                    adjacencyList[edge.Source].Add(edge.Target);
-            }
-            return adjacencyList;
+                    WriteLog($"警告: 邊緣 {edge.Id} 的 Source 或 Target 為空，跳過");
+                    continue;
                 }
+                
+                // 防止自連接
+                if (edge.Source == edge.Target)
+                {
+                    WriteLog($"警告: 邊緣 {edge.Id} 是自連接，跳過");
+                    continue;
+                }
+                
+                if (!adjacencyList.ContainsKey(edge.Source))
+                    adjacencyList[edge.Source] = new List<string>();
+                    
+                // 防止重複連接
+                if (!adjacencyList[edge.Source].Contains(edge.Target))
+                {
+                    adjacencyList[edge.Source].Add(edge.Target);
+                    WriteLog($"添加連接: {edge.Source} -> {edge.Target} (邊緣ID: {edge.Id})");
+                }
+                else
+                {
+                    WriteLog($"警告: 重複連接 {edge.Source} -> {edge.Target}，跳過");
+                }
+            }
+            
+            return adjacencyList;
+        }
+
+        // 驗證工作流程邊緣
+        private bool ValidateWorkflowEdges(List<WorkflowEdge> edges, List<WorkflowNode> nodes)
+        {
+            var nodeIds = nodes.Select(n => n.Id).ToHashSet();
+            var issues = new List<string>();
+            
+            foreach (var edge in edges)
+            {
+                // 檢查 Source 節點是否存在
+                if (!nodeIds.Contains(edge.Source))
+                {
+                    issues.Add($"邊緣 {edge.Id} 的 Source 節點 {edge.Source} 不存在");
+                }
+                
+                // 檢查 Target 節點是否存在
+                if (!nodeIds.Contains(edge.Target))
+                {
+                    issues.Add($"邊緣 {edge.Id} 的 Target 節點 {edge.Target} 不存在");
+                }
+                
+                // 檢查自連接
+                if (edge.Source == edge.Target)
+                {
+                    issues.Add($"邊緣 {edge.Id} 是自連接");
+                }
+            }
+            
+            if (issues.Any())
+            {
+                WriteLog("工作流程邊緣驗證失敗:");
+                foreach (var issue in issues)
+                {
+                    WriteLog($"- {issue}");
+                }
+                return false;
+            }
+            
+            return true;
+        }
 
         // 從表單審批狀態繼續
         private async Task ContinueFromFormApproval(WorkflowExecution execution, WorkflowGraph flowData, Dictionary<string, List<string>> adjacencyList)
@@ -784,6 +861,10 @@ namespace PurpleRice.Services
                         execution.Status = "Completed";
                         execution.EndedAt = DateTime.Now;
             await SaveExecution(execution);
+            
+            // 清理用戶會話中的已完成流程
+            await _userSessionService.ClearCompletedWorkflowFromSessionAsync(execution.Id);
+            
             WriteLog($"=== 工作流程標記為完成 ===");
             
             return false; // 返回 false 表示暫停執行
@@ -1205,6 +1286,25 @@ namespace PurpleRice.Services
         public string Source { get; set; }
         public string Target { get; set; }
         public string Type { get; set; }
+        
+        // 新增屬性以支持新的 workflow designer
+        [System.Text.Json.Serialization.JsonPropertyName("sourceHandle")]
+        public string SourceHandle { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("targetHandle")]
+        public string TargetHandle { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("markerEnd")]
+        public object MarkerEnd { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("data")]
+        public Dictionary<string, object> Data { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("style")]
+        public Dictionary<string, object> Style { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("animated")]
+        public bool? Animated { get; set; }
     }
 
     public class WorkflowValidation

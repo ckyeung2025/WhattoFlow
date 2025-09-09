@@ -1155,6 +1155,24 @@ const zhTC = {
     queryCondition: '查詢條件',
     checkInterval: '檢查間隔 (秒)',
     
+    // Webhook 相關
+    webhookToken: 'Webhook Token',
+    webhookTokenPlaceholder: '請輸入 Webhook Token',
+    webhookInfo: 'Webhook 資訊',
+    webhookDescription1: '1. 請在公司設定頁面配置 Meta Webhook URL',
+    webhookDescription2: '2. 當收到 WhatsApp 訊息時，系統會回覆選單讓用戶選擇功能',
+    
+    // 定時監看相關
+    scheduledTable: '監看數據表',
+    scheduledTablePlaceholder: '例如: dbo.SoOrderManage',
+    scheduledQuery: '查詢條件',
+    scheduledQueryPlaceholder: '例如: WHERE status = \'PENDING\' AND created_at > @lastCheckTime',
+    scheduledInterval: '檢查間隔',
+    seconds: '秒',
+    scheduledInfo: '定時監看資訊',
+    scheduledDescription1: '1. 系統會定期檢查指定數據表的變化',
+    scheduledDescription2: '2. 當符合條件的記錄出現時，會自動啟動此流程',
+    
     // 配置說明
     metaWebhookConfigTitle: 'Meta Webhook 配置說明',
     metaWebhookConfig1: '1. 請在公司設定頁面配置 Meta Webhook URL',
@@ -1174,6 +1192,8 @@ const zhTC = {
     // 其他界面元素
     inDevelopment: '開發中',
     clickToSelectConnection: '點擊選擇連接線',
+    clickToChangeToTarget: '點擊切換為目標點',
+    clickToChangeToSource: '點擊切換為源點',
     template: '模板',
     templateInfo: '模板信息',
     templateId: '模板ID：',

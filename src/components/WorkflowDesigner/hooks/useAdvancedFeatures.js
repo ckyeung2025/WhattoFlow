@@ -158,6 +158,26 @@ export const useAdvancedFeatures = (nodes, setNodes, edges, setEdges, selectedNo
 
   // 處理鍵盤事件
   const handleKeyDown = useCallback((event) => {
+    // 檢查是否在輸入框、文本區域或可編輯元素中
+    const target = event.target;
+    const isInputElement = target.tagName === 'INPUT' || 
+                          target.tagName === 'TEXTAREA' || 
+                          target.contentEditable === 'true' ||
+                          target.isContentEditable ||
+                          // 檢查是否在 Ant Design 的輸入組件中
+                          target.closest('.ant-input') ||
+                          target.closest('.ant-input-affix-wrapper') ||
+                          target.closest('.ant-select-selector') ||
+                          target.closest('.ant-cascader-picker') ||
+                          target.closest('.ant-picker') ||
+                          target.closest('.ant-mentions') ||
+                          target.closest('.ant-upload');
+    
+    // 如果在輸入元素中，不攔截 Ctrl+C 和 Ctrl+V
+    if (isInputElement && (event.key === 'c' || event.key === 'v')) {
+      return; // 讓瀏覽器處理複製/貼上
+    }
+    
     if (event.ctrlKey || event.metaKey) {
       switch (event.key) {
         case 'c':
