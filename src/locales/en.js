@@ -817,6 +817,24 @@ const en = {
     queryCondition: 'Query Condition',
     checkInterval: 'Check Interval (seconds)',
     
+    // Webhook related
+    webhookToken: 'Webhook Token',
+    webhookTokenPlaceholder: 'Please enter Webhook Token',
+    webhookInfo: 'Webhook Information',
+    webhookDescription1: '1. Please configure Meta Webhook URL in company settings page',
+    webhookDescription2: '2. When WhatsApp message is received, system will reply with menu for user to select function',
+    
+    // Scheduled watch related
+    scheduledTable: 'Watch Table',
+    scheduledTablePlaceholder: 'Example: dbo.SoOrderManage',
+    scheduledQuery: 'Query Condition',
+    scheduledQueryPlaceholder: 'Example: WHERE status = \'PENDING\' AND created_at > @lastCheckTime',
+    scheduledInterval: 'Check Interval',
+    seconds: 'seconds',
+    scheduledInfo: 'Scheduled Watch Information',
+    scheduledDescription1: '1. System will periodically check changes in specified data table',
+    scheduledDescription2: '2. When records matching conditions appear, this workflow will be automatically activated',
+    
     // Configuration descriptions
     metaWebhookConfigTitle: 'Meta Webhook Configuration Description',
     metaWebhookConfig1: '1. Please configure Meta Webhook URL in company settings page',

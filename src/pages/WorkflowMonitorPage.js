@@ -825,6 +825,12 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         console.log(`步驟 ${index + 1} 檢測到普通消息，標記為非錯誤`);
                       }
                     }
+                    // 檢查是否為 switch 節點的正常輸出（包含 selectedPaths 等字段）
+                    else if (outputData.selectedPaths || outputData.selectedPath || outputData.evaluatedAt) {
+                      isError = false;
+                      displayMessage = JSON.stringify(outputData, null, 2);
+                      console.log(`步驟 ${index + 1} 檢測到 switch 節點輸出，標記為非錯誤`);
+                    }
                     // 如果沒有明確的字段，檢查整個 JSON 內容
                     else {
                       // 如果沒有明確的錯誤標識，通常不是錯誤
@@ -897,6 +903,13 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                     {/* 智能處理 errorMessage 字段，只顯示真正的錯誤信息 */}
                     {step.errorMessage && (
                       (() => {
+                        // 檢查 errorMessage 是否與 outputJson 內容相同，如果相同則不顯示（避免重複）
+                        const jsonContent = step.outputJson || step.OutputJson || step.output;
+                        if (jsonContent && step.errorMessage === jsonContent) {
+                          console.log(`步驟 ${index + 1} errorMessage 與 outputJson 相同，不顯示為錯誤`);
+                          return null; // 不顯示重複內容
+                        }
+                        
                         // 檢查 errorMessage 是否包含成功的狀態更新消息
                         try {
                           const errorData = JSON.parse(step.errorMessage);
@@ -908,8 +921,10 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                                 errorData.message.includes("Form already processed") ||
                                 errorData.message.includes("waiting for approval") ||
                                 errorData.message.includes("Waiting for user reply")
-                              ))) {
-                            console.log(`步驟 ${index + 1} errorMessage 包含成功信息，不顯示為錯誤`);
+                              )) ||
+                              // 檢查是否為 switch 節點的正常輸出
+                              errorData.selectedPaths || errorData.selectedPath || errorData.evaluatedAt) {
+                            console.log(`步驟 ${index + 1} errorMessage 包含成功信息或 switch 節點輸出，不顯示為錯誤`);
                             return null; // 不顯示
                           }
                         } catch (parseError) {

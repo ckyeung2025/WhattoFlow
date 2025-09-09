@@ -14,6 +14,8 @@ import {
   StopOutlined,
   DeleteOutlined 
 } from '@ant-design/icons';
+import CommonHandle from '../components/CommonHandle';
+import EdgeWithSwitch from '../components/EdgeWithSwitch';
 
 // 工作流程狀態管理 Hook
 export const useWorkflowState = (isNodeSelected) => {
@@ -34,7 +36,7 @@ export const useWorkflowState = (isNodeSelected) => {
         type: 'start',
         onDelete: null // Start 節點不能刪除
       },
-      draggable: false,
+      draggable: true,
     },
   ], [isReady, t]);
   
@@ -71,6 +73,130 @@ export const useWorkflowState = (isNodeSelected) => {
 
   // 雙擊節點打開屬性編輯抽屜
 
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // 初始化節點的 handle 層級狀態
+  const initializeHandleLayers = useCallback((nodeId) => {
+    setNodes(nodes => nodes.map(node => {
+      if (node.id === nodeId) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            handleLayers: {
+              top: 'target',    // 默認 target 在上層
+              right: 'source',  // 默認 source 在上層
+              bottom: 'source', // 默認 source 在上層
+              left: 'target'    // 默認 target 在上層
+            }
+          }
+        };
+      }
+      return node;
+    }));
+  }, [setNodes]);
+  
+  // Handle 映射表 - 根據位置和類型找到對應的 handle
+  // 現在每個面都有 source 和 target handle，可以直接映射
+  const getHandleMapping = useCallback((position, type) => {
+    const mapping = {
+      'top': {
+        'source': 'top-source',
+        'target': 'top-target'
+      },
+      'right': {
+        'source': 'right-source', 
+        'target': 'right-target'
+      },
+      'bottom': {
+        'source': 'bottom-source',
+        'target': 'bottom-target'
+      },
+      'left': {
+        'source': 'left-source',
+        'target': 'left-target'
+      }
+    };
+    
+    return mapping[position]?.[type] || null;
+  }, []);
+
+  // 根據 handle ID 獲取位置和類型
+  const getHandleInfo = useCallback((handleId) => {
+    if (handleId.includes('top-')) return { position: 'top', type: handleId.split('-')[1] };
+    if (handleId.includes('right-')) return { position: 'right', type: handleId.split('-')[1] };
+    if (handleId.includes('bottom-')) return { position: 'bottom', type: handleId.split('-')[1] };
+    if (handleId.includes('left-')) return { position: 'left', type: handleId.split('-')[1] };
+    return null;
+  }, []);
+
+  // Edge 方向切換處理函數
+  const handleEdgeSwitch = useCallback((edgeId) => {
+    setEdges(edges => edges.map(edge => {
+      if (edge.id === edgeId) {
+        // 獲取原始 handle 的位置信息
+        const sourceHandleInfo = getHandleInfo(edge.sourceHandle);
+        const targetHandleInfo = getHandleInfo(edge.targetHandle);
+        
+        if (!sourceHandleInfo || !targetHandleInfo) {
+          console.error('❌ Cannot determine handle info for edge switching');
+          return edge;
+        }
+        
+        // 交換 source 和 target，並在同一面找到對應的 handle
+        // 如果原本是 right-source → right-target，切換後應該是 right-target → right-source
+        const newSourceHandle = getHandleMapping(targetHandleInfo.position, 'source');
+        const newTargetHandle = getHandleMapping(sourceHandleInfo.position, 'target');
+        
+         if (!newSourceHandle || !newTargetHandle) {
+           console.error('❌ Cannot find corresponding handles for edge switching');
+           return edge;
+         }
+         
+         // 更新節點的 handle 層級狀態 - 交換 z-index
+         setNodes(nodes => nodes.map(node => {
+           if (node.id === edge.source || node.id === edge.target) {
+             const position = node.id === edge.source ? sourceHandleInfo.position : targetHandleInfo.position;
+             const currentLayer = node.data.handleLayers?.[position];
+             const newLayer = currentLayer === 'source' ? 'target' : 'source';
+             
+             return {
+               ...node,
+               data: {
+                 ...node.data,
+                 handleLayers: {
+                   ...node.data.handleLayers,
+                   [position]: newLayer
+                 }
+               }
+             };
+           }
+           return node;
+         }));
+         
+         const newEdge = {
+           ...edge,
+           source: edge.target,
+           target: edge.source,
+           sourceHandle: newSourceHandle,
+           targetHandle: newTargetHandle,
+           // 更新箭頭方向
+           markerEnd: {
+             ...edge.markerEnd,
+             type: 'arrowclosed',
+             width: 12,
+             height: 12,
+             color: '#1890ff'
+           }
+         };
+         
+         return newEdge;
+      }
+      return edge;
+    }));
+  }, [setEdges, getHandleMapping, getHandleInfo, nodes, setNodes]);
+
   // React Flow 節點類型組件定義 - 使用 useMemo 避免重新創建
   const nodeTypesComponents = useMemo(() => ({
     input: ({ id, data, selected }) => {
@@ -96,98 +222,189 @@ export const useWorkflowState = (isNodeSelected) => {
           border: selected || isMultiSelected ? '2px solid #52c41a' : '2px solid #52c41a',
           outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
           outlineOffset: selected || isMultiSelected ? '2px' : '0px',
-          transition: 'box-shadow 0.2s'
+          transition: 'box-shadow 0.2s',
+          cursor: 'move'
         }}
         onMouseDown={(e) => {
-          console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
-          // 簡化：讓 React Flow 處理拖拽
-          if (globalDragHandler) {
-            globalDragHandler(e, { id, data, selected });
-          }
+          // 讓 React Flow 處理拖拽，不阻止默認行為
+          // 不要阻止事件傳播，讓雙擊事件能正常工作
         }}
-        // 移除 onDoubleClick，使用單擊直接打開屬性視窗
+        // 移除節點上的 onDoubleClick，讓 React Flow 處理
       >
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
-        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="bottom-source"
-          style={{ 
-            background: '#52c41a', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            bottom: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
-          title="Click to select connection"
-        />
+         {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
+         <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
+         
+         {/* 左側 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Left}
+           id="left-target"
+           style={{ left: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.left === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Left}
+           id="left-source"
+           style={{ left: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.left === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 右側 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Right}
+           id="right-target"
+           style={{ right: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.right === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Right}
+           id="right-source"
+           style={{ right: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.right === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 底部 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Bottom}
+           id="bottom-target"
+           style={{ bottom: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.bottom === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Bottom}
+           id="bottom-source"
+           style={{ bottom: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.bottom === 'source' ? 1001 : 1000}
+         />
         
         {/* 移除 resize 手柄 */}
       </div>
       );
     },
-    output: ({ id, data, selected }) => {
-      const isMultiSelected = isNodeSelected ? isNodeSelected(id) : false;
-      return (
-      <div 
-        style={{ 
-          padding: '12px 16px', 
-          border: '2px solid #ff4d4f', 
-          borderRadius: '8px', 
-          backgroundColor: '#fff2f0',
-          width: data.width || 120,
-          height: data.height || 60,
-          minWidth: '120px',
-          minHeight: '60px',
-          textAlign: 'center',
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: selected || isMultiSelected ? '0 0 8px #ff4d4f88' : '0 1px 4px #0001',
-          border: selected || isMultiSelected ? '2px solid #ff4d4f' : '2px solid #ff4d4f',
-          outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
-          outlineOffset: selected || isMultiSelected ? '2px' : '0px',
-          transition: 'box-shadow 0.2s'
-        }}
-        onMouseDown={(e) => {
-          console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
-          // 簡化：讓 React Flow 處理拖拽
-          if (globalDragHandler) {
-            globalDragHandler(e, { id, data, selected });
-          }
-        }}
-        // 移除 onDoubleClick，使用單擊直接打開屬性視窗
-      >
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
-        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
-        <Handle
-          type="target"
-          position={Position.Top}
-          id="top-target"
-          style={{ 
-            background: '#ff4d4f', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            top: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
-          title="Click to select connection"
-        />
+     output: ({ id, data, selected }) => {
+       const isMultiSelected = isNodeSelected ? isNodeSelected(id) : false;
+       return (
+       <div 
+         style={{ 
+           padding: '12px 16px', 
+           border: '2px solid #ff4d4f', 
+           borderRadius: '8px', 
+           backgroundColor: '#fff2f0',
+           width: data.width || 120,
+           height: data.height || 60,
+           minWidth: '120px',
+           minHeight: '60px',
+           textAlign: 'center',
+           position: 'relative',
+           display: 'flex',
+           flexDirection: 'column',
+           alignItems: 'center',
+           justifyContent: 'center',
+           boxShadow: selected || isMultiSelected ? '0 0 8px #ff4d4f88' : '0 1px 4px #0001',
+           border: selected || isMultiSelected ? '2px solid #ff4d4f' : '2px solid #ff4d4f',
+           outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
+           outlineOffset: selected || isMultiSelected ? '2px' : '0px',
+           transition: 'box-shadow 0.2s',
+           cursor: 'move'
+         }}
+         onMouseDown={(e) => {
+           console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
+           // 讓 React Flow 處理拖拽，不阻止默認行為
+           // 不要阻止事件傳播，讓雙擊事件能正常工作
+         }}
+         // 移除節點上的 onDoubleClick，讓 React Flow 處理
+       >
+         {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
+         <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
+         
+         {/* 頂部 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Top}
+           id="top-target"
+           style={{ top: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.top === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Top}
+           id="top-source"
+           style={{ top: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.top === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 左側 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Left}
+           id="left-target"
+           style={{ left: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.left === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Left}
+           id="left-source"
+           style={{ left: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.left === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 右側 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Right}
+           id="right-target"
+           style={{ right: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.right === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Right}
+           id="right-source"
+           style={{ right: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.right === 'source' ? 1001 : 1000}
+         />
         
         {selected && (
           <Tooltip title={t('workflowDesigner.delete')} placement="top">
@@ -249,57 +466,105 @@ export const useWorkflowState = (isNodeSelected) => {
           border: selected || isMultiSelected ? '2px solid #1890ff' : '2px solid #1890ff',
           outline: selected || isMultiSelected ? '2px solid #1890ff' : 'none',
           outlineOffset: selected || isMultiSelected ? '2px' : '0px',
-          transition: 'box-shadow 0.2s'
+          transition: 'box-shadow 0.2s',
+          cursor: 'move'
         }}
         onMouseDown={(e) => {
-          console.log('Node onMouseDown:', { nodeId: id, eventType: e.type });
-          // 簡化：讓 React Flow 處理拖拽
-          if (globalDragHandler) {
-            globalDragHandler(e, { id, data, selected });
-          }
+          // 讓 React Flow 處理拖拽，不阻止默認行為
+          // 不要阻止事件傳播，讓雙擊事件能正常工作
         }}
-        // 移除 onDoubleClick，使用單擊直接打開屬性視窗
+        // 移除節點上的 onDoubleClick，讓 React Flow 處理
       >
-        {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
-        <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
-        <Handle
-          type="target"
-          position={Position.Top}
-          id="top-target"
-          style={{ 
-            background: '#faad14', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            top: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
-          title="Click to select connection"
-        />
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="bottom-source"
-          style={{ 
-            background: '#52c41a', 
-            width: 14, 
-            height: 14, 
-            borderRadius: 7, 
-            bottom: -7, 
-            left: '50%', 
-            opacity: 0.9, 
-            border: '2px solid #fff',
-            cursor: 'crosshair',
-            transform: 'translateX(-50%)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-          }}
-          title="Click to select connection"
-        />
+         {data.icon && React.createElement(data.icon, { style: { fontSize: '18px', marginBottom: '4px' } })}
+         <div style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: '1.2' }}>{data.taskName || data.label}</div>
+         
+         {/* 頂部 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Top}
+           id="top-target"
+           style={{ top: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.top === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Top}
+           id="top-source"
+           style={{ top: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.top === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 左側 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Left}
+           id="left-target"
+           style={{ left: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.left === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Left}
+           id="left-source"
+           style={{ left: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.left === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 右側 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Right}
+           id="right-target"
+           style={{ right: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.right === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Right}
+           id="right-source"
+           style={{ right: -7, top: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.right === 'source' ? 1001 : 1000}
+         />
+         
+         {/* 底部 handles - 重疊在同一位置，使用 z-index 控制層級 */}
+         <CommonHandle
+           type="target"
+           position={Position.Bottom}
+           id="bottom-target"
+           style={{ bottom: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.bottom === 'target' ? 1001 : 1000}
+         />
+         <CommonHandle
+           type="source"
+           position={Position.Bottom}
+           id="bottom-source"
+           style={{ bottom: -7, left: '50%' }}
+           t={t}
+           nodeId={id}
+           nodeData={data}
+           zIndex={data.handleLayers?.bottom === 'source' ? 1001 : 1000}
+         />
         {selected && data.type !== 'start' && (
           <Tooltip title={t('workflowDesigner.delete')} placement="top">
             <button 
@@ -337,10 +602,13 @@ export const useWorkflowState = (isNodeSelected) => {
       </div>
       );
     }
-  }), [globalDragHandler]);
-  
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  }), [isNodeSelected, t]);
+
+  // Edge 類型定義
+  const edgeTypes = useMemo(() => ({
+    default: EdgeWithSwitch,
+    smoothstep: EdgeWithSwitch,
+  }), []);
   
   // 選中狀態
   const [selectedNode, setSelectedNode] = useState(null);
@@ -369,7 +637,7 @@ export const useWorkflowState = (isNodeSelected) => {
   };
   
   // 處理節點數據變更
-  const handleNodeDataChange = (newData) => {
+  const handleNodeDataChange = useCallback((newData) => {
     if (!selectedNode) return;
     
     const updatedNode = { ...selectedNode, data: { ...selectedNode.data, ...newData } };
@@ -382,18 +650,16 @@ export const useWorkflowState = (isNodeSelected) => {
     
     // 更新 selectedNode 以反映最新的數據
     setSelectedNode(updatedNode);
-  };
+  }, [selectedNode, setNodes, setSelectedNode]);
   
   // 單擊節點選擇節點（不打開屬性抽屜）
   const onNodeClick = (event, node) => {
-    console.log('useWorkflowState onNodeClick called:', { nodeId: node.id, nodeType: node.data.type });
     setSelectedNode(node);
     setSelectedEdge(null);
   };
 
   // 雙擊節點打開屬性編輯抽屜
   const onNodeDoubleClick = (event, node) => {
-    console.log('useWorkflowState onNodeDoubleClick called:', { nodeId: node.id, nodeType: node.data.type });
     setSelectedNode(node);
     setDrawerOpen(true);
     setSelectedEdge(null);
@@ -471,6 +737,8 @@ export const useWorkflowState = (isNodeSelected) => {
     onMove,
     handleInit,
     toggleToolbar,
+    handleEdgeSwitch,
+    edgeTypes,
     
     // 拖拽處理
     setGlobalDragHandler,

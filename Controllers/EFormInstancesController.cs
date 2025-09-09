@@ -25,14 +25,16 @@ namespace PurpleRice.Controllers
          private readonly WhatsAppWorkflowService _whatsAppWorkflowService;
          private readonly LoggingService _loggingService;
          private readonly WebhookMessageProcessingService _webhookMessageProcessingService;
+         private readonly UserSessionService _userSessionService;
          
-         public EFormInstancesController(PurpleRiceDbContext db, IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory, WebhookMessageProcessingService webhookMessageProcessingService)
+         public EFormInstancesController(PurpleRiceDbContext db, IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory, WebhookMessageProcessingService webhookMessageProcessingService, UserSessionService userSessionService)
          {
              _db = db;
              _serviceProvider = serviceProvider;
              _whatsAppWorkflowService = whatsAppWorkflowService;
              _loggingService = loggingServiceFactory("EFormInstancesController");
              _webhookMessageProcessingService = webhookMessageProcessingService;
+             _userSessionService = userSessionService;
          }
 
         // GET: api/eforminstances/{id} - 獲取表單實例
@@ -394,6 +396,10 @@ namespace PurpleRice.Controllers
                      // 如果所有步驟都完成，將流程標記為完成
                      execution.Status = "Completed";
                      execution.EndedAt = DateTime.Now;
+                     
+                     // 清理用戶會話中的已完成流程
+                     await _userSessionService.ClearCompletedWorkflowFromSessionAsync(execution.Id);
+                     
                      _loggingService.LogInformation($"流程執行完成，狀態已更新為 Completed");
                  }
                  else

@@ -1,145 +1,164 @@
-# 工作流程設計器組件分拆說明
+# 工作流程設計器 (WorkflowDesigner)
 
-## 概述
-原本的 `WhatsAppWorkflowDesigner.js` 文件過於龐大（3317行），難以維護和 AI 讀取。現已將其分拆為多個模塊，提高代碼的可維護性和可讀性。
+## 📋 概述
 
-## 目錄結構
+工作流程設計器是一個基於 React Flow 的可視化工作流程編輯器，支持拖拽式節點創建、連接線管理、屬性編輯等功能。該組件已完全重構為模塊化架構，提供高度可維護性和可擴展性。
+
+## ✨ 主要功能
+
+- 🎯 **10種節點類型**：Start, Send WhatsApp, Switch, DB Query, API Call, EForm, End 等
+- 🔗 **拖拽連接**：直觀的節點連接和編輯
+- ⚙️ **屬性編輯**：右側屬性面板，支持實時預覽
+- 📋 **模態框系統**：模板選擇、用戶選擇、變量管理等
+- ⌨️ **快捷鍵支持**：Ctrl+C/V, Delete, Ctrl+A 等
+- 🎨 **對齊功能**：多選節點對齊
+- 🔄 **複製貼上**：節點複製和貼上功能
+- 🌐 **國際化**：支持多語言
+- 📱 **響應式設計**：適配不同屏幕尺寸
+
+## 🏗️ 架構設計
+
+### 目錄結構
 ```
 src/components/WorkflowDesigner/
-├── components/           # 通用組件
-│   ├── CommonHandle.js      # 連接點組件
-│   ├── DeleteButton.js      # 刪除按鈕組件
-│   ├── NodeContent.js       # 節點內容組件
+├── components/           # 核心組件 (14個文件)
+│   ├── WorkflowCanvas.js    # React Flow 畫布
+│   ├── Toolbar.js           # 頂部工具欄
+│   ├── Sidebar.js           # 左側工具欄
+│   ├── NodePropertyDrawer.js # 屬性編輯抽屜
 │   ├── NodeTypes.js         # 節點類型定義
-│   ├── UserSelectInput.js   # 用戶選擇輸入組件
-│   └── VariableTags.js      # 變量標籤組件
-├── constants.js          # 常量和配置
-├── hooks/               # 自定義 Hooks
-│   ├── useConditionGroups.js  # 條件群組管理 Hook
-│   └── useNodeData.js        # 節點數據管理 Hook
-├── modals/              # Modal 組件
-│   ├── ConditionGroupModal.js    # 條件群組編輯 Modal
-│   ├── ConditionModal.js         # 條件編輯 Modal
-│   ├── DefaultPathModal.js       # 默認路徑選擇 Modal
-│   ├── EFormModal.js             # EForm 選擇 Modal
-│   ├── ProcessVariablesModal.js  # 流程變量管理 Modal
-│   ├── TemplateModal.js          # 模板選擇 Modal
-│   └── UserModal.js              # 用戶選擇 Modal
+│   └── ...                  # 其他組件
+├── hooks/               # 自定義 Hooks (9個文件)
+│   ├── useWorkflowState.js  # 工作流程狀態管理
+│   ├── useNodeHandlers.js   # 節點事件處理
+│   ├── useAdvancedFeatures.js # 高級功能
+│   └── ...                  # 其他 Hooks
+├── modals/              # 模態框組件 (7個文件)
+│   ├── ProcessVariablesModal.js # 流程變量管理
+│   ├── TemplateModal.js        # 模板選擇
+│   └── ...                     # 其他模態框
 ├── services/            # 服務層
 │   └── apiService.js        # API 服務類
+├── constants.js          # 常量和配置
 ├── styles.js            # 樣式定義
 ├── utils.js             # 工具函數
-├── WhatsAppWorkflowDesigner.js  # 主組件（重構後）
-├── index.js             # 導出文件
-└── README.md            # 說明文檔
+└── WhatsAppWorkflowDesigner.js # 主組件
 ```
 
-## 分拆詳情
+## 🚀 快速開始
 
-### 1. 常量和配置 (constants.js)
-- `NODE_STYLES`: 節點樣式配置
-- `HANDLE_STYLES`: 連接點樣式配置
-- `DELETE_BUTTON_STYLES`: 刪除按鈕樣式配置
-- `MOCK_DATA`: 模擬數據
-- `NODE_TYPE_CONFIGS`: 節點類型配置
-
-### 2. 樣式定義 (styles.js)
-- `purpleButtonStyle`: 紫色按鈕和 React Flow 相關樣式
-
-### 3. 工具函數 (utils.js)
-- `handleApiError`: 通用錯誤處理
-- `processVariableReferences`: 變量引用語法處理
-- `generateUniqueTaskName`: 生成唯一任務名稱
-- `generateWebhookToken`: 生成 Webhook Token
-- `validateWorkflowLogic`: 驗證工作流程邏輯
-- `getAvailableOutputPaths`: 獲取可用輸出路徑
-
-### 4. 自定義 Hooks
-#### useConditionGroups.js
-- 條件群組管理相關功能
-- 提供增刪改查條件群組的方法
-
-#### useNodeData.js
-- 節點數據管理
-- 提供默認節點數據生成功能
-
-### 5. 通用組件
-#### CommonHandle.js
-- 統一的連接點組件
-- 支持不同類型的連接點樣式
-
-#### DeleteButton.js
-- 統一的刪除按鈕組件
-- 可復用的刪除功能
-
-#### UserSelectInput.js
-- 用戶選擇輸入組件
-- 支持單選和多選模式
-
-#### VariableTags.js
-- 變量標籤組件
-- 用於顯示和選擇流程變量
-
-#### NodeContent.js
-- 節點內容顯示組件
-- 統一的節點內容格式
-
-#### NodeTypes.js
-- 節點類型定義和創建
-- 包含不同類型節點的渲染邏輯
-
-### 6. Modal 組件
-每個 Modal 都是獨立的組件，負責特定的功能：
-- `TemplateModal`: WhatsApp 模板選擇
-- `UserModal`: 用戶選擇
-- `EFormModal`: EForm 選擇
-- `ProcessVariablesModal`: 流程變量管理
-- `ConditionModal`: 條件編輯
-- `ConditionGroupModal`: 條件群組編輯
-- `DefaultPathModal`: 默認路徑選擇
-
-### 7. 服務層 (apiService.js)
-- `ApiService` 類：封裝所有 API 調用
-- 提供統一的錯誤處理和數據轉換
-- 支持模板、用戶、EForm、流程變量等數據的 CRUD 操作
-
-## 使用方式
-
-### 導入分拆後的組件
+### 基本使用
 ```javascript
 import { WhatsAppWorkflowDesigner } from './components/WorkflowDesigner';
+
+const MyPage = () => {
+  return <WhatsAppWorkflowDesigner />;
+};
 ```
 
-### 導入特定模塊
+### 自定義配置
 ```javascript
 import { 
-  CommonHandle, 
-  DeleteButton, 
-  UserSelectInput,
-  apiService,
-  validateWorkflowLogic 
+  WhatsAppWorkflowDesigner,
+  NODE_STYLES,
+  apiService 
 } from './components/WorkflowDesigner';
+
+// 自定義樣式
+const customStyles = {
+  ...NODE_STYLES,
+  custom: { /* 自定義樣式 */ }
+};
 ```
 
-## 優勢
+## 📚 文檔
 
-1. **可維護性**: 每個文件職責單一，易於理解和修改
-2. **可復用性**: 組件和工具函數可以在其他地方復用
-3. **可測試性**: 每個模塊可以獨立測試
-4. **AI 友好**: 代碼結構清晰，便於 AI 理解和維護
-5. **團隊協作**: 不同開發者可以同時修改不同模塊而不會衝突
+- [架構文檔](./ARCHITECTURE.md) - 詳細的架構設計和技術實現
+- [功能清單](./FEATURES.md) - 完整的功能列表和特性說明
 
-## 注意事項
+## 🎯 核心特性
 
-1. 主組件 `WhatsAppWorkflowDesigner.js` 需要進一步完善，目前只包含基本結構
-2. 所有組件都使用相同的 props 接口，保持向後兼容
-3. 樣式和常數集中管理，便於主題切換和樣式調整
-4. API 服務層統一管理，便於後端接口變更
+### 節點管理
+- 拖拽創建節點
+- 多選和全選
+- 複製貼上功能
+- 節點對齊
 
-## 後續改進
+### 連接系統
+- 拖拽創建連接
+- 連接線樣式和動畫
+- 連接線選擇和刪除
 
-1. 添加 TypeScript 支持
-2. 增加單元測試
-3. 優化性能（使用 React.memo 等）
-4. 添加錯誤邊界處理
-5. 完善文檔和示例
+### 屬性編輯
+- 右側屬性面板
+- 動態表單
+- 實時預覽
+- 表單驗證
+
+### 模態框系統
+- 模板選擇
+- 用戶選擇
+- 流程變量管理
+- 條件編輯
+
+## 🔧 技術棧
+
+- **React 18** - 前端框架
+- **React Flow** - 流程圖庫
+- **Ant Design** - UI 組件庫
+- **React Hooks** - 狀態管理
+- **JavaScript ES6+** - 編程語言
+
+## 🎨 樣式系統
+
+### 節點樣式
+- 不同類型節點不同顏色
+- 選中和懸停效果
+- 統一的視覺風格
+
+### 連接線樣式
+- 動畫效果
+- 箭頭標記
+- 懸停提示
+
+## 🔌 API 集成
+
+### 支持的 API
+- 工作流程定義 CRUD
+- 流程變量管理
+- 模板和用戶數據
+- EForm 數據
+
+### 錯誤處理
+- 統一的錯誤處理機制
+- 用戶友好的錯誤提示
+- 自動重試機制
+
+## 🧪 測試
+
+### 測試策略
+- 單元測試：每個 Hook 和組件
+- 集成測試：組件間交互
+- 端到端測試：完整用戶流程
+
+## 📈 性能優化
+
+- React.memo 優化渲染
+- useMemo 避免不必要計算
+- useCallback 避免不必要渲染
+- 虛擬化長列表
+
+## 🔒 安全考慮
+
+- 輸入驗證和清理
+- XSS 防護
+- API 認證
+- 數據加密
+
+## 🤝 貢獻
+
+歡迎提交 Issue 和 Pull Request！
+
+## 📄 許可證
+
+MIT License

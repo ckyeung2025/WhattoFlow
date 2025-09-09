@@ -56,14 +56,26 @@ export const HANDLE_STYLES = {
     height: 12,
     borderRadius: '50%',
     boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    zIndex: 10,
   },
   target: {
-    background: '#1890ff',
-    border: '2px solid #096dd9',
+    background: '#faad14',
+    border: '2px solid #d48806',
     width: 12,
     height: 12,
     borderRadius: '50%',
     boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    zIndex: 10,
+  },
+  // 通用樣式，用於可切換的 handle
+  default: {
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+    zIndex: 1000,
+    border: '2px solid',
+    pointerEvents: 'auto',
   },
 };
 

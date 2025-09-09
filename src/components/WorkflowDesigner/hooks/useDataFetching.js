@@ -131,7 +131,7 @@ export const useDataFetching = () => {
   }, [workflowId]);
 
   // 載入現有流程資料
-  const loadWorkflow = useCallback(async (setNodes, setEdges, nodeTypes, handleDeleteNode) => {
+  const loadWorkflow = useCallback(async (setNodes, setEdges, nodeTypes, handleDeleteNode, onEdgeSwitch) => {
     if (!workflowId) return;
     
     try {
@@ -177,7 +177,7 @@ export const useDataFetching = () => {
             setNodes(nodesWithIcons);
           }
           if (flow.edges) {
-            // 設置連線，確保有正確的樣式
+            // 設置連線，確保有正確的樣式和 onEdgeSwitch 函數
             const edgesWithStyle = flow.edges.map(edge => ({
               ...edge,
               type: edge.type || 'smoothstep',
@@ -191,10 +191,15 @@ export const useDataFetching = () => {
                 width: 12,
                 height: 12,
                 color: '#1890ff',
+              },
+              // 重新添加 onEdgeSwitch 函數，因為函數無法序列化
+              data: {
+                ...edge.data,
+                onEdgeSwitch: onEdgeSwitch
               }
             }));
             setEdges(edgesWithStyle);
-            console.log('載入連線:', edgesWithStyle);
+            // console.log('載入連線:', edgesWithStyle); // 已移除以避免控制台噪音
           }
         } catch (parseError) {
           console.error('解析流程 JSON 失敗:', parseError);
@@ -207,7 +212,7 @@ export const useDataFetching = () => {
   }, [workflowId]);
 
   // 初始化數據
-  const initializeData = useCallback(async (nodeTypes, setNodes, setEdges, handleDeleteNode) => {
+  const initializeData = useCallback(async (nodeTypes, setNodes, setEdges, handleDeleteNode, onEdgeSwitch) => {
     setStatus('');
     await fetchNodeTypeDefinitions(nodeTypes);
     await fetchTemplates();
@@ -216,7 +221,7 @@ export const useDataFetching = () => {
     
     if (workflowId) {
       await fetchProcessVariables();
-      await loadWorkflow(setNodes, setEdges, nodeTypes, handleDeleteNode);
+      await loadWorkflow(setNodes, setEdges, nodeTypes, handleDeleteNode, onEdgeSwitch);
     }
   }, [workflowId, fetchNodeTypeDefinitions, fetchTemplates, fetchUsers, fetchEForms, fetchProcessVariables, loadWorkflow]);
 

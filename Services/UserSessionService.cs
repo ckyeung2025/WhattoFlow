@@ -51,14 +51,19 @@ namespace PurpleRice.Services
         {
             var session = await GetOrCreateUserSessionAsync(userWaId);
             
-            // 如果有其他活動流程，先結束它
+            // 如果有其他活動流程，只取消未完成的流程
             if (session.CurrentWorkflowExecutionId.HasValue && session.CurrentWorkflowExecutionId.Value != workflowExecutionId)
             {
                 var oldExecution = await _context.WorkflowExecutions.FindAsync(session.CurrentWorkflowExecutionId.Value);
                 if (oldExecution != null)
                 {
-                    oldExecution.Status = "Cancelled";
-                    oldExecution.IsWaiting = false;
+                    // 只有未完成的流程才應該被取消
+                    if (oldExecution.Status != "Completed" && oldExecution.Status != "Cancelled" && oldExecution.Status != "Failed")
+                    {
+                        oldExecution.Status = "Cancelled";
+                        oldExecution.IsWaiting = false;
+                        oldExecution.EndedAt = DateTime.Now;
+                    }
                 }
             }
 
@@ -102,6 +107,22 @@ namespace PurpleRice.Services
             }
             
             return null;
+        }
+
+        /// <summary>
+        /// 清理已完成的流程的會話
+        /// </summary>
+        public async Task ClearCompletedWorkflowFromSessionAsync(int workflowExecutionId)
+        {
+            var session = await _context.UserSessions
+                .FirstOrDefaultAsync(s => s.CurrentWorkflowExecutionId == workflowExecutionId);
+
+            if (session != null)
+            {
+                session.CurrentWorkflowExecutionId = null;
+                session.UpdatedAt = DateTime.Now;
+                await _context.SaveChangesAsync();
+            }
         }
 
         /// <summary>

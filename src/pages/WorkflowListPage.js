@@ -288,6 +288,7 @@ const WorkflowListPage = () => {
       if (response.ok) {
         message.success(`${t('workflowList.successfullyDeleted')} ${selectedWorkflows.length} ${t('workflowList.workflows')}`);
         setSelectedWorkflows([]);
+        setIsBatchDeleteModalVisible(false);
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
         message.error(t('workflowList.batchDeleteFailed'));
@@ -322,6 +323,7 @@ const WorkflowListPage = () => {
         const actionText = batchStatusAction === 'enable' ? t('workflowList.successfullyEnabled') : t('workflowList.successfullyDisabled');
         message.success(`${actionText} ${selectedWorkflows.length} ${t('workflowList.workflows')}`);
         setSelectedWorkflows([]);
+        setIsBatchStatusModalVisible(false);
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
         message.error(t('workflowList.batchOperationFailed'));

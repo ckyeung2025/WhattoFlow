@@ -47,7 +47,16 @@ export const useWorkflowSave = (nodes, edges, name, description, status, created
       }
     }));
     
-    const flowJson = JSON.stringify({ nodes: cleanNodes, edges });
+    // 清理邊緣數據，移除無法序列化的函數
+    const cleanEdges = edges.map(edge => ({
+      ...edge,
+      data: {
+        ...edge.data,
+        onEdgeSwitch: undefined // 移除函數，因為無法序列化
+      }
+    }));
+    
+    const flowJson = JSON.stringify({ nodes: cleanNodes, edges: cleanEdges });
     
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');

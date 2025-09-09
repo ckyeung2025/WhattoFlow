@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import { Drawer, Form, Input, Select, Card, Button, Space, Tag } from 'antd';
 import { FormOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
@@ -73,7 +73,19 @@ const NodePropertyDrawer = ({
         ...selectedNode.data
       });
     }
-  }, [selectedNode, form]);
+  }, [selectedNode?.id, form]); // 只依賴 selectedNode.id，而不是整個 selectedNode 對象
+
+  // 優化 onValuesChange 處理函數
+  const handleFormValuesChange = useCallback((changedValues, allValues) => {
+    // 只更新非 taskName 字段，taskName 使用 onBlur 事件處理
+    const { taskName, ...otherValues } = changedValues;
+    if (Object.keys(otherValues).length > 0) {
+      // 使用 setTimeout 來避免在輸入過程中觸發重新渲染
+      setTimeout(() => {
+        handleNodeDataChange(otherValues);
+      }, 0);
+    }
+  }, [handleNodeDataChange]);
 
   if (!selectedNode) return null;
 
@@ -90,13 +102,7 @@ const NodePropertyDrawer = ({
           form={form}
           key={selectedNode.id}
           layout="vertical"
-          onValuesChange={(changedValues, allValues) => {
-            // 只更新非 taskName 字段，taskName 使用 onBlur 事件處理
-            const { taskName, ...otherValues } = changedValues;
-            if (Object.keys(otherValues).length > 0) {
-              handleNodeDataChange(otherValues);
-            }
-          }}
+          onValuesChange={handleFormValuesChange}
         >
           <Form.Item label={t('workflowDesigner.taskNameLabel')} name="taskName">
             <Input 
@@ -726,12 +732,25 @@ const NodePropertyDrawer = ({
       {/* Start 節點屬性 */}
       {selectedNode && selectedNode.data.type === 'start' && (
         <div style={{ color: '#888' }}>
-          <h4>{t('workflowDesigner.activationConfig')}</h4>
           <Form
+            form={form}
+            key={selectedNode.id}
             layout="vertical"
-            size="small"
-            onValuesChange={(_, all) => handleNodeDataChange(all)}
+            onValuesChange={handleFormValuesChange}
           >
+            <Form.Item label={t('workflowDesigner.taskNameLabel')} name="taskName">
+              <Input 
+                placeholder={t('workflowDesigner.taskNamePlaceholder')}
+                onBlur={(e) => {
+                  const value = e.target.value;
+                  if (value !== selectedNode.data.taskName) {
+                    handleNodeDataChange({ taskName: value });
+                  }
+                }}
+              />
+            </Form.Item>
+            
+            <h4>{t('workflowDesigner.activationConfig')}</h4>
             <Form.Item label={t('workflowDesigner.activationType')} name="activationType">
               <Select
                 options={[
@@ -790,4 +809,4 @@ const NodePropertyDrawer = ({
   );
 };
 
-export default NodePropertyDrawer;
+export default React.memo(NodePropertyDrawer);
