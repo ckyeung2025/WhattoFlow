@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
 using PurpleRice.Services;
+using System.Linq;
 using System.Text.Json;
 
 namespace PurpleRice.Services.WebhookServices
@@ -169,6 +170,7 @@ namespace PurpleRice.Services.WebhookServices
                 string messageId = null;
                 string messageType = "text";
                 string interactiveType = "";
+                string mediaId = "";
                 
                 if (value.TryGetProperty("messages", out var messages))
                 {
@@ -218,6 +220,22 @@ namespace PurpleRice.Services.WebhookServices
                             }
                         }
                     }
+                    else if (messageType == "image")
+                    {
+                        _loggingService.LogInformation($"檢測到圖片訊息，將檢查是否需要 QR Code 掃描");
+                        // 圖片訊息不需要提取文字內容，QR Code 掃描會在後續檢查等待流程時處理
+                        messageText = ""; // 圖片訊息沒有文字內容
+                        
+                        // 提取媒體 ID
+                        if (message.TryGetProperty("image", out var imageData))
+                        {
+                            if (imageData.TryGetProperty("id", out var mediaIdProperty))
+                            {
+                                mediaId = mediaIdProperty.GetString();
+                                _loggingService.LogInformation($"提取到媒體 ID: {mediaId}");
+                            }
+                        }
+                    }
                     else
                     {
                         _loggingService.LogInformation($"未處理的訊息類型: {messageType}");
@@ -237,7 +255,8 @@ namespace PurpleRice.Services.WebhookServices
                     Timestamp = DateTime.Now,
                     Source = "MetaWebhook",
                     MessageType = messageType,
-                    InteractiveType = interactiveType
+                    InteractiveType = interactiveType,
+                    MediaId = mediaId
                 };
 
                 _loggingService.LogInformation("訊息數據提取完成");
@@ -286,7 +305,7 @@ namespace PurpleRice.Services.WebhookServices
             var currentWorkflow = await _userSessionService.GetCurrentUserWorkflowAsync(messageData.WaId);
             if (currentWorkflow != null && currentWorkflow.IsWaiting)
             {
-                _loggingService.LogInformation($"用戶 {messageData.WaId} 有正在等待的流程，處理回覆");
+                _loggingService.LogInformation($"用戶 {messageData.WaId} 有正在等待的流程，狀態: {currentWorkflow.Status}");
                 
                 // 確保 WorkflowDefinition 已加載
                 if (currentWorkflow.WorkflowDefinition == null)
@@ -297,8 +316,19 @@ namespace PurpleRice.Services.WebhookServices
                         .FirstOrDefaultAsync(e => e.Id == currentWorkflow.Id);
                 }
                 
-                await HandleWaitingWorkflowReply(company, currentWorkflow, messageData);
-                return new { success = true, message = "Waiting workflow reply processed" };
+                // 檢查是否是 QR Code 等待流程
+                if (currentWorkflow.Status == "WaitingForQRCode" && messageData.MessageType == "image")
+                {
+                    _loggingService.LogInformation($"檢測到 QR Code 等待流程，處理圖片訊息");
+                    await HandleQRCodeWorkflowReply(company, currentWorkflow, messageData);
+                    return new { success = true, message = "QR Code workflow reply processed" };
+                }
+                else
+                {
+                    _loggingService.LogInformation($"處理一般等待流程回覆");
+                    await HandleWaitingWorkflowReply(company, currentWorkflow, messageData);
+                    return new { success = true, message = "Waiting workflow reply processed" };
+                }
             }
 
             // 檢查是否是選單回覆
@@ -1038,5 +1068,215 @@ namespace PurpleRice.Services.WebhookServices
 
 
 
+        /// <summary>
+        /// 處理 QR Code 等待流程的圖片回覆
+        /// </summary>
+        /// <param name="company">公司信息</param>
+        /// <param name="execution">流程執行記錄</param>
+        /// <param name="messageData">消息數據</param>
+        private async Task HandleQRCodeWorkflowReply(Company company, WorkflowExecution execution, WhatsAppMessageData messageData)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 處理 QR Code 等待流程回覆 ===");
+                _loggingService.LogInformation($"執行ID: {execution.Id}");
+                _loggingService.LogInformation($"訊息ID: {messageData.MessageId}");
+                _loggingService.LogInformation($"媒體ID: {messageData.MediaId}");
+                _loggingService.LogInformation($"訊息類型: {messageData.MessageType}");
+                
+                // 從工作流程定義中獲取 waitForQRCode 節點信息
+                var nodeInfo = await GetWaitForQRCodeNodeInfo(execution);
+                if (nodeInfo == null)
+                {
+                    _loggingService.LogError("無法找到 waitForQRCode 節點");
+                    await SendWhatsAppMessage(company, messageData.WaId, "系統錯誤：無法找到 QR Code 節點配置。");
+                    return;
+                }
+                
+                _loggingService.LogInformation($"找到 waitForQRCode 節點: {nodeInfo.NodeId}");
+                
+                // 檢查是否有媒體 ID
+                if (string.IsNullOrEmpty(messageData.MediaId))
+                {
+                    _loggingService.LogError("沒有找到媒體 ID");
+                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
+                        ? nodeInfo.QrCodeErrorMessage 
+                        : "無法獲取圖片信息，請重新上傳。";
+                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    return;
+                }
+                
+                // 從 WhatsApp 下載圖片
+                var imageBytes = await DownloadWhatsAppImage(company, messageData.MediaId);
+                if (imageBytes == null || imageBytes.Length == 0)
+                {
+                    _loggingService.LogError("無法下載 WhatsApp 圖片");
+                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
+                        ? nodeInfo.QrCodeErrorMessage 
+                        : "無法處理您上傳的圖片，請重新上傳。";
+                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    return;
+                }
+                
+                _loggingService.LogInformation($"成功下載圖片，大小: {imageBytes.Length} bytes");
+                
+                // 調用 QRCodeController 的處理邏輯
+                using var scope = _serviceProvider.CreateScope();
+                var qrCodeService = scope.ServiceProvider.GetRequiredService<IQRCodeService>();
+                var workflowExecutionService = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionService>();
+                
+                // 掃描 QR Code
+                var qrCodeValue = await qrCodeService.ScanQRCodeAsync(imageBytes);
+                if (string.IsNullOrEmpty(qrCodeValue))
+                {
+                    _loggingService.LogWarning("無法從圖片中掃描到 QR Code");
+                    await SendWhatsAppMessage(company, messageData.WaId, "無法識別圖片中的 QR Code，請確保圖片清晰且包含有效的 QR Code。");
+                    return;
+                }
+                
+                _loggingService.LogInformation($"成功掃描 QR Code: {qrCodeValue}");
+                
+                // 處理 QR Code 輸入
+                var result = await workflowExecutionService.ProcessQRCodeInputAsync(execution.Id, nodeInfo.NodeId, imageBytes, qrCodeValue);
+                if (result)
+                {
+                    _loggingService.LogInformation($"QR Code 處理成功，繼續執行流程");
+                    var successMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeSuccessMessage) 
+                        ? nodeInfo.QrCodeSuccessMessage 
+                        : "QR Code 掃描成功！流程將繼續執行。";
+                    await SendWhatsAppMessage(company, messageData.WaId, successMessage);
+                    
+                    // 繼續執行流程
+                    await _workflowEngine.ContinueWorkflowFromWaitReply(execution, messageData);
+                }
+                else
+                {
+                    _loggingService.LogError("QR Code 處理失敗");
+                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
+                        ? nodeInfo.QrCodeErrorMessage 
+                        : "QR Code 處理失敗，請重新上傳。";
+                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"處理 QR Code 等待流程回覆時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                await SendWhatsAppMessage(company, messageData.WaId, "處理您的 QR Code 時發生錯誤，請稍後再試。");
+            }
+        }
+
+        /// <summary>
+        /// 從工作流程定義中獲取 waitForQRCode 節點 ID
+        /// </summary>
+        /// <param name="execution">流程執行記錄</param>
+        /// <returns>節點 ID</returns>
+        private async Task<QRCodeNodeInfo> GetWaitForQRCodeNodeInfo(WorkflowExecution execution)
+        {
+            try
+            {
+                if (execution.WorkflowDefinition == null || string.IsNullOrEmpty(execution.WorkflowDefinition.Json))
+                {
+                    return null;
+                }
+                
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
+                
+                if (flowData?.Nodes != null)
+                {
+                    var waitForQRCodeNode = flowData.Nodes.FirstOrDefault(n => 
+                        n.Data?.Type == "waitForQRCode" || n.Data?.Type == "waitforqrcode");
+                    
+                    if (waitForQRCodeNode != null)
+                    {
+                        return new QRCodeNodeInfo
+                        {
+                            NodeId = waitForQRCodeNode.Id,
+                            QrCodeSuccessMessage = waitForQRCodeNode.Data?.QrCodeSuccessMessage,
+                            QrCodeErrorMessage = waitForQRCodeNode.Data?.QrCodeErrorMessage
+                        };
+                    }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取 waitForQRCode 節點信息時發生錯誤: {ex.Message}");
+                return null;
+            }
+        }
+        
+        private class QRCodeNodeInfo
+        {
+            public string NodeId { get; set; }
+            public string QrCodeSuccessMessage { get; set; }
+            public string QrCodeErrorMessage { get; set; }
+        }
+
+        /// <summary>
+        /// 從 WhatsApp 下載圖片
+        /// </summary>
+        /// <param name="company">公司信息</param>
+        /// <param name="messageId">訊息 ID</param>
+        /// <returns>圖片字節數組</returns>
+        private async Task<byte[]> DownloadWhatsAppImage(Company company, string messageId)
+        {
+            try
+            {
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                
+                // 獲取媒體 URL - 使用正確的 WhatsApp Business API 端點
+                var mediaUrl = $"https://graph.facebook.com/v19.0/{messageId}";
+                _loggingService.LogInformation($"嘗試獲取媒體 URL: {mediaUrl}");
+                
+                var response = await httpClient.GetAsync(mediaUrl);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"媒體 API 回應狀態: {response.StatusCode}");
+                _loggingService.LogInformation($"媒體 API 回應內容: {responseContent}");
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    _loggingService.LogError($"獲取媒體 URL 失敗: {response.StatusCode}, 內容: {responseContent}");
+                    return null;
+                }
+                
+                var mediaInfo = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                if (mediaInfo.TryGetProperty("url", out var urlProperty))
+                {
+                    var imageUrl = urlProperty.GetString();
+                    _loggingService.LogInformation($"獲取到圖片 URL: {imageUrl}");
+                    
+                    // 下載圖片
+                    var imageResponse = await httpClient.GetAsync(imageUrl);
+                    if (imageResponse.IsSuccessStatusCode)
+                    {
+                        var imageBytes = await imageResponse.Content.ReadAsByteArrayAsync();
+                        _loggingService.LogInformation($"成功下載圖片，大小: {imageBytes.Length} bytes");
+                        return imageBytes;
+                    }
+                    else
+                    {
+                        _loggingService.LogError($"下載圖片失敗: {imageResponse.StatusCode}");
+                    }
+                }
+                else
+                {
+                    _loggingService.LogError($"媒體回應中沒有找到 URL 屬性");
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"下載 WhatsApp 圖片時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                return null;
+            }
+        }
     }
 }

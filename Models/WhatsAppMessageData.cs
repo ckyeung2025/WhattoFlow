@@ -45,6 +45,11 @@ namespace PurpleRice.Models
         /// 互動類型（如果是互動消息）
         /// </summary>
         public string InteractiveType { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 媒體 ID（如果是媒體消息）
+        /// </summary>
+        public string MediaId { get; set; } = string.Empty;
     }
 }
 
