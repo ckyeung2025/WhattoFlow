@@ -37,6 +37,120 @@ namespace PurpleRice.Controllers
              _userSessionService = userSessionService;
          }
 
+        // GET: api/eforminstances/pending - 獲取所有待處理的表單實例
+        [HttpGet("pending")]
+        public async Task<IActionResult> GetPendingEformInstances(
+            int page = 1, 
+            int pageSize = 20,
+            string search = null,
+            string priority = null)
+        {
+            try
+            {
+                _loggingService.LogInformation("獲取待處理的表單實例");
+                
+                var query = _db.EFormInstances
+                    .Include(e => e.EFormDefinition)
+                    .Where(e => e.Status == "Pending")
+                    .AsQueryable();
+
+                // 搜索篩選
+                if (!string.IsNullOrEmpty(search))
+                {
+                    query = query.Where(e => 
+                        e.InstanceName.Contains(search) ||
+                        (e.EFormDefinition != null && e.EFormDefinition.Name.Contains(search)) ||
+                        e.UserMessage.Contains(search)
+                    );
+                }
+
+                // 優先級篩選（如果表單有優先級字段）
+                // 注意：這裡假設表單實例有優先級字段，如果沒有可以移除這個篩選
+                // if (!string.IsNullOrEmpty(priority) && priority != "all")
+                // {
+                //     query = query.Where(e => e.Priority == priority);
+                // }
+
+                // 計算總數
+                var total = await query.CountAsync();
+
+                // 分頁
+                var eformInstances = await query
+                    .OrderByDescending(e => e.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        formName = e.EFormDefinition != null ? e.EFormDefinition.Name : "未命名表單",
+                        e.InstanceName,
+                        e.Status,
+                        e.CreatedAt,
+                        e.UserMessage,
+                        e.WorkflowExecutionId,
+                        createdBy = "系統",
+                        dueDate = e.CreatedAt.AddDays(7), // 假設 7 天後到期
+                        priority = "High" // 暫時設為高優先級
+                    })
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {eformInstances.Count} 個待處理的表單實例");
+
+                return Ok(new
+                {
+                    data = eformInstances,
+                    total = total,
+                    page = page,
+                    pageSize = pageSize,
+                    totalPages = (int)System.Math.Ceiling((double)total / pageSize)
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取待處理表單實例時發生錯誤: {ex.Message}");
+                return StatusCode(500, new { error = $"獲取待處理表單實例失敗: {ex.Message}" });
+            }
+        }
+
+        // GET: api/eforminstances/statistics/pending - 獲取待處理表單統計
+        [HttpGet("statistics/pending")]
+        public async Task<IActionResult> GetPendingStatistics()
+        {
+            try
+            {
+                _loggingService.LogInformation("獲取待處理表單統計數據");
+                
+                var total = await _db.EFormInstances
+                    .Where(e => e.Status == "Pending")
+                    .CountAsync();
+
+                var overdue = await _db.EFormInstances
+                    .Where(e => e.Status == "Pending" && e.CreatedAt < DateTime.UtcNow.AddDays(-7))
+                    .CountAsync();
+
+                var urgent = await _db.EFormInstances
+                    .Where(e => e.Status == "Pending" && e.CreatedAt < DateTime.UtcNow.AddDays(-3))
+                    .CountAsync();
+
+                var statistics = new
+                {
+                    total = total,
+                    pending = total,
+                    overdue = overdue,
+                    urgent = urgent
+                };
+
+                _loggingService.LogInformation($"統計數據: 總計 {total}, 逾期 {overdue}, 緊急 {urgent}");
+
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取待處理表單統計時發生錯誤: {ex.Message}");
+                return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
+
         // GET: api/eforminstances/{id} - 獲取表單實例
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)

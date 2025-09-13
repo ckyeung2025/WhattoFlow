@@ -321,6 +321,51 @@ const EFormListPage = () => {
     fetchData();
   }, [sortField, sortOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 檢查 URL 參數並自動打開編輯器
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const editFormId = urlParams.get('edit');
+    
+    if (editFormId) {
+      console.log('🔍 檢測到編輯表單 ID:', editFormId);
+      console.log('🔍 當前數據:', data);
+      console.log('🔍 數據中的 ID 類型:', data.map(d => ({ id: d.id, type: typeof d.id })));
+      
+      // 等待數據載入完成後再打開編輯器
+      if (data.length > 0) {
+        // 嘗試多種 ID 匹配方式
+        let formToEdit = data.find(d => d.id === editFormId);
+        
+        // 如果直接匹配失敗，嘗試字符串轉換匹配
+        if (!formToEdit) {
+          formToEdit = data.find(d => String(d.id) === String(editFormId));
+        }
+        
+        // 如果還是找不到，嘗試數字轉換匹配
+        if (!formToEdit) {
+          const numericId = parseInt(editFormId);
+          if (!isNaN(numericId)) {
+            formToEdit = data.find(d => parseInt(d.id) === numericId);
+          }
+        }
+        
+        if (formToEdit) {
+          console.log('✅ 找到要編輯的表單:', formToEdit);
+          setEditingId(formToEdit.id); // 使用實際的 ID
+          setDesignerOpen(true);
+          
+          // 清除 URL 參數，避免刷新頁面時重複觸發
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, '', newUrl);
+        } else {
+          console.warn('⚠️ 未找到要編輯的表單:', editFormId);
+          console.warn('⚠️ 可用的表單 ID:', data.map(d => d.id));
+          message.warning(`未找到要編輯的表單 (ID: ${editFormId})`);
+        }
+      }
+    }
+  }, [data, location.search]);
+
   const handleSearch = () => {
     fetchData(1, pagination.pageSize, searchText);
   };
@@ -606,7 +651,7 @@ const EFormListPage = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <h2 style={{ margin: 0 }}>
                   <FormOutlined style={{ marginRight: '8px' }} />
-                  {t('eform.eformManagement')}
+                  {t('menu.eformList')}
                 </h2>
               </div>
             </div>

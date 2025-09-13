@@ -142,7 +142,11 @@ namespace PurpleRice.Controllers
             string status = null, 
             string search = null,
             DateTime? startDate = null,
-            DateTime? endDate = null)
+            DateTime? endDate = null,
+            DateTime? startDateFrom = null,
+            DateTime? startDateTo = null,
+            DateTime? endDateFrom = null,
+            DateTime? endDateTo = null)
         {
             try
             {
@@ -168,13 +172,52 @@ namespace PurpleRice.Controllers
                 }
 
                 // 日期範圍篩選
+                // 開始日期範圍篩選（基於實例開始時間）
+                if (startDateFrom.HasValue)
+                {
+                    // 將 UTC 時間轉換為本地時間的開始時間（00:00:00）
+                    var localStartDate = startDateFrom.Value.ToLocalTime().Date;
+                    query = query.Where(e => e.StartedAt >= localStartDate);
+                }
+                if (startDateTo.HasValue)
+                {
+                    // 將 UTC 時間轉換為本地時間的結束時間（23:59:59.999）
+                    var localEndDate = startDateTo.Value.ToLocalTime().Date.AddDays(1).AddTicks(-1);
+                    query = query.Where(e => e.StartedAt <= localEndDate);
+                }
+
+                // 結束日期範圍篩選（基於實例結束時間）
+                if (endDateFrom.HasValue || endDateTo.HasValue)
+                {
+                    // 如果設置了結束日期範圍，只顯示已結束的實例（EndedAt 不為 null）
+                    query = query.Where(e => e.EndedAt.HasValue);
+                    
+                    if (endDateFrom.HasValue)
+                    {
+                        // 將 UTC 時間轉換為本地時間的開始時間（00:00:00）
+                        var localEndDateFrom = endDateFrom.Value.ToLocalTime().Date;
+                        query = query.Where(e => e.EndedAt >= localEndDateFrom);
+                    }
+                    if (endDateTo.HasValue)
+                    {
+                        // 將 UTC 時間轉換為本地時間的結束時間（23:59:59.999）
+                        var localEndDateTo = endDateTo.Value.ToLocalTime().Date.AddDays(1).AddTicks(-1);
+                        query = query.Where(e => e.EndedAt <= localEndDateTo);
+                    }
+                }
+
+                // 向後兼容舊的參數名稱
                 if (startDate.HasValue)
                 {
-                    query = query.Where(e => e.StartedAt >= startDate.Value);
+                    // 將 UTC 時間轉換為本地時間的開始時間（00:00:00）
+                    var localStartDate = startDate.Value.ToLocalTime().Date;
+                    query = query.Where(e => e.StartedAt >= localStartDate);
                 }
                 if (endDate.HasValue)
                 {
-                    query = query.Where(e => e.StartedAt <= endDate.Value);
+                    // 將 UTC 時間轉換為本地時間的結束時間（23:59:59.999）
+                    var localEndDate = endDate.Value.ToLocalTime().Date.AddDays(1).AddTicks(-1);
+                    query = query.Where(e => e.StartedAt <= localEndDate);
                 }
 
                 // 計算總數
@@ -565,6 +608,64 @@ namespace PurpleRice.Controllers
                 _loggingService.LogError($"獲取表單實例時發生錯誤: {ex.Message}");
                 _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
                 return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        // GET: api/workflowexecutions/execution-counts
+        [HttpGet("execution-counts")]
+        public async Task<IActionResult> GetExecutionCounts()
+        {
+            try
+            {
+                _loggingService.LogInformation("開始獲取工作流程執行統計數據");
+
+                // 先檢查是否有 WorkflowExecutions 數據
+                var totalExecutions = await _db.WorkflowExecutions.CountAsync();
+                _loggingService.LogInformation($"數據庫中總共有 {totalExecutions} 個工作流程執行記錄");
+
+                if (totalExecutions == 0)
+                {
+                    _loggingService.LogInformation("沒有工作流程執行記錄，返回空統計");
+                    return Ok(new Dictionary<string, int>());
+                }
+
+                // 獲取所有執行記錄的狀態分佈
+                var statusCounts = await _db.WorkflowExecutions
+                    .GroupBy(we => we.Status)
+                    .Select(g => new { Status = g.Key, Count = g.Count() })
+                    .ToListAsync();
+                
+                _loggingService.LogInformation($"執行記錄狀態分佈: {string.Join(", ", statusCounts.Select(s => $"{s.Status}: {s.Count}"))}");
+
+                // 獲取統計數據 - 包含所有狀態的執行記錄
+                var statisticsData = await _db.WorkflowExecutions
+                    .GroupBy(we => we.WorkflowDefinitionId)
+                    .Select(g => new { 
+                        WorkflowDefinitionId = g.Key, 
+                        ExecutionCount = g.Count(),
+                        Statuses = g.Select(x => x.Status).ToList()
+                    })
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {statisticsData.Count} 個工作流程的執行記錄");
+
+                var statistics = statisticsData.ToDictionary(x => x.WorkflowDefinitionId.ToString(), x => x.ExecutionCount);
+                
+                // 記錄每個工作流程的詳細信息
+                foreach (var item in statisticsData)
+                {
+                    _loggingService.LogInformation($"工作流程 {item.WorkflowDefinitionId}: 執行次數 {item.ExecutionCount}, 狀態: {string.Join(", ", item.Statuses)}");
+                }
+
+                _loggingService.LogInformation($"成功獲取 {statistics.Count} 個工作流程的執行統計數據");
+
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取執行統計時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
+                return StatusCode(500, new { error = "獲取執行統計失敗", details = ex.Message });
             }
         }
     }

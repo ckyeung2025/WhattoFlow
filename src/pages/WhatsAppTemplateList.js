@@ -70,6 +70,37 @@ const WhatsAppTemplateList = () => {
     fetchCategories();
   }, [currentPage, pageSize, sortField, sortOrder, searchText, categoryFilter, statusFilter]);
 
+  // 處理 URL 參數中的 edit 參數
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const editId = urlParams.get('edit');
+    
+    if (editId) {
+      console.log('🔍 [WhatsAppTemplateList] 檢測到 edit 參數:', editId);
+      
+      // 等待模板列表載入完成後再處理編輯
+      if (templates.length > 0) {
+        const templateToEdit = templates.find(template => 
+          template.id === editId || 
+          template.id.toString() === editId ||
+          template.name === editId
+        );
+        
+        if (templateToEdit) {
+          console.log('🔍 [WhatsAppTemplateList] 找到要編輯的模板:', templateToEdit);
+          handleEditTemplate(templateToEdit);
+          
+          // 清除 URL 參數，避免重複觸發
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, '', newUrl);
+        } else {
+          console.log('❌ [WhatsAppTemplateList] 未找到要編輯的模板:', editId);
+          message.warning(`未找到 ID 為 ${editId} 的模板`);
+        }
+      }
+    }
+  }, [templates]);
+
   // 獲取模板列表
   const fetchTemplates = async () => {
     setLoading(true);
@@ -1932,7 +1963,7 @@ const WhatsAppTemplateList = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <h2 style={{ margin: 0 }}>
             <MessageOutlined style={{ marginRight: '8px' }} />
-            {t('whatsappTemplate.title')}
+            {t('menu.whatsappTemplates')}
           </h2>
         </div>
       </div>

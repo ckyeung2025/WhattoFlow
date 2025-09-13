@@ -380,7 +380,7 @@ const WorkflowListPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <h2 style={{ margin: 0 }}>
               <BranchesOutlined style={{ marginRight: '8px' }} />
-              {t('workflow.title')}
+              {t('menu.whatsappWorkflow')}
             </h2>
           </div>
         </div>

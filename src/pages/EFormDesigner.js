@@ -33,6 +33,7 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
   const [formDescription, setFormDescription] = useState(initialSchema?.description || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  const [isLoadingForm, setIsLoadingForm] = useState(false);
   
   // 上傳相關狀態
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
@@ -50,6 +51,56 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
   // GrapesJS 相關
   const editorRef = useRef(null);
   console.log(' EFormDesigner: 開始調用 useGrapesJS...');
+
+  // 載入表單內容的函數
+  const loadFormContent = async (formId) => {
+    setIsLoadingForm(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error('請先登入');
+        return;
+      }
+
+      const response = await fetch(`/api/eforms/${formId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const formData = await response.json();
+      console.log('📥 載入的表單數據:', formData);
+
+      // 更新表單內容
+      if (formData.htmlCode) {
+        setHtmlContent(formData.htmlCode);
+        if (grapesEditor) {
+          grapesEditor.setComponents(formData.htmlCode);
+        }
+      }
+      
+      if (formData.name) {
+        setFormName(formData.name);
+      }
+      
+      if (formData.description) {
+        setFormDescription(formData.description);
+      }
+
+      message.success('表單內容載入成功！');
+    } catch (error) {
+      console.error('❌ 載入表單內容失敗:', error);
+      message.error('載入表單內容失敗: ' + error.message);
+    } finally {
+      setIsLoadingForm(false);
+    }
+  };
 
   const { editor: grapesEditor, isReady: isEditorReady } = useGrapesJS(
     editorRef, 
@@ -130,6 +181,17 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
       }
     }
   );
+
+  // 檢查 URL 參數並載入表單內容
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const editFormId = urlParams.get('edit');
+    
+    if (editFormId && !initialSchema?.id) {
+      console.log('🔍 檢測到編輯表單 ID:', editFormId);
+      loadFormContent(editFormId);
+    }
+  }, []);
 
   // 使用 useEffect 來監聽 grapesEditor 的變化，確保事件監聽器被正確設置
   useEffect(() => {
@@ -373,7 +435,12 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
     setIsSaving(true);
     try {
-      const isEditing = !!initialSchema?.id;
+      // 檢查是否為編輯模式（從 initialSchema 或 URL 參數）
+      const urlParams = new URLSearchParams(window.location.search);
+      const editFormId = urlParams.get('edit');
+      const isEditing = !!initialSchema?.id || !!editFormId;
+      const formId = initialSchema?.id || editFormId;
+      
       const formData = {
         name: formName,
         description: formDescription,
@@ -390,7 +457,7 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
       console.log('📤 發送保存請求:', formData);
 
       const token = localStorage.getItem('token');
-      const url = isEditing ? `/api/eforms/${initialSchema.id}` : '/api/eforms';
+      const url = isEditing ? `/api/eforms/${formId}` : '/api/eforms';
       const method = isEditing ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
@@ -442,6 +509,23 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
       setIsSaving(false);
     }
   };
+
+  // 如果正在載入表單內容，顯示載入狀態
+  if (isLoadingForm) {
+    return (
+      <div style={{ 
+        height: '100vh', 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
+        <div style={{ fontSize: '18px', color: '#666' }}>載入表單內容中...</div>
+        <div style={{ fontSize: '14px', color: '#999' }}>請稍候</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>

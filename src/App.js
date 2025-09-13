@@ -18,6 +18,8 @@ import WhatsAppTemplateList from './pages/WhatsAppTemplateList';
 import EFormListPage from './pages/EFormListPage';
 import EFormInstancePage from './pages/EFormInstancePage';
 import StudioTest from './pages/StudioTest';
+import PublishedAppsPage from './pages/PublishedAppsPage';
+import PendingTasksPage from './pages/PendingTasksPage';
 import './App.css';
 import DataSetManagementPage from './pages/DataSetManagementPage';
 
@@ -26,6 +28,7 @@ const { Content } = Layout;
 const pathToMenuKey = {
   '/dashboard': 'dashboard',
   '/unsigned': 'unsigned',
+  // '/pending-tasks': 不映射，讓它使用默認的 'dashboard'
   '/customer-signed': 'customerSigned',
   '/whatsapp-workflow': 'whatsappWorkflow',
   '/workflow-list': 'whatsappWorkflow',
@@ -34,6 +37,7 @@ const pathToMenuKey = {
   '/eform-list': 'eformList',
   '/company-user-admin': 'companyUserAdmin',
   '/data-sets': 'dataSets',
+  '/published-apps': 'publishedApps',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -76,6 +80,9 @@ function MainLayout({ userInfo, onLogout }) {
       case 'dataSets':
         navigate('/data-sets');
         break;
+      case 'publishedApps':
+        navigate('/published-apps');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -92,7 +99,7 @@ function MainLayout({ userInfo, onLogout }) {
       <Layout className="main-content-layout">
         <Content className="main-content-panel">
           <Routes>
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard onMenuSelect={handleMenuSelect} />} />
             <Route path="/unsigned" element={<UnconfirmedPage />} />
             <Route path="/customer-signed" element={<CustomerSignedPage />} />
             <Route path="/whatsapp-workflow" element={<WhatsAppWorkflowPage />} />
@@ -105,6 +112,8 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/whatsapp-templates" element={<WhatsAppTemplateList />} />
             <Route path="/studio-test" element={<StudioTest />} />
             <Route path="/data-sets" element={<DataSetManagementPage />} />
+            <Route path="/published-apps" element={<PublishedAppsPage />} />
+            <Route path="/pending-tasks" element={<PendingTasksPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -153,6 +162,9 @@ function AppContent() {
         break;
       case 'dataSets':
         navigate('/data-sets');
+        break;
+      case 'publishedApps':
+        navigate('/published-apps');
         break;
       default:
         navigate('/dashboard');
@@ -272,7 +284,7 @@ function AppContent() {
         <Layout className="main-content-layout">
           <Content className="main-content-panel">
             <Routes>
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<Dashboard onMenuSelect={handleMenuSelect} />} />
               <Route path="/unsigned" element={<UnconfirmedPage />} />
               <Route path="/customer-signed" element={<CustomerSignedPage />} />
               <Route path="/whatsapp-workflow" element={<WhatsAppWorkflowPage />} />
@@ -285,6 +297,8 @@ function AppContent() {
               <Route path="/whatsapp-templates" element={<WhatsAppTemplateList />} />
               <Route path="/studio-test" element={<StudioTest />} />
               <Route path="/data-sets" element={<DataSetManagementPage />} />
+              <Route path="/published-apps" element={<PublishedAppsPage />} />
+              <Route path="/pending-tasks" element={<PendingTasksPage />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </Content>
@@ -302,7 +316,7 @@ function AppContent() {
   return (
     <div className="login-root">
       <div className="login-left">
-        <img src="/assets/starchy-theme.png" alt="theme" className="theme-img" />
+        <img src="/assets/Whatoflow_logo_W.png" alt="WhatoFlow Logo" className="theme-img" />
       </div>
       <div className="login-right">
         <div className="login-box">

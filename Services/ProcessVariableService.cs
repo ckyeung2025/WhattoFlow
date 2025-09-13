@@ -27,6 +27,9 @@ namespace PurpleRice.Services
         // 驗證和轉換
         Task<bool> ValidateVariableValueAsync(string dataType, object value, string? validationRules = null);
         Task<object?> ConvertValueAsync(string dataType, object value);
+
+        // 獲取流程變量實例值（包含定義信息）
+        Task<IEnumerable<ProcessVariableInstanceValue>> GetProcessVariableInstanceValuesAsync(int workflowExecutionId);
     }
 
     public class ProcessVariableService : IProcessVariableService
@@ -449,6 +452,69 @@ namespace PurpleRice.Services
             {
                 _loggingService.LogError($"轉換變量值失敗: {ex.Message}", ex);
                 return null;
+            }
+        }
+
+        public async Task<IEnumerable<ProcessVariableInstanceValue>> GetProcessVariableInstanceValuesAsync(int workflowExecutionId)
+        {
+            try
+            {
+                // 首先獲取工作流執行記錄以獲取工作流定義ID
+                var workflowExecution = await _context.WorkflowExecutions
+                    .FirstOrDefaultAsync(we => we.Id == workflowExecutionId);
+
+                if (workflowExecution == null)
+                {
+                    return new List<ProcessVariableInstanceValue>();
+                }
+
+                // 獲取所有變量定義
+                var variableDefinitions = await _context.ProcessVariableDefinitions
+                    .Where(pvd => pvd.WorkflowDefinitionId == workflowExecution.WorkflowDefinitionId)
+                    .ToListAsync();
+
+                // 獲取所有變量值
+                var variableValues = await _context.ProcessVariableValues
+                    .Where(pvv => pvv.WorkflowExecutionId == workflowExecutionId)
+                    .ToListAsync();
+
+                // 創建變量值字典以便快速查找
+                var valueDict = variableValues.ToDictionary(v => v.VariableName, v => v);
+
+                // 合併定義和值
+                var result = new List<ProcessVariableInstanceValue>();
+
+                foreach (var definition in variableDefinitions)
+                {
+                    var instanceValue = new ProcessVariableInstanceValue
+                    {
+                        VariableName = definition.VariableName,
+                        DisplayName = definition.DisplayName,
+                        DataType = definition.DataType,
+                        Description = definition.Description,
+                        IsRequired = definition.IsRequired,
+                        DefaultValue = definition.DefaultValue
+                    };
+
+                    // 如果有對應的值，則設置值相關信息
+                    if (valueDict.TryGetValue(definition.VariableName, out var value))
+                    {
+                        instanceValue.Value = value.GetValue();
+                        instanceValue.SetAt = value.SetAt;
+                        instanceValue.SetBy = value.SetBy;
+                        instanceValue.SourceType = value.SourceType;
+                        instanceValue.SourceReference = value.SourceReference;
+                    }
+
+                    result.Add(instanceValue);
+                }
+
+                return result.OrderBy(r => r.VariableName);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取流程變量實例值失敗: {ex.Message}", ex);
+                throw;
             }
         }
 

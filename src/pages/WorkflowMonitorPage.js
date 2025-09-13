@@ -81,7 +81,8 @@ const WorkflowMonitorPage = () => {
   const [filters, setFilters] = useState({
     status: 'all',
     workflowName: '',
-    dateRange: null,
+    startDateRange: null,
+    endDateRange: null,
     searchText: ''
   });
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -137,9 +138,14 @@ const WorkflowMonitorPage = () => {
         params.append('search', filters.searchText);
       }
 
-      if (filters.dateRange && filters.dateRange.length === 2) {
-        params.append('startDate', filters.dateRange[0].toISOString());
-        params.append('endDate', filters.dateRange[1].toISOString());
+      if (filters.startDateRange && filters.startDateRange.length === 2) {
+        params.append('startDateFrom', filters.startDateRange[0].toISOString());
+        params.append('startDateTo', filters.startDateRange[1].toISOString());
+      }
+
+      if (filters.endDateRange && filters.endDateRange.length === 2) {
+        params.append('endDateFrom', filters.endDateRange[0].toISOString());
+        params.append('endDateTo', filters.endDateRange[1].toISOString());
       }
 
       console.log('發送請求到:', `/api/workflowexecutions/monitor?${params}`);
@@ -219,8 +225,13 @@ const WorkflowMonitorPage = () => {
     setPagination(prev => ({ ...prev, current: 1 }));
   };
 
-  const handleDateRangeChange = (dates) => {
-    setFilters(prev => ({ ...prev, dateRange: dates }));
+  const handleStartDateRangeChange = (dates) => {
+    setFilters(prev => ({ ...prev, startDateRange: dates }));
+    setPagination(prev => ({ ...prev, current: 1 }));
+  };
+
+  const handleEndDateRangeChange = (dates) => {
+    setFilters(prev => ({ ...prev, endDateRange: dates }));
     setPagination(prev => ({ ...prev, current: 1 }));
   };
 
@@ -543,9 +554,18 @@ const WorkflowMonitorPage = () => {
             
             <Col xs={24} sm={12} md={6}>
               <RangePicker
-                placeholder={['開始日期', '結束日期']}
-                value={filters.dateRange}
-                onChange={handleDateRangeChange}
+                placeholder={['開始日期範圍', '開始日期範圍']}
+                value={filters.startDateRange}
+                onChange={handleStartDateRangeChange}
+                style={{ width: '100%' }}
+              />
+            </Col>
+            
+            <Col xs={24} sm={12} md={6}>
+              <RangePicker
+                placeholder={['結束日期範圍', '結束日期範圍']}
+                value={filters.endDateRange}
+                onChange={handleEndDateRangeChange}
                 style={{ width: '100%' }}
               />
             </Col>
@@ -655,11 +675,20 @@ const InstanceDetailModal = ({ instance, onClose }) => {
   const [activeTab, setActiveTab] = useState('basic');
   const [eformInstances, setEformInstances] = useState([]);
   const [loadingEforms, setLoadingEforms] = useState(false);
+  const [processVariables, setProcessVariables] = useState([]);
+  const [loadingProcessVariables, setLoadingProcessVariables] = useState(false);
 
   // 載入表單實例數據
   useEffect(() => {
     if (activeTab === 'forms') {
       loadEformInstances();
+    }
+  }, [activeTab, instance.id]);
+
+  // 載入流程變量數據
+  useEffect(() => {
+    if (activeTab === 'variables') {
+      loadProcessVariables();
     }
   }, [activeTab, instance.id]);
 
@@ -704,6 +733,47 @@ const InstanceDetailModal = ({ instance, onClose }) => {
     }
   };
 
+  const loadProcessVariables = async () => {
+    try {
+      setLoadingProcessVariables(true);
+      console.log(`正在載入工作流程實例 ID: ${instance.id} 的流程變量`);
+      
+      const response = await fetch(`/api/processvariables/instance-values/${instance.id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log('流程變量 API 端點不存在，請檢查後端控制器');
+          setProcessVariables([]);
+          message.warning('流程變量 API 端點尚未實現，請聯繫開發人員');
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('載入到的流程變量數據:', data);
+      setProcessVariables(data.data || []);
+    } catch (error) {
+      console.error('載入流程變量失敗:', error);
+      
+      if (error.message.includes('404')) {
+        message.error('流程變量 API 端點不存在，請檢查後端配置');
+      } else if (error.message.includes('500')) {
+        message.error('後端服務器錯誤，請檢查日誌');
+      } else {
+        message.error(`載入流程變量失敗: ${error.message}`);
+      }
+      
+      setProcessVariables([]);
+    } finally {
+      setLoadingProcessVariables(false);
+    }
+  };
+
   const getEformStatusColor = (status) => {
     switch (status) {
       case 'Pending': return 'orange';
@@ -719,6 +789,40 @@ const InstanceDetailModal = ({ instance, onClose }) => {
       case 'Approved': return '已批准';
       case 'Rejected': return '已拒絕';
       default: return status;
+    }
+  };
+
+  const formatVariableValue = (value, dataType) => {
+    if (value === null || value === undefined) {
+      return '-';
+    }
+
+    switch (dataType.toLowerCase()) {
+      case 'datetime':
+        return new Date(value).toLocaleString('zh-TW');
+      case 'boolean':
+        return value ? '是' : '否';
+      case 'json':
+        try {
+          return JSON.stringify(JSON.parse(value), null, 2);
+        } catch {
+          return value.toString();
+        }
+      default:
+        return value.toString();
+    }
+  };
+
+  const getDataTypeColor = (dataType) => {
+    switch (dataType.toLowerCase()) {
+      case 'string': return 'blue';
+      case 'int': 
+      case 'decimal': return 'green';
+      case 'datetime': return 'purple';
+      case 'boolean': return 'orange';
+      case 'text': return 'cyan';
+      case 'json': return 'magenta';
+      default: return 'default';
     }
   };
 
@@ -953,6 +1057,208 @@ const InstanceDetailModal = ({ instance, onClose }) => {
               </Timeline.Item>
             )}
           </Timeline>
+        </TabPane>
+        
+        <TabPane tab="流程變量" key="variables">
+          {loadingProcessVariables ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: 16 }}>載入流程變量中...</p>
+            </div>
+          ) : processVariables.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {processVariables.map((variable) => (
+                <Card 
+                  key={variable.variableName}
+                  size="small"
+                  style={{ 
+                    border: '1px solid #e8e8e8',
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'flex-start',
+                    gap: '16px'
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px', 
+                        marginBottom: '12px' 
+                      }}>
+                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
+                          {variable.displayName || variable.variableName}
+                        </h4>
+                        <Tag color={getDataTypeColor(variable.dataType)}>
+                          {variable.dataType}
+                        </Tag>
+                        {variable.isRequired && (
+                          <Tag color="red">必需</Tag>
+                        )}
+                        {variable.hasValue ? (
+                          <Tag color="green">有值</Tag>
+                        ) : (
+                          <Tag color="default">無值</Tag>
+                        )}
+                      </div>
+                      
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '12px',
+                        fontSize: '14px'
+                      }}>
+                        <div>
+                          <strong style={{ color: '#595959' }}>變量名稱:</strong>
+                          <div style={{ 
+                            marginTop: '4px',
+                            padding: '4px 8px',
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: '4px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {variable.variableName}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <strong style={{ color: '#595959' }}>數據類型:</strong>
+                          <div style={{ 
+                            marginTop: '4px',
+                            padding: '4px 8px',
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: '4px',
+                            border: '1px solid #e8e8e8'
+                          }}>
+                            {variable.dataType}
+                          </div>
+                        </div>
+                        
+                        {variable.description && (
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <strong style={{ color: '#595959' }}>描述:</strong>
+                            <div style={{ 
+                              marginTop: '4px',
+                              padding: '8px 12px',
+                              backgroundColor: '#f6ffed',
+                              border: '1px solid #b7eb8f',
+                              borderRadius: '6px',
+                              fontSize: '14px',
+                              lineHeight: '1.5'
+                            }}>
+                              {variable.description}
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div>
+                          <strong style={{ color: '#595959' }}>當前值:</strong>
+                          <div style={{ 
+                            marginTop: '4px',
+                            padding: '8px 12px',
+                            backgroundColor: variable.hasValue ? '#f6ffed' : '#fff7e6',
+                            border: `1px solid ${variable.hasValue ? '#b7eb8f' : '#ffd591'}`,
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            lineHeight: '1.5',
+                            wordBreak: 'break-all'
+                          }}>
+                            {formatVariableValue(variable.value, variable.dataType)}
+                          </div>
+                        </div>
+                        
+                        {variable.defaultValue && (
+                          <div>
+                            <strong style={{ color: '#595959' }}>默認值:</strong>
+                            <div style={{ 
+                              marginTop: '4px',
+                              padding: '4px 8px',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: '4px',
+                              border: '1px solid #e8e8e8'
+                            }}>
+                              {variable.defaultValue}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {variable.setAt && (
+                          <div>
+                            <strong style={{ color: '#595959' }}>設置時間:</strong>
+                            <div style={{ 
+                              marginTop: '4px',
+                              padding: '4px 8px',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: '4px',
+                              border: '1px solid #e8e8e8'
+                            }}>
+                              {new Date(variable.setAt).toLocaleString('zh-TW')}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {variable.setBy && (
+                          <div>
+                            <strong style={{ color: '#595959' }}>設置者:</strong>
+                            <div style={{ 
+                              marginTop: '4px',
+                              padding: '4px 8px',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: '4px',
+                              border: '1px solid #e8e8e8'
+                            }}>
+                              {variable.setBy}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {variable.sourceType && (
+                          <div>
+                            <strong style={{ color: '#595959' }}>來源類型:</strong>
+                            <div style={{ 
+                              marginTop: '4px',
+                              padding: '4px 8px',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: '4px',
+                              border: '1px solid #e8e8e8'
+                            }}>
+                              {variable.sourceType}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {variable.sourceReference && (
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <strong style={{ color: '#595959' }}>來源引用:</strong>
+                            <div style={{ 
+                              marginTop: '4px',
+                              padding: '4px 8px',
+                              backgroundColor: '#f8f9fa',
+                              borderRadius: '4px',
+                              border: '1px solid #e8e8e8',
+                              wordBreak: 'break-all'
+                            }}>
+                              {variable.sourceReference}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Empty 
+              description="暫無流程變量" 
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              style={{ margin: '40px 0' }}
+            />
+          )}
         </TabPane>
         
         <TabPane tab="表單實例" key="forms">

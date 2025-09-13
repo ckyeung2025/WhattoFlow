@@ -10,7 +10,9 @@ import {
   UserOutlined,
   MessageOutlined,
   BarChartOutlined,
-  DatabaseOutlined  // 添加這個圖標
+  DatabaseOutlined,
+  BranchesOutlined,  // 添加這個圖標
+  ClockCircleOutlined  // 添加時鐘圖標用於待處理事項
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
@@ -28,24 +30,14 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
       icon: <DashboardOutlined />,
       label: t('menu.dashboard'),
     },
-    {
-      key: 'unsigned',
-      icon: <FileTextOutlined />,
-      label: t('menu.unsigned'),
-    },
-    {
-      key: 'customerSigned',
-      icon: <UserOutlined />,
-      label: t('menu.customerSigned'),
-    },
-    // e-Form 管理移到 Elsa Dashboard 上方
+    // 表單管理移到 Elsa Dashboard 上方
     {
       key: 'eformList',
       icon: <FileTextOutlined />,
       label: t('menu.eformList'),
       url: '/eform-list',
     },
-    // WhatsApp 訊息模版
+    // 訊息模版
     {
       key: 'whatsappTemplates',
       icon: <MessageOutlined />,
@@ -55,18 +47,18 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
     // 新增 Elsa Dashboard 選單
     {
       key: 'whatsappWorkflow',
-      icon: <CheckCircleOutlined />,
+      icon: <BranchesOutlined />,
       label: t('menu.whatsappWorkflow'),
       url: '/workflow-list',
     },
-    // 新增流程實例監控選單
+    // 新增流程監控選單
     {
       key: 'workflowMonitor',
       icon: <BarChartOutlined />,
       label: t('menu.workflowMonitor'),
       url: '/workflow-monitor',
     },
-    // 新增 Data Set 管理選單
+    // 新增數據集管理選單
     {
       key: 'dataSets',
       icon: <DatabaseOutlined />,

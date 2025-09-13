@@ -2,7 +2,7 @@ const zhTC = {
   // 登入相關
   login: {
     title: 'SS.AI 客服',
-    platformTitle: 'Whatto Flow - 你的聊天機器人流程平台',
+    platformTitle: 'AI WhatsApp 流程平台',
     userId: '使用者 ID',
     password: '密碼',
     loginButton: '登入',
@@ -26,11 +26,62 @@ const zhTC = {
     signedPending: '已簽收待確認',
     logout: '登出',
     dashboardRecentActivity: '最近活動',
-    whatsappWorkflow: 'WhatsApp 工作流',
+    whatsappWorkflow: '工作流程設計',
     companyUserAdmin: '公司/用戶管理',
-    eformList: 'e-Form 管理',
-    whatsappTemplates: 'WhatsApp 訊息模版',
-    workflowMonitor: '流程實例監控', // 新增這個翻譯鍵
+    eformList: '表單管理',
+    whatsappTemplates: '訊息模版',
+    workflowMonitor: '流程監控', // 新增這個翻譯鍵
+  },
+
+  // Dashboard 儀表板
+  dashboard: {
+    applicationTitle: '應用',
+    applicationDescription: '已發布的工作流程應用，可直接啟動使用',
+    studioTitle: '工作室',
+    studioDescription: '管理和設計工具，打造您的專屬工作流程',
+    publishedApps: '已發布應用',
+    publishedAppsDescription: '可用的工作流程應用',
+    runningApps: '運行中的應用',
+    runningAppsDescription: '當前正在執行的流程實例',
+    formManagement: '表單管理',
+    formManagementDescription: '電子表單設計與管理',
+    messageTemplates: '訊息模板',
+    messageTemplatesDescription: 'WhatsApp 訊息模板管理',
+    workflowDesign: '工作流程設計',
+    workflowDesignDescription: '設計和配置工作流程',
+    datasetManagement: '數據集管理',
+    datasetManagementDescription: '數據源和數據集管理',
+    userManagement: '用戶管理',
+    userManagementDescription: '公司用戶和權限管理',
+    systemMonitoring: '系統監控',
+    systemMonitoringDescription: '流程執行監控和分析',
+    workflowMonitor: '流程監控',
+    workflowMonitorDescription: '工作流程執行監控和分析',
+    totalCount: '總數',
+    recentlyAdded: '最近新增',
+    loading: '載入中...',
+    loadingDashboard: '載入儀表板中...',
+    active: '活躍',
+    draft: '草稿',
+    disabled: '停用',
+    running: '運行中',
+    completed: '已完成',
+    failed: '失敗',
+    pendingApproval: '待審批',
+    processed: '已處理',
+    today: '今日',
+    enabled: '啟用',
+    inactive: '停用',
+    published: '已發布',
+    test: '測試',
+    totalDatasets: '總數據集',
+    error: '錯誤',
+    totalUsers: '總用戶',
+    online: '在線',
+    admin: '管理員',
+    successRate: '成功率',
+    averageTime: '平均時間',
+    minutes: '分'
   },
   
   // 未簽收管理
@@ -138,7 +189,9 @@ const zhTC = {
     open: '開啟',
     yes: '是',
     no: '否',
-    ok: '確定'
+    ok: '確定',
+    required: '必填',
+    minLength: '至少 {min} 碼'
   },
   
   // 語言切換
@@ -147,6 +200,30 @@ const zhTC = {
     zhSC: '簡體中文', 
     en: 'English',
     language: '語言'
+  },
+  
+  // 用戶偏好設定
+  preferences: {
+    title: '我的偏好設定',
+    basicInfo: '基本資料',
+    avatar: '頭像',
+    uploadAvatar: '上傳頭像',
+    account: '帳號',
+    name: '名稱',
+    email: 'Email',
+    phone: '電話',
+    language: '語言',
+    timezone: '時區',
+    password: '密碼',
+    passwordPlaceholder: '如需修改請輸入新密碼',
+    isActive: '啟用',
+    isOwner: '主帳號',
+    save: '儲存',
+    cancel: '取消',
+    updateSuccess: '個人資料已更新',
+    updateFailed: '更新用戶信息失敗',
+    avatarUploadSuccess: '頭像上傳成功',
+    avatarUploadFailed: '頭像上傳失敗'
   },
   companyUserAdmin: {
     companyName: "公司名稱",
@@ -241,7 +318,7 @@ const zhTC = {
     batchDisable: "批量停用",
     batchDelete: "批量刪除",
     refresh: "刷新",
-    eformManagement: "e-Form 管理",
+    eformManagement: "表單管理",
     searchNameDescription: "搜尋名稱、描述...",
     clearFilter: "清除篩選",
     pageRange: "第 ",
@@ -630,7 +707,7 @@ const zhTC = {
   
   // WhatsApp Template 相關
   whatsappTemplate: {
-    title: "WhatsApp 模板管理",
+    title: "訊息模版管理",
     name: "名稱",
     description: "描述",
     category: "分類",
@@ -661,6 +738,7 @@ const zhTC = {
     list: "清單",
     confirmDeleteTitle: "確定要刪除這個模板嗎？",
     confirmDeleteContent: "此操作無法撤銷",
+    confirmDelete: "確定",
     confirmDeleteOk: "確定",
     confirmDeleteCancel: "取消",
     deleteSuccess: "刪除成功",
@@ -746,6 +824,7 @@ const zhTC = {
     templateStatusPlaceholder: "請選擇狀態",
     templateLanguageRequired: "請選擇語言",
     templateLanguagePlaceholder: "請選擇語言",
+    language: "語言",
     templateMessageContent: "訊息內容",
     templateMessageContentRequired: "請輸入訊息內容",
     templateMessageContentPlaceholder: "請輸入訊息內容，可使用 {{變數名}} 格式插入變數",
@@ -924,7 +1003,7 @@ const zhTC = {
     updatedAt: "更新時間",
     action: "操作",
     add: "新增",
-    title: "WhatsApp 模板管理",
+    title: "訊息模版管理",
     templateLanguage: "模板語言",
     templateVersion: "模板版本",
     
@@ -1338,7 +1417,7 @@ const zhTC = {
   
   // 流程實例監控
   workflowMonitor: {
-    title: '流程實例監控',
+    title: '流程監控',
     overview: '概覽',
     activeInstances: '活躍實例',
     completedInstances: '已完成實例',
@@ -1644,9 +1723,41 @@ const zhTC = {
     manualStartMessage: '手動啟動的流程'
   },
 
+  // 已發布應用頁面
+  publishedApps: {
+    title: '已發布應用',
+    description: '顯示所有啟用狀態且支援手動啟動的工作流程應用',
+    totalApps: '總應用數',
+    manualTriggerWorkflows: '手動觸發工作流程',
+    autoTriggerWorkflows: '自動觸發工作流程',
+    noManualWorkflows: '暫無手動觸發的工作流程',
+    noAutoWorkflows: '暫無自動觸發的工作流程',
+    loading: '載入已發布應用中...',
+    executionCount: '執行次數',
+    creator: '創建者',
+    clickToStart: '點擊啟動',
+    starting: '啟動中...',
+    autoOnly: '僅自動觸發',
+    unknown: '未知',
+    manual: '手動',
+    auto: '自動',
+    startWorkflowSuccess: '工作流程 "{name}" 已成功啟動',
+    startWorkflowFailed: '啟動工作流程失敗',
+    loadAppsFailed: '載入已發布應用失敗',
+    noDescription: '無描述',
+    mockCustomerService: '客戶服務流程',
+    mockCustomerServiceDesc: '處理客戶諮詢和投訴的標準化流程',
+    mockOrderProcess: '訂單處理流程',
+    mockOrderProcessDesc: '從訂單接收到發貨的完整流程',
+    mockPaymentConfirm: '付款確認流程',
+    mockPaymentConfirmDesc: '處理付款確認和發票生成的流程',
+    mockAutoNotification: '自動通知流程',
+    mockAutoNotificationDesc: '系統自動發送通知的流程'
+  },
+
   // Data Set 管理頁面
   dataSetManagement: {
-    title: 'Data Set 管理',
+    title: '數據集管理',
     createDataSet: '創建 Data Set',
     editDataSet: '編輯 Data Set',
     createDataSetTitle: '創建 Data Set',
