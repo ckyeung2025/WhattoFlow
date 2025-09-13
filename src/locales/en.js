@@ -2,7 +2,7 @@ const en = {
   // Login related
   login: {
     title: 'SS.AI Customer Service',
-    platformTitle: 'Whatto Flow - Your Chatbot Workflow Platform',
+    platformTitle: 'AI WhatsApp Workflow Platform',
     userId: 'User ID',
     password: 'Password',
     loginButton: 'Login',
@@ -26,11 +26,64 @@ const en = {
     signedPending: 'Signed Pending Confirmation',
     logout: 'Logout',
     dashboardRecentActivity: 'Recent Activity',
-    whatsappWorkflow: 'WhatsApp Workflow',
+    whatsappWorkflow: 'Workflow Design',
     companyUserAdmin: 'Company/User Management',
-    eformList: 'e-Form Management',
-    whatsappTemplates: 'WhatsApp Message Templates',
-    workflowMonitor: 'Workflow Instance Monitor',
+    eformList: 'Form Management',
+    whatsappTemplates: 'Message Templates',
+    workflowMonitor: 'Workflow Monitor',
+  },
+
+  // Dashboard
+  dashboard: {
+    applicationTitle: 'Application',
+    applicationDescription: 'Published workflow applications ready to launch',
+    studioTitle: 'Studio',
+    studioDescription: 'Management and design tools to build your custom workflows',
+    publishedApps: 'Published Apps',
+    publishedAppsDescription: 'Available workflow applications',
+    runningApps: 'Running Apps',
+    runningAppsDescription: 'Currently executing workflow instances',
+    pendingTasks: 'Pending Tasks',
+    pendingTasksDescription: 'Approvals and responses requiring your attention',
+    formManagement: 'Form Management',
+    formManagementDescription: 'Electronic form design and management',
+    messageTemplates: 'Message Templates',
+    messageTemplatesDescription: 'WhatsApp message template management',
+    workflowDesign: 'Workflow Design',
+    workflowDesignDescription: 'Design and configure workflows',
+    datasetManagement: 'Dataset Management',
+    datasetManagementDescription: 'Data source and dataset management',
+    userManagement: 'User Management',
+    userManagementDescription: 'Company user and permission management',
+    systemMonitoring: 'System Monitoring',
+    systemMonitoringDescription: 'Workflow execution monitoring and analysis',
+    workflowMonitor: 'Workflow Monitor',
+    workflowMonitorDescription: 'Workflow execution monitoring and analysis',
+    totalCount: 'Total',
+    recentlyAdded: 'Recently Added',
+    loading: 'Loading...',
+    loadingDashboard: 'Loading Dashboard...',
+    active: 'Active',
+    draft: 'Draft',
+    disabled: 'Disabled',
+    running: 'Running',
+    completed: 'Completed',
+    failed: 'Failed',
+    pendingApproval: 'Pending Approval',
+    processed: 'Processed',
+    today: 'Today',
+    enabled: 'Enabled',
+    inactive: 'Inactive',
+    published: 'Published',
+    test: 'Test',
+    totalDatasets: 'Total Datasets',
+    error: 'Error',
+    totalUsers: 'Total Users',
+    online: 'Online',
+    admin: 'Admin',
+    successRate: 'Success Rate',
+    averageTime: 'Average Time',
+    minutes: 'min'
   },
   
   // Unsigned management
@@ -139,7 +192,9 @@ const en = {
     open: 'Open',
     yes: 'Yes',
     no: 'No',
-    ok: 'OK'
+    ok: 'OK',
+    required: 'Required',
+    minLength: 'at least {min} characters'
   },
   
   // Language switching
@@ -148,6 +203,30 @@ const en = {
     zhSC: '简体中文', 
     en: 'English',
     language: 'Language'
+  },
+  
+  // User Preferences
+  preferences: {
+    title: 'My Preferences',
+    basicInfo: 'Basic Information',
+    avatar: 'Avatar',
+    uploadAvatar: 'Upload Avatar',
+    account: 'Account',
+    name: 'Name',
+    email: 'Email',
+    phone: 'Phone',
+    language: 'Language',
+    timezone: 'Timezone',
+    password: 'Password',
+    passwordPlaceholder: 'Enter new password if you need to change',
+    isActive: 'Active',
+    isOwner: 'Main Account',
+    save: 'Save',
+    cancel: 'Cancel',
+    updateSuccess: 'Profile updated successfully',
+    updateFailed: 'Failed to update profile',
+    avatarUploadSuccess: 'Avatar uploaded successfully',
+    avatarUploadFailed: 'Avatar upload failed'
   },
   
   // Company user management
@@ -246,7 +325,7 @@ const en = {
     batchDisable: "Batch Disable",
     batchDelete: "Batch Delete",
     refresh: "Refresh",
-    eformManagement: "e-Form Management",
+    eformManagement: "Form Management",
     searchNameDescription: "Search name, description...",
     clearFilter: "Clear Filter",
     pageRange: "Page ",
@@ -437,7 +516,7 @@ const en = {
   
   // WhatsApp Template
   whatsappTemplate: {
-    title: "WhatsApp Template Management",
+    title: "Message Template Management",
     name: "Name",
     description: "Description",
     category: "Category",
@@ -668,7 +747,7 @@ const en = {
     updatedAt: "Updated Time",
     action: "Action",
     add: "Add",
-    title: "WhatsApp Template Management",
+    title: "Message Template Management",
     templateLanguage: "Template Language",
     templateVersion: "Template Version"
   },
@@ -1032,7 +1111,7 @@ const en = {
   
   // Workflow Monitor
   workflowMonitor: {
-    title: 'Workflow Instance Monitor',
+    title: 'Workflow Monitor',
     overview: 'Overview',
     activeInstances: 'Active Instances',
     completedInstances: 'Completed Instances',
@@ -1287,9 +1366,41 @@ const en = {
     manageProcessVariables: 'Manage Process Variables'
   },
 
+  // Published Apps Page
+  publishedApps: {
+    title: 'Published Apps',
+    description: 'Display all enabled workflow applications that support manual startup',
+    totalApps: 'Total Apps',
+    manualTriggerWorkflows: 'Manual Trigger Workflows',
+    autoTriggerWorkflows: 'Auto Trigger Workflows',
+    noManualWorkflows: 'No manual trigger workflows available',
+    noAutoWorkflows: 'No auto trigger workflows available',
+    loading: 'Loading published apps...',
+    executionCount: 'Execution Count',
+    creator: 'Creator',
+    clickToStart: 'Click to Start',
+    starting: 'Starting...',
+    autoOnly: 'Auto Only',
+    unknown: 'Unknown',
+    manual: 'Manual',
+    auto: 'Auto',
+    startWorkflowSuccess: 'Workflow "{name}" started successfully',
+    startWorkflowFailed: 'Failed to start workflow',
+    loadAppsFailed: 'Failed to load published apps',
+    noDescription: 'No description',
+    mockCustomerService: 'Customer Service Workflow',
+    mockCustomerServiceDesc: 'Standardized process for handling customer inquiries and complaints',
+    mockOrderProcess: 'Order Processing Workflow',
+    mockOrderProcessDesc: 'Complete process from order receipt to shipment',
+    mockPaymentConfirm: 'Payment Confirmation Workflow',
+    mockPaymentConfirmDesc: 'Process for handling payment confirmation and invoice generation',
+    mockAutoNotification: 'Auto Notification Workflow',
+    mockAutoNotificationDesc: 'System automatically sends notifications'
+  },
+
   // Data Set Management Page
   dataSetManagement: {
-    title: 'Data Set Management',
+    title: 'Dataset Management',
     createDataSet: 'Create Data Set',
     editDataSet: 'Edit Data Set',
     createDataSetTitle: 'Create Data Set',

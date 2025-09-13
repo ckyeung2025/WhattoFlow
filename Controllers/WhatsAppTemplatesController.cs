@@ -463,6 +463,81 @@ namespace PurpleRice.Controllers
         }
 
         /// <summary>
+        /// 獲取模板統計數據（按類型分組）
+        /// </summary>
+        [HttpGet("statistics")]
+        public async Task<IActionResult> GetTemplateStatistics()
+        {
+            try
+            {
+                _loggingService.LogInformation("📊 [GetTemplateStatistics] 開始獲取模板統計數據");
+
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [GetTemplateStatistics] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 按模板類型統計
+                var typeStats = await _context.WhatsAppTemplates
+                    .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted)
+                    .GroupBy(t => t.TemplateType)
+                    .Select(g => new
+                    {
+                        Type = g.Key,
+                        Count = g.Count(),
+                        ActiveCount = g.Count(t => t.Status == "Active"),
+                        InactiveCount = g.Count(t => t.Status == "Inactive"),
+                        DraftCount = g.Count(t => t.Status == "Draft")
+                    })
+                    .OrderBy(s => s.Type)
+                    .ToListAsync();
+
+                // 總計統計
+                var totalStats = await _context.WhatsAppTemplates
+                    .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted)
+                    .GroupBy(t => 1)
+                    .Select(g => new
+                    {
+                        Total = g.Count(),
+                        Active = g.Count(t => t.Status == "Active"),
+                        Inactive = g.Count(t => t.Status == "Inactive"),
+                        Draft = g.Count(t => t.Status == "Draft")
+                    })
+                    .FirstOrDefaultAsync();
+
+                var result = new
+                {
+                    total = totalStats?.Total ?? 0,
+                    active = totalStats?.Active ?? 0,
+                    inactive = totalStats?.Inactive ?? 0,
+                    draft = totalStats?.Draft ?? 0,
+                    byType = typeStats.ToDictionary(
+                        s => s.Type,
+                        s => new
+                        {
+                            count = s.Count,
+                            active = s.ActiveCount,
+                            inactive = s.InactiveCount,
+                            draft = s.DraftCount
+                        }
+                    )
+                };
+
+                _loggingService.LogInformation($"✅ [GetTemplateStatistics] 成功獲取統計數據: 總計 {result.total} 個模板");
+                _loggingService.LogDebug($"📊 [GetTemplateStatistics] 按類型統計: {JsonSerializer.Serialize(result.byType)}");
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ [GetTemplateStatistics] 獲取統計數據失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取統計數據失敗" });
+            }
+        }
+
+        /// <summary>
         /// 測試模板渲染
         /// </summary>
         [HttpPost("{id}/test-render")]

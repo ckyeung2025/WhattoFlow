@@ -2,7 +2,7 @@ const zhSC = {
   // 登录相关
   login: {
     title: 'SS.AI 客服',
-    platformTitle: 'Whatto Flow - 你的聊天机器人流程平台',
+    platformTitle: 'AI WhatsApp 流程平台',
     userId: '用户 ID',
     password: '密码',
     loginButton: '登录',
@@ -26,10 +26,64 @@ const zhSC = {
     signedPending: '已签收待确认',
     logout: '登出',
     dashboardRecentActivity: '最近活动',
-    whatsappWorkflow: 'WhatsApp 工作流',
+    whatsappWorkflow: '工作流程设计',
     companyUserAdmin: '公司/用户管理',
-    eformList: 'e-Form 管理',
-    whatsappTemplates: 'WhatsApp 消息模板'
+    eformList: '表单管理',
+    whatsappTemplates: '消息模板',
+    workflowMonitor: '流程监控'
+  },
+
+  // Dashboard 仪表板
+  dashboard: {
+    applicationTitle: '应用',
+    applicationDescription: '已发布的工作流程应用，可直接启动使用',
+    studioTitle: '工作室',
+    studioDescription: '管理和设计工具，打造您的专属工作流程',
+    publishedApps: '已发布应用',
+    publishedAppsDescription: '可用的工作流程应用',
+    runningApps: '运行中的应用',
+    runningAppsDescription: '当前正在执行的流程实例',
+    pendingTasks: '待处理事项',
+    pendingTasksDescription: '需要您处理的审批和回复',
+    formManagement: '表单管理',
+    formManagementDescription: '电子表单设计与管理',
+    messageTemplates: '消息模板',
+    messageTemplatesDescription: 'WhatsApp 消息模板管理',
+    workflowDesign: '工作流程设计',
+    workflowDesignDescription: '设计和配置工作流程',
+    datasetManagement: '数据集管理',
+    datasetManagementDescription: '数据源和数据集管理',
+    userManagement: '用户管理',
+    userManagementDescription: '公司用户和权限管理',
+    systemMonitoring: '系统监控',
+    systemMonitoringDescription: '流程执行监控和分析',
+    workflowMonitor: '流程监控',
+    workflowMonitorDescription: '工作流程执行监控和分析',
+    totalCount: '总数',
+    recentlyAdded: '最近新增',
+    loading: '加载中...',
+    loadingDashboard: '加载仪表板中...',
+    active: '活跃',
+    draft: '草稿',
+    disabled: '停用',
+    running: '运行中',
+    completed: '已完成',
+    failed: '失败',
+    pendingApproval: '待审批',
+    processed: '已处理',
+    today: '今日',
+    enabled: '启用',
+    inactive: '停用',
+    published: '已发布',
+    test: '测试',
+    totalDatasets: '总数据集',
+    error: '错误',
+    totalUsers: '总用户',
+    online: '在线',
+    admin: '管理员',
+    successRate: '成功率',
+    averageTime: '平均时间',
+    minutes: '分'
   },
   
   // 未签收管理
@@ -138,7 +192,9 @@ const zhSC = {
     open: '打开',
     yes: '是',
     no: '否',
-    ok: '确定'
+    ok: '确定',
+    required: '必填',
+    minLength: '至少 {min} 码'
   },
   
   // 语言切换
@@ -147,6 +203,30 @@ const zhSC = {
     zhSC: '简体中文', 
     en: 'English',
     language: '语言'
+  },
+  
+  // 用户偏好设置
+  preferences: {
+    title: '我的偏好设置',
+    basicInfo: '基本资料',
+    avatar: '头像',
+    uploadAvatar: '上传头像',
+    account: '账号',
+    name: '名称',
+    email: 'Email',
+    phone: '电话',
+    language: '语言',
+    timezone: '时区',
+    password: '密码',
+    passwordPlaceholder: '如需修改请输入新密码',
+    isActive: '启用',
+    isOwner: '主账号',
+    save: '保存',
+    cancel: '取消',
+    updateSuccess: '个人资料已更新',
+    updateFailed: '更新用户信息失败',
+    avatarUploadSuccess: '头像上传成功',
+    avatarUploadFailed: '头像上传失败'
   },
   
   // 公司用户管理
@@ -245,7 +325,7 @@ const zhSC = {
     batchDisable: "批量停用",
     batchDelete: "批量删除",
     refresh: "刷新",
-    eformManagement: "e-Form 管理",
+    eformManagement: "表单管理",
     searchNameDescription: "搜索名称、描述...",
     clearFilter: "清除筛选",
     pageRange: "第 ",
@@ -606,7 +686,7 @@ const zhSC = {
   
   // WhatsApp Template 相关
   whatsappTemplate: {
-    title: "WhatsApp 模板管理",
+    title: "消息模板管理",
     name: "名称",
     description: "描述",
     category: "分类",
@@ -1110,9 +1190,41 @@ const zhSC = {
     manualStartMessage: '手动启动的流程'
   },
 
+  // 已发布应用页面
+  publishedApps: {
+    title: '已发布应用',
+    description: '显示所有启用状态且支持手动启动的工作流程应用',
+    totalApps: '总应用数',
+    manualTriggerWorkflows: '手动触发工作流程',
+    autoTriggerWorkflows: '自动触发工作流程',
+    noManualWorkflows: '暂无手动触发的工作流程',
+    noAutoWorkflows: '暂无自动触发的工作流程',
+    loading: '加载已发布应用中...',
+    executionCount: '执行次数',
+    creator: '创建者',
+    clickToStart: '点击启动',
+    starting: '启动中...',
+    autoOnly: '仅自动触发',
+    unknown: '未知',
+    manual: '手动',
+    auto: '自动',
+    startWorkflowSuccess: '工作流程 "{name}" 已成功启动',
+    startWorkflowFailed: '启动工作流程失败',
+    loadAppsFailed: '加载已发布应用失败',
+    noDescription: '无描述',
+    mockCustomerService: '客户服务流程',
+    mockCustomerServiceDesc: '处理客户咨询和投诉的标准化流程',
+    mockOrderProcess: '订单处理流程',
+    mockOrderProcessDesc: '从订单接收到发货的完整流程',
+    mockPaymentConfirm: '付款确认流程',
+    mockPaymentConfirmDesc: '处理付款确认和发票生成的流程',
+    mockAutoNotification: '自动通知流程',
+    mockAutoNotificationDesc: '系统自动发送通知的流程'
+  },
+
   // Data Set 管理页面
   dataSetManagement: {
-    title: 'Data Set 管理',
+    title: '数据集管理',
     createDataSet: '创建 Data Set',
     editDataSet: '编辑 Data Set',
     createDataSetTitle: '创建 Data Set',
@@ -1765,7 +1877,7 @@ const zhSC = {
 
   // Workflow Monitor
   workflowMonitor: {
-    title: '流程实例监控',
+    title: '流程监控',
     overview: '概览',
     activeInstances: '活跃实例',
     completedInstances: '已完成实例',

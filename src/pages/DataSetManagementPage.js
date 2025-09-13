@@ -57,6 +57,32 @@ const DataSetManagementPage = () => {
     fetchDataSets();
   }, []);
 
+  // 處理 URL 參數中的 edit 參數
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const editId = urlParams.get('edit');
+    if (editId) {
+      console.log('DataSetManagementPage: 檢測到 edit 參數:', editId);
+      if (dataSets.length > 0) {
+        const datasetToEdit = dataSets.find(dataset =>
+          dataset.id === editId ||
+          dataset.id.toString() === editId ||
+          dataset.name === editId
+        );
+        if (datasetToEdit) {
+          console.log('DataSetManagementPage: 找到要編輯的數據集:', datasetToEdit);
+          handleEdit(datasetToEdit);
+          // 清除 URL 參數
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, '', newUrl);
+        } else {
+          console.warn('DataSetManagementPage: 未找到要編輯的數據集:', editId);
+          message.warning(`未找到 ID 為 ${editId} 的數據集`);
+        }
+      }
+    }
+  }, [dataSets]); // 依賴於 dataSets 確保數據已載入
+
   const fetchDataSets = async (page = 1, pageSize = 10) => {
     console.log(`fetchDataSets: 開始獲取數據，頁面: ${page}, 頁面大小: ${pageSize}`);
     setLoading(true);
@@ -927,14 +953,17 @@ const DataSetManagementPage = () => {
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <Title level={3}>{t('dataSetManagement.title')}</Title>
         <Button 
           type="primary" 
           icon={<PlusOutlined />} 
           onClick={handleCreate}
         >
-          {t('dataSetManagement.createDataSet')}
+          新增
         </Button>
+        <Title level={3}>
+          <DatabaseOutlined style={{ marginRight: '8px' }} />
+          {t('dataSetManagement.title')}
+        </Title>
       </div>
 
       <Card>

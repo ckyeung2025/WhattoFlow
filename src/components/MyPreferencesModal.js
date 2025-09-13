@@ -10,7 +10,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
   const [form] = Form.useForm();
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState('');
-  const { changeLanguage, currentLanguage } = useLanguage();
+  const { changeLanguage, currentLanguage, t } = useLanguage();
 
   // 同步 userInfo 到表單
   useEffect(() => {
@@ -59,12 +59,12 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
       if (res.data.success) {
         setAvatarUrl(res.data.url);
         form.setFieldsValue({ avatar_url: res.data.url });
-        message.success('頭像上傳成功');
+        message.success(t('preferences.avatarUploadSuccess'));
       } else {
-        message.error(res.data.message || '頭像上傳失敗');
+        message.error(res.data.message || t('preferences.avatarUploadFailed'));
       }
     } catch (e) {
-      message.error('頭像上傳失敗');
+      message.error(t('preferences.avatarUploadFailed'));
     } finally {
       setUploading(false);
     }
@@ -118,30 +118,30 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
       // 立即切換語言
       changeLanguage(values.language);
       setTimeout(() => {
-        message.success('個人資料已更新');
+        message.success(t('preferences.updateSuccess'));
         onClose();
       }, 100);
     } catch (e) {
       // 驗證失敗或 API 失敗
       console.error('更新用戶信息失敗:', e);
-      message.error('更新用戶信息失敗');
+      message.error(t('preferences.updateFailed'));
     }
   };
 
   return (
     <Modal
-      title="My Preferences"
+      title={t('preferences.title')}
       open={visible}
       onCancel={onClose}
       onOk={handleOk}
-      okText="儲存"
-      cancelText="取消"
+      okText={t('preferences.save')}
+      cancelText={t('preferences.cancel')}
       destroyOnClose={false}
     >
       <Tabs defaultActiveKey="1">
-        <TabPane tab="基本資料" key="1">
+        <TabPane tab={t('preferences.basicInfo')} key="1">
           <Form form={form} layout="vertical">
-            <Form.Item label="頭像" name="avatar_url">
+            <Form.Item label={t('preferences.avatar')} name="avatar_url">
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 16 }}>
                 <Upload
                   name="file"
@@ -153,34 +153,34 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
                   {avatarUrl ? (
                     <Avatar src={avatarUrl} size={96} style={{ marginBottom: 8 }} />
                   ) : (
-                    <Button icon={<UploadOutlined />}>上傳頭像</Button>
+                    <Button icon={<UploadOutlined />}>{t('preferences.uploadAvatar')}</Button>
                   )}
                 </Upload>
               </div>
             </Form.Item>
-            <Form.Item label="帳號" name="account">
+            <Form.Item label={t('preferences.account')} name="account">
               <Input disabled />
             </Form.Item>
-            <Form.Item label="名稱" name="name" rules={[{ required: true, message: '請輸入名稱' }]}>
+            <Form.Item label={t('preferences.name')} name="name" rules={[{ required: true, message: t('preferences.name') + ' ' + t('common.required') }]}>
               <Input />
             </Form.Item>
-            <Form.Item label="Email" name="email" rules={[{ required: true, message: '請輸入 Email' }]}>
+            <Form.Item label={t('preferences.email')} name="email" rules={[{ required: true, message: t('preferences.email') + ' ' + t('common.required') }]}>
               <Input />
             </Form.Item>
-            <Form.Item label="電話" name="phone">
+            <Form.Item label={t('preferences.phone')} name="phone">
               <Input />
             </Form.Item>
             {showUserAdminFields && (
-              <Form.Item label="啟用" name="is_active" valuePropName="checked">
+              <Form.Item label={t('preferences.isActive')} name="is_active" valuePropName="checked">
                 <Input type="checkbox" style={{ width: 20, height: 20 }} />
               </Form.Item>
             )}
             {showUserAdminFields && (
-              <Form.Item label="主帳號" name="is_owner" valuePropName="checked">
+              <Form.Item label={t('preferences.isOwner')} name="is_owner" valuePropName="checked">
                 <Input type="checkbox" style={{ width: 20, height: 20 }} />
               </Form.Item>
             )}
-            <Form.Item label="語言" name="language">
+            <Form.Item label={t('preferences.language')} name="language">
               <Select
                 options={[
                   { value: 'zh-TC', label: '繁體中文' },
@@ -189,7 +189,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
                 ]}
               />
             </Form.Item>
-            <Form.Item label="時區" name="timezone">
+            <Form.Item label={t('preferences.timezone')} name="timezone">
               <Select
                 options={[
                   { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong' },
@@ -198,8 +198,8 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
                 ]}
               />
             </Form.Item>
-            <Form.Item label="密碼" name="password_hash" rules={[{ min: 6, message: '密碼至少 6 碼' }]}>
-              <Input.Password autoComplete="new-password" placeholder="如需修改請輸入新密碼" />
+            <Form.Item label={t('preferences.password')} name="password_hash" rules={[{ min: 6, message: t('preferences.password') + ' ' + t('common.minLength', { min: 6 }) }]}>
+              <Input.Password autoComplete="new-password" placeholder={t('preferences.passwordPlaceholder')} />
             </Form.Item>
           </Form>
         </TabPane>

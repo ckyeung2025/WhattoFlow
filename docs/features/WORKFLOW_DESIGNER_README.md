@@ -73,8 +73,8 @@ const customStyles = {
 
 ## 📚 文檔
 
-- [架構文檔](./ARCHITECTURE.md) - 詳細的架構設計和技術實現
-- [功能清單](./FEATURES.md) - 完整的功能列表和特性說明
+- [架構文檔](../technical/WORKFLOW_DESIGNER_ARCHITECTURE.md) - 詳細的架構設計和技術實現
+- [功能清單](./WORKFLOW_DESIGNER_FEATURES.md) - 完整的功能列表和特性說明
 
 ## 🎯 核心特性
 

@@ -347,6 +347,24 @@ namespace PurpleRice.Controllers
             }
         }
 
+        /// <summary>
+        /// 獲取工作流執行的流程變量實例值（包含定義信息）
+        /// </summary>
+        [HttpGet("instance-values/{workflowExecutionId}")]
+        public async Task<IActionResult> GetProcessVariableInstanceValues(int workflowExecutionId)
+        {
+            try
+            {
+                var values = await _processVariableService.GetProcessVariableInstanceValuesAsync(workflowExecutionId);
+                return Ok(new { success = true, data = values });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取流程變量實例值失敗: {ex.Message}", ex);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
         #endregion
     }
 
