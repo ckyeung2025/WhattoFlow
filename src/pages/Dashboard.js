@@ -601,33 +601,33 @@ const Dashboard = ({ onMenuSelect }) => {
                 
                 <Col xs={24}>
                   <SmartButton
-                    title={t('dashboard.runningApps')}
-                    description={t('dashboard.runningAppsDescription')}
-                    icon={<SyncOutlined spin />}
-                    menuKey="workflowMonitor"
-                    count={stats.runningInstances}
+                    title={t('dashboard.pendingTasks')}
+                    description={t('dashboard.pendingTasksDescription')}
+                    icon={<ClockCircleOutlined />}
+                    count={stats.pendingApprovals}
                     color={colorPalette[1].color}
                     gradient={colorPalette[1].gradient}
-                    onClick={() => handleNavigation('workflowMonitor')}
-                    stats={{
-                      [t('dashboard.running')]: stats.runningInstances,
-                      [t('dashboard.completed')]: stats.completed || 0,
-                      [t('dashboard.failed')]: stats.failed || 0
+                    onClick={() => {
+                      console.log('🎯 待處理事項按鈕被點擊');
+                      navigate('/pending-tasks');
                     }}
                   />
         </Col>
                 
                 <Col xs={24}>
                   <SmartButton
-                    title="待處理事項"
-                    description="需要您處理的審批和回覆"
-                    icon={<ClockCircleOutlined />}
-                    count={stats.pendingApprovals}
+                    title={t('dashboard.runningApps')}
+                    description={t('dashboard.runningAppsDescription')}
+                    icon={<SyncOutlined spin />}
+                    menuKey="workflowMonitor"
+                    count={stats.runningInstances}
                     color={colorPalette[2].color}
                     gradient={colorPalette[2].gradient}
-                    onClick={() => {
-                      console.log('🎯 待處理事項按鈕被點擊');
-                      navigate('/pending-tasks');
+                    onClick={() => handleNavigation('workflowMonitor')}
+                    stats={{
+                      [t('dashboard.running')]: stats.runningInstances,
+                      [t('dashboard.completed')]: stats.completed || 0,
+                      [t('dashboard.failed')]: stats.failed || 0
                     }}
                   />
         </Col>
@@ -791,23 +791,6 @@ const Dashboard = ({ onMenuSelect }) => {
                   />
         </Col>
                 
-        <Col xs={24} sm={12} lg={12}>
-                  <SmartButton
-                    title={t('dashboard.userManagement')}
-                    description={t('dashboard.userManagementDescription')}
-                    icon={<TeamOutlined />}
-                    menuKey="companyUserAdmin"
-                    count={stats.totalUsers}
-                    color={colorPalette[4].color}
-                    gradient={colorPalette[4].gradient}
-                    onClick={() => handleNavigation('companyUserAdmin')}
-                    stats={{
-                      '總用戶': stats.totalUsers,
-                      '在線': stats.onlineUsers || 0,
-                      '管理員': stats.adminUsers || 0
-                    }}
-                  />
-        </Col>
                 
         <Col xs={24} sm={12} lg={12}>
                   <SmartButton

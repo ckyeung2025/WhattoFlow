@@ -44,6 +44,7 @@ builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<DocumentConverterService>();
 builder.Services.AddScoped<UserSessionService>();
 builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
+builder.Services.AddScoped<ContactListService>();
 
 // 註冊 LoggingService 工廠
 builder.Services.AddScoped<Func<string, LoggingService>>(provider =>

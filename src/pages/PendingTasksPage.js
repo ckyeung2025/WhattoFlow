@@ -22,6 +22,8 @@ import {
   Select,
   Divider
 } from 'antd';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { 
   CheckCircleOutlined, 
   CloseCircleOutlined,
@@ -43,8 +45,31 @@ const { Search } = Input;
 const { Option } = Select;
 const { Title, Text } = Typography;
 
+// ResizableTitle 元件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
+
 const PendingTasksPage = () => {
-  console.log('🔄 PendingTasksPage 組件被載入');
+  console.log('🔄 PendingTasksPage component loaded');
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -78,7 +103,7 @@ const PendingTasksPage = () => {
   const loadPendingEforms = async () => {
     setLoading(true);
     try {
-      // 構建查詢參數
+      // Build query parameters
       const params = new URLSearchParams({
         page: '1',
         pageSize: '50'
@@ -92,7 +117,7 @@ const PendingTasksPage = () => {
         params.append('priority', filters.priority);
       }
 
-      console.log('載入待處理事項，查詢參數:', params.toString());
+      console.log('Loading pending tasks, query parameters:', params.toString());
 
       const response = await fetch(`/api/eforminstances/pending?${params}`, {
         headers: {
@@ -101,13 +126,13 @@ const PendingTasksPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`載入待處理事項失敗: ${response.status}`);
+        throw new Error(`Failed to load pending tasks: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('載入到的待處理事項:', data);
+      console.log('Loaded pending tasks:', data);
       
-      // 轉換數據格式以匹配前端期望的結構
+      // Convert data format to match frontend expected structure
       const formattedData = data.data?.map(item => ({
         id: item.id,
         formName: item.formName,
@@ -119,7 +144,7 @@ const PendingTasksPage = () => {
         dueDate: item.dueDate,
         workflowInstanceId: item.workflowInstanceId,
         userMessage: item.userMessage,
-        formData: {} // 實際表單數據需要通過單獨的 API 獲取
+        formData: {} // Actual form data needs to be obtained through separate API
       })) || [];
       
       setPendingEforms(formattedData);
@@ -130,10 +155,10 @@ const PendingTasksPage = () => {
       }));
       
     } catch (error) {
-      console.error('載入待處理事項失敗:', error);
-      message.error('載入待處理事項失敗: ' + error.message);
+      console.error('Failed to load pending tasks:', error);
+      message.error(t('pendingTasks.loadPendingTasksFailed') + ': ' + error.message);
       
-      // 如果 API 失敗，使用空數組
+      // If API fails, use empty array
       setPendingEforms([]);
       setStatistics(prev => ({ 
         ...prev, 
@@ -147,7 +172,7 @@ const PendingTasksPage = () => {
 
   const loadStatistics = async () => {
     try {
-      console.log('載入統計數據');
+      console.log('Loading statistics');
       
       const response = await fetch('/api/eforminstances/statistics/pending', {
         headers: {
@@ -156,17 +181,17 @@ const PendingTasksPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`載入統計數據失敗: ${response.status}`);
+        throw new Error(`Failed to load statistics: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('載入到的統計數據:', data);
+      console.log('Loaded statistics:', data);
       
       setStatistics(data);
     } catch (error) {
-      console.error('載入統計數據失敗:', error);
+      console.error('Failed to load statistics:', error);
       
-      // 如果 API 失敗，使用默認值
+      // If API fails, use default values
       setStatistics({
         total: 0,
         pending: 0,
@@ -185,8 +210,9 @@ const PendingTasksPage = () => {
   };
 
   const handleViewEform = async (eform) => {
-    console.log('查看表單:', eform);
-    navigate(`/eform-instance/${eform.id}`);
+    console.log('View form:', eform);
+    // Open in new browser tab
+    window.open(`/eform-instance/${eform.id}`, '_blank');
   };
 
   const handleApprove = (eform) => {
@@ -206,7 +232,7 @@ const PendingTasksPage = () => {
 
     setProcessingEform(selectedEform.id);
     try {
-      console.log(`處理 ${action} 操作，表單 ID: ${selectedEform.id}`);
+      console.log(`Processing ${action} operation, form ID: ${selectedEform.id}`);
       
       const response = await fetch(`/api/eforminstances/${selectedEform.id}/${action}`, {
         method: 'POST',
@@ -221,29 +247,29 @@ const PendingTasksPage = () => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: '操作失敗' }));
-        throw new Error(errorData.error || `${action} 操作失敗`);
+        const errorData = await response.json().catch(() => ({ error: 'Operation failed' }));
+        throw new Error(errorData.error || `${action} operation failed`);
       }
 
       const result = await response.json();
-      console.log(`${action} 操作結果:`, result);
+      console.log(`${action} operation result:`, result);
       
-      message.success(result.message || `${action === 'approve' ? '批准' : '拒絕'} 操作成功`);
+      message.success(result.message || t(`pendingTasks.${action === 'approve' ? 'approveSuccess' : 'rejectSuccess'}`));
       
-      // 重新載入數據
+      // Reload data
       await Promise.all([
         loadPendingEforms(),
         loadStatistics()
       ]);
       
-      // 關閉彈窗
+      // Close modal
       setApproveModalVisible(false);
       setRejectModalVisible(false);
       setSelectedEform(null);
       setApprovalNote('');
     } catch (error) {
-      console.error(`${action} 操作失敗:`, error);
-      message.error(`${action === 'approve' ? '批准' : '拒絕'} 操作失敗: ` + error.message);
+      console.error(`${action} operation failed:`, error);
+      message.error(t(`pendingTasks.${action === 'approve' ? 'approveFailed' : 'rejectFailed'}`) + ': ' + error.message);
     } finally {
       setProcessingEform(null);
     }
@@ -260,9 +286,9 @@ const PendingTasksPage = () => {
 
   const getPriorityText = (priority) => {
     switch (priority) {
-      case 'High': return '高';
-      case 'Medium': return '中';
-      case 'Low': return '低';
+      case 'High': return t('pendingTasks.high');
+      case 'Medium': return t('pendingTasks.medium');
+      case 'Low': return t('pendingTasks.low');
       default: return priority;
     }
   };
@@ -275,7 +301,7 @@ const PendingTasksPage = () => {
   const getStatusTag = (status, dueDate) => {
     const isOverdueStatus = isOverdue(dueDate);
     const color = isOverdueStatus ? 'error' : 'warning';
-    const text = isOverdueStatus ? '逾期' : '待處理';
+    const text = isOverdueStatus ? t('pendingTasks.overdue') : t('pendingTasks.pending');
     
     return (
       <Tag color={color} icon={<ClockCircleOutlined />}>
@@ -284,12 +310,15 @@ const PendingTasksPage = () => {
     );
   };
 
-  const columns = [
+  // columns 狀態化與寬度調整
+  const baseColumns = [
     {
-      title: '表單名稱',
+      title: t('pendingTasks.formName'),
       dataIndex: 'formName',
       key: 'formName',
       width: 200,
+      sorter: (a, b) => a.formName.localeCompare(b.formName),
+      sortDirections: ['ascend', 'descend'],
       render: (text, record) => (
         <div>
           <Text strong>{text}</Text>
@@ -301,17 +330,30 @@ const PendingTasksPage = () => {
       )
     },
     {
-      title: '狀態',
+      title: t('pendingTasks.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
+      sorter: (a, b) => {
+        const getStatusValue = (record) => {
+          if (isOverdue(record.dueDate)) return 0; // Overdue first
+          return 1; // Pending
+        };
+        return getStatusValue(a) - getStatusValue(b);
+      },
+      sortDirections: ['ascend', 'descend'],
       render: (status, record) => getStatusTag(status, record.dueDate)
     },
     {
-      title: '優先級',
+      title: t('pendingTasks.priority'),
       dataIndex: 'priority',
       key: 'priority',
       width: 80,
+      sorter: (a, b) => {
+        const priorityOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
+        return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
+      },
+      sortDirections: ['ascend', 'descend'],
       render: (priority) => (
         <Tag color={getPriorityColor(priority)}>
           {getPriorityText(priority)}
@@ -319,10 +361,12 @@ const PendingTasksPage = () => {
       )
     },
     {
-      title: '申請人',
+      title: t('pendingTasks.applicant'),
       dataIndex: 'createdBy',
       key: 'createdBy',
       width: 100,
+      sorter: (a, b) => a.createdBy.localeCompare(b.createdBy),
+      sortDirections: ['ascend', 'descend'],
       render: (text) => (
         <Space>
           <UserOutlined />
@@ -331,17 +375,21 @@ const PendingTasksPage = () => {
       )
     },
     {
-      title: '申請時間',
+      title: t('pendingTasks.applicationTime'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 150,
+      sorter: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+      sortDirections: ['ascend', 'descend'],
       render: (date) => dayjs(date).format('MM-DD HH:mm')
     },
     {
-      title: '截止時間',
+      title: t('pendingTasks.dueDate'),
       dataIndex: 'dueDate',
       key: 'dueDate',
       width: 150,
+      sorter: (a, b) => new Date(a.dueDate) - new Date(b.dueDate),
+      sortDirections: ['ascend', 'descend'],
       render: (date, record) => {
         const isOverdueStatus = isOverdue(date);
         return (
@@ -352,17 +400,17 @@ const PendingTasksPage = () => {
       }
     },
     {
-      title: '操作',
+      title: t('pendingTasks.action'),
       key: 'action',
       width: 180,
       render: (_, record) => (
         <Space size="small">
-          <Tooltip title="批准">
+          <Tooltip title={t('pendingTasks.approveTooltip')}>
             <Button 
               type="primary"
               icon={<CheckCircleOutlined />} 
               onClick={(e) => {
-                e.stopPropagation(); // 阻止行點擊事件
+                e.stopPropagation(); // Prevent row click event
                 handleApprove(record);
               }}
               style={{ 
@@ -373,17 +421,17 @@ const PendingTasksPage = () => {
               }}
               size="small"
             >
-              批准
+              {t('pendingTasks.approve')}
             </Button>
           </Tooltip>
           
-          <Tooltip title="拒絕">
+          <Tooltip title={t('pendingTasks.rejectTooltip')}>
             <Button 
               type="primary"
               danger
               icon={<CloseCircleOutlined />} 
               onClick={(e) => {
-                e.stopPropagation(); // 阻止行點擊事件
+                e.stopPropagation(); // Prevent row click event
                 handleReject(record);
               }}
               style={{ 
@@ -392,7 +440,7 @@ const PendingTasksPage = () => {
               }}
               size="small"
             >
-              拒絕
+              {t('pendingTasks.reject')}
             </Button>
           </Tooltip>
         </Space>
@@ -400,26 +448,51 @@ const PendingTasksPage = () => {
     }
   ];
 
+  const [resizableColumns, setResizableColumns] = useState(
+    baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+  );
+
+  const handleResize = index => (e, { size }) => {
+    const nextColumns = [...resizableColumns];
+    nextColumns[index] = { ...nextColumns[index], width: size.width };
+    setResizableColumns(nextColumns);
+  };
+
+  const mergedColumns = resizableColumns.map((col, index) => ({
+    ...col,
+    onHeaderCell: column => ({
+      width: col.width,
+      onResize: handleResize(index),
+    }),
+  }));
+
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
+
+
   return (
     <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       <Content style={{ padding: '24px' }}>
-        {/* 頁面標題 */}
+        {/* Page Title */}
         <div style={{ marginBottom: 24 }}>
           <Title level={2}>
             <ClockCircleOutlined style={{ marginRight: 12, color: '#faad14' }} />
-            待處理事項
+            {t('pendingTasks.title')}
           </Title>
           <Text type="secondary">
-            處理等待決策的表單申請
+            {t('pendingTasks.description')}
           </Text>
         </div>
 
-        {/* 統計卡片 */}
+        {/* Statistics Cards */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="總待處理"
+                title={t('pendingTasks.totalPending')}
                 value={statistics.total}
                 prefix={<FileTextOutlined />}
                 valueStyle={{ color: '#1890ff' }}
@@ -429,7 +502,7 @@ const PendingTasksPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="待審批"
+                title={t('pendingTasks.pendingApproval')}
                 value={statistics.pending}
                 prefix={<ClockCircleOutlined />}
                 valueStyle={{ color: '#faad14' }}
@@ -439,7 +512,7 @@ const PendingTasksPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="逾期項目"
+                title={t('pendingTasks.overdueItems')}
                 value={statistics.overdue}
                 prefix={<ExclamationCircleOutlined />}
                 valueStyle={{ color: '#ff4d4f' }}
@@ -449,7 +522,7 @@ const PendingTasksPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="緊急項目"
+                title={t('pendingTasks.urgentItems')}
                 value={statistics.urgent}
                 prefix={<ExclamationCircleOutlined />}
                 valueStyle={{ color: '#ff4d4f' }}
@@ -458,12 +531,12 @@ const PendingTasksPage = () => {
           </Col>
         </Row>
 
-        {/* 篩選和搜索 */}
+        {/* Filter and Search */}
         <Card style={{ marginBottom: 24 }}>
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} sm={12} md={8}>
               <Search
-                placeholder="搜尋表單名稱、申請人..."
+                placeholder={t('pendingTasks.searchPlaceholder')}
                 value={filters.searchText}
                 onChange={(e) => setFilters(prev => ({ ...prev, searchText: e.target.value }))}
                 onSearch={handleSearch}
@@ -473,15 +546,15 @@ const PendingTasksPage = () => {
             
             <Col xs={24} sm={12} md={4}>
               <Select
-                placeholder="優先級"
+                placeholder={t('pendingTasks.priorityPlaceholder')}
                 value={filters.priority}
                 onChange={handlePriorityFilter}
                 style={{ width: '100%' }}
               >
-                <Option value="all">全部</Option>
-                <Option value="High">高</Option>
-                <Option value="Medium">中</Option>
-                <Option value="Low">低</Option>
+                <Option value="all">{t('pendingTasks.all')}</Option>
+                <Option value="High">{t('pendingTasks.high')}</Option>
+                <Option value="Medium">{t('pendingTasks.medium')}</Option>
+                <Option value="Low">{t('pendingTasks.low')}</Option>
               </Select>
             </Col>
             
@@ -491,23 +564,24 @@ const PendingTasksPage = () => {
                 onClick={loadPendingEforms}
                 loading={loading}
               >
-                刷新
+                {t('pendingTasks.refresh')}
               </Button>
             </Col>
           </Row>
         </Card>
 
-        {/* 待處理事項列表 */}
+        {/* Pending Tasks List */}
         <Card>
           <div style={{ marginBottom: 16 }}>
             <Space>
-              <Text strong>待處理事項列表</Text>
+              <Text strong>{t('pendingTasks.pendingTasksList')}</Text>
               <Badge count={pendingEforms.length} showZero />
             </Space>
           </div>
           
           <Table
-            columns={columns}
+            components={components}
+            columns={mergedColumns}
             dataSource={pendingEforms}
             rowKey="id"
             loading={loading}
@@ -519,13 +593,13 @@ const PendingTasksPage = () => {
               showSizeChanger: true,
               showQuickJumper: true,
               showTotal: (total, range) => 
-                `第 ${range[0]}-${range[1]} 項，共 ${total} 項`
+                t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
             }}
             scroll={{ x: 1000 }}
             locale={{
               emptyText: (
                 <Empty 
-                  description="暫無待處理事項" 
+                  description={t('pendingTasks.noPendingTasks')} 
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 />
               )
@@ -534,84 +608,84 @@ const PendingTasksPage = () => {
         </Card>
 
 
-        {/* 批准確認彈窗 */}
+        {/* Approval Confirmation Modal */}
         <Modal
-          title="批准申請"
+          title={t('pendingTasks.approveApplication')}
           visible={approveModalVisible}
           onOk={() => processApproval('approve')}
           onCancel={() => setApproveModalVisible(false)}
           confirmLoading={processingEform === selectedEform?.id}
-          okText="確認批准"
-          cancelText="取消"
+          okText={t('pendingTasks.confirmApprove')}
+          cancelText={t('pendingTasks.cancel')}
           okButtonProps={{ 
             type: 'primary',
             style: { backgroundColor: '#52c41a', borderColor: '#52c41a' }
           }}
         >
           <Alert
-            message="確認批准"
-            description={`您確定要批准「${selectedEform?.formName}」嗎？`}
+            message={t('pendingTasks.confirmApproval')}
+            description={`${t('pendingTasks.confirmApproval')}「${selectedEform?.formName}」？`}
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
           />
           <div>
-            <Text strong>申請人：</Text>
+            <Text strong>{t('pendingTasks.applicantLabel')}</Text>
             <Text>{selectedEform?.createdBy}</Text>
           </div>
           <div style={{ marginTop: 8 }}>
-            <Text strong>申請時間：</Text>
+            <Text strong>{t('pendingTasks.applicationTimeLabel')}</Text>
             <Text>{selectedEform?.createdAt ? dayjs(selectedEform.createdAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</Text>
           </div>
           <Divider />
           <div>
-            <Text strong>批准備註：</Text>
+            <Text strong>{t('pendingTasks.approvalNote')}：</Text>
             <Input.TextArea
               value={approvalNote}
               onChange={(e) => setApprovalNote(e.target.value)}
-              placeholder="請輸入批准備註（可選）"
+              placeholder={t('pendingTasks.approvalNotePlaceholder')}
               rows={3}
               style={{ marginTop: 8 }}
             />
           </div>
         </Modal>
 
-        {/* 拒絕確認彈窗 */}
+        {/* Rejection Confirmation Modal */}
         <Modal
-          title="拒絕申請"
+          title={t('pendingTasks.rejectApplication')}
           visible={rejectModalVisible}
           onOk={() => processApproval('reject')}
           onCancel={() => setRejectModalVisible(false)}
           confirmLoading={processingEform === selectedEform?.id}
-          okText="確認拒絕"
-          cancelText="取消"
+          okText={t('pendingTasks.confirmReject')}
+          cancelText={t('pendingTasks.cancel')}
           okButtonProps={{ 
             type: 'primary',
             danger: true
           }}
         >
           <Alert
-            message="確認拒絕"
-            description={`您確定要拒絕「${selectedEform?.formName}」嗎？`}
+            message={t('pendingTasks.confirmRejection')}
+            description={`${t('pendingTasks.confirmRejection')}「${selectedEform?.formName}」？`}
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
           />
           <div>
-            <Text strong>申請人：</Text>
+            <Text strong>{t('pendingTasks.applicantLabel')}</Text>
             <Text>{selectedEform?.createdBy}</Text>
           </div>
           <div style={{ marginTop: 8 }}>
-            <Text strong>申請時間：</Text>
+            <Text strong>{t('pendingTasks.applicationTimeLabel')}</Text>
             <Text>{selectedEform?.createdAt ? dayjs(selectedEform.createdAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</Text>
           </div>
           <Divider />
           <div>
-            <Text strong>拒絕原因：</Text>
+            <Text strong>{t('pendingTasks.rejectionReason')}：</Text>
             <Input.TextArea
               value={approvalNote}
               onChange={(e) => setApprovalNote(e.target.value)}
-              placeholder="請輸入拒絕原因（必填）"
+              placeholder={t('pendingTasks.rejectionReasonPlaceholder')}
               rows={3}
               style={{ marginTop: 8 }}
               required

@@ -34,11 +34,13 @@ namespace PurpleRice.Controllers
         public async Task<ActionResult<object>> GetDataSets(
             [FromQuery] string? search = null,
             [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10)
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string sortBy = "createdAt",
+            [FromQuery] string sortOrder = "desc")
         {
             try
             {
-                _loggingService.LogInformation($"開始獲取數據集列表，搜索條件: {search}, 頁碼: {page}, 每頁大小: {pageSize}");
+                _loggingService.LogInformation($"開始獲取數據集列表，搜索條件: {search}, 頁碼: {page}, 每頁大小: {pageSize}, 排序字段: {sortBy}, 排序順序: {sortOrder}");
                 var query = _context.DataSets
                     .Include(d => d.Columns.OrderBy(c => c.SortOrder))
                     .Include(d => d.DataSources)
@@ -50,6 +52,45 @@ namespace PurpleRice.Controllers
                 }
 
                 var totalCount = await query.CountAsync();
+                
+                // 動態排序
+                _loggingService.LogInformation($"執行排序，字段: {sortBy}, 順序: {sortOrder}");
+                switch (sortBy.ToLower())
+                {
+                    case "name":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.Name) : query.OrderByDescending(d => d.Name);
+                        _loggingService.LogInformation($"按名稱排序: {sortOrder}");
+                        break;
+                    case "datasourcetype":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.DataSourceType) : query.OrderByDescending(d => d.DataSourceType);
+                        _loggingService.LogInformation($"按數據源類型排序: {sortOrder}");
+                        break;
+                    case "status":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.Status) : query.OrderByDescending(d => d.Status);
+                        _loggingService.LogInformation($"按狀態排序: {sortOrder}");
+                        break;
+                    case "totalrecords":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.TotalRecords) : query.OrderByDescending(d => d.TotalRecords);
+                        _loggingService.LogInformation($"按記錄數排序: {sortOrder}");
+                        break;
+                    case "lastdatasynctime":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.LastDataSyncTime) : query.OrderByDescending(d => d.LastDataSyncTime);
+                        _loggingService.LogInformation($"按最後同步時間排序: {sortOrder}");
+                        break;
+                    case "createdat":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.CreatedAt) : query.OrderByDescending(d => d.CreatedAt);
+                        _loggingService.LogInformation($"按創建時間排序: {sortOrder}");
+                        break;
+                    case "updatedat":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(d => d.UpdatedAt) : query.OrderByDescending(d => d.UpdatedAt);
+                        _loggingService.LogInformation($"按更新時間排序: {sortOrder}");
+                        break;
+                    default:
+                        query = query.OrderByDescending(d => d.CreatedAt);
+                        _loggingService.LogInformation($"使用預設排序: 按創建時間降序");
+                        break;
+                }
+                
                 var dataSets = await query
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)

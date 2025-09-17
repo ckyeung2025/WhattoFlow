@@ -36,7 +36,19 @@ export class ApiService {
   // 獲取用戶列表
   async fetchUsers() {
     try {
-      const response = await fetch(`${this.baseUrl}/users`);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.log('🔑 沒有 Token，使用模擬用戶數據');
+        return MOCK_DATA.users;
+      }
+
+      const response = await fetch(`${this.baseUrl}/users`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
       if (response.ok) {
         const users = await response.json();
         // 過濾出有電話號碼的活躍用戶

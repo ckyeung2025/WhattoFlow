@@ -22,13 +22,19 @@ import PublishedAppsPage from './pages/PublishedAppsPage';
 import PendingTasksPage from './pages/PendingTasksPage';
 import './App.css';
 import DataSetManagementPage from './pages/DataSetManagementPage';
+import ContactListPage from './pages/ContactListPage';
+import ContactEditPage from './pages/ContactEditPage';
+import ContactImportPage from './pages/ContactImportPage';
+import BroadcastGroupsPage from './pages/BroadcastGroupsPage';
+import HashtagsPage from './pages/HashtagsPage';
+import BroadcastSendPage from './pages/BroadcastSendPage';
 
 const { Content } = Layout;
 
 const pathToMenuKey = {
   '/dashboard': 'dashboard',
   '/unsigned': 'unsigned',
-  // '/pending-tasks': 不映射，讓它使用默認的 'dashboard'
+  '/pending-tasks': 'pendingTasks',
   '/customer-signed': 'customerSigned',
   '/whatsapp-workflow': 'whatsappWorkflow',
   '/workflow-list': 'whatsappWorkflow',
@@ -38,6 +44,13 @@ const pathToMenuKey = {
   '/company-user-admin': 'companyUserAdmin',
   '/data-sets': 'dataSets',
   '/published-apps': 'publishedApps',
+  '/contacts': 'contactList',
+  '/contacts/new': 'contactList',
+  '/contacts/edit/:id': 'contactList',
+  '/contacts/import': 'contactList',
+  '/broadcast-groups': 'broadcastGroups',
+  '/hashtags': 'hashtags',
+  '/broadcast-send': 'broadcastSend',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -58,6 +71,9 @@ function MainLayout({ userInfo, onLogout }) {
         break;
       case 'unsigned':
         navigate('/unsigned');
+        break;
+      case 'pendingTasks':
+        navigate('/pending-tasks');
         break;
       case 'customerSigned':
         navigate('/customer-signed');
@@ -82,6 +98,18 @@ function MainLayout({ userInfo, onLogout }) {
         break;
       case 'publishedApps':
         navigate('/published-apps');
+        break;
+      case 'contactList':
+        navigate('/contacts');
+        break;
+      case 'broadcastGroups':
+        navigate('/broadcast-groups');
+        break;
+      case 'hashtags':
+        navigate('/hashtags');
+        break;
+      case 'broadcastSend':
+        navigate('/broadcast-send');
         break;
       default:
         navigate('/dashboard');
@@ -114,6 +142,13 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/data-sets" element={<DataSetManagementPage />} />
             <Route path="/published-apps" element={<PublishedAppsPage />} />
             <Route path="/pending-tasks" element={<PendingTasksPage />} />
+            <Route path="/contacts" element={<ContactListPage />} />
+            <Route path="/contacts/new" element={<ContactEditPage />} />
+            <Route path="/contacts/edit/:id" element={<ContactEditPage />} />
+            <Route path="/contacts/import" element={<ContactImportPage />} />
+            <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
+            <Route path="/hashtags" element={<HashtagsPage />} />
+            <Route path="/broadcast-send" element={<BroadcastSendPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -142,6 +177,9 @@ function AppContent() {
       case 'unsigned':
         navigate('/unsigned');
         break;
+      case 'pendingTasks':
+        navigate('/pending-tasks');
+        break;
       case 'customerSigned':
         navigate('/customer-signed');
         break;
@@ -165,6 +203,18 @@ function AppContent() {
         break;
       case 'publishedApps':
         navigate('/published-apps');
+        break;
+      case 'contactList':
+        navigate('/contacts');
+        break;
+      case 'broadcastGroups':
+        navigate('/broadcast-groups');
+        break;
+      case 'hashtags':
+        navigate('/hashtags');
+        break;
+      case 'broadcastSend':
+        navigate('/broadcast-send');
         break;
       default:
         navigate('/dashboard');
@@ -299,6 +349,13 @@ function AppContent() {
               <Route path="/data-sets" element={<DataSetManagementPage />} />
               <Route path="/published-apps" element={<PublishedAppsPage />} />
               <Route path="/pending-tasks" element={<PendingTasksPage />} />
+              <Route path="/contacts" element={<ContactListPage />} />
+              <Route path="/contacts/new" element={<ContactEditPage />} />
+              <Route path="/contacts/edit/:id" element={<ContactEditPage />} />
+              <Route path="/contacts/import" element={<ContactImportPage />} />
+              <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
+              <Route path="/hashtags" element={<HashtagsPage />} />
+              <Route path="/broadcast-send" element={<BroadcastSendPage />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </Content>

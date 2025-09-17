@@ -146,10 +146,13 @@ namespace PurpleRice.Controllers
             DateTime? startDateFrom = null,
             DateTime? startDateTo = null,
             DateTime? endDateFrom = null,
-            DateTime? endDateTo = null)
+            DateTime? endDateTo = null,
+            string sortBy = "startedAt",
+            string sortOrder = "desc")
         {
             try
             {
+                Console.WriteLine($"WorkflowExecutionsController: 開始獲取監控數據，排序字段: {sortBy}, 排序順序: {sortOrder}");
                 var query = _db.WorkflowExecutions
                     .Include(e => e.WorkflowDefinition)
                     .Include(e => e.StepExecutions)
@@ -223,9 +226,46 @@ namespace PurpleRice.Controllers
                 // 計算總數
                 var total = await query.CountAsync();
 
+                // 動態排序
+                Console.WriteLine($"WorkflowExecutionsController: 執行排序，字段: {sortBy}, 順序: {sortOrder}");
+                switch (sortBy.ToLower())
+                {
+                    case "id":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.Id) : query.OrderByDescending(e => e.Id);
+                        Console.WriteLine($"按 ID 排序: {sortOrder}");
+                        break;
+                    case "workflowname":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.WorkflowDefinition.Name) : query.OrderByDescending(e => e.WorkflowDefinition.Name);
+                        Console.WriteLine($"按工作流程名稱排序: {sortOrder}");
+                        break;
+                    case "status":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.Status) : query.OrderByDescending(e => e.Status);
+                        Console.WriteLine($"按狀態排序: {sortOrder}");
+                        break;
+                    case "currentstep":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.CurrentStep) : query.OrderByDescending(e => e.CurrentStep);
+                        Console.WriteLine($"按當前步驟排序: {sortOrder}");
+                        break;
+                    case "startedat":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.StartedAt) : query.OrderByDescending(e => e.StartedAt);
+                        Console.WriteLine($"按開始時間排序: {sortOrder}");
+                        break;
+                    case "duration":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.Duration) : query.OrderByDescending(e => e.Duration);
+                        Console.WriteLine($"按執行時間排序: {sortOrder}");
+                        break;
+                    case "createdby":
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(e => e.CreatedBy) : query.OrderByDescending(e => e.CreatedBy);
+                        Console.WriteLine($"按創建者排序: {sortOrder}");
+                        break;
+                    default:
+                        query = query.OrderByDescending(e => e.StartedAt);
+                        Console.WriteLine($"使用預設排序: 按開始時間降序");
+                        break;
+                }
+
                 // 分頁
                 var instances = await query
-                    .OrderByDescending(e => e.StartedAt)
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .Select(e => new
@@ -666,6 +706,41 @@ namespace PurpleRice.Controllers
                 _loggingService.LogError($"獲取執行統計時發生錯誤: {ex.Message}");
                 _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
                 return StatusCode(500, new { error = "獲取執行統計失敗", details = ex.Message });
+            }
+        }
+
+        // GET: api/workflowexecutions/initiators
+        [HttpGet("initiators")]
+        public async Task<IActionResult> GetInitiators()
+        {
+            try
+            {
+                _loggingService.LogInformation("開始獲取流程啟動人列表");
+
+                // 獲取所有唯一的 InitiatedBy 值，並包含相關信息
+                var initiators = await _db.WorkflowExecutions
+                    .Where(we => !string.IsNullOrEmpty(we.InitiatedBy))
+                    .GroupBy(we => we.InitiatedBy)
+                    .Select(g => new
+                    {
+                        id = g.Key,
+                        phone = g.Key,
+                        name = g.Key, // 暫時使用電話號碼作為名稱，實際可以根據電話號碼查詢用戶信息
+                        initiatedAt = g.Max(we => we.StartedAt),
+                        executionCount = g.Count()
+                    })
+                    .OrderByDescending(x => x.initiatedAt)
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"成功獲取 {initiators.Count} 個流程啟動人");
+
+                return Ok(new { data = initiators });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取流程啟動人時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
+                return StatusCode(500, new { error = "獲取流程啟動人失敗", details = ex.Message });
             }
         }
     }

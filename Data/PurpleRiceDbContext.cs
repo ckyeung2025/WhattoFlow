@@ -36,6 +36,13 @@ namespace PurpleRice.Data
         // 流程變量相關 DbSet
         public DbSet<ProcessVariableDefinition> ProcessVariableDefinitions { get; set; }
         public DbSet<ProcessVariableValue> ProcessVariableValues { get; set; }
+        
+        // Contact List 相關 DbSet
+        public DbSet<ContactList> ContactLists { get; set; }
+        public DbSet<BroadcastGroup> BroadcastGroups { get; set; }
+        public DbSet<ContactHashtag> ContactHashtags { get; set; }
+        public DbSet<BroadcastSend> BroadcastSends { get; set; }
+        public DbSet<BroadcastSendDetail> BroadcastSendDetails { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -543,6 +550,178 @@ namespace PurpleRice.Data
                       .WithMany()
                       .HasForeignKey(e => e.WorkflowExecutionId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            // Contact List 相關配置
+            modelBuilder.Entity<ContactList>(entity =>
+            {
+                entity.ToTable("contact_lists");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+                entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(100);
+                entity.Property(e => e.Occupation).HasColumnName("occupation").HasMaxLength(100);
+                entity.Property(e => e.WhatsAppNumber).HasColumnName("whatsapp_number").HasMaxLength(20);
+                entity.Property(e => e.Email).HasColumnName("email").HasMaxLength(255);
+                entity.Property(e => e.CompanyName).HasColumnName("company").HasMaxLength(200);
+                entity.Property(e => e.Department).HasColumnName("department").HasMaxLength(100);
+                entity.Property(e => e.Position).HasColumnName("position").HasMaxLength(100);
+                entity.Property(e => e.Hashtags).HasColumnName("hashtags").HasMaxLength(500);
+                entity.Property(e => e.BroadcastGroupId).HasColumnName("broadcast_group_id");
+                entity.Property(e => e.IsActive).HasColumnName("is_active");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").HasMaxLength(100);
+                
+                // 索引配置
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.BroadcastGroupId);
+                entity.HasIndex(e => e.WhatsAppNumber);
+                entity.HasIndex(e => e.Email);
+                entity.HasIndex(e => e.Hashtags);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.HasOne(e => e.BroadcastGroup)
+                      .WithMany(bg => bg.Contacts)
+                      .HasForeignKey(e => e.BroadcastGroupId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+            
+            modelBuilder.Entity<BroadcastGroup>(entity =>
+            {
+                entity.ToTable("broadcast_groups");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(500);
+                entity.Property(e => e.Color).HasColumnName("color").HasMaxLength(7);
+                entity.Property(e => e.IsActive).HasColumnName("is_active");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").HasMaxLength(100);
+                
+                // 索引配置
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.Name);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            modelBuilder.Entity<ContactHashtag>(entity =>
+            {
+                entity.ToTable("contact_hashtags");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.Color).HasColumnName("color").HasMaxLength(7);
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(300);
+                entity.Property(e => e.IsActive).HasColumnName("is_active");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
+                
+                // 索引配置
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.Name);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            modelBuilder.Entity<BroadcastSend>(entity =>
+            {
+                entity.ToTable("broadcast_sends");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.WorkflowExecutionId).HasColumnName("workflow_execution_id");
+                entity.Property(e => e.BroadcastGroupId).HasColumnName("broadcast_group_id");
+                entity.Property(e => e.HashtagFilter).HasColumnName("hashtag_filter").HasMaxLength(500);
+                entity.Property(e => e.MessageContent).HasColumnName("message_content");
+                entity.Property(e => e.TemplateId).HasColumnName("template_id");
+                entity.Property(e => e.TotalContacts).HasColumnName("total_contacts");
+                entity.Property(e => e.SentCount).HasColumnName("sent_count");
+                entity.Property(e => e.FailedCount).HasColumnName("failed_count");
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
+                entity.Property(e => e.StartedAt).HasColumnName("started_at");
+                entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+                
+                // 索引配置
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.WorkflowExecutionId);
+                entity.HasIndex(e => e.Status);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.HasOne(e => e.WorkflowExecution)
+                      .WithMany()
+                      .HasForeignKey(e => e.WorkflowExecutionId)
+                      .OnDelete(DeleteBehavior.SetNull);
+                      
+                entity.HasOne(e => e.BroadcastGroup)
+                      .WithMany()
+                      .HasForeignKey(e => e.BroadcastGroupId)
+                      .OnDelete(DeleteBehavior.SetNull);
+                      
+                entity.HasOne(e => e.Template)
+                      .WithMany()
+                      .HasForeignKey(e => e.TemplateId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+            
+            modelBuilder.Entity<BroadcastSendDetail>(entity =>
+            {
+                entity.ToTable("broadcast_send_details");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BroadcastSendId).HasColumnName("broadcast_send_id").IsRequired();
+                entity.Property(e => e.ContactId).HasColumnName("contact_id").IsRequired();
+                entity.Property(e => e.WhatsAppMessageId).HasColumnName("whatsapp_message_id");
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
+                entity.Property(e => e.SentAt).HasColumnName("sent_at");
+                entity.Property(e => e.ErrorMessage).HasColumnName("error_message").HasMaxLength(500);
+                
+                // 索引配置
+                entity.HasIndex(e => e.BroadcastSendId);
+                entity.HasIndex(e => e.ContactId);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.BroadcastSend)
+                      .WithMany(bs => bs.SendDetails)
+                      .HasForeignKey(e => e.BroadcastSendId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.HasOne(e => e.Contact)
+                      .WithMany()
+                      .HasForeignKey(e => e.ContactId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.HasOne(e => e.WhatsAppMessage)
+                      .WithMany()
+                      .HasForeignKey(e => e.WhatsAppMessageId)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
         }
     }

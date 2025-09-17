@@ -10,9 +10,34 @@ import {
   PictureOutlined, VideoCameraOutlined, AudioOutlined, FileOutlined,
   EnvironmentOutlined, UserOutlined, LinkOutlined, SearchOutlined
 } from '@ant-design/icons';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const { Option } = Select;
+
+// ResizableTitle 元件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
 
 const WhatsAppTemplateList = () => {
   const [templates, setTemplates] = useState([]);
@@ -57,6 +82,9 @@ const WhatsAppTemplateList = () => {
   // 地圖容器引用
   const locationMapRef = useRef(null);
   const searchMapRef = useRef(null);
+  
+  // 表格列寬調整相關狀態
+  const [resizableColumns, setResizableColumns] = useState([]);
 
   const { t } = useLanguage();
 
@@ -677,6 +705,13 @@ const WhatsAppTemplateList = () => {
     };
   }, [locationMap, searchMap]);
 
+  // 表格列寬調整處理
+  const handleResize = index => (e, { size }) => {
+    const nextColumns = [...resizableColumns];
+    nextColumns[index] = { ...nextColumns[index], width: size.width };
+    setResizableColumns(nextColumns);
+  };
+
   // 表格變化處理
   const handleTableChange = (pagination, filters, sorter) => {
     if (sorter.field) {
@@ -1266,12 +1301,14 @@ const WhatsAppTemplateList = () => {
     }
   };
 
-  // 表格列定義
-  const columns = [
+  // 基礎表格列定義
+  const baseColumns = [
     {
       title: t('whatsappTemplate.templateName'),
       dataIndex: 'name',
       key: 'name',
+      width: 200,
+      ellipsis: true,
       sorter: true,
       render: (text, record) => (
         <div>
@@ -1284,6 +1321,7 @@ const WhatsAppTemplateList = () => {
       title: t('whatsappTemplate.category'),
       dataIndex: 'category',
       key: 'category',
+      width: 120,
       sorter: true,
       render: (text) => <Tag color="blue">{text}</Tag>
     },
@@ -1291,6 +1329,7 @@ const WhatsAppTemplateList = () => {
       title: t('whatsappTemplate.type'),
       dataIndex: 'templateType',
       key: 'templateType',
+      width: 120,
       render: (text) => {
         const typeColors = {
           'Text': 'green',
@@ -1317,6 +1356,7 @@ const WhatsAppTemplateList = () => {
       title: t('whatsappTemplate.status'),
       dataIndex: 'status',
       key: 'status',
+      width: 100,
       sorter: true,
       render: (text) => {
         const statusColors = {
@@ -1331,18 +1371,21 @@ const WhatsAppTemplateList = () => {
       title: t('whatsappTemplate.templateLanguage'),
       dataIndex: 'language',
       key: 'language',
+      width: 100,
       render: (text) => <Tag>{text}</Tag>
     },
     {
       title: t('whatsappTemplate.templateVersion'),
       dataIndex: 'version',
       key: 'version',
+      width: 100,
       render: (text) => <Tag color="geekblue">v{text}</Tag>
     },
     {
       title: t('whatsappTemplate.updatedAt'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
+      width: 160,
       sorter: true,
       render: (text) => new Date(text).toLocaleString('zh-TW')
     },
@@ -1387,6 +1430,31 @@ const WhatsAppTemplateList = () => {
       )
     }
   ];
+
+  // 初始化可調整列寬的列配置
+  useEffect(() => {
+    if (resizableColumns.length === 0) {
+      setResizableColumns(
+        baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+      );
+    }
+  }, [baseColumns, resizableColumns.length]);
+
+  // 合併列配置，添加調整功能
+  const mergedColumns = resizableColumns.map((col, index) => ({
+    ...col,
+    onHeaderCell: column => ({
+      width: col.width,
+      onResize: handleResize(index),
+    }),
+  }));
+
+  // 表格組件配置
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
 
   // 渲染動態表單內容
   const renderTemplateForm = () => {
@@ -2017,7 +2085,8 @@ const WhatsAppTemplateList = () => {
 
       {/* 模板列表表格 */}
       <Table
-        columns={columns}
+        components={components}
+        columns={mergedColumns}
         dataSource={templates}
         rowKey="id"
         loading={loading}
