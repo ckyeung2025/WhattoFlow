@@ -749,7 +749,7 @@ namespace PurpleRice.Services.WebhookServices
         }
 
         /// <summary>
-        /// 發送 WhatsApp 選單
+        /// 發送 WhatsApp 選單 (使用 List Messages 支援多於3個選項)
         /// </summary>
         /// <param name="company">公司信息</param>
         /// <param name="waId">用戶 WhatsApp ID</param>
@@ -790,36 +790,8 @@ namespace PurpleRice.Services.WebhookServices
                 var menuText = "歡迎使用我們的服務！\n\n請選擇您需要的功能：";
                 _loggingService.LogInformation($"選單文字: {menuText}");
                 
-                // 準備按鈕選項
-                var buttons = new List<object>();
-                for (int i = 0; i < webhookWorkflows.Count && i < 3; i++) // WhatsApp 最多支援 3 個按鈕
-                {
-                    var workflow = webhookWorkflows[i];
-                    var workflowName = workflow.Name ?? "未命名流程";
-                    var buttonId = $"option_{i + 1}";
-                    var buttonTitle = $"{i + 1}. {workflowName}";
-                    
-                    // WhatsApp 按鈕標題限制最多 20 個字符
-                    if (buttonTitle.Length > 20)
-                    {
-                        buttonTitle = buttonTitle.Substring(0, 17) + "...";
-                    }
-                    
-                    buttons.Add(new
-                    {
-                        type = "reply",
-                        reply = new
-                        {
-                            id = buttonId,
-                            title = buttonTitle
-                        }
-                    });
-                    
-                    _loggingService.LogInformation($"添加按鈕 {i + 1}: {buttonTitle} (ID: {buttonId})");
-                }
-
-                _loggingService.LogInformation($"發送選單給 {waId}，包含 {webhookWorkflows.Count} 個流程，{buttons.Count} 個按鈕");
-                await SendWhatsAppButtonMessage(company, waId, menuText, buttons);
+                // 使用 List Messages 支援多達 10 個選項
+                await SendWhatsAppListMessage(company, waId, menuText, webhookWorkflows);
             }
             catch (Exception ex)
             {
@@ -1055,18 +1027,127 @@ namespace PurpleRice.Services.WebhookServices
             }
         }
 
+        /// <summary>
+        /// 發送 WhatsApp List 消息 (支援多達 10 個選項)
+        /// </summary>
+        /// <param name="company">公司信息</param>
+        /// <param name="waId">用戶 WhatsApp ID</param>
+        /// <param name="message">消息內容</param>
+        /// <param name="workflows">工作流程列表</param>
+        private async Task SendWhatsAppListMessage(Company company, string waId, string message, List<WorkflowDefinition> workflows)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始發送 WhatsApp List 消息");
+                _loggingService.LogInformation($"收件人: {waId}");
+                _loggingService.LogInformation($"消息內容: {message}");
+                _loggingService.LogInformation($"工作流程數量: {workflows.Count}");
 
+                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
 
+                // 將工作流程分組到不同的區段中，每個區段最多 10 個選項
+                var sections = new List<object>();
+                var currentSection = new List<object>();
+                var sectionTitle = "服務選項";
+                var sectionIndex = 1;
 
+                for (int i = 0; i < workflows.Count && i < 10; i++) // WhatsApp List 最多支援 10 個選項
+                {
+                    var workflow = workflows[i];
+                    var workflowName = workflow.Name ?? "未命名流程";
+                    var optionId = $"option_{i + 1}";
+                    var optionTitle = $"{i + 1}. {workflowName}";
+                    var optionDescription = workflow.Description ?? "點擊選擇此服務";
 
+                    // WhatsApp 選項標題限制最多 24 個字符
+                    if (optionTitle.Length > 24)
+                    {
+                        optionTitle = optionTitle.Substring(0, 21) + "...";
+                    }
 
+                    // WhatsApp 選項描述限制最多 72 個字符
+                    if (optionDescription.Length > 72)
+                    {
+                        optionDescription = optionDescription.Substring(0, 69) + "...";
+                    }
 
+                    currentSection.Add(new
+                    {
+                        id = optionId,
+                        title = optionTitle,
+                        description = optionDescription
+                    });
 
+                    _loggingService.LogInformation($"添加選項 {i + 1}: {optionTitle} (ID: {optionId})");
+                }
 
+                // 添加當前區段
+                if (currentSection.Any())
+                {
+                    sections.Add(new
+                    {
+                        title = sectionTitle,
+                        rows = currentSection.ToArray()
+                    });
+                }
 
+                var payload = new
+                {
+                    messaging_product = "whatsapp",
+                    to = waId,
+                    type = "interactive",
+                    interactive = new
+                    {
+                        type = "list",
+                        header = new
+                        {
+                            type = "text",
+                            text = "服務選單"
+                        },
+                        body = new { text = message },
+                        footer = new { text = "請選擇您需要的服務" },
+                        action = new
+                        {
+                            button = "查看選項",
+                            sections = sections.ToArray()
+                        }
+                    }
+                };
 
+                _loggingService.LogInformation($"請求 URL: {url}");
+                _loggingService.LogInformation($"請求 Payload: {JsonSerializer.Serialize(payload)}");
 
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                var content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
+                
+                var response = await httpClient.PostAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
 
+                _loggingService.LogInformation($"響應狀態碼: {response.StatusCode}");
+                _loggingService.LogInformation($"響應內容: {responseContent}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _loggingService.LogError($"發送 WhatsApp List 消息失敗: {response.StatusCode} - {responseContent}");
+                    // 如果 List 發送失敗，回退到純文字
+                    _loggingService.LogInformation("回退到純文字消息");
+                    await SendWhatsAppMessage(company, waId, message + "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"成功發送 List 選單到 {waId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"發送 WhatsApp List 消息失敗: {ex.Message}");
+                _loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                // 如果 List 發送失敗，回退到純文字
+                _loggingService.LogInformation("回退到純文字消息");
+                await SendWhatsAppMessage(company, waId, message + "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。");
+            }
+        }
 
         /// <summary>
         /// 處理 QR Code 等待流程的圖片回覆

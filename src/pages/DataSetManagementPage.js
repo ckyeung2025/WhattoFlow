@@ -10,6 +10,8 @@ import {
   UploadOutlined, DownloadOutlined, SettingOutlined, SearchOutlined,
   FilterOutlined, SortAscendingOutlined, SortDescendingOutlined
 } from '@ant-design/icons';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -17,6 +19,29 @@ const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 const { TextArea } = Input;
 const { Panel } = Collapse;
+
+// ResizableTitle 元件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
 
 const DataSetManagementPage = () => {
   const [dataSets, setDataSets] = useState([]);
@@ -48,6 +73,9 @@ const DataSetManagementPage = () => {
     pageSize: 50,
     total: 0
   });
+
+  // 表格列寬調整相關狀態
+  const [resizableColumns, setResizableColumns] = useState([]);
 
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -83,11 +111,22 @@ const DataSetManagementPage = () => {
     }
   }, [dataSets]); // 依賴於 dataSets 確保數據已載入
 
-  const fetchDataSets = async (page = 1, pageSize = 10) => {
-    console.log(`fetchDataSets: 開始獲取數據，頁面: ${page}, 頁面大小: ${pageSize}`);
+  const fetchDataSets = async (page = 1, pageSize = 10, sortBy = 'createdAt', sortOrder = 'desc') => {
+    console.log(`fetchDataSets: 開始獲取數據，頁面: ${page}, 頁面大小: ${pageSize}, 排序: ${sortBy} ${sortOrder}`);
     setLoading(true);
     try {
-      const response = await fetch(`/api/datasets?page=${page}&pageSize=${pageSize}`);
+      const params = new URLSearchParams({
+        page: page,
+        pageSize: pageSize,
+        sortBy: sortBy,
+        sortOrder: sortOrder
+      });
+      
+      const url = `/api/datasets?${params}`;
+      console.log('fetchDataSets: 請求 URL:', url);
+      console.log('fetchDataSets: 請求參數:', Object.fromEntries(params));
+      
+      const response = await fetch(url);
       const result = await response.json();
       console.log('fetchDataSets: API 響應結果:', result);
       
@@ -539,11 +578,15 @@ const DataSetManagementPage = () => {
     }
   };
 
-  const columns = [
+  // 基礎表格列定義
+  const baseColumns = [
     {
       title: t('dataSetManagement.name'),
       dataIndex: 'name',
       key: 'name',
+      width: 200,
+      ellipsis: true,
+      sorter: true,
       render: (text, record) => (
         <div>
           <div style={{ fontWeight: 'bold' }}>{text}</div>
@@ -555,6 +598,8 @@ const DataSetManagementPage = () => {
       title: t('dataSetManagement.dataSourceType'),
       dataIndex: 'dataSourceType',
       key: 'dataSourceType',
+      width: 150,
+      sorter: true,
       render: (type) => {
         const typeConfig = {
           'SQL': { color: 'blue', icon: <DatabaseOutlined /> },
@@ -573,6 +618,8 @@ const DataSetManagementPage = () => {
       title: t('dataSetManagement.status'),
       dataIndex: 'status',
       key: 'status',
+      width: 100,
+      sorter: true,
       render: (status) => {
         const statusConfig = {
           'Active': { color: 'success', text: t('dataSetManagement.active') },
@@ -587,17 +634,22 @@ const DataSetManagementPage = () => {
       title: t('dataSetManagement.recordCount'),
       dataIndex: 'totalRecords',
       key: 'totalRecords',
+      width: 120,
+      sorter: true,
       render: (count) => <Text>{count || 0}</Text>
     },
     {
       title: t('dataSetManagement.lastUpdate'),
       dataIndex: 'lastDataSyncTime',
       key: 'lastDataSyncTime',
+      width: 180,
+      sorter: true,
       render: (time) => time ? new Date(time).toLocaleString('zh-TW') : t('dataSetManagement.neverSynced')
     },
     {
       title: t('dataSetManagement.actions'),
       key: 'actions',
+      width: 200,
       render: (_, record) => (
         <Space>
           <Tooltip title={t('dataSetManagement.viewRecords')}>
@@ -640,6 +692,31 @@ const DataSetManagementPage = () => {
       )
     }
   ];
+
+  // 初始化可調整列寬的列配置
+  useEffect(() => {
+    if (resizableColumns.length === 0) {
+      setResizableColumns(
+        baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+      );
+    }
+  }, [baseColumns, resizableColumns.length]);
+
+  // 合併列配置，添加調整功能
+  const mergedColumns = resizableColumns.map((col, index) => ({
+    ...col,
+    onHeaderCell: column => ({
+      width: col.width,
+      onResize: handleResize(index),
+    }),
+  }));
+
+  // 表格組件配置
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
 
   const renderRecordColumns = () => {
     if (!selectedDataSet?.columns) {
@@ -702,9 +779,42 @@ const DataSetManagementPage = () => {
     }));
   };
 
-  const handleTableChange = (paginationInfo) => {
-    console.log('handleTableChange: 分頁變更:', paginationInfo);
-    fetchDataSets(paginationInfo.current, paginationInfo.pageSize);
+  // 表格列寬調整處理
+  const handleResize = index => (e, { size }) => {
+    const nextColumns = [...resizableColumns];
+    nextColumns[index] = { ...nextColumns[index], width: size.width };
+    setResizableColumns(nextColumns);
+  };
+
+  const handleTableChange = (paginationInfo, filters, sorter) => {
+    console.log('handleTableChange: 表格變化:', { paginationInfo, filters, sorter });
+    console.log('handleTableChange: sorter 詳細信息:', {
+      field: sorter?.field,
+      order: sorter?.order,
+      columnKey: sorter?.columnKey,
+      column: sorter?.column
+    });
+    
+    // 處理分頁
+    if (paginationInfo) {
+      console.log('分頁變更:', paginationInfo);
+      setPagination(prev => ({ 
+        ...prev, 
+        current: paginationInfo.current, 
+        pageSize: paginationInfo.pageSize 
+      }));
+    }
+    
+    // 處理排序
+    if (sorter && sorter.field) {
+      console.log('排序字段:', sorter.field, '排序順序:', sorter.order);
+      // 重新載入數據以應用排序
+      fetchDataSets(paginationInfo.current, paginationInfo.pageSize, sorter.field, sorter.order);
+    } else if (paginationInfo) {
+      // 只有分頁變更時
+      console.log('只有分頁變更，使用預設排序');
+      fetchDataSets(paginationInfo.current, paginationInfo.pageSize);
+    }
   };
 
   // 新增：處理工作表變更的函數
@@ -958,7 +1068,7 @@ const DataSetManagementPage = () => {
           icon={<PlusOutlined />} 
           onClick={handleCreate}
         >
-          新增
+          {t('dataSetManagement.add')}
         </Button>
         <Title level={3}>
           <DatabaseOutlined style={{ marginRight: '8px' }} />
@@ -968,7 +1078,8 @@ const DataSetManagementPage = () => {
 
       <Card>
         <Table
-          columns={columns}
+          components={components}
+          columns={mergedColumns}
           dataSource={dataSets}
           loading={loading}
           rowKey="id"

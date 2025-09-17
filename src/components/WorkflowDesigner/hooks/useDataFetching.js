@@ -33,6 +33,9 @@ export const useDataFetching = () => {
   const [isEFormModalVisible, setIsEFormModalVisible] = useState(false);
   const [selectedEForm, setSelectedEForm] = useState(null);
   
+  // 收件人相關
+  const [isRecipientModalVisible, setIsRecipientModalVisible] = useState(false);
+  
   // 節點類型定義
   const [nodeTypeDefinitions, setNodeTypeDefinitions] = useState([]);
   const [loadingNodeTypes, setLoadingNodeTypes] = useState(true);
@@ -282,6 +285,10 @@ export const useDataFetching = () => {
     setSelectedProcessVariable,
     editingProcessVariable,
     setEditingProcessVariable,
+    
+    // 收件人相關
+    isRecipientModalVisible,
+    setIsRecipientModalVisible,
     
     // 數據獲取函數
     fetchTemplates,

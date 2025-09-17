@@ -15,7 +15,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
   // 同步 userInfo 到表單
   useEffect(() => {
     console.log('userInfo:', userInfo); // debug 印出 userInfo 結構
-    if (userInfo && visible) {
+    if (userInfo && visible && form) {
       form.resetFields();
       form.setFieldsValue({
         account: userInfo.account || userInfo.user_account || '',
@@ -33,13 +33,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
   }, [userInfo, visible, form]);
 
   useEffect(() => {
-    if (!visible) {
-      form.resetFields();
-    }
-  }, [visible, form]);
-
-  useEffect(() => {
-    if (visible) {
+    if (visible && form) {
       form.setFieldsValue({ language: currentLanguage });
     }
   }, [currentLanguage, visible, form]);
@@ -136,7 +130,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
       onOk={handleOk}
       okText={t('preferences.save')}
       cancelText={t('preferences.cancel')}
-      destroyOnClose={false}
+      destroyOnHidden={false}
     >
       <Tabs defaultActiveKey="1">
         <TabPane tab={t('preferences.basicInfo')} key="1">

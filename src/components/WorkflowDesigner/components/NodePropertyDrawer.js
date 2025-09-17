@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useCallback } from 'react';
 import { Drawer, Form, Input, Select, Card, Button, Space, Tag } from 'antd';
 import { FormOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
+import RecipientModal from '../modals/RecipientModal';
 import { getAvailableOutputPaths } from '../utils';
 
 // 節點屬性編輯抽屜組件
@@ -22,6 +23,8 @@ const NodePropertyDrawer = ({
   setIsUserModalVisible,
   isEFormModalVisible,
   setIsEFormModalVisible,
+  isRecipientModalVisible,
+  setIsRecipientModalVisible,
   // 條件相關狀態
   conditionModalVisible,
   setConditionModalVisible,
@@ -124,9 +127,9 @@ const NodePropertyDrawer = ({
               <Form.Item label={t('workflow.to')}>
                 <Input 
                   value={selectedNode.data.to || ''}
-                  placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
+                  placeholder={t('workflowDesigner.selectRecipients')}
                   readOnly
-                  onClick={() => setIsUserModalVisible(true)}
+                  onClick={() => setIsRecipientModalVisible(true)}
                   suffix={
                     <Space>
                       {selectedNode.data.to && (
@@ -144,9 +147,9 @@ const NodePropertyDrawer = ({
                       <Button 
                         type="text" 
                         size="small" 
-                        onClick={() => setIsUserModalVisible(true)}
+                        onClick={() => setIsRecipientModalVisible(true)}
                       >
-                        {t('workflowDesigner.selectUser')}
+                        {t('workflowDesigner.selectRecipients')}
                       </Button>
                     </Space>
                   }
@@ -198,9 +201,9 @@ const NodePropertyDrawer = ({
               <Form.Item label={t('workflow.to')}>
                 <Input 
                   value={selectedNode.data.to || ''}
-                  placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
+                  placeholder={t('workflowDesigner.selectRecipients')}
                   readOnly
-                  onClick={() => setIsUserModalVisible(true)}
+                  onClick={() => setIsRecipientModalVisible(true)}
                   suffix={
                     <Space>
                       {selectedNode.data.to && (
@@ -218,9 +221,9 @@ const NodePropertyDrawer = ({
                       <Button 
                         type="text" 
                         size="small" 
-                        onClick={() => setIsUserModalVisible(true)}
+                        onClick={() => setIsRecipientModalVisible(true)}
                       >
-                        {t('workflowDesigner.selectUser')}
+                        {t('workflowDesigner.selectRecipients')}
                       </Button>
                     </Space>
                   }
@@ -266,9 +269,9 @@ const NodePropertyDrawer = ({
                 <Form.Item label={t('workflowDesigner.specifiedPerson')}>
                   <Input 
                     value={selectedNode.data.specifiedUsers || ''}
-                    placeholder={t('workflowDesigner.selectSpecifiedPerson')} 
+                    placeholder={t('workflowDesigner.selectRecipients')} 
                     readOnly 
-                    onClick={() => setIsUserModalVisible(true)}
+                    onClick={() => setIsRecipientModalVisible(true)}
                     suffix={
                       <Space>
                         {selectedNode.data.specifiedUsers && (
@@ -286,9 +289,9 @@ const NodePropertyDrawer = ({
                         <Button 
                           type="text" 
                           size="small" 
-                          onClick={() => setIsUserModalVisible(true)}
+                          onClick={() => setIsRecipientModalVisible(true)}
                         >
-                          {t('workflowDesigner.selectPerson')}
+                          {t('workflowDesigner.selectRecipients')}
                         </Button>
                       </Space>
                     }
@@ -527,9 +530,9 @@ const NodePropertyDrawer = ({
               <Form.Item label={t('workflow.to')}>
                 <Input 
                   value={selectedNode.data.to || ''}
-                  placeholder={t('workflowDesigner.phoneNumberPlaceholder')}
+                  placeholder={t('workflowDesigner.selectRecipients')}
                   readOnly
-                  onClick={() => setIsUserModalVisible(true)}
+                  onClick={() => setIsRecipientModalVisible(true)}
                   suffix={
                     <Space>
                       {selectedNode.data.to && (
@@ -547,9 +550,9 @@ const NodePropertyDrawer = ({
                       <Button 
                         type="text" 
                         size="small" 
-                        onClick={() => setIsUserModalVisible(true)}
+                        onClick={() => setIsRecipientModalVisible(true)}
                       >
-                        {t('workflowDesigner.selectUser')}
+                        {t('workflowDesigner.selectRecipients')}
                       </Button>
                     </Space>
                   }
@@ -821,6 +824,40 @@ const NodePropertyDrawer = ({
           </Form>
         </div>
       )}
+
+      {/* 收件人選擇模態框 */}
+      <RecipientModal
+        visible={isRecipientModalVisible}
+        onCancel={() => setIsRecipientModalVisible(false)}
+        onSelect={(value, detailedValue) => {
+          console.log('📤 NodePropertyDrawer - 收到選擇值:', value);
+          console.log('📤 NodePropertyDrawer - 收到詳細值:', detailedValue);
+          // 根據節點類型更新對應的字段
+          if (selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm') {
+            // 保存電話號碼字符串到 to 字段
+            handleNodeDataChange({ to: value });
+            // 保存詳細信息到 recipientDetails 字段
+            if (detailedValue) {
+              handleNodeDataChange({ recipientDetails: detailedValue });
+            }
+          } else if (selectedNode.data.type === 'waitReply') {
+            // 保存電話號碼字符串到 specifiedUsers 字段
+            handleNodeDataChange({ specifiedUsers: value });
+            // 保存詳細信息到 recipientDetails 字段
+            if (detailedValue) {
+              handleNodeDataChange({ recipientDetails: detailedValue });
+            }
+          }
+        }}
+        value={
+          selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm'
+            ? selectedNode.data.to 
+            : selectedNode.data.specifiedUsers
+        }
+        recipientDetails={selectedNode.data.recipientDetails}
+        allowMultiple={true}
+        placeholder={t('workflowDesigner.selectRecipients')}
+      />
     </Drawer>
   );
 };

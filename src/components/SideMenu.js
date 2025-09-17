@@ -12,7 +12,15 @@ import {
   BarChartOutlined,
   DatabaseOutlined,
   BranchesOutlined,  // 添加這個圖標
-  ClockCircleOutlined  // 添加時鐘圖標用於待處理事項
+  ClockCircleOutlined,  // 添加時鐘圖標用於待處理事項
+  RocketOutlined,  // 添加火箭圖標用於 Published Apps
+  AppstoreOutlined,  // 添加應用圖標
+  ToolOutlined,  // 添加工具圖標用於 Studio
+  SettingOutlined,  // 添加設定圖標用於管理工具
+  ContactsOutlined,  // 添加聯絡人圖標
+  TeamOutlined,  // 添加群組圖標
+  TagsOutlined,  // 添加標籤圖標
+  SendOutlined  // 添加發送圖標
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
@@ -22,7 +30,32 @@ const { Text } = Typography;
 
 const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [openKeys, setOpenKeys] = useState([]);
   const { t } = useLanguage();
+
+  // 處理選單展開/收合 - 手風琴效果
+  const handleOpenChange = (keys) => {
+    const mainMenus = ['application', 'adminTools', 'studio'];
+    
+    // 找出最新展開的選單
+    const latestOpenKey = keys.find(key => openKeys.indexOf(key) === -1);
+    
+    if (latestOpenKey && mainMenus.includes(latestOpenKey)) {
+      // 如果展開的是主選單，則只保留當前展開的主選單（手風琴效果）
+      setOpenKeys([latestOpenKey]);
+    } else if (latestOpenKey) {
+      // 如果展開的是子選單，保持當前主選單展開狀態
+      const currentMainMenu = openKeys.find(key => mainMenus.includes(key));
+      if (currentMainMenu) {
+        setOpenKeys([currentMainMenu, ...keys.filter(key => !mainMenus.includes(key))]);
+      } else {
+        setOpenKeys(keys);
+      }
+    } else {
+      // 收合選單
+      setOpenKeys(keys);
+    }
+  };
 
   const menuItems = [
     {
@@ -30,46 +63,120 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
       icon: <DashboardOutlined />,
       label: t('menu.dashboard'),
     },
-    // 表單管理移到 Elsa Dashboard 上方
     {
-      key: 'eformList',
-      icon: <FileTextOutlined />,
-      label: t('menu.eformList'),
-      url: '/eform-list',
+      type: 'divider',
     },
-    // 訊息模版
+    // Application 應用區域
     {
-      key: 'whatsappTemplates',
-      icon: <MessageOutlined />,
-      label: t('menu.whatsappTemplates'),
-      url: '/whatsapp-templates',
-    },
-    // 新增 Elsa Dashboard 選單
-    {
-      key: 'whatsappWorkflow',
-      icon: <BranchesOutlined />,
-      label: t('menu.whatsappWorkflow'),
-      url: '/workflow-list',
-    },
-    // 新增流程監控選單
-    {
-      key: 'workflowMonitor',
-      icon: <BarChartOutlined />,
-      label: t('menu.workflowMonitor'),
-      url: '/workflow-monitor',
-    },
-    // 新增數據集管理選單
-    {
-      key: 'dataSets',
-      icon: <DatabaseOutlined />,
-      label: t('dataSetManagement.title'),
-      url: '/data-sets',
+      key: 'application',
+      icon: <AppstoreOutlined />,
+      label: t('menu.application'),
+      children: [
+        {
+          key: 'publishedApps',
+          icon: <RocketOutlined />,
+          label: t('menu.publishedApps'),
+          url: '/published-apps',
+        },
+        {
+          key: 'pendingTasks',
+          icon: <ClockCircleOutlined />,
+          label: t('menu.pendingTasks'),
+          url: '/pending-tasks',
+        }
+      ]
     },
     {
-      key: 'companyUserAdmin',
-      icon: <UserOutlined />,
-      label: t('menu.companyUserAdmin'),
-      url: '/company-user-admin',
+      type: 'divider',
+    },
+    // Administrator Tools 管理工具區域
+    {
+      key: 'adminTools',
+      icon: <SettingOutlined />,
+      label: t('menu.adminTools'),
+      children: [
+        // 聯絡人管理
+        {
+          key: 'contactList',
+          icon: <ContactsOutlined />,
+          label: t('menu.contactList'),
+          url: '/contacts',
+        },
+        // 廣播群組管理
+        {
+          key: 'broadcastGroups',
+          icon: <TeamOutlined />,
+          label: t('menu.broadcastGroups'),
+          url: '/broadcast-groups',
+        },
+        // 標籤管理
+        {
+          key: 'hashtags',
+          icon: <TagsOutlined />,
+          label: t('menu.hashtags'),
+          url: '/hashtags',
+        },
+        // 廣播發送
+        {
+          key: 'broadcastSend',
+          icon: <SendOutlined />,
+          label: t('menu.broadcastSend'),
+          url: '/broadcast-send',
+        },
+        // 公司/用戶管理
+        {
+          key: 'companyUserAdmin',
+          icon: <UserOutlined />,
+          label: t('menu.companyUserAdmin'),
+          url: '/company-user-admin',
+        }
+      ]
+    },
+    {
+      type: 'divider',
+    },
+    // Studio 工作室區域
+    {
+      key: 'studio',
+      icon: <ToolOutlined />,
+      label: t('menu.studio'),
+      children: [
+        // 表單管理
+        {
+          key: 'eformList',
+          icon: <FileTextOutlined />,
+          label: t('menu.eformList'),
+          url: '/eform-list',
+        },
+        // 訊息模版
+        {
+          key: 'whatsappTemplates',
+          icon: <MessageOutlined />,
+          label: t('menu.whatsappTemplates'),
+          url: '/whatsapp-templates',
+        },
+        // 工作流程設計
+        {
+          key: 'whatsappWorkflow',
+          icon: <BranchesOutlined />,
+          label: t('menu.whatsappWorkflow'),
+          url: '/workflow-list',
+        },
+        // 流程監控
+        {
+          key: 'workflowMonitor',
+          icon: <BarChartOutlined />,
+          label: t('menu.workflowMonitor'),
+          url: '/workflow-monitor',
+        },
+        // 數據集管理
+        {
+          key: 'dataSets',
+          icon: <DatabaseOutlined />,
+          label: t('dataSetManagement.title'),
+          url: '/data-sets',
+        }
+      ]
     },
     {
       type: 'divider',
@@ -98,9 +205,28 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
         zIndex: 1000,
       }}
     >
+      {/* WhatoFlow Logo */}
+      <div style={{ 
+        padding: collapsed ? '12px 8px' : '16px 16px',
+        textAlign: collapsed ? 'center' : 'left',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        marginBottom: 12
+      }}>
+        <img 
+          src="/assets/Whatoflow_logo_W.png" 
+          alt="WhatoFlow Logo" 
+          style={{
+            width: collapsed ? '48px' : '200px',
+            height: 'auto',
+            objectFit: 'contain',
+            transition: 'all 0.3s ease'
+          }}
+        />
+      </div>
+
       {/* 用戶資訊區域 */}
       <div style={{ 
-        padding: collapsed ? '16px 8px' : '24px 16px',
+        padding: collapsed ? '12px 8px' : '16px 16px',
         textAlign: collapsed ? 'center' : 'left',
         borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
         marginBottom: 16
@@ -124,25 +250,40 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
         </div>
       </div>
 
-      {/* 選單 */}
-      <Menu
-        theme="dark"
-        mode="inline"
-        selectedKeys={[selectedKey]}
-        defaultOpenKeys={collapsed ? [] : ['dashboard']}
-        items={menuItems}
-        onClick={({ key }) => {
-          if (key === 'logout') {
-            onLogout();
-          } else {
-            onMenuSelect(key);
-          }
-        }}
+      {/* 選單容器 - 添加滾動功能 */}
+      <div 
         style={{
-          border: 'none',
-          background: 'transparent',
+          height: 'calc(100vh - 200px)', // 減去 logo 和用戶資訊區域的高度
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          paddingRight: '4px', // 為滾動條留出空間
         }}
-      />
+        className="custom-scrollbar"
+      >
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          openKeys={collapsed ? [] : openKeys}
+          onOpenChange={handleOpenChange}
+          items={menuItems}
+          onClick={({ key }) => {
+            if (key === 'logout') {
+              onLogout();
+            } else if (key === 'application' || key === 'studio' || key === 'adminTools') {
+              // 這些是父級菜單，不需要處理點擊
+              return;
+            } else {
+              onMenuSelect(key);
+            }
+          }}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            height: '100%',
+          }}
+        />
+      </div>
 
       {/* 折疊按鈕 */}
       <div style={{

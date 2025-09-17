@@ -161,6 +161,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     setIsEFormModalVisible,
     selectedEForm,
     setSelectedEForm,
+    isRecipientModalVisible,
+    setIsRecipientModalVisible,
     nodeTypeDefinitions,
     setNodeTypeDefinitions,
     loadingNodeTypes,
@@ -397,6 +399,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
           setIsUserModalVisible={setIsUserModalVisible}
           isEFormModalVisible={isEFormModalVisible}
           setIsEFormModalVisible={setIsEFormModalVisible}
+          isRecipientModalVisible={isRecipientModalVisible}
+          setIsRecipientModalVisible={setIsRecipientModalVisible}
           conditionModalVisible={conditionModalVisible}
           setConditionModalVisible={setConditionModalVisible}
           conditionGroupModalVisible={conditionGroupModalVisible}

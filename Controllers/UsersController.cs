@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
@@ -8,6 +9,7 @@ namespace PurpleRice.Controllers
 {
     [ApiController]
     [Route("api/users")]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly PurpleRiceDbContext _context;

@@ -54,6 +54,8 @@ import {
   SyncOutlined as SyncOutlinedIcon,
   MessageOutlined
 } from '@ant-design/icons';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
@@ -67,6 +69,29 @@ const { Option } = Select;
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 const { RangePicker } = DatePicker;
+
+// ResizableTitle 元件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
 
 const WorkflowMonitorPage = () => {
   const { t } = useLanguage();
@@ -100,6 +125,9 @@ const WorkflowMonitorPage = () => {
   });
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [selectedChatInstance, setSelectedChatInstance] = useState(null);
+  
+  // 表格列寬調整相關狀態
+  const [resizableColumns, setResizableColumns] = useState([]);
 
   // 載入真實數據
   useEffect(() => {
@@ -121,13 +149,16 @@ const WorkflowMonitorPage = () => {
     loadInstances();
   }, [filters, pagination.current, pagination.pageSize]);
 
-  const loadInstances = async () => {
+  const loadInstances = async (sortBy = 'startedAt', sortOrder = 'desc') => {
+    console.log(`loadInstances: 開始載入實例，排序: ${sortBy} ${sortOrder}`);
     setLoading(true);
     try {
       // 構建查詢參數
       const params = new URLSearchParams({
         page: pagination.current,
-        pageSize: pagination.pageSize
+        pageSize: pagination.pageSize,
+        sortBy: sortBy,
+        sortOrder: sortOrder
       });
 
       if (filters.status !== 'all') {
@@ -148,10 +179,12 @@ const WorkflowMonitorPage = () => {
         params.append('endDateTo', filters.endDateRange[1].toISOString());
       }
 
-      console.log('發送請求到:', `/api/workflowexecutions/monitor?${params}`);
+      const url = `/api/workflowexecutions/monitor?${params}`;
+      console.log('loadInstances: 請求 URL:', url);
+      console.log('loadInstances: 請求參數:', Object.fromEntries(params));
       console.log('當前分頁參數:', { current: pagination.current, pageSize: pagination.pageSize });
 
-      const response = await fetch(`/api/workflowexecutions/monitor?${params}`, {
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -338,12 +371,54 @@ const WorkflowMonitorPage = () => {
     // 這裡可以添加額外的邏輯，比如更新實例狀態等
   };
 
-  const columns = [
+  // 表格列寬調整處理
+  const handleResize = index => (e, { size }) => {
+    const nextColumns = [...resizableColumns];
+    nextColumns[index] = { ...nextColumns[index], width: size.width };
+    setResizableColumns(nextColumns);
+  };
+
+  // 表格變化處理（包括排序）
+  const handleTableChange = (paginationInfo, filters, sorter) => {
+    console.log('handleTableChange: 表格變化:', { paginationInfo, filters, sorter });
+    console.log('handleTableChange: sorter 詳細信息:', {
+      field: sorter?.field,
+      order: sorter?.order,
+      columnKey: sorter?.columnKey,
+      column: sorter?.column
+    });
+    
+    // 處理分頁
+    if (paginationInfo) {
+      console.log('分頁變更:', paginationInfo);
+      setPagination(prev => ({ 
+        ...prev, 
+        current: paginationInfo.current, 
+        pageSize: paginationInfo.pageSize 
+      }));
+    }
+    
+    // 處理排序
+    if (sorter && sorter.field) {
+      console.log('排序字段:', sorter.field, '排序順序:', sorter.order);
+      // 重新載入數據以應用排序
+      loadInstances(sorter.field, sorter.order);
+    } else if (paginationInfo) {
+      // 只有分頁變更時
+      console.log('只有分頁變更，使用預設排序');
+      loadInstances();
+    }
+  };
+
+  // 基礎表格列定義
+  const baseColumns = [
     {
       title: '實例 ID',
       dataIndex: 'id',
       key: 'id',
       width: 120,
+      ellipsis: true,
+      sorter: true,
       render: (text) => <Text code>{text}</Text>
     },
     {
@@ -351,6 +426,8 @@ const WorkflowMonitorPage = () => {
       dataIndex: 'workflowName',
       key: 'workflowName',
       width: 200,
+      ellipsis: true,
+      sorter: true,
       render: (text) => <Text strong>{text}</Text>
     },
     {
@@ -358,6 +435,7 @@ const WorkflowMonitorPage = () => {
       dataIndex: 'status',
       key: 'status',
       width: 120,
+      sorter: true,
       render: (status) => getStatusTag(status)
     },
     {
@@ -365,6 +443,7 @@ const WorkflowMonitorPage = () => {
       dataIndex: 'currentStep',
       key: 'currentStep',
       width: 120,
+      sorter: true,
       render: (step, record) => {
         if (record.status === 'running' && step !== null) {
           return (
@@ -387,6 +466,7 @@ const WorkflowMonitorPage = () => {
       dataIndex: 'startedAt',
       key: 'startedAt',
       width: 150,
+      sorter: true,
       render: (date) => dayjs(date).format('YYYY-MM-DD HH:mm:ss')
     },
     {
@@ -394,6 +474,7 @@ const WorkflowMonitorPage = () => {
       dataIndex: 'duration',
       key: 'duration',
       width: 120,
+      sorter: true,
       render: (duration, record) => {
         if (record.status === 'running') {
           const runningDuration = dayjs.duration(dayjs().diff(dayjs(record.startedAt))).asMinutes();
@@ -406,7 +487,8 @@ const WorkflowMonitorPage = () => {
       title: '創建者',
       dataIndex: 'createdBy',
       key: 'createdBy',
-      width: 100
+      width: 100,
+      sorter: true
     },
     {
       title: '操作',
@@ -474,6 +556,31 @@ const WorkflowMonitorPage = () => {
       )
     }
   ];
+
+  // 初始化可調整列寬的列配置
+  useEffect(() => {
+    if (resizableColumns.length === 0) {
+      setResizableColumns(
+        baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+      );
+    }
+  }, [baseColumns, resizableColumns.length]);
+
+  // 合併列配置，添加調整功能
+  const mergedColumns = resizableColumns.map((col, index) => ({
+    ...col,
+    onHeaderCell: column => ({
+      width: col.width,
+      onResize: handleResize(index),
+    }),
+  }));
+
+  // 表格組件配置
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
@@ -617,15 +724,13 @@ const WorkflowMonitorPage = () => {
           </div>
           
           <Table
-            columns={columns}
+            components={components}
+            columns={mergedColumns}
             dataSource={instances}
             rowKey="id"
             loading={loading}
             pagination={{
               ...pagination,
-              onChange: (page, pageSize) => {
-                setPagination(prev => ({ ...prev, current: page, pageSize }));
-              },
               showSizeChanger: true,
               showQuickJumper: true,
               showTotal: (total, range) => 
@@ -637,6 +742,7 @@ const WorkflowMonitorPage = () => {
                 setSelectedInstances(selectedRows);
               }
             }}
+            onChange={handleTableChange}
             scroll={{ x: 1200 }}
           />
         </Card>
