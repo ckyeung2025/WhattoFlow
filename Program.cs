@@ -57,6 +57,10 @@ builder.Services.AddScoped<Func<string, LoggingService>>(provider =>
     };
 });
 
+// 註冊 WorkflowMessageSend 相關服務
+builder.Services.AddScoped<WorkflowMessageSendService>();
+builder.Services.AddScoped<RecipientResolverService>();
+
 // 註冊 WhatsAppWorkflowService
 builder.Services.AddScoped<WhatsAppWorkflowService>();
 

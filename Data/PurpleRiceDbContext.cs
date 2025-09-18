@@ -41,8 +41,10 @@ namespace PurpleRice.Data
         public DbSet<ContactList> ContactLists { get; set; }
         public DbSet<BroadcastGroup> BroadcastGroups { get; set; }
         public DbSet<ContactHashtag> ContactHashtags { get; set; }
-        public DbSet<BroadcastSend> BroadcastSends { get; set; }
-        public DbSet<BroadcastSendDetail> BroadcastSendDetails { get; set; }
+        
+        // Workflow Message Send 相關 DbSet
+        public DbSet<WorkflowMessageSend> WorkflowMessageSends { get; set; }
+        public DbSet<WorkflowMessageRecipient> WorkflowMessageRecipients { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -644,85 +646,98 @@ namespace PurpleRice.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
             
-            modelBuilder.Entity<BroadcastSend>(entity =>
+            // WorkflowMessageSend 配置
+            modelBuilder.Entity<WorkflowMessageSend>(entity =>
             {
-                entity.ToTable("broadcast_sends");
+                entity.ToTable("workflow_message_sends");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
-                entity.Property(e => e.WorkflowExecutionId).HasColumnName("workflow_execution_id");
-                entity.Property(e => e.BroadcastGroupId).HasColumnName("broadcast_group_id");
-                entity.Property(e => e.HashtagFilter).HasColumnName("hashtag_filter").HasMaxLength(500);
+                entity.Property(e => e.WorkflowExecutionId).HasColumnName("workflow_execution_id").IsRequired();
+                entity.Property(e => e.WorkflowStepExecutionId).HasColumnName("workflow_step_execution_id");
+                entity.Property(e => e.NodeId).HasColumnName("node_id").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.NodeType).HasColumnName("node_type").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.MessageType).HasColumnName("message_type").HasMaxLength(20).HasDefaultValue("text");
+                entity.Property(e => e.TemplateId).HasColumnName("template_id").HasMaxLength(50);
+                entity.Property(e => e.TemplateName).HasColumnName("template_name").HasMaxLength(100);
                 entity.Property(e => e.MessageContent).HasColumnName("message_content");
-                entity.Property(e => e.TemplateId).HasColumnName("template_id");
-                entity.Property(e => e.TotalContacts).HasColumnName("total_contacts");
-                entity.Property(e => e.SentCount).HasColumnName("sent_count");
-                entity.Property(e => e.FailedCount).HasColumnName("failed_count");
-                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
-                entity.Property(e => e.StartedAt).HasColumnName("started_at");
+                entity.Property(e => e.TotalRecipients).HasColumnName("total_recipients").HasDefaultValue(0);
+                entity.Property(e => e.SuccessCount).HasColumnName("success_count").HasDefaultValue(0);
+                entity.Property(e => e.FailedCount).HasColumnName("failed_count").HasDefaultValue(0);
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("Pending");
+                entity.Property(e => e.StartedAt).HasColumnName("started_at").HasDefaultValueSql("GETUTCDATE()");
                 entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
-                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
                 entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
                 
                 // 索引配置
-                entity.HasIndex(e => e.CompanyId);
                 entity.HasIndex(e => e.WorkflowExecutionId);
+                entity.HasIndex(e => e.CompanyId);
                 entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.StartedAt);
+                entity.HasIndex(e => e.NodeType);
                 
                 // 外鍵關係
+                entity.HasOne(e => e.WorkflowExecution)
+                      .WithMany()
+                      .HasForeignKey(e => e.WorkflowExecutionId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
                 entity.HasOne(e => e.Company)
                       .WithMany()
                       .HasForeignKey(e => e.CompanyId)
                       .OnDelete(DeleteBehavior.Cascade);
-                      
-                entity.HasOne(e => e.WorkflowExecution)
-                      .WithMany()
-                      .HasForeignKey(e => e.WorkflowExecutionId)
-                      .OnDelete(DeleteBehavior.SetNull);
-                      
-                entity.HasOne(e => e.BroadcastGroup)
-                      .WithMany()
-                      .HasForeignKey(e => e.BroadcastGroupId)
-                      .OnDelete(DeleteBehavior.SetNull);
-                      
-                entity.HasOne(e => e.Template)
-                      .WithMany()
-                      .HasForeignKey(e => e.TemplateId)
-                      .OnDelete(DeleteBehavior.SetNull);
             });
             
-            modelBuilder.Entity<BroadcastSendDetail>(entity =>
+            // WorkflowMessageRecipient 配置
+            modelBuilder.Entity<WorkflowMessageRecipient>(entity =>
             {
-                entity.ToTable("broadcast_send_details");
+                entity.ToTable("workflow_message_recipients");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.BroadcastSendId).HasColumnName("broadcast_send_id").IsRequired();
-                entity.Property(e => e.ContactId).HasColumnName("contact_id").IsRequired();
-                entity.Property(e => e.WhatsAppMessageId).HasColumnName("whatsapp_message_id");
-                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20);
-                entity.Property(e => e.SentAt).HasColumnName("sent_at");
+                entity.Property(e => e.MessageSendId).HasColumnName("message_send_id").IsRequired();
+                entity.Property(e => e.RecipientType).HasColumnName("recipient_type").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.RecipientId).HasColumnName("recipient_id");
+                entity.Property(e => e.RecipientName).HasColumnName("recipient_name").HasMaxLength(200);
+                entity.Property(e => e.PhoneNumber).HasColumnName("phone_number").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.WhatsAppMessageId).HasColumnName("whatsapp_message_id").HasMaxLength(100);
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("Pending");
+                entity.Property(e => e.ErrorCode).HasColumnName("error_code").HasMaxLength(50);
                 entity.Property(e => e.ErrorMessage).HasColumnName("error_message").HasMaxLength(500);
+                entity.Property(e => e.SentAt).HasColumnName("sent_at");
+                entity.Property(e => e.DeliveredAt).HasColumnName("delivered_at");
+                entity.Property(e => e.ReadAt).HasColumnName("read_at");
+                entity.Property(e => e.FailedAt).HasColumnName("failed_at");
+                entity.Property(e => e.RetryCount).HasColumnName("retry_count").HasDefaultValue(0);
+                entity.Property(e => e.MaxRetries).HasColumnName("max_retries").HasDefaultValue(3);
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
                 
                 // 索引配置
-                entity.HasIndex(e => e.BroadcastSendId);
-                entity.HasIndex(e => e.ContactId);
+                entity.HasIndex(e => e.MessageSendId);
+                entity.HasIndex(e => e.PhoneNumber);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.WhatsAppMessageId);
                 
                 // 外鍵關係
-                entity.HasOne(e => e.BroadcastSend)
-                      .WithMany(bs => bs.SendDetails)
-                      .HasForeignKey(e => e.BroadcastSendId)
+                entity.HasOne(e => e.MessageSend)
+                      .WithMany(ms => ms.Recipients)
+                      .HasForeignKey(e => e.MessageSendId)
                       .OnDelete(DeleteBehavior.Cascade);
                       
-                entity.HasOne(e => e.Contact)
+                entity.HasOne(e => e.Company)
                       .WithMany()
-                      .HasForeignKey(e => e.ContactId)
-                      .OnDelete(DeleteBehavior.Cascade);
-                      
-                entity.HasOne(e => e.WhatsAppMessage)
-                      .WithMany()
-                      .HasForeignKey(e => e.WhatsAppMessageId)
-                      .OnDelete(DeleteBehavior.SetNull);
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.NoAction);
             });
+            
         }
     }
 } 

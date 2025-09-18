@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
+using PurpleRice.Models.DTOs;
 using System.Linq.Expressions;
 
 namespace PurpleRice.Services
@@ -21,7 +22,7 @@ namespace PurpleRice.Services
         /// <summary>
         /// 獲取聯絡人列表
         /// </summary>
-        public async Task<(List<ContactList> contacts, int totalCount)> GetContactsAsync(
+        public async Task<(List<ContactListResponseDto> contacts, int totalCount)> GetContactsAsync(
             Guid companyId, 
             int page = 1, 
             int pageSize = 20, 
@@ -30,6 +31,7 @@ namespace PurpleRice.Services
             string? hashtagFilter = null)
         {
             var query = _context.ContactLists
+                .Include(c => c.BroadcastGroup) // 包含群組關聯數據
                 .Where(c => c.CompanyId == companyId && c.IsActive)
                 .AsQueryable();
 
@@ -66,6 +68,38 @@ namespace PurpleRice.Services
                 .OrderBy(c => c.Name)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
+                .Select(c => new ContactListResponseDto
+                {
+                    Id = c.Id,
+                    CompanyId = c.CompanyId,
+                    Name = c.Name,
+                    Title = c.Title,
+                    Occupation = c.Occupation,
+                    WhatsAppNumber = c.WhatsAppNumber,
+                    Email = c.Email,
+                    CompanyName = c.CompanyName,
+                    Department = c.Department,
+                    Position = c.Position,
+                    Hashtags = c.Hashtags,
+                    BroadcastGroupId = c.BroadcastGroupId,
+                    IsActive = c.IsActive,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt,
+                    CreatedBy = c.CreatedBy,
+                    UpdatedBy = c.UpdatedBy,
+                    BroadcastGroup = c.BroadcastGroup != null ? new BroadcastGroupResponseDto
+                    {
+                        Id = c.BroadcastGroup.Id,
+                        Name = c.BroadcastGroup.Name,
+                        Description = c.BroadcastGroup.Description,
+                        Color = c.BroadcastGroup.Color,
+                        IsActive = c.BroadcastGroup.IsActive,
+                        CreatedAt = c.BroadcastGroup.CreatedAt,
+                        UpdatedAt = c.BroadcastGroup.UpdatedAt,
+                        CreatedBy = c.BroadcastGroup.CreatedBy,
+                        UpdatedBy = c.BroadcastGroup.UpdatedBy
+                    } : null
+                })
                 .ToListAsync();
 
             return (contacts, totalCount);
@@ -380,64 +414,5 @@ namespace PurpleRice.Services
 
         #endregion
 
-        #region 廣播發送
-
-        /// <summary>
-        /// 獲取廣播發送記錄
-        /// </summary>
-        public async Task<(List<BroadcastSend> sends, int totalCount)> GetBroadcastSendsAsync(
-            Guid companyId, 
-            int page = 1, 
-            int pageSize = 20)
-        {
-            var query = _context.BroadcastSends
-                .Where(bs => bs.CompanyId == companyId)
-                .AsQueryable();
-
-            var totalCount = await query.CountAsync();
-            
-            var sends = await query
-                .OrderByDescending(bs => bs.StartedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return (sends, totalCount);
-        }
-
-        /// <summary>
-        /// 獲取廣播發送統計
-        /// </summary>
-        public async Task<object> GetBroadcastStatsAsync(Guid companyId)
-        {
-            var stats = await _context.BroadcastSends
-                .Where(bs => bs.CompanyId == companyId)
-                .GroupBy(bs => bs.Status)
-                .Select(g => new { Status = g.Key, Count = g.Count() })
-                .ToListAsync();
-
-            var totalSends = await _context.BroadcastSends
-                .Where(bs => bs.CompanyId == companyId)
-                .CountAsync();
-
-            var totalContacts = await _context.BroadcastSends
-                .Where(bs => bs.CompanyId == companyId)
-                .SumAsync(bs => bs.TotalContacts);
-
-            var totalSent = await _context.BroadcastSends
-                .Where(bs => bs.CompanyId == companyId)
-                .SumAsync(bs => bs.SentCount);
-
-            return new
-            {
-                StatusStats = stats,
-                TotalSends = totalSends,
-                TotalContacts = totalContacts,
-                TotalSent = totalSent,
-                SuccessRate = totalContacts > 0 ? (double)totalSent / totalContacts * 100 : 0
-            };
-        }
-
-        #endregion
     }
 }

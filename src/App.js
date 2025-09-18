@@ -27,7 +27,6 @@ import ContactEditPage from './pages/ContactEditPage';
 import ContactImportPage from './pages/ContactImportPage';
 import BroadcastGroupsPage from './pages/BroadcastGroupsPage';
 import HashtagsPage from './pages/HashtagsPage';
-import BroadcastSendPage from './pages/BroadcastSendPage';
 
 const { Content } = Layout;
 
@@ -50,7 +49,6 @@ const pathToMenuKey = {
   '/contacts/import': 'contactList',
   '/broadcast-groups': 'broadcastGroups',
   '/hashtags': 'hashtags',
-  '/broadcast-send': 'broadcastSend',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -108,9 +106,6 @@ function MainLayout({ userInfo, onLogout }) {
       case 'hashtags':
         navigate('/hashtags');
         break;
-      case 'broadcastSend':
-        navigate('/broadcast-send');
-        break;
       default:
         navigate('/dashboard');
     }
@@ -148,7 +143,6 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/contacts/import" element={<ContactImportPage />} />
             <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
             <Route path="/hashtags" element={<HashtagsPage />} />
-            <Route path="/broadcast-send" element={<BroadcastSendPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -212,9 +206,6 @@ function AppContent() {
         break;
       case 'hashtags':
         navigate('/hashtags');
-        break;
-      case 'broadcastSend':
-        navigate('/broadcast-send');
         break;
       default:
         navigate('/dashboard');
@@ -355,7 +346,6 @@ function AppContent() {
               <Route path="/contacts/import" element={<ContactImportPage />} />
               <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
               <Route path="/hashtags" element={<HashtagsPage />} />
-              <Route path="/broadcast-send" element={<BroadcastSendPage />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </Content>

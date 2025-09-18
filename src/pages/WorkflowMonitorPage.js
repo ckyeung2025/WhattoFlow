@@ -125,6 +125,8 @@ const WorkflowMonitorPage = () => {
   });
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [selectedChatInstance, setSelectedChatInstance] = useState(null);
+  const [messageSendModalVisible, setMessageSendModalVisible] = useState(false);
+  const [selectedMessageSend, setSelectedMessageSend] = useState(null);
   
   // 表格列寬調整相關狀態
   const [resizableColumns, setResizableColumns] = useState([]);
@@ -369,6 +371,27 @@ const WorkflowMonitorPage = () => {
   const handleSendMessage = (message) => {
     console.log('發送消息:', message);
     // 這裡可以添加額外的邏輯，比如更新實例狀態等
+  };
+
+  // 查看消息發送詳情
+  const handleViewMessageSend = async (messageSendId) => {
+    try {
+      const response = await fetch(`/api/workflowmessagesend/${messageSendId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('載入消息發送詳情失敗');
+      }
+
+      const data = await response.json();
+      setSelectedMessageSend(data.data);
+      setMessageSendModalVisible(true);
+    } catch (error) {
+      message.error('載入消息發送詳情失敗: ' + error.message);
+    }
   };
 
   // 表格列寬調整處理
@@ -770,6 +793,22 @@ const WorkflowMonitorPage = () => {
           instance={selectedChatInstance}
           onSendMessage={handleSendMessage}
         />
+
+        {/* 消息發送詳情模態框 */}
+        <Modal
+          title="消息發送詳情"
+          visible={messageSendModalVisible}
+          onCancel={() => setMessageSendModalVisible(false)}
+          footer={null}
+          width={1000}
+        >
+          {selectedMessageSend && (
+            <MessageSendDetailModal 
+              messageSend={selectedMessageSend} 
+              onClose={() => setMessageSendModalVisible(false)}
+            />
+          )}
+        </Modal>
       </Content>
     </Layout>
   );
@@ -1060,17 +1099,46 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                 
                 console.log(`步驟 ${index + 1} 最終判斷結果:`, { isError, displayMessage });
                 
+                // 檢查是否為發送消息的節點
+                const isMessageSendNode = step.stepType && (
+                  step.stepType.includes('sendWhatsApp') || 
+                  step.stepType.includes('sendWhatsAppTemplate') ||
+                  step.stepType.includes('sendEForm')
+                );
+
                 return (
                   <Timeline.Item 
                     key={step.id} 
                     color={step.status === 'completed' ? 'green' : step.status === 'failed' ? 'red' : 'blue'}
                   >
-                    <p>執行步驟: {step.stepName || `步驟 ${index + 1}`}</p>
-                    <p>狀態: {step.status}</p>
-                    <p>開始時間: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
-                    {step.endedAt && (
-                      <p>完成時間: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
-                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p>執行步驟: {step.stepName || `步驟 ${index + 1}`}</p>
+                        <p>狀態: {step.status}</p>
+                        <p>開始時間: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
+                        {step.endedAt && (
+                          <p>完成時間: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                        )}
+                      </div>
+                      {isMessageSendNode && step.status === 'completed' && (
+                        <Button 
+                          type="primary" 
+                          size="small" 
+                          icon={<MessageOutlined />}
+                          onClick={() => {
+                            // 從 outputData 中提取 messageSendId
+                            if (outputData && outputData.messageSendId) {
+                              handleViewMessageSend(outputData.messageSendId);
+                            } else {
+                              message.warning('無法找到消息發送記錄ID');
+                            }
+                          }}
+                          style={{ marginLeft: '16px' }}
+                        >
+                          查看發送詳情
+                        </Button>
+                      )}
+                    </div>
                     
                     {/* 顯示輸出信息，正確區分錯誤和正常信息 */}
                     {displayMessage && (
@@ -1527,6 +1595,217 @@ const InstanceDetailModal = ({ instance, onClose }) => {
           ) : (
             <Empty 
               description="暫無表單實例" 
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              style={{ margin: '40px 0' }}
+            />
+          )}
+        </TabPane>
+      </Tabs>
+    </div>
+  );
+};
+
+// 消息發送詳情組件
+const MessageSendDetailModal = ({ messageSend, onClose }) => {
+  const { t } = useLanguage();
+  const [activeTab, setActiveTab] = useState('basic');
+  const [recipients, setRecipients] = useState([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
+
+  // 載入收件人數據
+  useEffect(() => {
+    if (messageSend && messageSend.recipients) {
+      setRecipients(messageSend.recipients);
+    }
+  }, [messageSend]);
+
+  const getStatusTag = (status) => {
+    const statusConfig = {
+      Pending: { color: 'default', text: '等待中' },
+      InProgress: { color: 'processing', text: '發送中' },
+      Completed: { color: 'success', text: '已完成' },
+      Failed: { color: 'error', text: '失敗' },
+      PartiallyFailed: { color: 'warning', text: '部分失敗' }
+    };
+    
+    const config = statusConfig[status] || statusConfig.Pending;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
+  const getRecipientStatusTag = (status) => {
+    const statusConfig = {
+      Pending: { color: 'default', text: '等待中' },
+      Sent: { color: 'processing', text: '已發送' },
+      Delivered: { color: 'success', text: '已送達' },
+      Read: { color: 'success', text: '已讀' },
+      Failed: { color: 'error', text: '失敗' },
+      Retrying: { color: 'warning', text: '重試中' }
+    };
+    
+    const config = statusConfig[status] || statusConfig.Pending;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
+  const getRecipientTypeTag = (type) => {
+    const typeConfig = {
+      User: { color: 'blue', text: '用戶' },
+      Contact: { color: 'green', text: '聯絡人' },
+      Group: { color: 'orange', text: '群組' },
+      Hashtag: { color: 'purple', text: '標籤' },
+      Initiator: { color: 'red', text: '流程啟動人' }
+    };
+    
+    const config = typeConfig[type] || typeConfig.User;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
+  return (
+    <div>
+      <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <TabPane tab="基本信息" key="basic">
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="發送記錄ID">{messageSend.id}</Descriptions.Item>
+            <Descriptions.Item label="工作流程執行ID">{messageSend.workflowExecutionId}</Descriptions.Item>
+            <Descriptions.Item label="節點ID">{messageSend.nodeId}</Descriptions.Item>
+            <Descriptions.Item label="節點類型">{messageSend.nodeType}</Descriptions.Item>
+            <Descriptions.Item label="消息類型">{messageSend.messageType}</Descriptions.Item>
+            <Descriptions.Item label="狀態">{getStatusTag(messageSend.status)}</Descriptions.Item>
+            <Descriptions.Item label="總收件人數">{messageSend.totalRecipients}</Descriptions.Item>
+            <Descriptions.Item label="成功發送數">{messageSend.successCount}</Descriptions.Item>
+            <Descriptions.Item label="失敗發送數">{messageSend.failedCount}</Descriptions.Item>
+            <Descriptions.Item label="開始時間">
+              {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
+            </Descriptions.Item>
+            <Descriptions.Item label="完成時間">
+              {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="創建者">{messageSend.createdBy}</Descriptions.Item>
+          </Descriptions>
+          
+          {messageSend.messageContent && (
+            <div style={{ marginTop: 16 }}>
+              <Text strong>消息內容:</Text>
+              <div style={{ 
+                marginTop: 8,
+                padding: 12,
+                backgroundColor: '#f5f5f5',
+                borderRadius: 6,
+                border: '1px solid #d9d9d9',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}>
+                {messageSend.messageContent}
+              </div>
+            </div>
+          )}
+          
+          {messageSend.errorMessage && (
+            <Alert
+              message="錯誤信息"
+              description={messageSend.errorMessage}
+              type="error"
+              showIcon
+              style={{ marginTop: 16 }}
+            />
+          )}
+        </TabPane>
+        
+        <TabPane tab="收件人詳情" key="recipients">
+          {loadingRecipients ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: 16 }}>載入收件人詳情中...</p>
+            </div>
+          ) : recipients.length > 0 ? (
+            <Table
+              dataSource={recipients}
+              rowKey="id"
+              pagination={{ pageSize: 10 }}
+              scroll={{ x: 800 }}
+              columns={[
+                {
+                  title: '收件人',
+                  dataIndex: 'recipientName',
+                  key: 'recipientName',
+                  width: 200,
+                  render: (text, record) => (
+                    <div>
+                      <div style={{ fontWeight: 'bold' }}>{text}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>{record.phoneNumber}</div>
+                    </div>
+                  )
+                },
+                {
+                  title: '類型',
+                  dataIndex: 'recipientType',
+                  key: 'recipientType',
+                  width: 100,
+                  render: (type) => getRecipientTypeTag(type)
+                },
+                {
+                  title: '狀態',
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 100,
+                  render: (status) => getRecipientStatusTag(status)
+                },
+                {
+                  title: 'WhatsApp消息ID',
+                  dataIndex: 'whatsAppMessageId',
+                  key: 'whatsAppMessageId',
+                  width: 200,
+                  ellipsis: true,
+                  render: (text) => text || '-'
+                },
+                {
+                  title: '發送時間',
+                  dataIndex: 'sentAt',
+                  key: 'sentAt',
+                  width: 150,
+                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                },
+                {
+                  title: '送達時間',
+                  dataIndex: 'deliveredAt',
+                  key: 'deliveredAt',
+                  width: 150,
+                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                },
+                {
+                  title: '已讀時間',
+                  dataIndex: 'readAt',
+                  key: 'readAt',
+                  width: 150,
+                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                },
+                {
+                  title: '錯誤信息',
+                  dataIndex: 'errorMessage',
+                  key: 'errorMessage',
+                  width: 200,
+                  ellipsis: true,
+                  render: (text) => text || '-'
+                }
+              ]}
+            />
+          ) : (
+            <Empty 
+              description="暫無收件人記錄" 
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ margin: '40px 0' }}
             />

@@ -116,13 +116,6 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
           label: t('menu.hashtags'),
           url: '/hashtags',
         },
-        // 廣播發送
-        {
-          key: 'broadcastSend',
-          icon: <SendOutlined />,
-          label: t('menu.broadcastSend'),
-          url: '/broadcast-send',
-        },
         // 公司/用戶管理
         {
           key: 'companyUserAdmin',

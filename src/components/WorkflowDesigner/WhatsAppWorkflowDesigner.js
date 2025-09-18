@@ -633,13 +633,31 @@ const WhatsAppWorkflowDesignerRefactored = () => {
           setConditionModalVisible(true);
         }}
         onAddCondition={() => {
-          setEditingCondition({ groupIndex: editingConditionGroup.groupIndex, condIndex: -1 });
+          console.log('=== 開始添加條件 ===');
+          console.log('editingConditionGroup:', editingConditionGroup);
+          console.log('groupIndex:', editingConditionGroup.groupIndex);
+          const newEditingCondition = { groupIndex: editingConditionGroup.groupIndex, condIndex: -1 };
+          console.log('newEditingCondition:', newEditingCondition);
+          setEditingCondition(newEditingCondition);
           setConditionModalVisible(true);
+          console.log('條件模態框已打開');
         }}
         onDeleteCondition={(condIndex) => {
           const currentConditions = editingConditionGroup.conditions || [];
           const newConditions = currentConditions.filter((_, i) => i !== condIndex);
+          
+          // 更新編輯中的條件群組狀態
           setEditingConditionGroup({ ...editingConditionGroup, conditions: newConditions });
+          
+          // 同時更新節點數據
+          if (selectedNode && editingConditionGroup.groupIndex >= 0) {
+            const currentGroups = selectedNode.data.conditionGroups || [];
+            const newGroups = [...currentGroups];
+            if (newGroups[editingConditionGroup.groupIndex]) {
+              newGroups[editingConditionGroup.groupIndex].conditions = newConditions;
+              handleNodeDataChange({ conditionGroups: newGroups });
+            }
+          }
         }}
         t={t}
       />
@@ -655,6 +673,12 @@ const WhatsAppWorkflowDesignerRefactored = () => {
         conditionForm={conditionForm}
         processVariables={processVariables}
         onSave={(values) => {
+          console.log('=== 保存條件 ===');
+          console.log('values:', values);
+          console.log('editingCondition:', editingCondition);
+          console.log('selectedNode:', selectedNode);
+          console.log('editingConditionGroup:', editingConditionGroup);
+          
           if (editingCondition && selectedNode) {
             const condition = {
               id: editingCondition.id || `condition_${Date.now()}`,
@@ -663,33 +687,70 @@ const WhatsAppWorkflowDesignerRefactored = () => {
               value: values.value,
               label: values.label || `${values.variableName} ${values.operator} ${values.value}`
             };
+            console.log('新條件:', condition);
             
             const currentGroups = selectedNode.data.conditionGroups || [];
+            console.log('當前條件群組:', currentGroups);
             const newGroups = [...currentGroups];
+            console.log('新條件群組數組:', newGroups);
             
-            if (editingCondition.groupIndex >= 0 && newGroups[editingCondition.groupIndex]) {
+            if (editingCondition.groupIndex === -1) {
+              // 新增條件群組的情況，直接更新 editingConditionGroup
+              console.log('新增條件群組，直接更新 editingConditionGroup');
+              const currentConditions = editingConditionGroup?.conditions || [];
+              const newConditions = [...currentConditions, condition];
+              console.log('新的條件列表:', newConditions);
+              
+              const updatedGroup = {
+                ...editingConditionGroup,
+                conditions: newConditions
+              };
+              console.log('更新後的 editingConditionGroup:', updatedGroup);
+              setEditingConditionGroup(updatedGroup);
+              console.log('editingConditionGroup 狀態已更新');
+            } else if (editingCondition.groupIndex >= 0 && newGroups[editingCondition.groupIndex]) {
+              // 編輯現有條件群組的情況
+              console.log('目標群組索引:', editingCondition.groupIndex);
+              console.log('目標群組:', newGroups[editingCondition.groupIndex]);
+              
               if (!newGroups[editingCondition.groupIndex].conditions) {
                 newGroups[editingCondition.groupIndex].conditions = [];
+                console.log('初始化條件數組');
               }
               
               if (editingCondition.condIndex === -1) {
                 // 新增條件
+                console.log('添加新條件到群組');
                 newGroups[editingCondition.groupIndex].conditions.push(condition);
+                console.log('添加後的條件列表:', newGroups[editingCondition.groupIndex].conditions);
               } else {
                 // 更新現有條件
+                console.log('更新現有條件');
                 newGroups[editingCondition.groupIndex].conditions[editingCondition.condIndex] = condition;
               }
               
+              console.log('更新節點數據前的完整群組:', newGroups);
               handleNodeDataChange({ conditionGroups: newGroups });
+              console.log('節點數據已更新');
               
-              // 更新編輯中的條件群組狀態
-              const updatedGroup = { ...editingConditionGroup, conditions: newGroups[editingCondition.groupIndex].conditions };
+              // 更新編輯中的條件群組狀態 - 確保狀態同步
+              const updatedGroup = { 
+                ...editingConditionGroup, 
+                conditions: [...newGroups[editingCondition.groupIndex].conditions] // 創建新數組確保引用更新
+              };
+              console.log('更新後的 editingConditionGroup:', updatedGroup);
               setEditingConditionGroup(updatedGroup);
+              console.log('editingConditionGroup 狀態已更新');
+            } else {
+              console.log('條件保存失敗：無效的群組索引或群組不存在');
             }
+          } else {
+            console.log('條件保存失敗：缺少必要參數');
           }
           setConditionModalVisible(false);
           setEditingCondition(null);
           conditionForm.resetFields();
+          console.log('條件模態框已關閉');
         }}
         t={t}
       />
