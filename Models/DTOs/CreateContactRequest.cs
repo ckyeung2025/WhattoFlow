@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace PurpleRice.Models.DTOs
 {
@@ -15,6 +16,7 @@ namespace PurpleRice.Models.DTOs
         public string? Occupation { get; set; }
         
         [MaxLength(20, ErrorMessage = "WhatsApp號碼長度不能超過20個字符")]
+        [JsonPropertyName("whatsapp_number")]
         public string? WhatsAppNumber { get; set; }
         
         [MaxLength(255, ErrorMessage = "電子郵件長度不能超過255個字符")]
@@ -22,6 +24,7 @@ namespace PurpleRice.Models.DTOs
         public string? Email { get; set; }
         
         [MaxLength(200, ErrorMessage = "公司名稱長度不能超過200個字符")]
+        [JsonPropertyName("company_name")]
         public string? CompanyName { get; set; }
         
         [MaxLength(100, ErrorMessage = "部門長度不能超過100個字符")]
@@ -34,8 +37,10 @@ namespace PurpleRice.Models.DTOs
         public string? Hashtags { get; set; }
         
         [Required(ErrorMessage = "廣播群組為必填欄位")]
+        [JsonPropertyName("broadcast_group_id")]
         public Guid BroadcastGroupId { get; set; }
         
+        [JsonPropertyName("is_active")]
         public bool IsActive { get; set; } = true;
     }
 }

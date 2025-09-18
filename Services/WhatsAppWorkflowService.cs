@@ -7,16 +7,25 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using PurpleRice.Models;
+using PurpleRice.Services;
 
 namespace PurpleRice.Services
 {
     public class WhatsAppWorkflowService
     {
         private readonly LoggingService _loggingService;
+        private readonly WorkflowMessageSendService _messageSendService;
+        private readonly RecipientResolverService _recipientResolverService;
         
-        public WhatsAppWorkflowService(Func<string, LoggingService> loggingServiceFactory)
+        public WhatsAppWorkflowService(
+            Func<string, LoggingService> loggingServiceFactory,
+            WorkflowMessageSendService messageSendService,
+            RecipientResolverService recipientResolverService)
         {
             _loggingService = loggingServiceFactory("WhatsAppService");
+            _messageSendService = messageSendService;
+            _recipientResolverService = recipientResolverService;
         }
 
         /// <summary>
@@ -59,7 +68,7 @@ namespace PurpleRice.Services
                 _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
 
                 // 發送 WhatsApp 消息
-                await SendWhatsAppTextMessageAsync(company, formattedTo, message);
+                var messageId = await SendWhatsAppTextMessageAsync(company, formattedTo, message);
 
                 _loggingService.LogInformation($"成功發送 WhatsApp 消息到 {formattedTo}: {message}");
                 _loggingService.LogInformation($"=== WhatsAppWorkflowService.SendWhatsAppMessageAsync 完成 ===");
@@ -80,7 +89,7 @@ namespace PurpleRice.Services
         /// <param name="dbContext">資料庫上下文</param>
         /// <param name="variables">模板變數（可選）</param>
         /// <returns></returns>
-        public async Task SendWhatsAppTemplateMessageAsync(string to, string templateId, WorkflowExecution execution, PurpleRiceDbContext dbContext, Dictionary<string, string> variables = null)
+        public async Task<string> SendWhatsAppTemplateMessageAsync(string to, string templateId, WorkflowExecution execution, PurpleRiceDbContext dbContext, Dictionary<string, string> variables = null)
         {
             try
             {
@@ -153,6 +162,9 @@ namespace PurpleRice.Services
 
                 _loggingService.LogInformation($"成功使用內部模板發送 WhatsApp 消息到 {formattedTo}");
                 _loggingService.LogInformation($"=== 使用內部模板發送 WhatsApp 消息完成 ===");
+                
+                // 返回一個臨時 ID（因為內部模板方法還沒有返回值）
+                return $"template_{Guid.NewGuid():N}";
             }
             catch (Exception ex)
             {
@@ -241,7 +253,7 @@ namespace PurpleRice.Services
         /// <summary>
         /// 發送 WhatsApp 文字消息
         /// </summary>
-        private async Task SendWhatsAppTextMessageAsync(Company company, string to, string message)
+        private async Task<string> SendWhatsAppTextMessageAsync(Company company, string to, string message)
         {
             var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
             
@@ -273,6 +285,28 @@ namespace PurpleRice.Services
             {
                 throw new Exception($"WhatsApp API 請求失敗: {response.StatusCode} - {responseContent}");
             }
+
+            // 解析回應以獲取 WhatsApp 訊息 ID
+            try
+            {
+                var responseJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                if (responseJson.TryGetProperty("messages", out var messages) && 
+                    messages.GetArrayLength() > 0)
+                {
+                    var messageId = messages[0].GetProperty("id").GetString();
+                    _loggingService.LogInformation($"WhatsApp 訊息 ID: {messageId}");
+                    return messageId;
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"解析 WhatsApp 回應失敗: {ex.Message}");
+            }
+
+            // 如果無法解析訊息 ID，返回一個臨時 ID
+            var tempId = $"temp_{Guid.NewGuid():N}";
+            _loggingService.LogInformation($"使用臨時訊息 ID: {tempId}");
+            return tempId;
         }
 
         /// <summary>
@@ -295,7 +329,7 @@ namespace PurpleRice.Services
                 }
 
                 _loggingService.LogInformation($"渲染後的文字內容: {content}");
-                await SendWhatsAppTextMessageAsync(company, to, content);
+                var messageId = await SendWhatsAppTextMessageAsync(company, to, content);
             }
             catch (Exception ex)
             {
@@ -793,6 +827,331 @@ namespace PurpleRice.Services
             }
 
             return content;
+        }
+
+        /// <summary>
+        /// 發送 WhatsApp 消息並記錄發送情況（支持多收件人）
+        /// </summary>
+        /// <param name="recipientValue">收件人值（字符串格式）</param>
+        /// <param name="recipientDetails">收件人詳細信息（JSON格式）</param>
+        /// <param name="message">消息內容</param>
+        /// <param name="execution">工作流程執行記錄</param>
+        /// <param name="stepExecution">工作流程步驟執行記錄</param>
+        /// <param name="nodeId">節點ID</param>
+        /// <param name="nodeType">節點類型</param>
+        /// <param name="dbContext">資料庫上下文</param>
+        /// <returns>發送記錄ID</returns>
+        public async Task<Guid> SendWhatsAppMessageWithTrackingAsync(
+            string recipientValue,
+            string recipientDetails,
+            string message,
+            WorkflowExecution execution,
+            WorkflowStepExecution stepExecution,
+            string nodeId,
+            string nodeType,
+            PurpleRiceDbContext dbContext)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 發送 WhatsApp 消息並記錄開始 ===");
+                _loggingService.LogInformation($"執行 ID: {execution.Id}");
+                _loggingService.LogInformation($"節點 ID: {nodeId}");
+                _loggingService.LogInformation($"節點類型: {nodeType}");
+                _loggingService.LogInformation($"收件人值: {recipientValue}");
+                _loggingService.LogInformation($"收件人詳細信息: {recipientDetails}");
+                _loggingService.LogInformation($"消息內容: {message}");
+
+                // 獲取公司配置
+                var company = await GetCompanyConfigurationAsync(execution, dbContext);
+                var companyId = company.Id;
+                var createdBy = execution.CreatedBy ?? "system";
+                _loggingService.LogInformation($"公司 ID: {companyId}, 創建者: {createdBy}");
+
+                // 創建消息發送記錄
+                var messageSendId = await _messageSendService.CreateMessageSendAsync(
+                    execution.Id,
+                    stepExecution.Id, // workflowStepExecutionId
+                    nodeId,
+                    nodeType,
+                    message,
+                    null, // templateId
+                    null, // templateName
+                    "text", // messageType
+                    companyId,
+                    createdBy);
+
+                _loggingService.LogInformation($"創建消息發送記錄，ID: {messageSendId}");
+
+                // 解析收件人
+                var recipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    recipientValue,
+                    recipientDetails?.ToString(),
+                    execution.Id,
+                    companyId);
+
+                _loggingService.LogInformation($"解析到 {recipients.Count} 個收件人");
+                
+                // 詳細記錄每個收件人
+                for (int i = 0; i < recipients.Count; i++)
+                {
+                    var recipient = recipients[i];
+                    _loggingService.LogInformation($"收件人 {i + 1}: {recipient.RecipientName} ({recipient.PhoneNumber}) - 類型: {recipient.RecipientType}");
+                }
+
+                if (!recipients.Any())
+                {
+                    _loggingService.LogWarning("沒有找到有效的收件人");
+                    await _messageSendService.UpdateMessageSendStatusAsync(
+                        messageSendId, 
+                        MessageSendStatus.Failed, 
+                        "沒有找到有效的收件人");
+                    return messageSendId;
+                }
+
+                // 添加收件人到發送記錄
+                await _messageSendService.AddRecipientsAsync(messageSendId, recipients, createdBy);
+
+                // 更新狀態為進行中
+                await _messageSendService.UpdateMessageSendStatusAsync(
+                    messageSendId, 
+                    MessageSendStatus.InProgress);
+
+                // 批量發送消息
+                _loggingService.LogInformation($"開始批量發送消息到 {recipients.Count} 個收件人...");
+                var successCount = 0;
+                var failedCount = 0;
+                var whatsappMessageIds = new Dictionary<Guid, string>();
+
+                foreach (var recipient in recipients)
+                {
+                    try
+                    {
+                        _loggingService.LogInformation($"發送消息到 {recipient.PhoneNumber} ({recipient.RecipientName})");
+
+                        // 格式化電話號碼
+                        var formattedTo = FormatPhoneNumber(recipient.PhoneNumber);
+
+                        // 發送 WhatsApp 消息
+                        var whatsappMessageId = await SendWhatsAppTextMessageAsync(company, formattedTo, message);
+
+                        // 記錄成功（使用實際的 WhatsApp 訊息 ID）
+                        whatsappMessageIds[recipient.Id] = whatsappMessageId;
+                        successCount++;
+
+                        // 更新收件人狀態為已發送
+                        _loggingService.LogInformation($"🔍 [DEBUG] 準備更新收件人狀態: RecipientId={recipient.Id}, Status=Sent, WhatsAppMessageId={whatsappMessageIds[recipient.Id]}");
+                        await _messageSendService.UpdateRecipientStatusAsync(
+                            recipient.Id, 
+                            RecipientStatus.Sent, 
+                            whatsappMessageIds[recipient.Id]);
+                        _loggingService.LogInformation($"🔍 [DEBUG] 收件人狀態更新完成: RecipientId={recipient.Id}");
+
+                        _loggingService.LogInformation($"成功發送到 {formattedTo}，消息 ID: {whatsappMessageIds[recipient.Id]}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogError($"發送到 {recipient.PhoneNumber} 失敗: {ex.Message}", ex);
+                        failedCount++;
+
+                        // 更新收件人狀態為失敗
+                        _loggingService.LogInformation($"🔍 [DEBUG] 準備更新收件人狀態為失敗: RecipientId={recipient.Id}, ErrorMessage={ex.Message}");
+                        await _messageSendService.UpdateRecipientStatusAsync(
+                            recipient.Id, 
+                            RecipientStatus.Failed, 
+                            null, 
+                            ex.Message);
+                        _loggingService.LogInformation($"🔍 [DEBUG] 收件人失敗狀態更新完成: RecipientId={recipient.Id}");
+                    }
+                }
+
+                // 更新最終狀態
+                var finalStatus = failedCount == 0 ? MessageSendStatus.Completed :
+                                 successCount == 0 ? MessageSendStatus.Failed :
+                                 MessageSendStatus.PartiallyFailed;
+
+                await _messageSendService.UpdateMessageSendStatusAsync(
+                    messageSendId, 
+                    finalStatus, 
+                    failedCount > 0 ? $"{failedCount} 個收件人發送失敗" : null);
+
+                _loggingService.LogInformation($"發送完成，成功: {successCount}, 失敗: {failedCount}, 狀態: {finalStatus}");
+                _loggingService.LogInformation($"消息發送記錄 ID: {messageSendId}");
+                _loggingService.LogInformation($"=== 發送 WhatsApp 消息並記錄完成 ===");
+
+                return messageSendId;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"發送 WhatsApp 消息並記錄失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 發送 WhatsApp 模板消息並記錄發送情況（支持多收件人）
+        /// </summary>
+        /// <param name="recipientValue">收件人值（字符串格式）</param>
+        /// <param name="recipientDetails">收件人詳細信息（JSON格式）</param>
+        /// <param name="templateId">模板ID</param>
+        /// <param name="templateName">模板名稱</param>
+        /// <param name="variables">模板變數</param>
+        /// <param name="execution">工作流程執行記錄</param>
+        /// <param name="stepExecution">工作流程步驟執行記錄</param>
+        /// <param name="nodeId">節點ID</param>
+        /// <param name="nodeType">節點類型</param>
+        /// <param name="dbContext">資料庫上下文</param>
+        /// <returns>發送記錄ID</returns>
+        public async Task<Guid> SendWhatsAppTemplateMessageWithTrackingAsync(
+            string recipientValue,
+            string recipientDetails,
+            string templateId,
+            string templateName,
+            Dictionary<string, string> variables,
+            WorkflowExecution execution,
+            WorkflowStepExecution stepExecution,
+            string nodeId,
+            string nodeType,
+            PurpleRiceDbContext dbContext)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 發送 WhatsApp 模板消息並記錄開始 ===");
+                _loggingService.LogInformation($"執行 ID: {execution.Id}");
+                _loggingService.LogInformation($"節點 ID: {nodeId}");
+                _loggingService.LogInformation($"節點類型: {nodeType}");
+                _loggingService.LogInformation($"模板 ID: {templateId}");
+                _loggingService.LogInformation($"模板名稱: {templateName}");
+
+                // 獲取公司配置
+                var company = await GetCompanyConfigurationAsync(execution, dbContext);
+                var companyId = company.Id;
+                var createdBy = execution.CreatedBy ?? "system";
+
+                // 獲取模板內容
+                var template = await dbContext.WhatsAppTemplates
+                    .FirstOrDefaultAsync(t => t.Id == Guid.Parse(templateId) && t.CompanyId == companyId);
+
+                if (template == null)
+                {
+                    throw new Exception($"找不到模板 ID: {templateId}");
+                }
+
+                // 替換模板變數
+                var messageContent = ReplaceVariables(template.Content, variables);
+
+                // 創建消息發送記錄
+                var messageSendId = await _messageSendService.CreateMessageSendAsync(
+                    execution.Id,
+                    stepExecution.Id, // workflowStepExecutionId
+                    nodeId,
+                    nodeType,
+                    messageContent,
+                    templateId,
+                    templateName,
+                    "template",
+                    companyId,
+                    createdBy);
+
+                _loggingService.LogInformation($"創建消息發送記錄，ID: {messageSendId}");
+
+                // 解析收件人
+                var recipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    recipientValue,
+                    recipientDetails?.ToString(),
+                    execution.Id,
+                    companyId);
+
+                _loggingService.LogInformation($"解析到 {recipients.Count} 個收件人");
+                
+                // 詳細記錄每個收件人
+                for (int i = 0; i < recipients.Count; i++)
+                {
+                    var recipient = recipients[i];
+                    _loggingService.LogInformation($"收件人 {i + 1}: {recipient.RecipientName} ({recipient.PhoneNumber}) - 類型: {recipient.RecipientType}");
+                }
+
+                if (!recipients.Any())
+                {
+                    _loggingService.LogWarning("沒有找到有效的收件人");
+                    await _messageSendService.UpdateMessageSendStatusAsync(
+                        messageSendId, 
+                        MessageSendStatus.Failed, 
+                        "沒有找到有效的收件人");
+                    return messageSendId;
+                }
+
+                // 添加收件人到發送記錄
+                await _messageSendService.AddRecipientsAsync(messageSendId, recipients, createdBy);
+
+                // 更新狀態為進行中
+                await _messageSendService.UpdateMessageSendStatusAsync(
+                    messageSendId, 
+                    MessageSendStatus.InProgress);
+
+                // 批量發送消息
+                _loggingService.LogInformation($"開始批量發送消息到 {recipients.Count} 個收件人...");
+                var successCount = 0;
+                var failedCount = 0;
+                var whatsappMessageIds = new Dictionary<Guid, string>();
+
+                foreach (var recipient in recipients)
+                {
+                    try
+                    {
+                        _loggingService.LogInformation($"發送模板消息到 {recipient.PhoneNumber} ({recipient.RecipientName})");
+
+                        // 格式化電話號碼
+                        var formattedTo = FormatPhoneNumber(recipient.PhoneNumber);
+
+                        // 發送 WhatsApp 模板消息
+                        var whatsappMessageId = await SendWhatsAppTemplateMessageAsync(formattedTo, templateId, execution, dbContext, variables);
+
+                        // 記錄成功（使用實際的 WhatsApp 訊息 ID）
+                        whatsappMessageIds[recipient.Id] = whatsappMessageId;
+                        successCount++;
+
+                        // 更新收件人狀態為已發送
+                        await _messageSendService.UpdateRecipientStatusAsync(
+                            recipient.Id, 
+                            RecipientStatus.Sent, 
+                            whatsappMessageIds[recipient.Id]);
+
+                        _loggingService.LogInformation($"成功發送模板消息到 {formattedTo}，消息 ID: {whatsappMessageIds[recipient.Id]}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogError($"發送模板消息到 {recipient.PhoneNumber} 失敗: {ex.Message}", ex);
+                        failedCount++;
+
+                        // 更新收件人狀態為失敗
+                        await _messageSendService.UpdateRecipientStatusAsync(
+                            recipient.Id, 
+                            RecipientStatus.Failed, 
+                            null, 
+                            ex.Message);
+                    }
+                }
+
+                // 更新最終狀態
+                var finalStatus = failedCount == 0 ? MessageSendStatus.Completed :
+                                 successCount == 0 ? MessageSendStatus.Failed :
+                                 MessageSendStatus.PartiallyFailed;
+
+                await _messageSendService.UpdateMessageSendStatusAsync(
+                    messageSendId, 
+                    finalStatus, 
+                    failedCount > 0 ? $"{failedCount} 個收件人發送失敗" : null);
+
+                _loggingService.LogInformation($"模板消息發送完成，成功: {successCount}, 失敗: {failedCount}, 狀態: {finalStatus}");
+                _loggingService.LogInformation($"=== 發送 WhatsApp 模板消息並記錄完成 ===");
+
+                return messageSendId;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"發送 WhatsApp 模板消息並記錄失敗: {ex.Message}", ex);
+                throw;
+            }
         }
     }
 } 

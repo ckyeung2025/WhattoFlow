@@ -72,19 +72,29 @@ export const contactApi = {
 
   // 獲取單一聯絡人
   getContact: async (id) => {
+    console.log('📥 ContactApi - Getting contact with ID:', id);
     const response = await apiClient.get(`/api/contactlist/${id}`);
+    console.log('📥 ContactApi - Get contact response:', response.data);
+    console.log('📱 ContactApi - WhatsAppNumber in response:', response.data.WhatsAppNumber);
     return response.data;
   },
 
   // 創建聯絡人
   createContact: async (contact) => {
+    console.log('📤 ContactApi - Creating contact with data:', contact);
+    console.log('📱 ContactApi - WhatsAppNumber in create data:', contact.WhatsAppNumber);
     const response = await apiClient.post('/api/contactlist', contact);
+    console.log('✅ ContactApi - Create response:', response.data);
     return response.data;
   },
 
   // 更新聯絡人
   updateContact: async (id, contact) => {
+    console.log('📤 ContactApi - Updating contact ID:', id);
+    console.log('📤 ContactApi - Update data:', contact);
+    console.log('📱 ContactApi - WhatsAppNumber in update data:', contact.WhatsAppNumber);
     const response = await apiClient.put(`/api/contactlist/${id}`, contact);
+    console.log('✅ ContactApi - Update response:', response.data);
     return response.data;
   },
 
@@ -152,41 +162,3 @@ export const hashtagApi = {
   }
 };
 
-// 廣播發送 API
-export const broadcastApi = {
-  // 發送廣播
-  sendBroadcast: async (broadcastData) => {
-    const response = await apiClient.post('/api/broadcast/send', broadcastData);
-    return response.data;
-  },
-
-  // 預覽廣播目標
-  previewBroadcast: async (previewData) => {
-    const response = await apiClient.post('/api/broadcast/preview', previewData);
-    return response.data;
-  },
-
-  // 獲取廣播狀態
-  getBroadcastStatus: async (broadcastId) => {
-    const response = await apiClient.get(`/api/broadcast/status/${broadcastId}`);
-    return response.data;
-  },
-
-  // 取消廣播
-  cancelBroadcast: async (broadcastId) => {
-    const response = await apiClient.post(`/api/broadcast/cancel/${broadcastId}`);
-    return response.data;
-  },
-
-  // 獲取廣播發送記錄
-  getBroadcastSends: async (params = {}) => {
-    const response = await apiClient.get('/api/contactlist/broadcasts', { params });
-    return response.data;
-  },
-
-  // 獲取廣播統計
-  getBroadcastStats: async () => {
-    const response = await apiClient.get('/api/contactlist/broadcasts/stats');
-    return response.data;
-  }
-};

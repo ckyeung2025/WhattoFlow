@@ -112,6 +112,20 @@ const ContactListPage = () => {
       console.log('總數量:', totalCount);
       console.log('聯絡人數據:', contacts);
       
+      // 調試聯絡人數據
+      contacts.forEach((contact, index) => {
+        console.log(`聯絡人 ${index + 1} (${contact.name}):`, {
+          whatsAppNumber: contact.whatsAppNumber,
+          email: contact.email,
+          companyName: contact.companyName,
+          broadcastGroupId: contact.broadcastGroupId,
+          broadcastGroup: contact.broadcastGroup,
+          hasGroupData: !!contact.broadcastGroup,
+          groupName: contact.broadcastGroup?.name,
+          groupColor: contact.broadcastGroup?.color
+        });
+      });
+      
       setContacts(contacts);
       setTotalCount(totalCount);
       
@@ -353,15 +367,17 @@ const ContactListPage = () => {
       key: 'contact',
       render: (_, record) => (
         <div>
-          {record.whatsappNumber && (
+          {record.whatsAppNumber && (
             <div style={{ marginBottom: '4px' }}>
-              <PhoneOutlined style={{ color: '#52c41a', marginRight: '4px' }} />
-              <Text style={{ fontSize: '12px' }}>{record.whatsappNumber}</Text>
+              <PhoneOutlined style={{ color: '#25D366', marginRight: '4px', fontSize: '14px' }} />
+              <Text style={{ fontSize: '13px', fontWeight: '500', color: '#25D366' }}>
+                {record.whatsAppNumber}
+              </Text>
             </div>
           )}
           {record.email && (
             <div>
-              <MailOutlined style={{ color: '#1890ff', marginRight: '4px' }} />
+              <MailOutlined style={{ color: '#1890ff', marginRight: '4px', fontSize: '12px' }} />
               <Text style={{ fontSize: '12px' }}>{record.email}</Text>
             </div>
           )}
@@ -392,9 +408,15 @@ const ContactListPage = () => {
       title: t('contactList.group'),
       dataIndex: 'broadcastGroup',
       key: 'broadcastGroup',
-      render: (group) => group ? (
-        <Tag color={group.color || 'blue'}>{group.name}</Tag>
-      ) : '-',
+      render: (group, record) => {
+        // 如果沒有群組數據，顯示群組ID作為備用
+        if (!group && record.broadcastGroupId) {
+          return <Tag color="orange">群組ID: {record.broadcastGroupId}</Tag>;
+        }
+        return group ? (
+          <Tag color={group.color || 'blue'}>{group.name}</Tag>
+        ) : '-';
+      },
     },
     {
       title: t('contactList.tags'),

@@ -16,6 +16,38 @@ const ConditionGroupModal = ({
   onDeleteCondition,
   t
 }) => {
+  // 從節點數據中獲取當前條件群組的條件列表
+  const getCurrentConditions = () => {
+    console.log('=== 條件群組模態框獲取條件列表 ===');
+    console.log('selectedNode:', selectedNode);
+    console.log('editingConditionGroup:', editingConditionGroup);
+    
+    // 如果是新增條件群組（groupIndex === -1），直接使用 editingConditionGroup.conditions
+    if (!editingConditionGroup || editingConditionGroup.groupIndex === -1) {
+      console.log('新增條件群組，使用 editingConditionGroup.conditions');
+      console.log('editingConditionGroup.conditions:', editingConditionGroup?.conditions);
+      return editingConditionGroup?.conditions || [];
+    }
+    
+    // 如果是編輯現有條件群組，從節點數據中獲取
+    if (!selectedNode) {
+      console.log('沒有選中的節點，使用 editingConditionGroup.conditions');
+      return editingConditionGroup?.conditions || [];
+    }
+    
+    const currentNode = selectedNode;
+    const currentGroups = currentNode.data?.conditionGroups || [];
+    console.log('節點中的條件群組:', currentGroups);
+    console.log('目標群組索引:', editingConditionGroup.groupIndex);
+    
+    const currentGroup = currentGroups[editingConditionGroup.groupIndex];
+    console.log('目標群組:', currentGroup);
+    const conditions = currentGroup?.conditions || [];
+    console.log('條件列表:', conditions);
+    return conditions;
+  };
+  
+  const currentConditions = getCurrentConditions();
   return (
     <Modal
       title={editingConditionGroup && editingConditionGroup.groupIndex === -1 ? 
@@ -60,7 +92,10 @@ const ConditionGroupModal = ({
         
         <Form.Item label={t('workflowDesigner.conditions')}>
           <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
-            {(editingConditionGroup?.conditions || []).map((condition, condIndex) => (
+            {console.log('=== 條件群組模態框渲染條件列表 ===')}
+            {console.log('currentConditions:', currentConditions)}
+            {console.log('currentConditions.length:', currentConditions.length)}
+            {currentConditions.map((condition, condIndex) => (
               <div key={condition.id} style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
@@ -90,7 +125,7 @@ const ConditionGroupModal = ({
               </div>
             ))}
             
-            {(!editingConditionGroup?.conditions || editingConditionGroup.conditions.length === 0) && (
+            {(!currentConditions || currentConditions.length === 0) && (
               <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
                 {t('workflowDesigner.noConditions')}
               </div>

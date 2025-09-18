@@ -199,6 +199,9 @@ namespace PurpleRice.Controllers
             {
                 _logger.LogInformation("UpdateContact called for ID: {ContactId}", id);
                 _logger.LogInformation("Received request data: {RequestData}", System.Text.Json.JsonSerializer.Serialize(request));
+                _logger.LogInformation("BroadcastGroupId value: {BroadcastGroupId}", request.BroadcastGroupId);
+                _logger.LogInformation("BroadcastGroupId is null: {IsNull}", request.BroadcastGroupId == null);
+                _logger.LogInformation("BroadcastGroupId is empty: {IsEmpty}", request.BroadcastGroupId == Guid.Empty);
                 
                 var companyId = GetCurrentCompanyId();
                 if (companyId == Guid.Empty)
@@ -679,63 +682,6 @@ namespace PurpleRice.Controllers
 
         #endregion
 
-        #region 廣播發送記錄
-
-        /// <summary>
-        /// 獲取廣播發送記錄
-        /// </summary>
-        [HttpGet("broadcasts")]
-        public async Task<IActionResult> GetBroadcastSends(
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20)
-        {
-            try
-            {
-                var companyId = GetCurrentCompanyId();
-                if (companyId == Guid.Empty)
-                    return Unauthorized("無法識別公司資訊");
-
-                var (sends, totalCount) = await _contactListService.GetBroadcastSendsAsync(companyId, page, pageSize);
-
-                return Ok(new
-                {
-                    sends,
-                    totalCount,
-                    page,
-                    pageSize,
-                    totalPages = (int)Math.Ceiling((double)totalCount / pageSize)
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "獲取廣播發送記錄失敗");
-                return StatusCode(500, "獲取廣播發送記錄失敗");
-            }
-        }
-
-        /// <summary>
-        /// 獲取廣播統計
-        /// </summary>
-        [HttpGet("broadcasts/stats")]
-        public async Task<IActionResult> GetBroadcastStats()
-        {
-            try
-            {
-                var companyId = GetCurrentCompanyId();
-                if (companyId == Guid.Empty)
-                    return Unauthorized("無法識別公司資訊");
-
-                var stats = await _contactListService.GetBroadcastStatsAsync(companyId);
-                return Ok(stats);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "獲取廣播統計失敗");
-                return StatusCode(500, "獲取廣播統計失敗");
-            }
-        }
-
-        #endregion
 
 
         #region 輔助方法

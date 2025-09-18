@@ -235,39 +235,56 @@ namespace PurpleRice.Services
         {
             var nodeIds = nodes.Select(n => n.Id).ToHashSet();
             var issues = new List<string>();
+            var validEdges = new List<WorkflowEdge>();
             
             foreach (var edge in edges)
             {
+                bool isValid = true;
+                
                 // 檢查 Source 節點是否存在
                 if (!nodeIds.Contains(edge.Source))
                 {
                     issues.Add($"邊緣 {edge.Id} 的 Source 節點 {edge.Source} 不存在");
+                    isValid = false;
                 }
                 
                 // 檢查 Target 節點是否存在
                 if (!nodeIds.Contains(edge.Target))
                 {
                     issues.Add($"邊緣 {edge.Id} 的 Target 節點 {edge.Target} 不存在");
+                    isValid = false;
                 }
                 
                 // 檢查自連接
                 if (edge.Source == edge.Target)
                 {
                     issues.Add($"邊緣 {edge.Id} 是自連接");
+                    isValid = false;
+                }
+                
+                // 只保留有效的邊緣
+                if (isValid)
+                {
+                    validEdges.Add(edge);
                 }
             }
             
             if (issues.Any())
             {
-                WriteLog("工作流程邊緣驗證失敗:");
+                WriteLog("工作流程邊緣驗證發現問題，自動清理無效邊緣:");
                 foreach (var issue in issues)
                 {
                     WriteLog($"- {issue}");
                 }
-                return false;
+                
+                // 更新邊緣列表，移除無效邊緣
+                edges.Clear();
+                edges.AddRange(validEdges);
+                
+                WriteLog($"已清理無效邊緣，保留 {validEdges.Count} 個有效邊緣");
             }
             
-            return true;
+            return true; // 總是返回 true，因為我們已經清理了無效邊緣
         }
 
         // 從表單審批狀態繼續
@@ -636,27 +653,93 @@ namespace PurpleRice.Services
         private async Task<bool> ExecuteSendWhatsApp(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
         {
             WriteLog($"=== 執行 sendWhatsApp 節點 ===");
+            WriteLog($"收件人: {nodeData.To}");
+            WriteLog($"消息內容: {nodeData.Message}");
+            WriteLog($"收件人詳情: {nodeData.RecipientDetails}");
+            WriteLog($"🔍 [DEBUG] RecipientDetails 是否為 null: {nodeData.RecipientDetails == null}");
+            WriteLog($"🔍 [DEBUG] RecipientDetails 類型: {nodeData.RecipientDetails?.GetType().Name ?? "null"}");
             
-            if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.Message))
+            if (!string.IsNullOrEmpty(nodeData.Message))
             {
                 using var scope = _serviceProvider.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
                 
-                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, nodeData.Message, execution, db);
-                WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}");
-                
-                stepExec.OutputJson = JsonSerializer.Serialize(new { 
-                    success = true, 
-                    message = "WhatsApp message sent successfully",
-                    to = nodeData.To,
-                    taskName = nodeData.TaskName
-                });
-                
-                return true;
-                             }
-                             else
-                             {
-                WriteLog($"sendWhatsApp 步驟缺少必要參數: to={nodeData.To}, message={nodeData.Message}");
+                try
+                {
+                    WriteLog($"🔍 [DEBUG] 開始構建收件人詳情");
+                    // 構建收件人詳情
+                    string recipientDetailsJson;
+                    if (nodeData.RecipientDetails != null)
+                    {
+                        WriteLog($"🔍 [DEBUG] 使用原始 RecipientDetails");
+                        recipientDetailsJson = JsonSerializer.Serialize(nodeData.RecipientDetails);
+                        WriteLog($"🔍 [DEBUG] 原始 RecipientDetails JSON: {recipientDetailsJson}");
+                    }
+                    else
+                    {
+                        WriteLog($"🔍 [DEBUG] RecipientDetails 為 null，使用回退機制");
+                        // 當沒有 RecipientDetails 時，使用 To 欄位構建
+                        // 檢查 To 欄位是否包含 ${initiator}
+                        bool isInitiator = nodeData.To == "${initiator}";
+                        var fallbackRecipientDetails = new
+                        {
+                            users = new object[0],
+                            contacts = new object[0],
+                            groups = new object[0],
+                            hashtags = new object[0],
+                            useInitiator = isInitiator, // 根據 To 欄位內容設置
+                            phoneNumbers = isInitiator ? new string[0] : new[] { nodeData.To } // 如果是 ${initiator}，則不添加到 phoneNumbers
+                        };
+                        recipientDetailsJson = JsonSerializer.Serialize(fallbackRecipientDetails);
+                        WriteLog($"🔍 [DEBUG] 回退 RecipientDetails JSON: {recipientDetailsJson}");
+                        WriteLog($"🔍 [DEBUG] 檢測到 ${{initiator}}: {isInitiator}");
+                    }
+                    
+                    WriteLog($"🔍 [DEBUG] 準備調用 SendWhatsAppMessageWithTrackingAsync");
+                    // 使用新的帶追蹤功能的方法
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                        nodeData.To,
+                        recipientDetailsJson,
+                        nodeData.Message,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "sendWhatsApp",
+                        db
+                    );
+                    WriteLog($"🔍 [DEBUG] SendWhatsAppMessageWithTrackingAsync 返回 MessageSendId: {messageSendId}");
+                    
+                    WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}, MessageSendId: {messageSendId}");
+                    
+                    // 由於 SendWhatsAppMessageWithTrackingAsync 已經同步完成了所有狀態更新，
+                    // 我們可以直接信任其結果，不需要再次檢查狀態
+                    // 如果發送過程中出現異常，會直接拋出異常，不會到達這裡
+                    
+                    WriteLog($"🔍 [DEBUG] 消息發送已同步完成，直接標記為成功");
+                    
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                        success = true, 
+                        message = "WhatsApp message sent successfully",
+                        to = nodeData.To,
+                        taskName = nodeData.TaskName,
+                        messageSendId = messageSendId
+                    });
+                    
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"發送 WhatsApp 消息失敗: {ex.Message}");
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                        error = "Failed to send WhatsApp message",
+                        message = ex.Message
+                    });
+                    return false;
+                }
+            }
+            else
+            {
+                WriteLog($"sendWhatsApp 步驟缺少必要參數: message={nodeData.Message}, recipientDetails={nodeData.RecipientDetails}");
                 stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
                 return false;
             }
@@ -666,27 +749,87 @@ namespace PurpleRice.Services
         private async Task<bool> ExecuteSendWhatsAppTemplate(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
         {
             WriteLog($"=== 執行 sendWhatsAppTemplate 節點 ===");
+            WriteLog($"收件人: {nodeData.To}");
+            WriteLog($"模板ID: {nodeData.TemplateId}");
+            WriteLog($"模板名稱: {nodeData.TemplateName}");
+            WriteLog($"收件人詳情: {nodeData.RecipientDetails}");
             
-            if (!string.IsNullOrEmpty(nodeData.To) && !string.IsNullOrEmpty(nodeData.TemplateName))
+            if (!string.IsNullOrEmpty(nodeData.TemplateName))
             {
                 using var scope = _serviceProvider.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
                 
-                await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(nodeData.To, nodeData.TemplateId, execution, db);
-                WriteLog($"WhatsApp 模板消息發送完成: {nodeData.TaskName}");
-                
-                stepExec.OutputJson = JsonSerializer.Serialize(new { 
-                    success = true, 
-                    message = "WhatsApp template message sent successfully",
-                    to = nodeData.To,
-                    templateName = nodeData.TemplateName
-                });
-                
-                return true;
-                            }
-                            else
-                            {
-                WriteLog($"sendWhatsAppTemplate 步驟缺少必要參數: to={nodeData.To}, templateName={nodeData.TemplateName}");
+                try
+                {
+                    // 構建收件人詳情
+                    string recipientDetailsJson;
+                    if (nodeData.RecipientDetails != null)
+                    {
+                        recipientDetailsJson = JsonSerializer.Serialize(nodeData.RecipientDetails);
+                    }
+                    else
+                    {
+                        // 當沒有 RecipientDetails 時，使用 To 欄位構建
+                        // 檢查 To 欄位是否包含 ${initiator}
+                        bool isInitiator = nodeData.To == "${initiator}";
+                        var fallbackRecipientDetails = new
+                        {
+                            users = new object[0],
+                            contacts = new object[0],
+                            groups = new object[0],
+                            hashtags = new object[0],
+                            useInitiator = isInitiator, // 根據 To 欄位內容設置
+                            phoneNumbers = isInitiator ? new string[0] : new[] { nodeData.To } // 如果是 ${initiator}，則不添加到 phoneNumbers
+                        };
+                        recipientDetailsJson = JsonSerializer.Serialize(fallbackRecipientDetails);
+                        WriteLog($"🔍 [DEBUG] sendWhatsAppTemplate 回退機制 - 檢測到 ${{initiator}}: {isInitiator}");
+                    }
+                    
+                    // 使用新的帶追蹤功能的方法
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                        nodeData.To,
+                        recipientDetailsJson,
+                        nodeData.TemplateId,
+                        nodeData.TemplateName,
+                        nodeData.Variables ?? new Dictionary<string, string>(),
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "sendWhatsAppTemplate",
+                        db
+                    );
+                    
+                    WriteLog($"WhatsApp 模板消息發送完成: {nodeData.TaskName}, MessageSendId: {messageSendId}");
+                    
+                    // 由於 SendWhatsAppTemplateMessageWithTrackingAsync 已經同步完成了所有狀態更新，
+                    // 我們可以直接信任其結果，不需要再次檢查狀態
+                    // 如果發送過程中出現異常，會直接拋出異常，不會到達這裡
+                    
+                    WriteLog($"🔍 [DEBUG] 模板消息發送已同步完成，直接標記為成功");
+                    
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                        success = true, 
+                        message = "WhatsApp template message sent successfully",
+                        to = nodeData.To,
+                        templateName = nodeData.TemplateName,
+                        messageSendId = messageSendId
+                    });
+                    
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"發送 WhatsApp 模板消息失敗: {ex.Message}");
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                        error = "Failed to send WhatsApp template message",
+                        message = ex.Message
+                    });
+                    return false;
+                }
+            }
+            else
+            {
+                WriteLog($"sendWhatsAppTemplate 步驟缺少必要參數: templateName={nodeData.TemplateName}, recipientDetails={nodeData.RecipientDetails}");
                 stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
                 return false;
             }
@@ -726,9 +869,42 @@ namespace PurpleRice.Services
                 var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
                 if (company != null)
                 {
-                    var waId = nodeData.To ?? userId ?? "85296366318";
-                    await _whatsAppWorkflowService.SendWhatsAppMessageAsync(waId, nodeData.Message, execution, db);
-                    WriteLog($"成功發送等待提示訊息: '{nodeData.Message}' 到用戶: {waId}");
+                    // 根據回覆類型決定發送給誰
+                    string waId;
+                    if (nodeData.ReplyType == "specified" && !string.IsNullOrEmpty(nodeData.SpecifiedUsers))
+                    {
+                        // 發送給指定用戶
+                        waId = nodeData.SpecifiedUsers;
+                        WriteLog($"使用指定用戶發送等待提示訊息: {waId}");
+                    }
+                    else
+                    {
+                        // 發送給流程啟動人
+                        waId = execution.InitiatedBy ?? userId ?? "85296366318";
+                        WriteLog($"使用流程啟動人發送等待提示訊息: {waId}");
+                    }
+                    
+                    // 使用帶追蹤功能的方法發送訊息
+                    // 檢查 waId 是否為 ${initiator}
+                    bool isInitiator = waId == "${initiator}";
+                    var recipientDetails = new
+                    {
+                        useInitiator = isInitiator,
+                        phoneNumbers = isInitiator ? new string[0] : new[] { waId }
+                    };
+                    
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                        waId,
+                        JsonSerializer.Serialize(recipientDetails),
+                        nodeData.Message,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "waitReply",
+                        db
+                    );
+                    
+                    WriteLog($"成功發送等待提示訊息: '{nodeData.Message}' 到用戶: {waId}, MessageSendId: {messageSendId}");
                 }
             }
             
@@ -777,9 +953,42 @@ namespace PurpleRice.Services
                 var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
                 if (company != null)
                 {
-                    var waId = nodeData.To ?? userId ?? "85296366318";
-                    await _whatsAppWorkflowService.SendWhatsAppMessageAsync(waId, nodeData.Message, execution, db);
-                    WriteLog($"成功發送 QR Code 等待提示訊息: '{nodeData.Message}' 到用戶: {waId}");
+                    // 根據回覆類型決定發送給誰
+                    string waId;
+                    if (nodeData.ReplyType == "specified" && !string.IsNullOrEmpty(nodeData.SpecifiedUsers))
+                    {
+                        // 發送給指定用戶
+                        waId = nodeData.SpecifiedUsers;
+                        WriteLog($"使用指定用戶發送 QR Code 等待提示訊息: {waId}");
+                    }
+                    else
+                    {
+                        // 發送給流程啟動人
+                        waId = execution.InitiatedBy ?? userId ?? "85296366318";
+                        WriteLog($"使用流程啟動人發送 QR Code 等待提示訊息: {waId}");
+                    }
+                    
+                    // 使用帶追蹤功能的方法發送訊息
+                    // 檢查 waId 是否為 ${initiator}
+                    bool isInitiator = waId == "${initiator}";
+                    var recipientDetails = new
+                    {
+                        useInitiator = isInitiator,
+                        phoneNumbers = isInitiator ? new string[0] : new[] { waId }
+                    };
+                    
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                        waId,
+                        JsonSerializer.Serialize(recipientDetails),
+                        nodeData.Message,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "waitQRCode",
+                        db
+                    );
+                    
+                    WriteLog($"成功發送 QR Code 等待提示訊息: '{nodeData.Message}' 到用戶: {waId}, MessageSendId: {messageSendId}");
                 }
             }
             
@@ -792,7 +1001,7 @@ namespace PurpleRice.Services
         {
             WriteLog($"=== 執行 sendEForm 節點 ===");
                         
-                        if (!string.IsNullOrEmpty(nodeData.FormName) && !string.IsNullOrEmpty(nodeData.To))
+                        if (!string.IsNullOrEmpty(nodeData.FormName))
                         {
                 using var scope = _serviceProvider.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
@@ -859,9 +1068,43 @@ namespace PurpleRice.Services
                                 db.EFormInstances.Add(eFormInstance);
                                 await db.SaveChangesAsync();
 
+                                // 構建收件人詳情
+                                string recipientDetailsJson;
+                                if (nodeData.RecipientDetails != null)
+                                {
+                                    recipientDetailsJson = JsonSerializer.Serialize(nodeData.RecipientDetails);
+                                }
+                                else
+                                {
+                                    // 當沒有 RecipientDetails 時，使用 To 欄位構建
+                                    // 檢查 To 欄位是否包含 ${initiator}
+                                    bool isInitiator = nodeData.To == "${initiator}";
+                                    var fallbackRecipientDetails = new
+                                    {
+                                        users = new object[0],
+                                        contacts = new object[0],
+                                        groups = new object[0],
+                                        hashtags = new object[0],
+                                        useInitiator = isInitiator, // 根據 To 欄位內容設置
+                                        phoneNumbers = isInitiator ? new string[0] : new[] { nodeData.To } // 如果是 ${initiator}，則不添加到 phoneNumbers
+                                    };
+                                    recipientDetailsJson = JsonSerializer.Serialize(fallbackRecipientDetails);
+                                    WriteLog($"🔍 [DEBUG] sendEForm 回退機制 - 檢測到 ${{initiator}}: {isInitiator}");
+                                }
+                                
                                 // 發送 WhatsApp 消息通知用戶
                                 var message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
-                                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(nodeData.To, message, execution, db);
+                                var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                                    nodeData.To,
+                                    recipientDetailsJson,
+                                    message,
+                                    execution,
+                                    stepExec,
+                                    stepExec.Id.ToString(), // nodeId
+                                    "sendEForm",
+                                    db
+                                );
+                                WriteLog($"EForm 通知消息發送完成: {nodeData.FormName}, MessageSendId: {messageSendId}");
 
                     // 設置為等待表單審批狀態
                                  execution.Status = "WaitingForFormApproval";
@@ -870,6 +1113,7 @@ namespace PurpleRice.Services
                                      success = true, 
                                      message = "EForm sent successfully, waiting for approval",
                                      formInstanceId = eFormInstance.Id,
+                                     messageSendId = messageSendId,
                                      waitingSince = DateTime.Now 
                                  });
                                  
@@ -889,7 +1133,7 @@ namespace PurpleRice.Services
                          }
                          else
                          {
-                             WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, to={nodeData.To}");
+                             WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, recipientDetails={nodeData.RecipientDetails}");
                              stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
                 return false;
             }
@@ -1286,11 +1530,17 @@ namespace PurpleRice.Services
         [System.Text.Json.Serialization.JsonPropertyName("templateName")]
         public string TemplateName { get; set; }
         
+        [System.Text.Json.Serialization.JsonPropertyName("variables")]
+        public Dictionary<string, string> Variables { get; set; }
+        
         [System.Text.Json.Serialization.JsonPropertyName("replyType")]
         public string ReplyType { get; set; }
         
         [System.Text.Json.Serialization.JsonPropertyName("specifiedUsers")]
         public string SpecifiedUsers { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("recipientDetails")]
+        public object RecipientDetails { get; set; }
         
         public WorkflowValidation Validation { get; set; }
         

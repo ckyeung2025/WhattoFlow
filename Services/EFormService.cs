@@ -372,10 +372,19 @@ HTML 表單內容：
                 // 構建消息內容
                 var message = $"您有一個新的表單需要填寫：\n\n表單名稱：{formName}\n\n請點擊以下鏈接填寫表單：\n{formUrl}\n\n填寫完成後請點擊表單頂部的「批准」或「拒絕」按鈕。";
 
-                // 使用 WhatsAppWorkflowService 發送消息
-                await _whatsAppWorkflowService.SendWhatsAppMessageAsync(formattedTo, message, execution, _context);
+                // 使用帶追蹤功能的 WhatsAppWorkflowService 發送消息
+                var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                    formattedTo,
+                    JsonSerializer.Serialize(new { useInitiator = false, phoneNumbers = new[] { formattedTo } }),
+                    message,
+                    execution,
+                    null, // stepExecution - eForm 發送不需要 stepExecution
+                    Guid.NewGuid().ToString(), // nodeId
+                    "sendEForm",
+                    _context
+                );
 
-                _loggingService.LogInformation($"成功發送 eForm WhatsApp 消息到 {formattedTo}");
+                _loggingService.LogInformation($"成功發送 eForm WhatsApp 消息到 {formattedTo}, MessageSendId: {messageSendId}");
                 _loggingService.LogInformation($"=== EFormService.SendEFormWhatsAppMessageAsync 完成 ===");
             }
             catch (Exception ex)

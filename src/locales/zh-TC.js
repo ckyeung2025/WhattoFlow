@@ -28,7 +28,6 @@ const zhTC = {
     contactList: '聯絡人管理',
     broadcastGroups: '廣播群組',
     hashtags: '標籤管理',
-    broadcastSend: '廣播發送',
     studio: '工作室',
     unsigned: '已送貨未簽收',
     customerSigned: '客戶已簽收',

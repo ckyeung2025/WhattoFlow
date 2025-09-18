@@ -3,6 +3,7 @@ import { Drawer, Form, Input, Select, Card, Button, Space, Tag } from 'antd';
 import { FormOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
+import RecipientSelector from './RecipientSelector';
 import { getAvailableOutputPaths } from '../utils';
 
 // 節點屬性編輯抽屜組件
@@ -125,41 +126,50 @@ const NodePropertyDrawer = ({
           {selectedNode.data.type === 'sendWhatsApp' && (
             <>
               <Form.Item label={t('workflow.to')}>
-                <Input 
-                  value={selectedNode.data.to || ''}
-                  placeholder={t('workflowDesigner.selectRecipients')}
-                  readOnly
-                  onClick={() => setIsRecipientModalVisible(true)}
-                  suffix={
-                    <Space>
-                      {selectedNode.data.to && (
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNodeDataChange({ to: '' });
-                          }}
-                        >
-                          {t('workflowDesigner.clear')}
-                        </Button>
-                      )}
+                <div style={{ position: 'relative' }}>
+                  <RecipientSelector
+                    value={selectedNode.data.to || ''}
+                    recipientDetails={selectedNode.data.recipientDetails}
+                    placeholder={t('workflowDesigner.selectRecipients')}
+                    compact={true}
+                    onChange={(value, detailedValue) => {
+                      handleNodeDataChange({ 
+                        to: value,
+                        recipientDetails: detailedValue 
+                      });
+                    }}
+                  />
+                  <div style={{ 
+                    position: 'absolute', 
+                    right: '8px', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)',
+                    display: 'flex',
+                    gap: '4px'
+                  }}>
+                    {selectedNode.data.to && (
                       <Button 
                         type="text" 
                         size="small" 
-                        onClick={() => setIsRecipientModalVisible(true)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
+                        }}
+                        style={{ padding: '0 4px', fontSize: '12px' }}
                       >
-                        {t('workflowDesigner.selectRecipients')}
+                        {t('workflowDesigner.clear')}
                       </Button>
-                    </Space>
-                  }
-                  style={{
-                    color: selectedNode.data.to ? '#000' : '#999',
-                    backgroundColor: selectedNode.data.to ? '#fff' : '#f5f5f5',
-                    width: '100%',
-                    minWidth: '300px'
-                  }}
-                />
+                    )}
+                    <Button 
+                      type="text" 
+                      size="small" 
+                      onClick={() => setIsRecipientModalVisible(true)}
+                      style={{ padding: '0 4px', fontSize: '12px' }}
+                    >
+                      {t('workflowDesigner.selectRecipients')}
+                    </Button>
+                  </div>
+                </div>
               </Form.Item>
               <Form.Item label={t('workflow.message')} name="message">
                 <Input.TextArea 
@@ -199,41 +209,50 @@ const NodePropertyDrawer = ({
           {selectedNode.data.type === 'sendWhatsAppTemplate' && (
             <>
               <Form.Item label={t('workflow.to')}>
-                <Input 
-                  value={selectedNode.data.to || ''}
-                  placeholder={t('workflowDesigner.selectRecipients')}
-                  readOnly
-                  onClick={() => setIsRecipientModalVisible(true)}
-                  suffix={
-                    <Space>
-                      {selectedNode.data.to && (
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNodeDataChange({ to: '' });
-                          }}
-                        >
-                          {t('workflowDesigner.clear')}
-                        </Button>
-                      )}
+                <div style={{ position: 'relative' }}>
+                  <RecipientSelector
+                    value={selectedNode.data.to || ''}
+                    recipientDetails={selectedNode.data.recipientDetails}
+                    placeholder={t('workflowDesigner.selectRecipients')}
+                    compact={true}
+                    onChange={(value, detailedValue) => {
+                      handleNodeDataChange({ 
+                        to: value,
+                        recipientDetails: detailedValue 
+                      });
+                    }}
+                  />
+                  <div style={{ 
+                    position: 'absolute', 
+                    right: '8px', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)',
+                    display: 'flex',
+                    gap: '4px'
+                  }}>
+                    {selectedNode.data.to && (
                       <Button 
                         type="text" 
                         size="small" 
-                        onClick={() => setIsRecipientModalVisible(true)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
+                        }}
+                        style={{ padding: '0 4px', fontSize: '12px' }}
                       >
-                        {t('workflowDesigner.selectRecipients')}
+                        {t('workflowDesigner.clear')}
                       </Button>
-                    </Space>
-                  }
-                  style={{
-                    color: selectedNode.data.to ? '#000' : '#999',
-                    backgroundColor: selectedNode.data.to ? '#fff' : '#f5f5f5',
-                    width: '100%',
-                    minWidth: '300px'
-                  }}
-                />
+                    )}
+                    <Button 
+                      type="text" 
+                      size="small" 
+                      onClick={() => setIsRecipientModalVisible(true)}
+                      style={{ padding: '0 4px', fontSize: '12px' }}
+                    >
+                      {t('workflowDesigner.selectRecipients')}
+                    </Button>
+                  </div>
+                </div>
               </Form.Item>
               <Form.Item label="模板">
                 <Input 
@@ -267,41 +286,50 @@ const NodePropertyDrawer = ({
               
               {selectedNode.data.replyType === 'specified' && (
                 <Form.Item label={t('workflowDesigner.specifiedPerson')}>
-                  <Input 
-                    value={selectedNode.data.specifiedUsers || ''}
-                    placeholder={t('workflowDesigner.selectRecipients')} 
-                    readOnly 
-                    onClick={() => setIsRecipientModalVisible(true)}
-                    suffix={
-                      <Space>
-                        {selectedNode.data.specifiedUsers && (
-                          <Button 
-                            type="text" 
-                            size="small" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleNodeDataChange({ specifiedUsers: '' });
-                            }}
-                          >
-                            {t('workflowList.clear')}
-                          </Button>
-                        )}
+                  <div style={{ position: 'relative' }}>
+                    <RecipientSelector
+                      value={selectedNode.data.specifiedUsers || ''}
+                      recipientDetails={selectedNode.data.recipientDetails}
+                      placeholder={t('workflowDesigner.selectRecipients')}
+                      compact={true}
+                      onChange={(value, detailedValue) => {
+                        handleNodeDataChange({ 
+                          specifiedUsers: value,
+                          recipientDetails: detailedValue 
+                        });
+                      }}
+                    />
+                    <div style={{ 
+                      position: 'absolute', 
+                      right: '8px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {selectedNode.data.specifiedUsers && (
                         <Button 
                           type="text" 
                           size="small" 
-                          onClick={() => setIsRecipientModalVisible(true)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNodeDataChange({ specifiedUsers: '', recipientDetails: null });
+                          }}
+                          style={{ padding: '0 4px', fontSize: '12px' }}
                         >
-                          {t('workflowDesigner.selectRecipients')}
+                          {t('workflowDesigner.clear')}
                         </Button>
-                      </Space>
-                    }
-                    style={{
-                      color: selectedNode.data.specifiedUsers ? '#000' : '#999',
-                      backgroundColor: selectedNode.data.specifiedUsers ? '#fff' : '#f5f5f5',
-                      width: '100%',
-                      minWidth: '300px'
-                    }}
-                  />
+                      )}
+                      <Button 
+                        type="text" 
+                        size="small" 
+                        onClick={() => setIsRecipientModalVisible(true)}
+                        style={{ padding: '0 4px', fontSize: '12px' }}
+                      >
+                        {t('workflowDesigner.selectRecipients')}
+                      </Button>
+                    </div>
+                  </div>
                 </Form.Item>
               )}
               
@@ -387,6 +415,64 @@ const NodePropertyDrawer = ({
           {/* 等待 QR Code 節點 */}
           {selectedNode.data.type === 'waitForQRCode' && (
             <>
+              <Form.Item label={t('workflowDesigner.replyType')} name="replyType">
+                <Select
+                  options={[
+                    { value: 'initiator', label: t('workflowDesigner.initiator') },
+                    { value: 'specified', label: t('workflowDesigner.specifiedPerson') }
+                  ]}
+                />
+              </Form.Item>
+              
+              {selectedNode.data.replyType === 'specified' && (
+                <Form.Item label={t('workflowDesigner.specifiedPerson')}>
+                  <div style={{ position: 'relative' }}>
+                    <RecipientSelector
+                      value={selectedNode.data.specifiedUsers || ''}
+                      recipientDetails={selectedNode.data.recipientDetails}
+                      placeholder={t('workflowDesigner.selectRecipients')}
+                      compact={true}
+                      onChange={(value, detailedValue) => {
+                        handleNodeDataChange({ 
+                          specifiedUsers: value,
+                          recipientDetails: detailedValue 
+                        });
+                      }}
+                    />
+                    <div style={{ 
+                      position: 'absolute', 
+                      right: '8px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {selectedNode.data.specifiedUsers && (
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNodeDataChange({ specifiedUsers: '', recipientDetails: null });
+                          }}
+                          style={{ padding: '0 4px', fontSize: '12px' }}
+                        >
+                          {t('workflowDesigner.clear')}
+                        </Button>
+                      )}
+                      <Button 
+                        type="text" 
+                        size="small" 
+                        onClick={() => setIsRecipientModalVisible(true)}
+                        style={{ padding: '0 4px', fontSize: '12px' }}
+                      >
+                        {t('workflowDesigner.selectRecipients')}
+                      </Button>
+                    </div>
+                  </div>
+                </Form.Item>
+              )}
+              
               <Form.Item label={t('workflowDesigner.qrCodeVariable')} name="qrCodeVariable">
                 <Select
                   placeholder={t('workflowDesigner.selectProcessVariable')}
@@ -528,41 +614,50 @@ const NodePropertyDrawer = ({
               </Form.Item>
               
               <Form.Item label={t('workflow.to')}>
-                <Input 
-                  value={selectedNode.data.to || ''}
-                  placeholder={t('workflowDesigner.selectRecipients')}
-                  readOnly
-                  onClick={() => setIsRecipientModalVisible(true)}
-                  suffix={
-                    <Space>
-                      {selectedNode.data.to && (
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNodeDataChange({ to: '' });
-                          }}
-                        >
-                          {t('workflowDesigner.clear')}
-                        </Button>
-                      )}
+                <div style={{ position: 'relative' }}>
+                  <RecipientSelector
+                    value={selectedNode.data.to || ''}
+                    recipientDetails={selectedNode.data.recipientDetails}
+                    placeholder={t('workflowDesigner.selectRecipients')}
+                    compact={true}
+                    onChange={(value, detailedValue) => {
+                      handleNodeDataChange({ 
+                        to: value,
+                        recipientDetails: detailedValue 
+                      });
+                    }}
+                  />
+                  <div style={{ 
+                    position: 'absolute', 
+                    right: '8px', 
+                    top: '50%', 
+                    transform: 'translateY(-50%)',
+                    display: 'flex',
+                    gap: '4px'
+                  }}>
+                    {selectedNode.data.to && (
                       <Button 
                         type="text" 
                         size="small" 
-                        onClick={() => setIsRecipientModalVisible(true)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
+                        }}
+                        style={{ padding: '0 4px', fontSize: '12px' }}
                       >
-                        {t('workflowDesigner.selectRecipients')}
+                        {t('workflowDesigner.clear')}
                       </Button>
-                    </Space>
-                  }
-                  style={{
-                    color: selectedNode.data.to ? '#000' : '#999',
-                    backgroundColor: selectedNode.data.to ? '#fff' : '#f5f5f5',
-                    width: '100%',
-                    minWidth: '300px'
-                  }}
-                />
+                    )}
+                    <Button 
+                      type="text" 
+                      size="small" 
+                      onClick={() => setIsRecipientModalVisible(true)}
+                      style={{ padding: '0 4px', fontSize: '12px' }}
+                    >
+                      {t('workflowDesigner.selectRecipients')}
+                    </Button>
+                  </div>
+                </div>
               </Form.Item>
               
               {selectedNode.data.formId && (
@@ -840,7 +935,7 @@ const NodePropertyDrawer = ({
             if (detailedValue) {
               handleNodeDataChange({ recipientDetails: detailedValue });
             }
-          } else if (selectedNode.data.type === 'waitReply') {
+          } else if (selectedNode.data.type === 'waitReply' || selectedNode.data.type === 'waitForQRCode') {
             // 保存電話號碼字符串到 specifiedUsers 字段
             handleNodeDataChange({ specifiedUsers: value });
             // 保存詳細信息到 recipientDetails 字段
@@ -852,7 +947,9 @@ const NodePropertyDrawer = ({
         value={
           selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm'
             ? selectedNode.data.to 
-            : selectedNode.data.specifiedUsers
+            : (selectedNode.data.type === 'waitReply' || selectedNode.data.type === 'waitForQRCode')
+            ? selectedNode.data.specifiedUsers
+            : ''
         }
         recipientDetails={selectedNode.data.recipientDetails}
         allowMultiple={true}
