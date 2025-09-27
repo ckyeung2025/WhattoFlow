@@ -118,7 +118,11 @@ const Sidebar = ({
                         }}
                         draggable={nodeType.isImplemented && !isDisabled}
                         onDragStart={e => {
+                          console.log('=== Sidebar 拖拽開始 ===');
+                          console.log('nodeType.type:', nodeType.type);
+                          console.log('nodeType:', nodeType);
                           if (nodeType.isImplemented && !isDisabled) {
+                            console.log('調用 onDragStart 與 nodeType:', nodeType.type);
                             onDragStart(e, nodeType.type);
                           }
                         }}

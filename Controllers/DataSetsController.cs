@@ -179,15 +179,87 @@ namespace PurpleRice.Controllers
             try
             {
                 _loggingService.LogInformation($"開始獲取數據集，ID: {id}");
-                var dataSet = await _context.DataSets
-                    .Include(ds => ds.Columns.OrderBy(c => c.SortOrder))
-                    .Include(ds => ds.DataSources)
-                    .FirstOrDefaultAsync(ds => ds.Id == id);
-
-                if (dataSet == null)
+                
+                // 先檢查 DataSet 是否存在
+                var dataSetExists = await _context.DataSets.AnyAsync(ds => ds.Id == id);
+                if (!dataSetExists)
                 {
                     _loggingService.LogWarning($"數據集不存在，ID: {id}");
                     return NotFound(new { success = false, message = "DataSet 不存在" });
+                }
+                
+                // 獲取 DataSet 基本信息
+                var dataSet = await _context.DataSets
+                    .FirstOrDefaultAsync(ds => ds.Id == id);
+                
+                if (dataSet == null)
+                {
+                    _loggingService.LogWarning($"數據集獲取失敗，ID: {id}");
+                    return NotFound(new { success = false, message = "DataSet 獲取失敗" });
+                }
+                
+                // 分別獲取關聯數據，避免循環引用
+                try
+                {
+                    var columns = await _context.DataSetColumns
+                        .Where(c => c.DataSetId == id)
+                        .OrderBy(c => c.SortOrder)
+                        .Select(c => new DataSetColumn
+                        {
+                            Id = c.Id,
+                            DataSetId = c.DataSetId,
+                            ColumnName = c.ColumnName,
+                            DisplayName = c.DisplayName,
+                            DataType = c.DataType,
+                            MaxLength = c.MaxLength,
+                            IsRequired = c.IsRequired,
+                            IsPrimaryKey = c.IsPrimaryKey,
+                            IsSearchable = c.IsSearchable,
+                            IsSortable = c.IsSortable,
+                            IsIndexed = c.IsIndexed,
+                            DefaultValue = c.DefaultValue,
+                            SortOrder = c.SortOrder
+                            // 不包含 DataSet 導航屬性，避免循環引用
+                        })
+                        .ToListAsync();
+                    dataSet.Columns = columns;
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"獲取 DataSet 欄位失敗，ID: {id}, 錯誤: {ex.Message}");
+                    dataSet.Columns = new List<DataSetColumn>();
+                }
+                
+                try
+                {
+                    var dataSources = await _context.DataSetDataSources
+                        .Where(ds => ds.DataSetId == id)
+                        .Select(ds => new DataSetDataSource
+                        {
+                            Id = ds.Id,
+                            DataSetId = ds.DataSetId,
+                            SourceType = ds.SourceType,
+                            DatabaseConnection = ds.DatabaseConnection,
+                            SqlQuery = ds.SqlQuery,
+                            SqlParameters = ds.SqlParameters,
+                            ExcelFilePath = ds.ExcelFilePath,
+                            ExcelSheetName = ds.ExcelSheetName,
+                            ExcelUrl = ds.ExcelUrl,
+                            GoogleDocsUrl = ds.GoogleDocsUrl,
+                            GoogleDocsSheetName = ds.GoogleDocsSheetName,
+                            AuthenticationConfig = ds.AuthenticationConfig,
+                            AutoUpdate = ds.AutoUpdate,
+                            UpdateIntervalMinutes = ds.UpdateIntervalMinutes,
+                            LastUpdateTime = ds.LastUpdateTime
+                            // 不包含 DataSet 導航屬性，避免循環引用
+                        })
+                        .ToListAsync();
+                    dataSet.DataSources = dataSources;
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"獲取 DataSet 數據源失敗，ID: {id}, 錯誤: {ex.Message}");
+                    dataSet.DataSources = new List<DataSetDataSource>();
                 }
 
                 _loggingService.LogInformation($"成功獲取數據集，ID: {id}");
@@ -195,8 +267,8 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                _loggingService.LogError("獲取 DataSet 失敗", ex);
-                return StatusCode(500, new { success = false, message = "獲取 DataSet 失敗" });
+                _loggingService.LogError($"獲取 DataSet 失敗，ID: {id}, 錯誤: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, message = $"獲取 DataSet 失敗: {ex.Message}" });
             }
         }
 
@@ -1692,14 +1764,21 @@ namespace PurpleRice.Controllers
         {
             var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             
+            _loggingService.LogInformation($"嘗試獲取預設連接字符串，連接名稱: '{connectionName}'");
+            
             switch (connectionName?.ToLower())
             {
                 case "erp_awh":
-                    return configuration.GetConnectionString("ErpDbContext");
+                    var erpConnection = configuration.GetConnectionString("ErpDbContext");
+                    _loggingService.LogInformation($"ERP 連接字符串: {erpConnection}");
+                    return erpConnection;
                 case "purple_rice":
-                    return configuration.GetConnectionString("PurpleRice");
+                    var purpleRiceConnection = configuration.GetConnectionString("PurpleRice");
+                    _loggingService.LogInformation($"PurpleRice 連接字符串: {purpleRiceConnection}");
+                    return purpleRiceConnection;
                 default:
-                    _loggingService.LogWarning($"未知的預設連接名稱: {connectionName}");
+                    _loggingService.LogWarning($"未知的預設連接名稱: '{connectionName}'");
+                    _loggingService.LogWarning($"可用的連接名稱: 'erp_awh', 'purple_rice'");
                     return null;
             }
         }
@@ -1808,7 +1887,7 @@ namespace PurpleRice.Controllers
             }
         }
 
-        // 處理 SQL 查詢結果並存儲到數據庫
+        // 處理 SQL 查詢結果並存儲到數據庫 - 增量同步版本
         private async Task<int> ProcessSqlResults(DataSet dataSet, List<Dictionary<string, object>> sqlResults)
         {
             try
@@ -1825,21 +1904,102 @@ namespace PurpleRice.Controllers
                     _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {dataSet.Id}");
                     return 0;
                 }
+
+                // 找到主鍵欄位（支援複合主鍵）
+                var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
                 
-                var totalRecords = 0;
-                
-                foreach (var row in sqlResults)
+                // 如果沒有找到主鍵，嘗試自動檢測
+                if (!primaryKeyColumns.Any())
                 {
-                    if (await ProcessSqlRow(dataSet, row, columns))
+                    _loggingService.LogWarning($"數據集沒有主鍵欄位定義，嘗試自動檢測主鍵欄位");
+                    
+                    // 自動檢測主鍵：優先選擇 id 欄位，然後是 within_code
+                    var idColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "id");
+                    var withinCodeColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "within_code");
+                    
+                    if (idColumn != null && withinCodeColumn != null)
                     {
-                        totalRecords++;
+                        primaryKeyColumns = new List<DataSetColumn> { idColumn, withinCodeColumn };
+                        _loggingService.LogInformation($"自動檢測到複合主鍵: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
+                    }
+                    else if (idColumn != null)
+                    {
+                        primaryKeyColumns = new List<DataSetColumn> { idColumn };
+                        _loggingService.LogInformation($"自動檢測到主鍵: {idColumn.ColumnName}");
+                    }
+                    else if (withinCodeColumn != null)
+                    {
+                        primaryKeyColumns = new List<DataSetColumn> { withinCodeColumn };
+                        _loggingService.LogInformation($"自動檢測到主鍵: {withinCodeColumn.ColumnName}");
+                    }
+                    else
+                    {
+                        _loggingService.LogError($"無法自動檢測主鍵欄位，數據集ID: {dataSet.Id}");
+                        return 0;
                     }
                 }
+                else
+                {
+                    _loggingService.LogInformation($"找到 {primaryKeyColumns.Count} 個主鍵欄位: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
+                }
+
+                var stats = new SyncStats();
+
+                // 1. 獲取現有記錄的 Hash 映射
+                _loggingService.LogInformation("開始獲取現有記錄...");
+                var existingRecordsHash = await GetExistingRecordsHash(dataSet.Id, columns);
+                _loggingService.LogInformation($"獲取到 {existingRecordsHash.Count} 條現有記錄");
                 
+                // 調試：顯示前幾個現有記錄的主鍵
+                var existingKeys = existingRecordsHash.Keys.Take(3).ToList();
+                foreach (var key in existingKeys)
+                {
+                    _loggingService.LogInformation($"現有記錄主鍵: {key}");
+                }
+
+                // 2. 計算新記錄的 Hash
+                _loggingService.LogInformation("開始計算新記錄 Hash...");
+                var newRecordsHash = CalculateNewRecordsHash(sqlResults, columns, primaryKeyColumns);
+                _loggingService.LogInformation($"計算完成 {newRecordsHash.Count} 條新記錄 Hash");
+                
+                // 調試：顯示前幾個新記錄的主鍵
+                var newKeys = newRecordsHash.Keys.Take(3).ToList();
+                foreach (var key in newKeys)
+                {
+                    _loggingService.LogInformation($"新記錄主鍵: {key}");
+                }
+
+                // 3. 分類處理：新增、更新、刪除
+                var (newRecords, updateRecords, deleteRecords) = ClassifyRecords(
+                    existingRecordsHash, 
+                    newRecordsHash, 
+                    sqlResults, 
+                    primaryKeyColumns
+                );
+
+                _loggingService.LogInformation($"記錄分類完成 - 新增: {newRecords.Count}, 更新: {updateRecords.Count}, 刪除: {deleteRecords.Count}");
+
+                // 4. 批量處理各類記錄
+                if (newRecords.Any())
+                {
+                    stats.NewRecords = await BatchInsertRecords(dataSet, newRecords, columns);
+                }
+
+                if (updateRecords.Any())
+                {
+                    stats.UpdatedRecords = await BatchUpdateRecords(updateRecords, columns);
+                }
+
+                if (deleteRecords.Any())
+                {
+                    stats.DeletedRecords = await BatchDeleteRecords(deleteRecords);
+                }
+
                 await _context.SaveChangesAsync();
-                _loggingService.LogInformation($"SQL 結果處理完成，成功處理 {totalRecords} 條記錄，數據集ID: {dataSet.Id}");
                 
-                return totalRecords;
+                _loggingService.LogInformation($"增量同步完成，數據集ID: {dataSet.Id}，新增: {stats.NewRecords}，更新: {stats.UpdatedRecords}，刪除: {stats.DeletedRecords}");
+                
+                return stats.NewRecords + stats.UpdatedRecords;
             }
             catch (Exception ex)
             {
@@ -1848,105 +2008,523 @@ namespace PurpleRice.Controllers
             }
         }
 
-        // 處理單行 SQL 結果
-        private async Task<bool> ProcessSqlRow(DataSet dataSet, Dictionary<string, object> row, List<DataSetColumn> columns)
+        // 獲取現有記錄的 Hash 映射（支援複合主鍵）
+        private async Task<Dictionary<string, (DataSetRecord Record, string Hash)>> GetExistingRecordsHash(
+            Guid dataSetId, 
+            List<DataSetColumn> columns)
         {
-            try
-            {
-                // 創建記錄
-                var record = new DataSetRecord
-                {
-                    Id = Guid.NewGuid(),
-                    DataSetId = dataSet.Id,
-                    PrimaryKeyValue = row.FirstOrDefault().Value?.ToString() ?? Guid.NewGuid().ToString(),
-                    Status = "Active",
-                    CreatedAt = DateTime.UtcNow,
-                };
+            var existingRecords = await _context.DataSetRecords
+                .Where(r => r.DataSetId == dataSetId)
+                .Include(r => r.Values)
+                .AsNoTracking() // 提高查詢效能
+                .ToListAsync();
 
-                _context.DataSetRecords.Add(record);
+            var hashDict = new Dictionary<string, (DataSetRecord Record, string Hash)>();
+            var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+            
+            foreach (var record in existingRecords)
+            {
+                var hash = CalculateRecordHash(record, columns);
                 
-                // 創建欄位值
-                foreach (var column in columns)
+                // 構建複合主鍵
+                var compositeKey = BuildCompositeKeyFromRecord(record, primaryKeyColumns);
+                
+                if (!string.IsNullOrEmpty(compositeKey))
                 {
-                    var columnName = column.ColumnName;
-                    var value = row.ContainsKey(columnName) ? row[columnName] : null;
+                    hashDict[compositeKey] = (record, hash);
+                }
+                else
+                {
+                    // 如果無法構建複合主鍵，使用原始主鍵值
+                    var primaryKey = record.PrimaryKeyValue ?? string.Empty;
+                    if (!string.IsNullOrEmpty(primaryKey))
+                    {
+                        hashDict[primaryKey] = (record, hash);
+                    }
+                }
+            }
+
+            return hashDict;
+        }
+
+        // 計算新記錄的 Hash（支援複合主鍵）
+        private Dictionary<string, (Dictionary<string, object> Row, string Hash)> CalculateNewRecordsHash(
+            List<Dictionary<string, object>> sqlResults, 
+            List<DataSetColumn> columns, 
+            List<DataSetColumn> primaryKeyColumns)
+        {
+            var hashDict = new Dictionary<string, (Dictionary<string, object> Row, string Hash)>();
+            var duplicateKeys = new Dictionary<string, int>();
+            
+            foreach (var row in sqlResults)
+            {
+                // 構建複合主鍵
+                var compositeKey = BuildCompositeKey(row, primaryKeyColumns);
                     
-                    var recordValue = new DataSetRecordValue
+                if (string.IsNullOrEmpty(compositeKey))
+                {
+                    _loggingService.LogWarning($"記錄的複合主鍵值為空，跳過處理");
+                    continue;
+                }
+                
+                // 處理重複主鍵：使用行索引作為後綴
+                var uniqueKey = compositeKey;
+                if (hashDict.ContainsKey(compositeKey))
+                {
+                    if (!duplicateKeys.ContainsKey(compositeKey))
+                    {
+                        duplicateKeys[compositeKey] = 1;
+                        _loggingService.LogWarning($"檢測到重複複合主鍵: '{compositeKey}'，將使用行索引區分");
+                    }
+                    
+                    duplicateKeys[compositeKey]++;
+                    uniqueKey = $"{compositeKey}_ROW_{duplicateKeys[compositeKey]}";
+                    _loggingService.LogWarning($"重複複合主鍵 '{compositeKey}' 使用唯一標識: '{uniqueKey}'");
+                }
+                    
+                var hash = CalculateRowHash(row, columns);
+                hashDict[uniqueKey] = (row, hash);
+            }
+
+            if (duplicateKeys.Any())
+            {
+                _loggingService.LogWarning($"總共發現 {duplicateKeys.Count} 個重複複合主鍵，共影響 {duplicateKeys.Values.Sum()} 條記錄");
+            }
+
+            return hashDict;
+        }
+
+        // 分類記錄：新增、更新、刪除（支援複合主鍵）
+        private (List<Dictionary<string, object>> NewRecords, 
+                 List<(DataSetRecord Record, Dictionary<string, object> Row)> UpdateRecords, 
+                 List<DataSetRecord> DeleteRecords) ClassifyRecords(
+            Dictionary<string, (DataSetRecord Record, string Hash)> existingRecordsHash,
+            Dictionary<string, (Dictionary<string, object> Row, string Hash)> newRecordsHash,
+            List<Dictionary<string, object>> sqlResults,
+            List<DataSetColumn> primaryKeyColumns)
+        {
+            var newRecords = new List<Dictionary<string, object>>();
+            var updateRecords = new List<(DataSetRecord Record, Dictionary<string, object> Row)>();
+            var deleteRecords = new List<DataSetRecord>();
+
+            // 找出新增和更新的記錄
+            foreach (var kvp in newRecordsHash)
+            {
+                var primaryKey = kvp.Key;
+                var (row, newHash) = kvp.Value;
+
+                if (existingRecordsHash.TryGetValue(primaryKey, out var existing))
+                {
+                    if (existing.Hash != newHash)
+                    {
+                        // Hash 不同，需要更新
+                        updateRecords.Add((existing.Record, row));
+                    }
+                    // Hash 相同，無需處理
+                }
+                else
+                {
+                    // 主鍵不存在，需要新增
+                    newRecords.Add(row);
+                }
+            }
+
+            // 找出刪除的記錄
+            var existingPrimaryKeys = existingRecordsHash.Keys.ToHashSet();
+            var newPrimaryKeys = newRecordsHash.Keys.ToHashSet();
+            var deletedPrimaryKeys = existingPrimaryKeys.Except(newPrimaryKeys);
+
+            foreach (var deletedPk in deletedPrimaryKeys)
+            {
+                deleteRecords.Add(existingRecordsHash[deletedPk].Record);
+            }
+
+            return (newRecords, updateRecords, deleteRecords);
+        }
+
+        // 批量插入新記錄
+        private async Task<int> BatchInsertRecords(DataSet dataSet, List<Dictionary<string, object>> newRecords, List<DataSetColumn> columns)
+        {
+            var totalInserted = 0;
+            const int batchSize = 100; // 批次大小
+
+            for (int i = 0; i < newRecords.Count; i += batchSize)
+            {
+                var batch = newRecords.Skip(i).Take(batchSize).ToList();
+                _loggingService.LogInformation($"批量插入記錄 {i + 1}-{Math.Min(i + batchSize, newRecords.Count)}/{newRecords.Count}");
+
+                var records = new List<DataSetRecord>();
+                var recordValues = new List<DataSetRecordValue>();
+
+                foreach (var row in batch)
+                {
+                    var record = new DataSetRecord
                     {
                         Id = Guid.NewGuid(),
-                        RecordId = record.Id,
-                        ColumnName = columnName,
-                        StringValue = null,
-                        NumericValue = null,
-                        DateValue = null,
-                        BooleanValue = null
+                        DataSetId = dataSet.Id,
+                        PrimaryKeyValue = GetPrimaryKeyValue(row, columns),
+                        Status = "Active",
+                        CreatedAt = DateTime.UtcNow,
                     };
 
-                    // 根據數據類型存儲到對應欄位
-                    if (value != null)
+                    records.Add(record);
+                    
+                    // 創建欄位值
+                    foreach (var column in columns)
                     {
-                        switch (column.DataType?.ToLower())
+                        var columnName = column.ColumnName;
+                        var value = row.ContainsKey(columnName) ? row[columnName] : null;
+                        
+                        var recordValue = new DataSetRecordValue
                         {
-                            case "int":
-                            case "decimal":
-                                if (decimal.TryParse(value.ToString(), out var numericValue))
-                                {
-                                    recordValue.NumericValue = numericValue;
-                                }
-                                else
-                                {
-                                    recordValue.StringValue = value.ToString();
-                                }
-                                break;
-                                
-                            case "datetime":
-                            case "date":
-                                if (value is DateTime dateValue)
-                                {
-                                    recordValue.DateValue = dateValue;
-                                }
-                                else if (DateTime.TryParse(value.ToString(), out var parsedDate))
-                                {
-                                    recordValue.DateValue = parsedDate;
-                                }
-                                else
-                                {
-                                    recordValue.StringValue = value.ToString();
-                                }
-                                break;
-                                
-                            case "boolean":
-                            case "bool":
-                                if (value is bool boolValue)
-                                {
-                                    recordValue.BooleanValue = boolValue;
-                                }
-                                else if (bool.TryParse(value.ToString(), out var parsedBool))
-                                {
-                                    recordValue.BooleanValue = parsedBool;
-                                }
-                                else
-                                {
-                                    recordValue.StringValue = value.ToString();
-                                }
-                                break;
-                                
-                            default: // string, text
-                                recordValue.StringValue = value.ToString();
-                                break;
-                        }
-                    }
+                            Id = Guid.NewGuid(),
+                            RecordId = record.Id,
+                            ColumnName = columnName,
+                            StringValue = null,
+                            NumericValue = null,
+                            DateValue = null,
+                            BooleanValue = null
+                        };
 
-                    _context.DataSetRecordValues.Add(recordValue);
+                        SetValueByType(recordValue, value, column.DataType);
+                        recordValues.Add(recordValue);
+                    }
                 }
 
-                return true;
+                // 批量插入
+                _context.DataSetRecords.AddRange(records);
+                _context.DataSetRecordValues.AddRange(recordValues);
+                
+                await _context.SaveChangesAsync();
+                totalInserted += records.Count;
+                
+                _loggingService.LogInformation($"批量插入完成，本批次: {records.Count}，累計: {totalInserted}");
             }
-            catch (Exception ex)
+
+            return totalInserted;
+        }
+
+        // 批量更新記錄
+        private async Task<int> BatchUpdateRecords(
+            List<(DataSetRecord Record, Dictionary<string, object> Row)> updateRecords, 
+            List<DataSetColumn> columns)
+        {
+            var totalUpdated = 0;
+            const int batchSize = 50; // 更新批次較小
+
+            for (int i = 0; i < updateRecords.Count; i += batchSize)
             {
-                _loggingService.LogError($"處理 SQL 行數據失敗: {ex.Message}", ex);
-                return false;
+                var batch = updateRecords.Skip(i).Take(batchSize).ToList();
+                _loggingService.LogInformation($"批量更新記錄 {i + 1}-{Math.Min(i + batchSize, updateRecords.Count)}/{updateRecords.Count}");
+
+                foreach (var (record, row) in batch)
+                {
+                    var hasChanges = false;
+
+                    // 更新或新增欄位值
+                    foreach (var column in columns)
+                    {
+                        var columnName = column.ColumnName;
+                        var newValue = row.ContainsKey(columnName) ? row[columnName] : null;
+                        
+                        var existingValue = record.Values?.FirstOrDefault(v => v.ColumnName == columnName);
+                        
+                        if (existingValue == null)
+                        {
+                            // 新增欄位值
+                            var recordValue = new DataSetRecordValue
+                            {
+                                Id = Guid.NewGuid(),
+                                RecordId = record.Id,
+                                ColumnName = columnName,
+                                StringValue = null,
+                                NumericValue = null,
+                                DateValue = null,
+                                BooleanValue = null
+                            };
+                            
+                            SetValueByType(recordValue, newValue, column.DataType);
+                            _context.DataSetRecordValues.Add(recordValue);
+                            hasChanges = true;
+                        }
+                        else
+                        {
+                            // 比較並更新值
+                            var oldValueStr = GetValueAsString(existingValue);
+                            var newValueStr = GetValueAsString(newValue, column.DataType);
+                            
+                            if (oldValueStr != newValueStr)
+                            {
+                                ClearValueFields(existingValue);
+                                SetValueByType(existingValue, newValue, column.DataType);
+                                hasChanges = true;
+                            }
+                        }
+                    }
+                    
+                    if (hasChanges)
+                    {
+                        record.UpdatedAt = DateTime.UtcNow;
+                        totalUpdated++;
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"批量更新完成，本批次: {batch.Count}，累計: {totalUpdated}");
             }
+
+            return totalUpdated;
+        }
+
+        // 批量刪除記錄
+        private async Task<int> BatchDeleteRecords(List<DataSetRecord> deleteRecords)
+        {
+            var totalDeleted = 0;
+            const int batchSize = 100;
+
+            for (int i = 0; i < deleteRecords.Count; i += batchSize)
+            {
+                var batch = deleteRecords.Skip(i).Take(batchSize).ToList();
+                _loggingService.LogInformation($"批量刪除記錄 {i + 1}-{Math.Min(i + batchSize, deleteRecords.Count)}/{deleteRecords.Count}");
+
+                _context.DataSetRecords.RemoveRange(batch);
+                await _context.SaveChangesAsync();
+                
+                totalDeleted += batch.Count;
+                _loggingService.LogInformation($"批量刪除完成，本批次: {batch.Count}，累計: {totalDeleted}");
+            }
+
+            return totalDeleted;
+        }
+
+        // 計算記錄 Hash
+        private string CalculateRecordHash(DataSetRecord record, List<DataSetColumn> columns)
+        {
+            var values = new List<string>();
+            
+            foreach (var column in columns.OrderBy(c => c.ColumnName))
+            {
+                var value = record.Values?.FirstOrDefault(v => v.ColumnName == column.ColumnName);
+                var formattedValue = GetValueAsString(value, column.DataType);
+                values.Add($"{column.ColumnName}:{formattedValue}");
+            }
+            
+            var combined = string.Join("|", values);
+            return Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined)));
+        }
+
+        // 計算行 Hash
+        private string CalculateRowHash(Dictionary<string, object> row, List<DataSetColumn> columns)
+        {
+            var values = new List<string>();
+            
+            foreach (var column in columns.OrderBy(c => c.ColumnName))
+            {
+                var value = row.ContainsKey(column.ColumnName) ? row[column.ColumnName] : null;
+                var formattedValue = GetValueAsString(value, column.DataType);
+                values.Add($"{column.ColumnName}:{formattedValue}");
+            }
+            
+            var combined = string.Join("|", values);
+            return Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined)));
+        }
+
+        // 構建複合主鍵（從 SQL 行數據）
+        private string BuildCompositeKey(Dictionary<string, object> row, List<DataSetColumn> primaryKeyColumns)
+        {
+            var keyParts = new List<string>();
+            
+            foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
+            {
+                var value = row.ContainsKey(pkColumn.ColumnName) 
+                    ? row[pkColumn.ColumnName]?.ToString()?.Trim() 
+                    : null;
+                    
+                if (string.IsNullOrEmpty(value))
+                {
+                    _loggingService.LogWarning($"主鍵欄位 '{pkColumn.ColumnName}' 的值為空");
+                    value = "NULL";
+                }
+                
+                keyParts.Add($"{pkColumn.ColumnName}:{value}");
+            }
+            
+            return string.Join("|", keyParts);
+        }
+
+        // 構建複合主鍵（從現有記錄）
+        private string BuildCompositeKeyFromRecord(DataSetRecord record, List<DataSetColumn> primaryKeyColumns)
+        {
+            var keyParts = new List<string>();
+            
+            foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
+            {
+                var value = record.Values?.FirstOrDefault(v => v.ColumnName == pkColumn.ColumnName);
+                var valueStr = GetValueAsString(value, pkColumn.DataType)?.Trim();
+                
+                if (string.IsNullOrEmpty(valueStr))
+                {
+                    _loggingService.LogWarning($"現有記錄主鍵欄位 '{pkColumn.ColumnName}' 的值為空");
+                    valueStr = "NULL";
+                }
+                
+                keyParts.Add($"{pkColumn.ColumnName}:{valueStr}");
+            }
+            
+            return string.Join("|", keyParts);
+        }
+
+        // 獲取主鍵值（用於記錄創建）
+        private string GetPrimaryKeyValue(Dictionary<string, object> row, List<DataSetColumn> columns)
+        {
+            var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+            
+            if (primaryKeyColumns.Any())
+            {
+                // 使用複合主鍵
+                return BuildCompositeKey(row, primaryKeyColumns);
+            }
+            
+            // 如果沒有主鍵，嘗試使用其他唯一欄位
+            var idColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower().Contains("id"));
+            if (idColumn != null && row.ContainsKey(idColumn.ColumnName))
+            {
+                var idValue = row[idColumn.ColumnName]?.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(idValue))
+                {
+                    return idValue;
+                }
+            }
+            
+            // 最後使用 GUID
+            return Guid.NewGuid().ToString();
+        }
+
+        // 值比較方法
+        private string GetValueAsString(object value, string dataType = null)
+        {
+            if (value == null) return string.Empty;
+            
+            // 如果是 DataSetRecordValue 對象
+            if (value is DataSetRecordValue recordValue)
+            {
+                return recordValue.StringValue ?? 
+                       recordValue.NumericValue?.ToString() ?? 
+                       recordValue.DateValue?.ToString("yyyy-MM-dd HH:mm:ss") ?? 
+                       recordValue.BooleanValue?.ToString() ?? 
+                       string.Empty;
+            }
+            
+            // 如果是原始值，根據數據類型格式化
+            if (!string.IsNullOrEmpty(dataType))
+            {
+                switch (dataType.ToLower())
+                {
+                    case "datetime":
+                    case "date":
+                        if (value is DateTime dateValue)
+                        {
+                            return dateValue.ToString("yyyy-MM-dd HH:mm:ss");
+                        }
+                        break;
+                    case "decimal":
+                        if (decimal.TryParse(value.ToString(), out var decimalValue))
+                        {
+                            return decimalValue.ToString("F2"); // 保留2位小數
+                        }
+                        break;
+                    case "int":
+                        if (int.TryParse(value.ToString(), out var intValue))
+                        {
+                            return intValue.ToString();
+                        }
+                        break;
+                    case "boolean":
+                    case "bool":
+                        if (bool.TryParse(value.ToString(), out var boolValue))
+                        {
+                            return boolValue.ToString().ToLower();
+                        }
+                        break;
+                }
+            }
+            
+            return value.ToString() ?? string.Empty;
+        }
+
+        // 值設置方法
+        private void SetValueByType(DataSetRecordValue recordValue, object value, string dataType)
+        {
+            if (value == null) return;
+            
+            switch (dataType?.ToLower())
+            {
+                case "int":
+                    if (int.TryParse(value.ToString(), out var intValue))
+                    {
+                        recordValue.NumericValue = intValue;
+                    }
+                    else
+                    {
+                        recordValue.StringValue = value.ToString();
+                    }
+                    break;
+                    
+                case "decimal":
+                    if (decimal.TryParse(value.ToString(), out var decimalValue))
+                    {
+                        recordValue.NumericValue = decimalValue;
+                    }
+                    else
+                    {
+                        recordValue.StringValue = value.ToString();
+                    }
+                    break;
+                    
+                case "datetime":
+                case "date":
+                    if (value is DateTime dateValue)
+                    {
+                        recordValue.DateValue = dateValue;
+                    }
+                    else if (DateTime.TryParse(value.ToString(), out var parsedDate))
+                    {
+                        recordValue.DateValue = parsedDate;
+                    }
+                    else
+                    {
+                        recordValue.StringValue = value.ToString();
+                    }
+                    break;
+                    
+                case "boolean":
+                case "bool":
+                    if (value is bool boolValue)
+                    {
+                        recordValue.BooleanValue = boolValue;
+                    }
+                    else if (bool.TryParse(value.ToString(), out var parsedBool))
+                    {
+                        recordValue.BooleanValue = parsedBool;
+                    }
+                    else
+                    {
+                        recordValue.StringValue = value.ToString();
+                    }
+                    break;
+                    
+                default: // string, text
+                    recordValue.StringValue = value.ToString();
+                    break;
+            }
+        }
+
+        private void ClearValueFields(DataSetRecordValue value)
+        {
+            value.StringValue = null;
+            value.NumericValue = null;
+            value.DateValue = null;
+            value.BooleanValue = null;
         }
 
         // SQL 連接配置類別
@@ -1988,6 +2566,269 @@ namespace PurpleRice.Controllers
                 }
                 return null;
             }
+        }
+
+        // POST: api/datasets/preview
+        [HttpPost("preview")]
+        public async Task<ActionResult> PreviewDataSetQuery([FromBody] DataSetQueryPreviewRequest request)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始預覽 DataSet 查詢，DataSet ID: {request.DataSetId}");
+
+                // 驗證請求參數
+                if (request.DataSetId == Guid.Empty)
+                {
+                    return BadRequest(new { success = false, message = "DataSet ID 不能為空" });
+                }
+
+                // 獲取 DataSet 信息
+                var dataSet = await _context.DataSets
+                    .Include(ds => ds.DataSources)
+                    .Include(ds => ds.Columns)
+                    .FirstOrDefaultAsync(ds => ds.Id == request.DataSetId);
+
+                if (dataSet == null)
+                {
+                    _loggingService.LogWarning($"DataSet 不存在，ID: {request.DataSetId}");
+                    return BadRequest(new { success = false, message = "DataSet 不存在" });
+                }
+
+                _loggingService.LogInformation($"找到 DataSet: {dataSet.Name}, 數據源數量: {dataSet.DataSources?.Count ?? 0}");
+
+                // 獲取主要數據源
+                var primaryDataSource = dataSet.DataSources?.FirstOrDefault();
+                if (primaryDataSource == null)
+                {
+                    _loggingService.LogWarning($"DataSet {dataSet.Name} 沒有配置數據源");
+                    return BadRequest(new { success = false, message = "DataSet 沒有配置數據源" });
+                }
+
+                _loggingService.LogInformation($"使用數據源類型: {primaryDataSource.SourceType}");
+
+                // 根據數據源類型執行查詢
+                List<Dictionary<string, object>> queryResults = new List<Dictionary<string, object>>();
+
+                if (primaryDataSource.SourceType == "Database" || primaryDataSource.SourceType == "SQL")
+                {
+                    queryResults = await ExecuteDatabaseQuery(primaryDataSource, request.WhereClause, request.Limit);
+                }
+                else if (primaryDataSource.SourceType == "Excel")
+                {
+                    queryResults = await ExecuteExcelQuery(primaryDataSource, request.WhereClause, request.Limit);
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = $"不支持的數據源類型: {primaryDataSource.SourceType}" });
+                }
+
+                _loggingService.LogInformation($"DataSet 查詢預覽成功，返回 {queryResults.Count} 條記錄");
+
+                return Ok(new { 
+                    success = true, 
+                    data = queryResults,
+                    totalCount = queryResults.Count,
+                    dataSetName = dataSet.Name
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"DataSet 查詢預覽失敗: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, message = $"查詢預覽失敗: {ex.Message}" });
+            }
+        }
+
+        // 執行數據庫查詢
+        private async Task<List<Dictionary<string, object>>> ExecuteDatabaseQuery(DataSetDataSource dataSource, string whereClause, int limit = 10)
+        {
+            var results = new List<Dictionary<string, object>>();
+
+            try
+            {
+                // 構建 SQL 查詢
+                var baseQuery = dataSource.SqlQuery;
+                if (string.IsNullOrEmpty(baseQuery))
+                {
+                    throw new Exception("數據源沒有配置 SQL 查詢");
+                }
+
+                // 添加 WHERE 條件
+                var fullQuery = baseQuery;
+                if (!string.IsNullOrEmpty(whereClause))
+                {
+                    // 檢查是否已經有 WHERE 子句
+                    if (baseQuery.ToUpper().Contains("WHERE"))
+                    {
+                        fullQuery += $" AND ({whereClause})";
+                    }
+                    else
+                    {
+                        fullQuery += $" WHERE {whereClause}";
+                    }
+                }
+
+                // 添加 LIMIT - 使用 TOP 語法以兼容更多 SQL Server 版本
+                var upperQuery = fullQuery.ToUpper();
+                if (upperQuery.Contains(" TOP "))
+                {
+                    // 如果已經有 TOP，替換現有的 TOP 值
+                    var topPattern = @"TOP\s+\d+";
+                    fullQuery = System.Text.RegularExpressions.Regex.Replace(fullQuery, topPattern, $"TOP {limit}", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                }
+                else
+                {
+                    // 如果沒有 TOP，在 SELECT 後插入 TOP
+                    var selectIndex = fullQuery.IndexOf("SELECT", StringComparison.OrdinalIgnoreCase);
+                    if (selectIndex >= 0)
+                    {
+                        // 找到 SELECT 後的第一個空格位置
+                        var afterSelectIndex = selectIndex + 6; // "SELECT" 是 6 個字符
+                        while (afterSelectIndex < fullQuery.Length && char.IsWhiteSpace(fullQuery[afterSelectIndex]))
+                        {
+                            afterSelectIndex++;
+                        }
+                        
+                        // 在 SELECT 後插入 TOP
+                        fullQuery = fullQuery.Substring(0, afterSelectIndex) + $"TOP {limit} " + fullQuery.Substring(afterSelectIndex);
+                    }
+                    else
+                    {
+                        // 如果找不到 SELECT，用子查詢包裝
+                        fullQuery = $"SELECT TOP {limit} * FROM ({fullQuery}) AS temp";
+                    }
+                }
+
+                _loggingService.LogInformation($"執行數據庫查詢: {fullQuery}");
+                _loggingService.LogInformation($"WHERE 條件: {whereClause}");
+                _loggingService.LogInformation($"基礎查詢: {baseQuery}");
+
+                // 獲取連接字符串
+                string connectionString = null;
+                
+                if (!string.IsNullOrEmpty(dataSource.AuthenticationConfig))
+                {
+                    try
+                    {
+                        var config = JsonSerializer.Deserialize<SqlConnectionConfig>(dataSource.AuthenticationConfig);
+                        _loggingService.LogInformation($"解析連接配置成功，ConnectionType: {config?.ConnectionType}");
+                        
+                        if (config?.ConnectionType == "preset")
+                        {
+                            connectionString = GetPresetConnectionString(config.PresetName);
+                        }
+                        else if (config?.ConnectionType == "custom")
+                        {
+                            connectionString = BuildCustomConnectionString(config);
+                        }
+                        else
+                        {
+                            // 嘗試推斷連接類型
+                            if (!string.IsNullOrEmpty(config?.ServerName) && !string.IsNullOrEmpty(config?.DatabaseName))
+                            {
+                                connectionString = BuildCustomConnectionString(config);
+                            }
+                            else if (!string.IsNullOrEmpty(config?.PresetName))
+                            {
+                                connectionString = GetPresetConnectionString(config.PresetName);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogError($"解析連接配置失敗: {ex.Message}");
+                        throw new Exception($"連接配置格式錯誤: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // 向後兼容：使用舊的 databaseConnection 欄位
+                    connectionString = GetPresetConnectionString(dataSource.DatabaseConnection);
+                }
+                
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    throw new Exception("無法獲取數據庫連接字符串");
+                }
+
+                _loggingService.LogInformation($"使用連接字符串: {connectionString}");
+
+                // 執行查詢
+                try
+                {
+                    using (var connection = new SqlConnection(connectionString))
+                    {
+                        await connection.OpenAsync();
+                    using (var command = new SqlCommand(fullQuery, connection))
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                var row = new Dictionary<string, object>();
+                                for (int i = 0; i < reader.FieldCount; i++)
+                                {
+                                    var columnName = reader.GetName(i);
+                                    var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                                    row[columnName] = value;
+                                }
+                                results.Add(row);
+                            }
+                        }
+                    }
+                }
+                }
+                catch (ArgumentException ex) when (ex.Message.Contains("Format of the initialization string"))
+                {
+                    _loggingService.LogError($"數據庫連接字符串格式錯誤: {ex.Message}", ex);
+                    throw new Exception($"數據庫連接字符串格式錯誤，請檢查 DataSet 的數據源配置: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError($"執行數據庫查詢失敗: {ex.Message}", ex);
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"執行數據庫查詢失敗: {ex.Message}", ex);
+                throw;
+            }
+
+            return results;
+        }
+
+        // 執行 Excel 查詢
+        private async Task<List<Dictionary<string, object>>> ExecuteExcelQuery(DataSetDataSource dataSource, string whereClause, int limit = 10)
+        {
+            var results = new List<Dictionary<string, object>>();
+
+            try
+            {
+                if (string.IsNullOrEmpty(dataSource.ExcelFilePath))
+                {
+                    throw new Exception("Excel 文件路徑未配置");
+                }
+
+                // 這裡可以實現 Excel 查詢邏輯
+                // 由於 Excel 查詢比較複雜，暫時返回模擬數據
+                _loggingService.LogWarning("Excel 查詢預覽功能尚未完全實現，返回模擬數據");
+
+                // 模擬 Excel 查詢結果
+                var mockData = new List<Dictionary<string, object>>
+                {
+                    new Dictionary<string, object> { { "id", 1 }, { "name", "Excel數據1" }, { "value", 100.50 } },
+                    new Dictionary<string, object> { { "id", 2 }, { "name", "Excel數據2" }, { "value", 200.75 } }
+                };
+
+                results = mockData.Take(limit).ToList();
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"執行 Excel 查詢失敗: {ex.Message}", ex);
+                throw;
+            }
+
+            return results;
         }
     }
 
@@ -2071,5 +2912,23 @@ namespace PurpleRice.Controllers
         public bool Success { get; set; }
         public int TotalRecords { get; set; }
         public string? ErrorMessage { get; set; }
+    }
+
+    // 同步統計類別
+    public class SyncStats
+    {
+        public int NewRecords { get; set; }
+        public int UpdatedRecords { get; set; }
+        public int DeletedRecords { get; set; }
+        public int UnchangedRecords { get; set; }
+    }
+
+    // DataSet 查詢預覽請求模型
+    public class DataSetQueryPreviewRequest
+    {
+        public Guid DataSetId { get; set; }
+        public string WhereClause { get; set; } = string.Empty;
+        public int Limit { get; set; } = 10;
+        public Dictionary<string, object> ProcessVariableValues { get; set; } = new Dictionary<string, object>();
     }
 }

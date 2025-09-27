@@ -77,6 +77,9 @@ const DataSetManagementPage = () => {
   // 表格列寬調整相關狀態
   const [resizableColumns, setResizableColumns] = useState([]);
 
+  // 同步狀態管理
+  const [syncingDataSets, setSyncingDataSets] = useState(new Set());
+
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -297,12 +300,8 @@ const DataSetManagementPage = () => {
   const handleSync = async (id) => {
     console.log('handleSync: 開始同步 DataSet, ID:', id);
     
-    // 顯示同步中的狀態
-    const syncButton = document.querySelector(`[data-sync-id="${id}"]`);
-    if (syncButton) {
-      syncButton.disabled = true;
-      syncButton.innerHTML = `<SyncOutlined spin /> ${t('dataSetManagement.syncInProgress')}`;
-    }
+    // 設置同步狀態
+    setSyncingDataSets(prev => new Set(prev).add(id));
     
     try {
       const response = await fetch(`/api/datasets/${id}/sync`, {
@@ -321,11 +320,12 @@ const DataSetManagementPage = () => {
       console.error('handleSync: 同步請求失敗:', error);
       message.error(t('dataSetManagement.syncFailed') + ': ' + error.message);
     } finally {
-      // 恢復按鈕狀態
-      if (syncButton) {
-        syncButton.disabled = false;
-        syncButton.innerHTML = `<SyncOutlined /> ${t('dataSetManagement.syncData')}`;
-      }
+      // 清除同步狀態
+      setSyncingDataSets(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
     }
   };
 
@@ -659,14 +659,15 @@ const DataSetManagementPage = () => {
               onClick={() => handleViewRecords(record)}
             />
           </Tooltip>
-                     <Tooltip title={t('dataSetManagement.syncData')}>
-             <Button 
-               type="text" 
-               icon={<SyncOutlined />} 
-               onClick={() => handleSync(record.id)}
-               data-sync-id={record.id}
-             />
-           </Tooltip>
+          <Tooltip title={t('dataSetManagement.syncData')}>
+            <Button 
+              type="text" 
+              icon={<SyncOutlined />} 
+              onClick={() => handleSync(record.id)}
+              loading={syncingDataSets.has(record.id)}
+              disabled={syncingDataSets.has(record.id)}
+            />
+          </Tooltip>
           <Tooltip title={t('dataSetManagement.edit')}>
             <Button 
               type="text" 
@@ -676,9 +677,14 @@ const DataSetManagementPage = () => {
           </Tooltip>
           <Popconfirm
             title={t('dataSetManagement.confirmDelete')}
+            description={t('dataSetManagement.confirmDeleteDescription', { 
+              recordCount: record.totalRecords || 0,
+              datasetName: record.name 
+            })}
             onConfirm={() => handleDelete(record.id)}
             okText={t('dataSetManagement.confirmDeleteOk')}
             cancelText={t('dataSetManagement.confirmDeleteCancel')}
+            okType="danger"
           >
             <Tooltip title={t('dataSetManagement.delete')}>
               <Button 
@@ -857,7 +863,8 @@ const DataSetManagementPage = () => {
           dataType: col.dataType,
           maxLength: col.maxLength,
           isRequired: col.isRequired,
-          isPrimaryKey: index === 0, // 假設第一列是主鍵
+          // 智能主鍵檢測：id、within_code、主鍵相關欄位
+          isPrimaryKey: isPrimaryKeyColumn(col.columnName),
           isSearchable: true,
           isSortable: true,
           isIndexed: false,
@@ -999,7 +1006,8 @@ const DataSetManagementPage = () => {
           dataType: col.dataType,
           maxLength: col.maxLength,
           isRequired: false,
-          isPrimaryKey: index === 0, // 假設第一列是主鍵
+          // 智能主鍵檢測：id、within_code、主鍵相關欄位
+          isPrimaryKey: isPrimaryKeyColumn(col.columnName),
           isSearchable: true,
           isSortable: true,
           isIndexed: false,
@@ -1058,6 +1066,38 @@ const DataSetManagementPage = () => {
     if (value.numericValue !== null && value.numericValue !== undefined) return 'decimal';
     if (value.booleanValue !== null && value.booleanValue !== undefined) return 'boolean';
     return 'string';
+  };
+
+  // 新增：智能主鍵檢測函數
+  const isPrimaryKeyColumn = (columnName) => {
+    if (!columnName) return false;
+    
+    const lowerName = columnName.toLowerCase();
+    
+    // 常見主鍵欄位名稱
+    const primaryKeyPatterns = [
+      'id',                    // 標準 ID 欄位
+      'within_code',          // 您的業務主鍵
+      'pk_',                  // 以 pk_ 開頭
+      '_id',                  // 以 _id 結尾
+      'key',                  // 包含 key
+      'code',                 // 包含 code
+      'no',                   // 包含 no (如 orderno, customerno)
+      'number',               // 包含 number
+      'ref',                  // 包含 ref
+      'seq'                   // 包含 seq
+    ];
+    
+    // 檢查是否匹配主鍵模式
+    return primaryKeyPatterns.some(pattern => {
+      if (pattern.includes('_')) {
+        // 對於包含下劃線的模式，檢查是否包含該模式
+        return lowerName.includes(pattern);
+      } else {
+        // 對於單詞模式，檢查是否完全匹配或包含
+        return lowerName === pattern || lowerName.includes(pattern);
+      }
+    });
   };
 
   return (
@@ -1730,71 +1770,142 @@ const DataSetManagementPage = () => {
             </Button>
           </Space>
         }
+        styles={{
+          body: {
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%'
+          }
+        }}
       >
-        <Table
-          columns={[
-            {
-              title: t('dataSetManagement.recordId'),
-              dataIndex: 'id',
-              key: 'id',
-              width: 80,
-              render: (id) => id.substring(0, 8) + '...'
-            },
-            {
-              title: t('dataSetManagement.primaryKeyValue'),
-              dataIndex: 'primaryKeyValue',
-              key: 'primaryKeyValue',
-              width: 120
-            },
-            {
-              title: t('dataSetManagement.recordStatus'),
-              dataIndex: 'status',
-              key: 'status',
-              width: 80,
-              render: (status) => (
-                <Tag color={status === 'Active' ? 'success' : 'default'}>
-                  {status || t('dataSetManagement.nA')}
-                </Tag>
-              )
-            },
-            {
-              title: t('dataSetManagement.createdAt'),
-              dataIndex: 'createdAt',
-              key: 'createdAt',
-              width: 150,
-              render: (time) => new Date(time).toLocaleString('zh-TW')
-            },
-            ...renderRecordColumns()
-          ]}
-          dataSource={records}
-          loading={recordsLoading}
-          rowKey="id"
-          scroll={{ x: 'max-content' }}  // 改為自適應寬度
-          pagination={{
-            current: recordsPagination.current,
-            pageSize: recordsPagination.pageSize,
-            total: recordsPagination.total,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => t('dataSetManagement.pageRange', { start: range[0], end: range[1], total }),
-            pageSizeOptions: t('dataSetManagement.recordPageSizeOptions'),
-            onChange: (page, pageSize) => {
-              console.log('記錄分頁變更:', { page, pageSize });
-              setRecordsPagination(prev => ({ ...prev, current: page, pageSize }));
-              if (selectedDataSet) {
-                fetchRecords(selectedDataSet.id, { page, pageSize });
-              }
-            },
-            onShowSizeChange: (current, size) => {
-              console.log('記錄頁面大小變更:', { current, size });
-              setRecordsPagination(prev => ({ ...prev, current: 1, pageSize: size }));
-              if (selectedDataSet) {
-                fetchRecords(selectedDataSet.id, { page: 1, pageSize: size });
-              }
-            }
-          }}
-          size="small"  // 使用小尺寸以顯示更多數據
-        />
+        <div style={{ 
+          flex: 1, 
+          overflow: 'hidden', 
+          display: 'flex', 
+          flexDirection: 'column' 
+        }}>
+          {/* 表格區域 */}
+          <div style={{ 
+            flex: 1, 
+            overflow: 'auto',
+            padding: '16px'
+          }}>
+            <Table
+              columns={[
+                {
+                  title: t('dataSetManagement.recordId'),
+                  dataIndex: 'id',
+                  key: 'id',
+                  width: 80,
+                  render: (id) => id.substring(0, 8) + '...'
+                },
+                {
+                  title: t('dataSetManagement.recordStatus'),
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 80,
+                  render: (status) => (
+                    <Tag color={status === 'Active' ? 'success' : 'default'}>
+                      {status || t('dataSetManagement.nA')}
+                    </Tag>
+                  )
+                },
+                {
+                  title: t('dataSetManagement.createdAt'),
+                  dataIndex: 'createdAt',
+                  key: 'createdAt',
+                  width: 150,
+                  render: (time) => new Date(time).toLocaleString('zh-TW')
+                },
+                ...renderRecordColumns()
+              ]}
+              dataSource={records}
+              loading={recordsLoading}
+              rowKey="id"
+              scroll={{ x: 'max-content' }}
+              pagination={false}  // 禁用內建分頁
+              size="small"
+            />
+          </div>
+          
+          {/* 固定底部分頁控制 */}
+          <div style={{ 
+            borderTop: '1px solid #f0f0f0',
+            padding: '16px',
+            backgroundColor: '#fafafa',
+            flexShrink: 0
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              <div style={{ color: '#666', fontSize: '14px' }}>
+                {t('dataSetManagement.pageRange', { 
+                  start: (recordsPagination.current - 1) * recordsPagination.pageSize + 1,
+                  end: Math.min(recordsPagination.current * recordsPagination.pageSize, recordsPagination.total),
+                  total: recordsPagination.total 
+                })}
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px' }}>每頁顯示:</span>
+                <Select
+                  value={recordsPagination.pageSize}
+                  onChange={(size) => {
+                    console.log('記錄頁面大小變更:', { current: 1, size });
+                    setRecordsPagination(prev => ({ ...prev, current: 1, pageSize: size }));
+                    if (selectedDataSet) {
+                      fetchRecords(selectedDataSet.id, { page: 1, pageSize: size });
+                    }
+                  }}
+                  style={{ width: 80 }}
+                  size="small"
+                >
+                  <Select.Option value={10}>10</Select.Option>
+                  <Select.Option value={20}>20</Select.Option>
+                  <Select.Option value={50}>50</Select.Option>
+                  <Select.Option value={100}>100</Select.Option>
+                </Select>
+                
+                <Button
+                  size="small"
+                  disabled={recordsPagination.current <= 1}
+                  onClick={() => {
+                    const newPage = recordsPagination.current - 1;
+                    setRecordsPagination(prev => ({ ...prev, current: newPage }));
+                    if (selectedDataSet) {
+                      fetchRecords(selectedDataSet.id, { page: newPage, pageSize: recordsPagination.pageSize });
+                    }
+                  }}
+                >
+                  上一頁
+                </Button>
+                
+                <span style={{ fontSize: '14px', minWidth: '60px', textAlign: 'center' }}>
+                  {recordsPagination.current} / {Math.ceil(recordsPagination.total / recordsPagination.pageSize)}
+                </span>
+                
+                <Button
+                  size="small"
+                  disabled={recordsPagination.current >= Math.ceil(recordsPagination.total / recordsPagination.pageSize)}
+                  onClick={() => {
+                    const newPage = recordsPagination.current + 1;
+                    setRecordsPagination(prev => ({ ...prev, current: newPage }));
+                    if (selectedDataSet) {
+                      fetchRecords(selectedDataSet.id, { page: newPage, pageSize: recordsPagination.pageSize });
+                    }
+                  }}
+                >
+                  下一頁
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </Drawer>
 
       {/* 進階搜尋 Drawer */}

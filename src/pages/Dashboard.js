@@ -82,7 +82,15 @@ const Dashboard = ({ onMenuSelect }) => {
     recentEformItems: [],
     whatsappTemplates: 0,
     dataSets: 0,
-    totalUsers: 0
+    totalUsers: 0,
+    broadcastGroups: 0,
+    activeGroups: 0,
+    totalMembers: 0,
+    hashtags: 0,
+    activeHashtags: 0,
+    hashtagUsage: 0,
+    adminUsers: 0,
+    totalCompanies: 0
   });
 
   useEffect(() => {
@@ -121,7 +129,15 @@ const Dashboard = ({ onMenuSelect }) => {
             'Contact': { count: 0 }
           },
           dataSets: 4,
-          totalUsers: 15
+          totalUsers: 15,
+          broadcastGroups: 5,
+          activeGroups: 4,
+          totalMembers: 120,
+          hashtags: 12,
+          activeHashtags: 10,
+          hashtagUsage: 45,
+          adminUsers: 3,
+          totalCompanies: 2
         });
         setLoading(false);
         return;
@@ -248,7 +264,15 @@ const Dashboard = ({ onMenuSelect }) => {
             'Contact': { count: 0 }
           },
           dataSets: 4,
-          totalUsers: 15
+          totalUsers: 15,
+          broadcastGroups: 5,
+          activeGroups: 4,
+          totalMembers: 120,
+          hashtags: 12,
+          activeHashtags: 10,
+          hashtagUsage: 45,
+          adminUsers: 3,
+          totalCompanies: 2
         });
         setLoading(false);
         return;
@@ -294,7 +318,16 @@ const Dashboard = ({ onMenuSelect }) => {
         dataSets: 4, // 模擬數據
         recentDataSetItems: recentDataSetItems,
         
-        totalUsers: 15 // 模擬數據
+        // 管理工具統計
+        totalUsers: 15, // 模擬數據
+        broadcastGroups: 5, // 模擬數據
+        activeGroups: 4, // 模擬數據
+        totalMembers: 120, // 模擬數據
+        hashtags: 12, // 模擬數據
+        activeHashtags: 10, // 模擬數據
+        hashtagUsage: 45, // 模擬數據
+        adminUsers: 3, // 模擬數據
+        totalCompanies: 2 // 模擬數據
       });
     } catch (error) {
       console.error('載入儀表板數據失敗:', error);
@@ -792,27 +825,101 @@ const Dashboard = ({ onMenuSelect }) => {
         </Col>
                 
                 
-        <Col xs={24} sm={12} lg={12}>
-                  <SmartButton
-                    title={t('dashboard.workflowMonitor')}
-                    description={t('dashboard.workflowMonitorDescription')}
-                    icon={<BarChartOutlined />}
-                    menuKey="workflowMonitor"
-                    count={stats.runningInstances}
-                    color={colorPalette[0].color}
-                    gradient={colorPalette[0].gradient}
-                    onClick={() => handleNavigation('workflowMonitor')}
-                    stats={{
-                      [t('dashboard.running')]: stats.runningInstances,
-                      [t('dashboard.successRate')]: `${stats.successRate || 0}%`,
-                      [t('dashboard.averageTime')]: `${stats.averageExecutionTime || 0}${t('dashboard.minutes')}`
-                    }}
-                  />
-        </Col>
       </Row>
             </div>
         </Col>
       </Row>
+      </div>
+
+      {/* 管理工具區域 */}
+      <div className="main-sections" style={{ paddingTop: '24px' }}>
+        <Row gutter={[24, 32]}>
+          <Col xs={24}>
+            <div className="section-container">
+              <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <SettingOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
+                <Title level={2} style={{ margin: 0, fontSize: '24px' }}>{t('dashboard.adminToolsTitle')}</Title>
+              </div>
+              <Text style={{ color: 'rgba(0,0,0,0.7)', fontSize: '14px', marginBottom: '16px', display: 'block' }}>
+                {t('dashboard.adminToolsDescription')}
+              </Text>
+      
+              <Row gutter={[16, 16]}>
+                <Col xs={24} sm={12} lg={6}>
+                  <SmartButton
+                    title={t('dashboard.contactManagement')}
+                    description={t('dashboard.contactManagementDescription')}
+                    icon={<UserOutlined />}
+                    menuKey="contactList"
+                    count={stats.totalUsers || 0}
+                    color={colorPalette[0].color}
+                    gradient={colorPalette[0].gradient}
+                    onClick={() => handleNavigation('contactList')}
+                    stats={{
+                      [t('dashboard.totalContacts')]: stats.totalUsers || 0,
+                      [t('dashboard.active')]: stats.activeUsers || 0,
+                      [t('dashboard.inactive')]: stats.inactiveUsers || 0
+                    }}
+                  />
+                </Col>
+                
+                <Col xs={24} sm={12} lg={6}>
+                  <SmartButton
+                    title={t('dashboard.broadcastGroups')}
+                    description={t('dashboard.broadcastGroupsDescription')}
+                    icon={<TeamOutlined />}
+                    menuKey="broadcastGroups"
+                    count={stats.broadcastGroups || 0}
+                    color={colorPalette[1].color}
+                    gradient={colorPalette[1].gradient}
+                    onClick={() => handleNavigation('broadcastGroups')}
+                    stats={{
+                      [t('dashboard.totalGroups')]: stats.broadcastGroups || 0,
+                      [t('dashboard.active')]: stats.activeGroups || 0,
+                      [t('dashboard.members')]: stats.totalMembers || 0
+                    }}
+                  />
+                </Col>
+                
+                <Col xs={24} sm={12} lg={6}>
+                  <SmartButton
+                    title={t('dashboard.hashtagManagement')}
+                    description={t('dashboard.hashtagManagementDescription')}
+                    icon={<ThunderboltOutlined />}
+                    menuKey="hashtags"
+                    count={stats.hashtags || 0}
+                    color={colorPalette[2].color}
+                    gradient={colorPalette[2].gradient}
+                    onClick={() => handleNavigation('hashtags')}
+                    stats={{
+                      [t('dashboard.totalHashtags')]: stats.hashtags || 0,
+                      [t('dashboard.active')]: stats.activeHashtags || 0,
+                      [t('dashboard.usage')]: stats.hashtagUsage || 0
+                    }}
+                  />
+                </Col>
+                
+                <Col xs={24} sm={12} lg={6}>
+                  <SmartButton
+                    title={t('dashboard.companyUserManagement')}
+                    description={t('dashboard.companyUserManagementDescription')}
+                    icon={<SettingOutlined />}
+                    menuKey="companyUserAdmin"
+                    count={stats.totalUsers || 0}
+                    color={colorPalette[3].color}
+                    gradient={colorPalette[3].gradient}
+                    onClick={() => handleNavigation('companyUserAdmin')}
+                    stats={{
+                      [t('dashboard.totalUsers')]: stats.totalUsers || 0,
+                      [t('dashboard.admins')]: stats.adminUsers || 0,
+                      [t('dashboard.companies')]: stats.totalCompanies || 0
+                    }}
+                  />
+                </Col>
+              </Row>
+            </div>
+          </Col>
+        </Row>
       </div>
 
     </div>

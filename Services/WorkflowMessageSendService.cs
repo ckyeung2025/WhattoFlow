@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -344,10 +345,137 @@ namespace PurpleRice.Services
         /// </summary>
         public async Task<WorkflowMessageSend> GetMessageSendAsync(Guid messageSendId)
         {
-            return await _db.WorkflowMessageSends
-                .Include(ms => ms.Recipients)
-                .Include(ms => ms.WorkflowExecution)
-                .FirstOrDefaultAsync(ms => ms.Id == messageSendId && ms.IsActive);
+            try
+            {
+                _logger.LogInformation("開始獲取消息發送記錄，MessageSendId: {MessageSendId}", messageSendId);
+                
+                // 使用 DataReader 來手動讀取數據，避免 Entity Framework 的 NULL 值問題
+                var connection = _db.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync();
+                }
+                
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+                    SELECT 
+                        id, workflow_execution_id, workflow_step_execution_id,
+                        ISNULL(node_id, '') as node_id,
+                        ISNULL(node_type, '') as node_type,
+                        ISNULL(message_type, 'text') as message_type,
+                        template_id, template_name, message_content,
+                        total_recipients, success_count, failed_count,
+                        ISNULL(status, 'Pending') as status,
+                        started_at, completed_at, error_message,
+                        company_id, ISNULL(created_by, 'system') as created_by, 
+                        created_at, updated_at, is_active
+                    FROM workflow_message_sends 
+                    WHERE id = @messageSendId AND is_active = 1";
+                
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@messageSendId";
+                parameter.Value = messageSendId;
+                command.Parameters.Add(parameter);
+                
+                using var reader = await command.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                {
+                    _logger.LogWarning("找不到消息發送記錄，MessageSendId: {MessageSendId}", messageSendId);
+                    return null;
+                }
+                
+                // 手動創建 WorkflowMessageSend 對象
+                var messageSend = new WorkflowMessageSend
+                {
+                    Id = reader.GetGuid("id"),
+                    WorkflowExecutionId = reader.GetInt32("workflow_execution_id"),
+                    WorkflowStepExecutionId = reader.IsDBNull("workflow_step_execution_id") ? null : reader.GetInt32("workflow_step_execution_id"),
+                    NodeId = reader.GetString("node_id"),
+                    NodeType = reader.GetString("node_type"),
+                    MessageType = reader.GetString("message_type"),
+                    TemplateId = reader.IsDBNull("template_id") ? null : reader.GetString("template_id"),
+                    TemplateName = reader.IsDBNull("template_name") ? null : reader.GetString("template_name"),
+                    MessageContent = reader.IsDBNull("message_content") ? null : reader.GetString("message_content"),
+                    TotalRecipients = reader.GetInt32("total_recipients"),
+                    SuccessCount = reader.GetInt32("success_count"),
+                    FailedCount = reader.GetInt32("failed_count"),
+                    Status = reader.GetString("status"),
+                    StartedAt = reader.GetDateTime("started_at"),
+                    CompletedAt = reader.IsDBNull("completed_at") ? null : reader.GetDateTime("completed_at"),
+                    ErrorMessage = reader.IsDBNull("error_message") ? null : reader.GetString("error_message"),
+                    CompanyId = reader.GetGuid("company_id"),
+                    CreatedBy = reader.GetString("created_by"),
+                    CreatedAt = reader.GetDateTime("created_at"),
+                    UpdatedAt = reader.GetDateTime("updated_at"),
+                    IsActive = reader.GetBoolean("is_active")
+                };
+                
+                reader.Close();
+                
+                // 獲取收件人記錄
+                var recipientCommand = connection.CreateCommand();
+                recipientCommand.CommandText = @"
+                    SELECT 
+                        id, message_send_id,
+                        ISNULL(recipient_type, '') as recipient_type,
+                        recipient_id, recipient_name,
+                        ISNULL(phone_number, '') as phone_number,
+                        whatsapp_message_id,
+                        ISNULL(status, 'Pending') as status,
+                        sent_at, delivered_at, read_at, error_message,
+                        retry_count, max_retries, company_id, 
+                        ISNULL(created_by, 'system') as created_by,
+                        created_at, updated_at, is_active, failed_at, error_code
+                    FROM workflow_message_recipients 
+                    WHERE message_send_id = @messageSendId AND is_active = 1";
+                
+                var recipientParameter = recipientCommand.CreateParameter();
+                recipientParameter.ParameterName = "@messageSendId";
+                recipientParameter.Value = messageSendId;
+                recipientCommand.Parameters.Add(recipientParameter);
+                
+                var recipients = new List<WorkflowMessageRecipient>();
+                using var recipientReader = await recipientCommand.ExecuteReaderAsync();
+                
+                while (await recipientReader.ReadAsync())
+                {
+                    var recipient = new WorkflowMessageRecipient
+                    {
+                        Id = recipientReader.GetGuid("id"),
+                        MessageSendId = recipientReader.GetGuid("message_send_id"),
+                        RecipientType = recipientReader.GetString("recipient_type"),
+                        RecipientId = recipientReader.IsDBNull("recipient_id") ? null : recipientReader.GetGuid("recipient_id"),
+                        RecipientName = recipientReader.IsDBNull("recipient_name") ? null : recipientReader.GetString("recipient_name"),
+                        PhoneNumber = recipientReader.GetString("phone_number"),
+                        WhatsAppMessageId = recipientReader.IsDBNull("whatsapp_message_id") ? null : recipientReader.GetString("whatsapp_message_id"),
+                        Status = recipientReader.GetString("status"),
+                        SentAt = recipientReader.IsDBNull("sent_at") ? null : recipientReader.GetDateTime("sent_at"),
+                        DeliveredAt = recipientReader.IsDBNull("delivered_at") ? null : recipientReader.GetDateTime("delivered_at"),
+                        ReadAt = recipientReader.IsDBNull("read_at") ? null : recipientReader.GetDateTime("read_at"),
+                        ErrorMessage = recipientReader.IsDBNull("error_message") ? null : recipientReader.GetString("error_message"),
+                        RetryCount = recipientReader.GetInt32("retry_count"),
+                        MaxRetries = recipientReader.GetInt32("max_retries"),
+                        CompanyId = recipientReader.GetGuid("company_id"),
+                        CreatedBy = recipientReader.GetString("created_by"),
+                        CreatedAt = recipientReader.GetDateTime("created_at"),
+                        UpdatedAt = recipientReader.GetDateTime("updated_at"),
+                        IsActive = recipientReader.GetBoolean("is_active"),
+                        FailedAt = recipientReader.IsDBNull("failed_at") ? null : recipientReader.GetDateTime("failed_at"),
+                        ErrorCode = recipientReader.IsDBNull("error_code") ? null : recipientReader.GetString("error_code")
+                    };
+                    recipients.Add(recipient);
+                }
+                
+                messageSend.Recipients = recipients;
+                
+                _logger.LogInformation("成功獲取消息發送記錄，包含 {RecipientCount} 個收件人", messageSend.Recipients?.Count ?? 0);
+                return messageSend;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "獲取消息發送記錄時發生錯誤，MessageSendId: {MessageSendId}", messageSendId);
+                throw;
+            }
         }
 
         /// <summary>
