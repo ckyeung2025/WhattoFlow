@@ -225,11 +225,13 @@ namespace PurpleRice.Models
         /// <summary>
         /// 重試次數
         /// </summary>
+        [Required]
         public int RetryCount { get; set; } = 0;
 
         /// <summary>
         /// 最大重試次數
         /// </summary>
+        [Required]
         public int MaxRetries { get; set; } = 3;
 
         /// <summary>

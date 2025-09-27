@@ -37,8 +37,8 @@ export const useNodeData = (isReady, t) => {
               maxRetries: 3
             }
           };
-        case 'dbQuery':
-          return { taskName: 'Database Query/Update', sql: '' };
+        case 'dataSetQuery':
+          return { taskName: 'DataSet Query/Update', dataSetId: '', operationType: 'SELECT', queryConditionGroups: [], operationData: {}, mappedFields: [] };
         case 'callApi':
           return { taskName: 'Trigger External API', url: '' };
         case 'sendEForm':
@@ -100,8 +100,8 @@ export const useNodeData = (isReady, t) => {
           ],
           defaultPath: 'default'
         };
-      case 'dbQuery':
-        return { taskName: t('workflowDesigner.defaultDbQueryNode'), sql: '' };
+      case 'dataSetQuery':
+        return { taskName: t('workflowDesigner.defaultDataSetQueryNode'), dataSetId: '', operationType: 'SELECT', queryConditionGroups: [], operationData: {}, mappedFields: [] };
       case 'callApi':
         return { taskName: t('workflowDesigner.defaultCallApiNode'), url: '' };
       case 'sendEForm':

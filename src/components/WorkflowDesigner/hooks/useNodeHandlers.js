@@ -14,8 +14,18 @@ export const useNodeHandlers = (nodeTypes, setNodes, setSelectedNode, selectedNo
 
   // 修改添加節點函數以支持位置參數
   const handleAddNode = useCallback((nodeType, position = null) => {
+    console.log('=== handleAddNode 被調用 ===');
+    console.log('nodeType:', nodeType);
+    console.log('position:', position);
+    console.log('nodeTypes:', nodeTypes);
+    
     const nodeTypeConfig = nodeTypes.find(nt => nt.type === nodeType);
-    if (!nodeTypeConfig) return;
+    console.log('nodeTypeConfig:', nodeTypeConfig);
+    
+    if (!nodeTypeConfig) {
+      console.error('找不到節點類型配置:', nodeType);
+      return;
+    }
 
     const defaultPosition = position || { x: Math.random() * 400 + 200, y: Math.random() * 300 + 100 };
     
@@ -42,8 +52,15 @@ export const useNodeHandlers = (nodeTypes, setNodes, setSelectedNode, selectedNo
       }
     };
 
-    setNodes(nds => [...nds, newNode]);
-  }, [nodeTypes, setNodes, defaultNodeData]);
+    console.log('創建的新節點:', newNode);
+    console.log('調用 setNodes 前的節點列表:', setNodes);
+    
+    setNodes(nds => {
+      const newNodes = [...nds, newNode];
+      console.log('setNodes 回調被調用，新節點列表:', newNodes);
+      return newNodes;
+    });
+  }, [nodeTypes, setNodes, defaultNodeData, handleDeleteNode]);
 
   // 拖放處理函數
   const onDragStart = useCallback((event, nodeType) => {

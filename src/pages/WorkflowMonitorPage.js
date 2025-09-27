@@ -127,6 +127,8 @@ const WorkflowMonitorPage = () => {
   const [selectedChatInstance, setSelectedChatInstance] = useState(null);
   const [messageSendModalVisible, setMessageSendModalVisible] = useState(false);
   const [selectedMessageSend, setSelectedMessageSend] = useState(null);
+  const [messageSendDetailModalVisible, setMessageSendDetailModalVisible] = useState(false);
+  const [selectedMessageSendDetail, setSelectedMessageSendDetail] = useState(null);
   
   // 表格列寬調整相關狀態
   const [resizableColumns, setResizableColumns] = useState([]);
@@ -152,7 +154,7 @@ const WorkflowMonitorPage = () => {
   }, [filters, pagination.current, pagination.pageSize]);
 
   const loadInstances = async (sortBy = 'startedAt', sortOrder = 'desc') => {
-    console.log(`loadInstances: 開始載入實例，排序: ${sortBy} ${sortOrder}`);
+    console.log(t('workflowMonitor.startLoadingInstances', { sortBy, sortOrder }));
     setLoading(true);
     try {
       // 構建查詢參數
@@ -182,9 +184,9 @@ const WorkflowMonitorPage = () => {
       }
 
       const url = `/api/workflowexecutions/monitor?${params}`;
-      console.log('loadInstances: 請求 URL:', url);
-      console.log('loadInstances: 請求參數:', Object.fromEntries(params));
-      console.log('當前分頁參數:', { current: pagination.current, pageSize: pagination.pageSize });
+      console.log(t('workflowMonitor.requestUrl'), url);
+      console.log(t('workflowMonitor.requestParams'), Object.fromEntries(params));
+      console.log(t('workflowMonitor.currentPaginationParams'), { current: pagination.current, pageSize: pagination.pageSize });
 
       const response = await fetch(url, {
         headers: {
@@ -193,26 +195,26 @@ const WorkflowMonitorPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error('載入實例失敗');
+        throw new Error(t('workflowMonitor.loadInstancesFailed'));
       }
 
       const data = await response.json();
-      console.log('從監控 API 獲取到的數據:', data);
-      console.log('實例數據結構:', data.data);
-      console.log('分頁信息:', { page: data.page, pageSize: data.pageSize, total: data.total });
+      console.log(t('workflowMonitor.dataFromMonitorApi'), data);
+      console.log(t('workflowMonitor.instanceDataStructure'), data.data);
+      console.log(t('workflowMonitor.paginationInfo'), { page: data.page, pageSize: data.pageSize, total: data.total });
       
       // 檢查第一個實例是否包含 InputJson 字段
       if (data.data && data.data.length > 0) {
         const firstInstance = data.data[0];
-        console.log('第一個實例的完整數據:', firstInstance);
-        console.log('InputJson 字段:', firstInstance.inputJson);
-        console.log('InputJson 類型:', typeof firstInstance.inputJson);
+        console.log(t('workflowMonitor.firstInstanceCompleteData'), firstInstance);
+        console.log(t('workflowMonitor.inputJsonField'), firstInstance.inputJson);
+        console.log(t('workflowMonitor.inputJsonType'), typeof firstInstance.inputJson);
         if (firstInstance.inputJson) {
           try {
             const parsedInput = JSON.parse(firstInstance.inputJson);
-            console.log('解析後的 InputJson:', parsedInput);
+            console.log(t('workflowMonitor.parsedInputJson'), parsedInput);
           } catch (parseError) {
-            console.error('解析 InputJson 失敗:', parseError);
+            console.error(t('workflowMonitor.parseInputJsonFailed'), parseError);
           }
         }
       }
@@ -225,7 +227,7 @@ const WorkflowMonitorPage = () => {
         pageSize: data.pageSize
       }));
     } catch (error) {
-      message.error('載入實例失敗: ' + error.message);
+      message.error(t('workflowMonitor.loadInstancesFailed') + ': ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -240,13 +242,13 @@ const WorkflowMonitorPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error('載入統計數據失敗');
+        throw new Error(t('workflowMonitor.loadStatisticsFailed'));
       }
 
       const data = await response.json();
       setStatistics(data);
     } catch (error) {
-      console.error('載入統計數據失敗:', error);
+      console.error(t('workflowMonitor.loadStatisticsFailed'), error);
     }
   };
 
@@ -282,17 +284,17 @@ const WorkflowMonitorPage = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || '操作失敗');
+        throw new Error(errorData.error || t('workflowMonitor.operationFailed'));
       }
 
       const result = await response.json();
-      message.success(result.message || `${action} 操作成功`);
+      message.success(result.message || t('workflowMonitor.operationSuccess', { action }));
       
       // 重新載入數據
       loadInstances();
       loadStatistics();
     } catch (error) {
-      message.error(`${action} 操作失敗: ` + error.message);
+      message.error(t('workflowMonitor.operationFailed', { action }) + ': ' + error.message);
     }
   };
 
@@ -305,25 +307,25 @@ const WorkflowMonitorPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error('載入詳情失敗');
+        throw new Error(t('workflowMonitor.loadDetailsFailed'));
       }
 
       const details = await response.json();
       setSelectedInstance(details);
       setDetailModalVisible(true);
     } catch (error) {
-      message.error('載入詳情失敗: ' + error.message);
+      message.error(t('workflowMonitor.loadDetailsFailed') + ': ' + error.message);
     }
   };
 
   const getStatusTag = (status) => {
     const statusConfig = {
-      running: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: '運行中' },
-      completed: { color: 'success', icon: <CheckCircleFilled />, text: '已完成' },
-      failed: { color: 'error', icon: <CloseCircleFilled />, text: '失敗' },
-      waiting: { color: 'warning', icon: <ClockCircleFilled />, text: '等待中' },
-      paused: { color: 'default', icon: <PauseCircleOutlined />, text: '已暫停' },
-      cancelled: { color: 'default', icon: <StopOutlined />, text: '已取消' }
+      running: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: t('workflowMonitor.statusRunning') },
+      completed: { color: 'success', icon: <CheckCircleFilled />, text: t('workflowMonitor.statusCompleted') },
+      failed: { color: 'error', icon: <CloseCircleFilled />, text: t('workflowMonitor.statusFailed') },
+      waiting: { color: 'warning', icon: <ClockCircleFilled />, text: t('workflowMonitor.statusWaiting') },
+      paused: { color: 'default', icon: <PauseCircleOutlined />, text: t('workflowMonitor.statusPaused') },
+      cancelled: { color: 'default', icon: <StopOutlined />, text: t('workflowMonitor.statusCancelled') }
     };
     
     const config = statusConfig[status.toLowerCase()] || statusConfig.running;
@@ -337,30 +339,30 @@ const WorkflowMonitorPage = () => {
 
   const getDurationText = (duration) => {
     if (!duration) return '-';
-    if (duration < 60) return `${Math.round(duration)} 分鐘`;
+    if (duration < 60) return `${Math.round(duration)} ${t('workflowMonitor.minutes')}`;
     const hours = Math.floor(duration / 60);
     const minutes = Math.round(duration % 60);
-    return `${hours} 小時 ${minutes} 分鐘`;
+    return `${hours} ${t('workflowMonitor.hours')} ${minutes} ${t('workflowMonitor.minutes')}`;
   };
 
   // 打開 WhatsApp 對話框
   const handleOpenChat = (instance) => {
-    console.log('打開 WhatsApp 對話框，實例數據:', instance);
-    console.log('實例 ID:', instance.id);
-    console.log('InputJson 字段:', instance.inputJson);
-    console.log('InputJson 類型:', typeof instance.inputJson);
+    console.log(t('workflowMonitor.openWhatsAppChat'), instance);
+    console.log(t('workflowMonitor.instanceId'), instance.id);
+    console.log(t('workflowMonitor.inputJsonField'), instance.inputJson);
+    console.log(t('workflowMonitor.inputJsonType'), typeof instance.inputJson);
     
     if (instance.inputJson) {
       try {
         const parsedInput = JSON.parse(instance.inputJson);
-        console.log('解析後的 InputJson:', parsedInput);
-        console.log('可用的字段:', Object.keys(parsedInput));
+        console.log(t('workflowMonitor.parsedInputJson'), parsedInput);
+        console.log(t('workflowMonitor.availableFields'), Object.keys(parsedInput));
       } catch (parseError) {
-        console.error('解析 InputJson 失敗:', parseError);
+        console.error(t('workflowMonitor.parseInputJsonFailed'), parseError);
       }
     } else {
-      console.warn('實例中沒有 InputJson 字段');
-      console.log('可用的字段:', Object.keys(instance));
+      console.warn(t('workflowMonitor.noInputJsonField'));
+      console.log(t('workflowMonitor.availableFields'), Object.keys(instance));
     }
     
     setSelectedChatInstance(instance);
@@ -369,7 +371,7 @@ const WorkflowMonitorPage = () => {
 
   // 處理發送消息
   const handleSendMessage = (message) => {
-    console.log('發送消息:', message);
+    console.log(t('workflowMonitor.sendMessage'), message);
     // 這裡可以添加額外的邏輯，比如更新實例狀態等
   };
 
@@ -383,14 +385,35 @@ const WorkflowMonitorPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error('載入消息發送詳情失敗');
+        throw new Error(t('workflowMonitor.loadMessageSendDetailsFailed'));
       }
 
       const data = await response.json();
       setSelectedMessageSend(data.data);
       setMessageSendModalVisible(true);
     } catch (error) {
-      message.error('載入消息發送詳情失敗: ' + error.message);
+      message.error(t('workflowMonitor.loadMessageSendDetailsFailed') + ': ' + error.message);
+    }
+  };
+
+  // 查看消息發送詳細狀態（包含收件人詳情）
+  const handleViewMessageSendDetail = async (messageSendId) => {
+    try {
+      const response = await fetch(`/api/workflowmessagesend/${messageSendId}/detail`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(t('workflowMonitor.loadMessageSendStatusFailed'));
+      }
+
+      const data = await response.json();
+      setSelectedMessageSendDetail(data.data);
+      setMessageSendDetailModalVisible(true);
+    } catch (error) {
+      message.error(t('workflowMonitor.loadMessageSendStatusFailed') + ': ' + error.message);
     }
   };
 
@@ -403,8 +426,8 @@ const WorkflowMonitorPage = () => {
 
   // 表格變化處理（包括排序）
   const handleTableChange = (paginationInfo, filters, sorter) => {
-    console.log('handleTableChange: 表格變化:', { paginationInfo, filters, sorter });
-    console.log('handleTableChange: sorter 詳細信息:', {
+    console.log(t('workflowMonitor.tableChange'), { paginationInfo, filters, sorter });
+    console.log(t('workflowMonitor.sorterDetails'), {
       field: sorter?.field,
       order: sorter?.order,
       columnKey: sorter?.columnKey,
@@ -413,7 +436,7 @@ const WorkflowMonitorPage = () => {
     
     // 處理分頁
     if (paginationInfo) {
-      console.log('分頁變更:', paginationInfo);
+      console.log(t('workflowMonitor.paginationChange'), paginationInfo);
       setPagination(prev => ({ 
         ...prev, 
         current: paginationInfo.current, 
@@ -423,12 +446,12 @@ const WorkflowMonitorPage = () => {
     
     // 處理排序
     if (sorter && sorter.field) {
-      console.log('排序字段:', sorter.field, '排序順序:', sorter.order);
+      console.log(t('workflowMonitor.sortField'), sorter.field, t('workflowMonitor.sortOrder'), sorter.order);
       // 重新載入數據以應用排序
       loadInstances(sorter.field, sorter.order);
     } else if (paginationInfo) {
       // 只有分頁變更時
-      console.log('只有分頁變更，使用預設排序');
+      console.log(t('workflowMonitor.paginationOnlyDefaultSort'));
       loadInstances();
     }
   };
@@ -436,7 +459,7 @@ const WorkflowMonitorPage = () => {
   // 基礎表格列定義
   const baseColumns = [
     {
-      title: '實例 ID',
+      title: t('workflowMonitor.instanceId'),
       dataIndex: 'id',
       key: 'id',
       width: 120,
@@ -445,7 +468,7 @@ const WorkflowMonitorPage = () => {
       render: (text) => <Text code>{text}</Text>
     },
     {
-      title: '流程名稱',
+      title: t('workflowMonitor.workflowName'),
       dataIndex: 'workflowName',
       key: 'workflowName',
       width: 200,
@@ -454,7 +477,7 @@ const WorkflowMonitorPage = () => {
       render: (text) => <Text strong>{text}</Text>
     },
     {
-      title: '狀態',
+      title: t('workflowMonitor.status'),
       dataIndex: 'status',
       key: 'status',
       width: 120,
@@ -462,7 +485,7 @@ const WorkflowMonitorPage = () => {
       render: (status) => getStatusTag(status)
     },
     {
-      title: '當前步驟',
+      title: t('workflowMonitor.currentStep'),
       dataIndex: 'currentStep',
       key: 'currentStep',
       width: 120,
@@ -485,7 +508,7 @@ const WorkflowMonitorPage = () => {
       }
     },
     {
-      title: '開始時間',
+      title: t('workflowMonitor.startedAt'),
       dataIndex: 'startedAt',
       key: 'startedAt',
       width: 150,
@@ -493,7 +516,7 @@ const WorkflowMonitorPage = () => {
       render: (date) => dayjs(date).format('YYYY-MM-DD HH:mm:ss')
     },
     {
-      title: '執行時間',
+      title: t('workflowMonitor.duration'),
       dataIndex: 'duration',
       key: 'duration',
       width: 120,
@@ -507,19 +530,19 @@ const WorkflowMonitorPage = () => {
       }
     },
     {
-      title: '創建者',
+      title: t('workflowMonitor.createdBy'),
       dataIndex: 'createdBy',
       key: 'createdBy',
       width: 100,
       sorter: true
     },
     {
-      title: '操作',
+      title: t('common.action'),
       key: 'action',
       width: 250, // 增加寬度以容納新按鈕
       render: (_, record) => (
         <Space size="small">
-          <Tooltip title="查看詳情">
+          <Tooltip title={t('workflowMonitor.viewDetails')}>
             <Button 
               type="text" 
               icon={<EyeOutlined />} 
@@ -528,7 +551,7 @@ const WorkflowMonitorPage = () => {
           </Tooltip>
           
           {/* WhatsApp 對話按鈕 */}
-          <Tooltip title="WhatsApp 對話">
+          <Tooltip title={t('workflowMonitor.whatsappChat')}>
             <Button 
               type="text" 
               icon={<MessageOutlined />} 
@@ -539,14 +562,14 @@ const WorkflowMonitorPage = () => {
           
           {record.status === 'running' && (
             <>
-              <Tooltip title="暫停">
+              <Tooltip title={t('workflowMonitor.pause')}>
                 <Button 
                   type="text" 
                   icon={<PauseCircleOutlined />} 
                   onClick={() => handleInstanceAction('pause', record)}
                 />
               </Tooltip>
-              <Tooltip title="取消">
+              <Tooltip title={t('workflowMonitor.cancel')}>
                 <Button 
                   type="text" 
                   icon={<StopOutlined />} 
@@ -557,7 +580,7 @@ const WorkflowMonitorPage = () => {
           )}
           
           {record.status === 'failed' && (
-            <Tooltip title="重試">
+            <Tooltip title={t('workflowMonitor.retry')}>
               <Button 
                 type="text" 
                 icon={<ReloadOutlined />} 
@@ -567,7 +590,7 @@ const WorkflowMonitorPage = () => {
           )}
           
           {(record.status === 'waiting' || record.status === 'paused') && (
-            <Tooltip title="恢復">
+            <Tooltip title={t('workflowMonitor.resume')}>
               <Button 
                 type="text" 
                 icon={<PlayCircleOutlined />} 
@@ -612,10 +635,10 @@ const WorkflowMonitorPage = () => {
         <div style={{ marginBottom: 24 }}>
           <Title level={2}>
             <BarChartOutlined style={{ marginRight: 12, color: '#1890ff' }} />
-            {t('workflowMonitor.title')}
+            {t('workflowMonitor.runningAppsTitle')}
           </Title>
           <Text type="secondary">
-            監控和管理您的 WhatsApp 工作流程實例
+            {t('workflowMonitor.runningAppsDescription')}
           </Text>
         </div>
 
@@ -624,7 +647,7 @@ const WorkflowMonitorPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="總實例數"
+                title={t('workflowMonitor.totalInstancesCount')}
                 value={statistics.total}
                 prefix={<FileTextOutlined />}
                 valueStyle={{ color: '#1890ff' }}
@@ -634,7 +657,7 @@ const WorkflowMonitorPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="運行中"
+                title={t('workflowMonitor.runningCount')}
                 value={statistics.running}
                 prefix={<SyncOutlinedIcon spin />}
                 valueStyle={{ color: '#52c41a' }}
@@ -644,7 +667,7 @@ const WorkflowMonitorPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="已完成"
+                title={t('workflowMonitor.completedCount')}
                 value={statistics.completed}
                 prefix={<CheckCircleOutlined />}
                 valueStyle={{ color: '#52c41a' }}
@@ -654,7 +677,7 @@ const WorkflowMonitorPage = () => {
           <Col xs={24} sm={12} md={6}>
             <Card>
               <Statistic
-                title="成功率"
+                title={t('workflowMonitor.successRate')}
                 value={statistics.successRate}
                 suffix="%"
                 prefix={<CheckCircleOutlined />}
@@ -669,7 +692,7 @@ const WorkflowMonitorPage = () => {
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} sm={12} md={6}>
               <Select
-                placeholder="選擇狀態"
+                placeholder={t('workflowMonitor.selectStatus')}
                 value={filters.status}
                 onChange={handleStatusFilter}
                 style={{ width: '100%' }}
@@ -684,7 +707,7 @@ const WorkflowMonitorPage = () => {
             
             <Col xs={24} sm={12} md={6}>
               <RangePicker
-                placeholder={['開始日期範圍', '開始日期範圍']}
+                placeholder={[t('workflowMonitor.startDateRange'), t('workflowMonitor.startDateRange')]}
                 value={filters.startDateRange}
                 onChange={handleStartDateRangeChange}
                 style={{ width: '100%' }}
@@ -693,7 +716,7 @@ const WorkflowMonitorPage = () => {
             
             <Col xs={24} sm={12} md={6}>
               <RangePicker
-                placeholder={['結束日期範圍', '結束日期範圍']}
+                placeholder={[t('workflowMonitor.endDateRange'), t('workflowMonitor.endDateRange')]}
                 value={filters.endDateRange}
                 onChange={handleEndDateRangeChange}
                 style={{ width: '100%' }}
@@ -702,7 +725,7 @@ const WorkflowMonitorPage = () => {
             
             <Col xs={24} sm={12} md={6}>
               <Search
-                placeholder="搜尋流程名稱、實例 ID..."
+                placeholder={t('workflowMonitor.searchPlaceholder')}
                 value={filters.searchText}
                 onChange={(e) => setFilters(prev => ({ ...prev, searchText: e.target.value }))}
                 onSearch={handleSearch}
@@ -717,10 +740,10 @@ const WorkflowMonitorPage = () => {
                   onClick={loadInstances}
                   loading={loading}
                 >
-                  刷新
+                  {t('workflowMonitor.refresh')}
                 </Button>
                 
-                <Tooltip title="自動刷新設置">
+                <Tooltip title={t('workflowMonitor.autoRefreshSettings')}>
                   <Button 
                     icon={<SettingOutlined />}
                     onClick={() => {/* 打開設置彈窗 */}}
@@ -735,12 +758,12 @@ const WorkflowMonitorPage = () => {
         <Card>
           <div style={{ marginBottom: 16 }}>
             <Space>
-              <Text strong>實例列表</Text>
+              <Text strong>{t('workflowMonitor.instanceList')}</Text>
               <Badge count={instances.length} showZero />
               
               {selectedInstances.length > 0 && (
                 <Text type="secondary">
-                  已選擇 {selectedInstances.length} 個實例
+                  {t('workflowMonitor.selectedInstances', { count: selectedInstances.length })}
                 </Text>
               )}
             </Space>
@@ -757,7 +780,7 @@ const WorkflowMonitorPage = () => {
               showSizeChanger: true,
               showQuickJumper: true,
               showTotal: (total, range) => 
-                `第 ${range[0]}-${range[1]} 項，共 ${total} 項`
+                t('workflowMonitor.paginationTotal', { start: range[0], end: range[1], total })
             }}
             rowSelection={{
               selectedRowKeys: selectedInstances.map(i => i.id),
@@ -772,7 +795,7 @@ const WorkflowMonitorPage = () => {
 
         {/* 實例詳情彈窗 */}
         <Modal
-          title="實例詳情"
+          title={t('workflowMonitor.instanceDetails')}
           visible={detailModalVisible}
           onCancel={() => setDetailModalVisible(false)}
           footer={null}
@@ -782,6 +805,8 @@ const WorkflowMonitorPage = () => {
             <InstanceDetailModal 
               instance={selectedInstance} 
               onClose={() => setDetailModalVisible(false)}
+              onViewMessageSend={handleViewMessageSend}
+              onViewMessageSendDetail={handleViewMessageSendDetail}
             />
           )}
         </Modal>
@@ -796,7 +821,7 @@ const WorkflowMonitorPage = () => {
 
         {/* 消息發送詳情模態框 */}
         <Modal
-          title="消息發送詳情"
+          title={t('workflowMonitor.messageSendDetails')}
           visible={messageSendModalVisible}
           onCancel={() => setMessageSendModalVisible(false)}
           footer={null}
@@ -809,13 +834,31 @@ const WorkflowMonitorPage = () => {
             />
           )}
         </Modal>
+
+        {/* 消息發送詳細狀態模態框 */}
+        <Modal
+          title={t('workflowMonitor.messageSendStatusDetails')}
+          visible={messageSendDetailModalVisible}
+          onCancel={() => setMessageSendDetailModalVisible(false)}
+          footer={null}
+          width={1200}
+        >
+          {selectedMessageSendDetail && (
+            <MessageSendStatusDetailModal 
+              messageSend={selectedMessageSendDetail} 
+              onClose={() => setMessageSendDetailModalVisible(false)}
+              onViewMessageSend={handleViewMessageSend}
+              onViewMessageSendDetail={handleViewMessageSendDetail}
+            />
+          )}
+        </Modal>
       </Content>
     </Layout>
   );
 };
 
 // 實例詳情組件
-const InstanceDetailModal = ({ instance, onClose }) => {
+const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('basic');
   const [eformInstances, setEformInstances] = useState([]);
@@ -840,36 +883,36 @@ const InstanceDetailModal = ({ instance, onClose }) => {
   const loadEformInstances = async () => {
     try {
       setLoadingEforms(true);
-      console.log(`正在載入工作流程實例 ID: ${instance.id} 的表單實例`);
+      console.log(t('workflowMonitor.loadingEformInstances', { instanceId: instance.id }));
       
       const response = await fetch(`/api/workflowexecutions/${instance.id}/eform-instances`);
-      console.log('API 響應狀態:', response.status);
-      console.log('API 響應狀態文本:', response.statusText);
+      console.log(t('workflowMonitor.apiResponseStatus'), response.status);
+      console.log(t('workflowMonitor.apiResponseStatusText'), response.statusText);
       
       if (!response.ok) {
         if (response.status === 404) {
-          console.log('API 端點不存在，請檢查後端控制器');
+          console.log(t('workflowMonitor.apiEndpointNotExists'));
           // 如果 API 端點不存在，顯示提示信息
           setEformInstances([]);
-          message.warning('表單實例 API 端點尚未實現，請聯繫開發人員');
+          message.warning(t('workflowMonitor.eformApiNotImplemented'));
           return;
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('載入到的表單實例數據:', data);
+      console.log(t('workflowMonitor.loadedEformData'), data);
       setEformInstances(data);
     } catch (error) {
-      console.error('載入表單實例失敗:', error);
+      console.error(t('workflowMonitor.loadEformInstancesFailed'), error);
       
       // 根據錯誤類型顯示不同的提示信息
       if (error.message.includes('404')) {
-        message.error('表單實例 API 端點不存在，請檢查後端配置');
+        message.error(t('workflowMonitor.eformApiNotExists'));
       } else if (error.message.includes('500')) {
-        message.error('後端服務器錯誤，請檢查日誌');
+        message.error(t('workflowMonitor.backendServerError'));
       } else {
-        message.error(`載入表單實例失敗: ${error.message}`);
+        message.error(t('workflowMonitor.loadEformInstancesFailed') + ': ' + error.message);
       }
       
       setEformInstances([]);
@@ -881,7 +924,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
   const loadProcessVariables = async () => {
     try {
       setLoadingProcessVariables(true);
-      console.log(`正在載入工作流程實例 ID: ${instance.id} 的流程變量`);
+      console.log(t('workflowMonitor.loadingProcessVariables', { instanceId: instance.id }));
       
       const response = await fetch(`/api/processvariables/instance-values/${instance.id}`, {
         headers: {
@@ -891,26 +934,26 @@ const InstanceDetailModal = ({ instance, onClose }) => {
       
       if (!response.ok) {
         if (response.status === 404) {
-          console.log('流程變量 API 端點不存在，請檢查後端控制器');
+          console.log(t('workflowMonitor.processVariablesApiNotExists'));
           setProcessVariables([]);
-          message.warning('流程變量 API 端點尚未實現，請聯繫開發人員');
+          message.warning(t('workflowMonitor.processVariablesApiNotImplemented'));
           return;
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('載入到的流程變量數據:', data);
+      console.log(t('workflowMonitor.loadedProcessVariablesData'), data);
       setProcessVariables(data.data || []);
     } catch (error) {
-      console.error('載入流程變量失敗:', error);
+      console.error(t('workflowMonitor.loadProcessVariablesFailed'), error);
       
       if (error.message.includes('404')) {
-        message.error('流程變量 API 端點不存在，請檢查後端配置');
+        message.error(t('workflowMonitor.processVariablesApiNotExists'));
       } else if (error.message.includes('500')) {
-        message.error('後端服務器錯誤，請檢查日誌');
+        message.error(t('workflowMonitor.backendServerError'));
       } else {
-        message.error(`載入流程變量失敗: ${error.message}`);
+        message.error(t('workflowMonitor.loadProcessVariablesFailed') + ': ' + error.message);
       }
       
       setProcessVariables([]);
@@ -930,9 +973,9 @@ const InstanceDetailModal = ({ instance, onClose }) => {
 
   const getEformStatusText = (status) => {
     switch (status) {
-      case 'Pending': return '待審批';
-      case 'Approved': return '已批准';
-      case 'Rejected': return '已拒絕';
+      case 'Pending': return t('workflowMonitor.eformStatusPending');
+      case 'Approved': return t('workflowMonitor.eformStatusApproved');
+      case 'Rejected': return t('workflowMonitor.eformStatusRejected');
       default: return status;
     }
   };
@@ -946,7 +989,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
       case 'datetime':
         return new Date(value).toLocaleString('zh-TW');
       case 'boolean':
-        return value ? '是' : '否';
+        return value ? t('workflowMonitor.yes') : t('workflowMonitor.no');
       case 'json':
         try {
           return JSON.stringify(JSON.parse(value), null, 2);
@@ -974,14 +1017,14 @@ const InstanceDetailModal = ({ instance, onClose }) => {
   return (
     <div>
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
-        <TabPane tab="基本信息" key="basic">
+        <TabPane tab={t('workflowMonitor.basicInfo')} key="basic">
           <Descriptions bordered column={2}>
-            <Descriptions.Item label="實例 ID">{instance.id}</Descriptions.Item>
-            <Descriptions.Item label="流程名稱">{instance.workflowName}</Descriptions.Item>
-            <Descriptions.Item label="狀態">
+            <Descriptions.Item label={t('workflowMonitor.instanceId')}>{instance.id}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.workflowName')}>{instance.workflowName}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.status')}>
               {instance.status === 'running' ? (
                 <Tag color="processing" icon={<SyncOutlinedIcon spin />}>
-                  運行中
+                  {t('workflowMonitor.statusRunning')}
                 </Tag>
               ) : (
                 <Tag color={instance.status === 'completed' ? 'success' : 'error'}>
@@ -989,24 +1032,24 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                 </Tag>
               )}
             </Descriptions.Item>
-            <Descriptions.Item label="當前步驟">
+            <Descriptions.Item label={t('workflowMonitor.currentStep')}>
               {instance.currentStep || '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="開始時間">
+            <Descriptions.Item label={t('workflowMonitor.startedAt')}>
               {dayjs(instance.startedAt).format('YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>
-            <Descriptions.Item label="結束時間">
+            <Descriptions.Item label={t('workflowMonitor.endedAt')}>
               {instance.endedAt ? dayjs(instance.endedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="執行時間">
-              {instance.duration ? `${Math.round(instance.duration)} 分鐘` : '-'}
+            <Descriptions.Item label={t('workflowMonitor.duration')}>
+              {instance.duration ? `${Math.round(instance.duration)} ${t('workflowMonitor.minutes')}` : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="創建者">{instance.createdBy}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.createdBy')}>{instance.createdBy}</Descriptions.Item>
           </Descriptions>
           
           {instance.errorMessage && (
             <Alert
-              message="錯誤信息"
+              message={t('workflowMonitor.errorMessage')}
               description={instance.errorMessage}
               type="error"
               showIcon
@@ -1015,21 +1058,21 @@ const InstanceDetailModal = ({ instance, onClose }) => {
           )}
         </TabPane>
         
-        <TabPane tab="執行歷史" key="history">
+        <TabPane tab={t('workflowMonitor.executionHistory')} key="history">
           <Timeline>
             <Timeline.Item color="green">
-              <p>流程啟動</p>
+              <p>{t('workflowMonitor.workflowStarted')}</p>
               <p>{dayjs(instance.startedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
             </Timeline.Item>
             {instance.stepExecutions && instance.stepExecutions.length > 0 ? (
               instance.stepExecutions.map((step, index) => {
                 // 調試信息：檢查步驟數據結構
-                console.log(`步驟 ${index + 1} 數據:`, step);
-                console.log(`步驟 ${index + 1} 可用字段:`, Object.keys(step));
-                console.log(`步驟 ${index + 1} outputJson:`, step.outputJson);
-                console.log(`步驟 ${index + 1} OutputJson:`, step.OutputJson);
-                console.log(`步驟 ${index + 1} output:`, step.output);
-                console.log(`步驟 ${index + 1} errorMessage:`, step.errorMessage);
+                console.log(t('workflowMonitor.stepData', { stepNumber: index + 1 }), step);
+                console.log(t('workflowMonitor.stepAvailableFields', { stepNumber: index + 1 }), Object.keys(step));
+                console.log(t('workflowMonitor.stepOutputJson', { stepNumber: index + 1 }), step.outputJson);
+                console.log(t('workflowMonitor.stepOutputJsonCapital', { stepNumber: index + 1 }), step.OutputJson);
+                console.log(t('workflowMonitor.stepOutput', { stepNumber: index + 1 }), step.output);
+                console.log(t('workflowMonitor.stepErrorMessage', { stepNumber: index + 1 }), step.errorMessage);
                 
                 // 解析 OutputJson 來判斷是否為錯誤
                 let outputData = null;
@@ -1042,19 +1085,19 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                 if (jsonContent) {
                   try {
                     outputData = JSON.parse(jsonContent);
-                    console.log(`步驟 ${index + 1} 解析後的數據:`, outputData);
+                    console.log(t('workflowMonitor.stepParsedData', { stepNumber: index + 1 }), outputData);
                     
                     // 優先檢查 success 字段
                     if (outputData.success === true) {
                       isError = false;
-                      displayMessage = outputData.message || '操作成功';
-                      console.log(`步驟 ${index + 1} 檢測到 success: true，標記為非錯誤`);
+                      displayMessage = outputData.message || t('workflowMonitor.operationSuccess');
+                      console.log(t('workflowMonitor.stepDetectedSuccess', { stepNumber: index + 1 }));
                     }
                     // 檢查是否包含錯誤信息
                     else if (outputData.error) {
                       isError = true;
                       displayMessage = outputData.error;
-                      console.log(`步驟 ${index + 1} 檢測到 error 字段，標記為錯誤`);
+                      console.log(t('workflowMonitor.stepDetectedError', { stepNumber: index + 1 }));
                     } 
                     // 檢查 message 字段
                     else if (outputData.message) {
@@ -1066,77 +1109,96 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                           outputData.message.includes("Waiting for user reply")) {
                         isError = false;
                         displayMessage = outputData.message;
-                        console.log(`步驟 ${index + 1} 檢測到成功消息，標記為非錯誤`);
+                        console.log(t('workflowMonitor.stepDetectedSuccessMessage', { stepNumber: index + 1 }));
                       } else {
                         // 默認情況下，message 字段通常表示信息，不是錯誤
                         isError = false;
                         displayMessage = outputData.message;
-                        console.log(`步驟 ${index + 1} 檢測到普通消息，標記為非錯誤`);
+                        console.log(t('workflowMonitor.stepDetectedNormalMessage', { stepNumber: index + 1 }));
                       }
                     }
                     // 檢查是否為 switch 節點的正常輸出（包含 selectedPaths 等字段）
                     else if (outputData.selectedPaths || outputData.selectedPath || outputData.evaluatedAt) {
                       isError = false;
                       displayMessage = JSON.stringify(outputData, null, 2);
-                      console.log(`步驟 ${index + 1} 檢測到 switch 節點輸出，標記為非錯誤`);
+                      console.log(t('workflowMonitor.stepDetectedSwitchOutput', { stepNumber: index + 1 }));
                     }
                     // 如果沒有明確的字段，檢查整個 JSON 內容
                     else {
                       // 如果沒有明確的錯誤標識，通常不是錯誤
                       isError = false;
                       displayMessage = JSON.stringify(outputData, null, 2);
-                      console.log(`步驟 ${index + 1} 沒有明確字段，標記為非錯誤`);
+                      console.log(t('workflowMonitor.stepNoClearFields', { stepNumber: index + 1 }));
                     }
                   } catch (parseError) {
-                    console.error(`步驟 ${index + 1} 解析 JSON 失敗:`, parseError);
+                    console.error(t('workflowMonitor.stepParseJsonFailed', { stepNumber: index + 1 }), parseError);
                     // 如果解析失敗，將原始內容作為普通信息顯示
                     displayMessage = jsonContent;
                     isError = false; // 解析失敗不一定是錯誤
                   }
                 } else {
-                  console.log(`步驟 ${index + 1} 沒有找到 JSON 內容字段`);
+                  console.log(t('workflowMonitor.stepNoJsonContentField', { stepNumber: index + 1 }));
                 }
                 
-                console.log(`步驟 ${index + 1} 最終判斷結果:`, { isError, displayMessage });
+                console.log(t('workflowMonitor.stepFinalResult', { stepNumber: index + 1 }), { isError, displayMessage });
                 
                 // 檢查是否為發送消息的節點
-                const isMessageSendNode = step.stepType && (
+                const isMessageSendNode = (step.stepName && (
+                  step.stepName.includes('sendWhatsApp') || 
+                  step.stepName.includes('sendWhatsAppTemplate') ||
+                  step.stepName.includes('sendEForm')
+                )) || (step.stepType && (
                   step.stepType.includes('sendWhatsApp') || 
                   step.stepType.includes('sendWhatsAppTemplate') ||
                   step.stepType.includes('sendEForm')
-                );
+                ));
+                
+                // 調試信息
+                if (step.stepName && step.stepName.includes('sendWhatsApp')) {
+                  console.log(t('workflowMonitor.stepIsSendWhatsAppNode', { stepNumber: index + 1, stepName: step.stepName }), {
+                    stepName: step.stepName,
+                    stepType: step.stepType,
+                    status: step.status,
+                    isMessageSendNode: isMessageSendNode,
+                    outputData: outputData,
+                    hasMessageSendId: outputData && outputData.messageSendId
+                  });
+                }
 
                 return (
                   <Timeline.Item 
                     key={step.id} 
-                    color={step.status === 'completed' ? 'green' : step.status === 'failed' ? 'red' : 'blue'}
+                    color={(step.status === 'Completed' || step.status === 'completed') ? 'green' : (step.status === 'Failed' || step.status === 'failed') ? 'red' : 'blue'}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <p>執行步驟: {step.stepName || `步驟 ${index + 1}`}</p>
-                        <p>狀態: {step.status}</p>
-                        <p>開始時間: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
+                        <p>{t('workflowMonitor.executionStep')}: {step.stepName || `${t('workflowMonitor.step')} ${index + 1}`}</p>
+                        <p>{t('workflowMonitor.stepStatus')}: {step.status}</p>
+                        <p>{t('workflowMonitor.stepStartTime')}: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
                         {step.endedAt && (
-                          <p>完成時間: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                          <p>{t('workflowMonitor.stepEndTime')}: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
                         )}
                       </div>
-                      {isMessageSendNode && step.status === 'completed' && (
-                        <Button 
-                          type="primary" 
-                          size="small" 
-                          icon={<MessageOutlined />}
-                          onClick={() => {
-                            // 從 outputData 中提取 messageSendId
-                            if (outputData && outputData.messageSendId) {
-                              handleViewMessageSend(outputData.messageSendId);
-                            } else {
-                              message.warning('無法找到消息發送記錄ID');
-                            }
-                          }}
-                          style={{ marginLeft: '16px' }}
-                        >
-                          查看發送詳情
-                        </Button>
+                      {isMessageSendNode && (step.status === 'Completed' || step.status === 'completed') && (
+                        <Space style={{ marginLeft: '16px' }}>
+                          <Button 
+                            type="default" 
+                            size="small" 
+                            icon={<BarChartOutlined />}
+                            onClick={() => {
+                              // 從 outputData 中提取 messageSendId
+                              if (outputData && outputData.messageSendId) {
+                                onViewMessageSendDetail(outputData.messageSendId);
+                              } else {
+                                console.log(t('workflowMonitor.sendWhatsAppStepOutputData'), outputData);
+                                console.log(t('workflowMonitor.stepData'), step);
+                                message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                              }
+                            }}
+                          >
+                            {t('workflowMonitor.viewMessageSendStatus')}
+                          </Button>
+                        </Space>
                       )}
                     </div>
                     
@@ -1152,7 +1214,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         border: `1px solid ${isError ? '#ffccc7' : '#b7eb8f'}`,
                         color: isError ? '#cf1322' : '#389e0d'
                       }}>
-                        <strong>{isError ? '錯誤: ' : '信息: '}</strong>
+                        <strong>{isError ? t('workflowMonitor.error') + ': ' : t('workflowMonitor.information') + ': '}</strong>
                         {displayMessage}
                         
                         {/* 如果有額外的輸出數據，顯示更多信息 */}
@@ -1162,7 +1224,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                             fontSize: '12px', 
                             opacity: 0.7 
                           }}>
-                            時間: {new Date(outputData.timestamp).toLocaleString('zh-TW')}
+                            {t('workflowMonitor.time')}: {new Date(outputData.timestamp).toLocaleString('zh-TW')}
                           </div>
                         )}
                         
@@ -1172,7 +1234,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                             fontSize: '12px', 
                             opacity: 0.7 
                           }}>
-                            用戶回應: {outputData.userResponse}
+                            {t('workflowMonitor.userResponse')}: {outputData.userResponse}
                           </div>
                         )}
                       </div>
@@ -1184,7 +1246,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         // 檢查 errorMessage 是否與 outputJson 內容相同，如果相同則不顯示（避免重複）
                         const jsonContent = step.outputJson || step.OutputJson || step.output;
                         if (jsonContent && step.errorMessage === jsonContent) {
-                          console.log(`步驟 ${index + 1} errorMessage 與 outputJson 相同，不顯示為錯誤`);
+                          console.log(t('workflowMonitor.stepErrorMessageSameAsOutputJson', { stepNumber: index + 1 }));
                           return null; // 不顯示重複內容
                         }
                         
@@ -1202,17 +1264,17 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                               )) ||
                               // 檢查是否為 switch 節點的正常輸出
                               errorData.selectedPaths || errorData.selectedPath || errorData.evaluatedAt) {
-                            console.log(`步驟 ${index + 1} errorMessage 包含成功信息或 switch 節點輸出，不顯示為錯誤`);
+                            console.log(t('workflowMonitor.stepErrorMessageContainsSuccess', { stepNumber: index + 1 }));
                             return null; // 不顯示
                           }
                         } catch (parseError) {
                           // 如果解析失敗，可能是純文本錯誤信息，正常顯示
-                          console.log(`步驟 ${index + 1} errorMessage 解析失敗，作為純文本錯誤顯示`);
+                          console.log(t('workflowMonitor.stepErrorMessageParseFailed', { stepNumber: index + 1 }));
                         }
                         
                         // 顯示真正的錯誤信息
                         return (
-                          <p style={{ color: 'red' }}>錯誤: {step.errorMessage}</p>
+                          <p style={{ color: 'red' }}>{t('workflowMonitor.error')}: {step.errorMessage}</p>
                         );
                       })()
                     )}
@@ -1221,23 +1283,23 @@ const InstanceDetailModal = ({ instance, onClose }) => {
               })
             ) : (
               <Timeline.Item color="blue">
-                <p>暫無步驟執行記錄</p>
+                <p>{t('workflowMonitor.noStepExecutionRecords')}</p>
               </Timeline.Item>
             )}
             {instance.status === 'completed' && (
               <Timeline.Item color="green">
-                <p>流程完成</p>
+                <p>{t('workflowMonitor.workflowCompleted')}</p>
                 <p>{dayjs(instance.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
               </Timeline.Item>
             )}
           </Timeline>
         </TabPane>
         
-        <TabPane tab="流程變量" key="variables">
+        <TabPane tab={t('workflowMonitor.processVariables')} key="variables">
           {loadingProcessVariables ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <Spin size="large" />
-              <p style={{ marginTop: 16 }}>載入流程變量中...</p>
+              <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingProcessVariables')}</p>
             </div>
           ) : processVariables.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1271,12 +1333,12 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                           {variable.dataType}
                         </Tag>
                         {variable.isRequired && (
-                          <Tag color="red">必需</Tag>
+                          <Tag color="red">{t('workflowMonitor.required')}</Tag>
                         )}
                         {variable.hasValue ? (
-                          <Tag color="green">有值</Tag>
+                          <Tag color="green">{t('workflowMonitor.hasValue')}</Tag>
                         ) : (
-                          <Tag color="default">無值</Tag>
+                          <Tag color="default">{t('workflowMonitor.noValue')}</Tag>
                         )}
                       </div>
                       
@@ -1287,7 +1349,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         fontSize: '14px'
                       }}>
                         <div>
-                          <strong style={{ color: '#595959' }}>變量名稱:</strong>
+                          <strong style={{ color: '#595959' }}>{t('workflowMonitor.variableName')}:</strong>
                           <div style={{ 
                             marginTop: '4px',
                             padding: '4px 8px',
@@ -1300,7 +1362,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         </div>
                         
                         <div>
-                          <strong style={{ color: '#595959' }}>數據類型:</strong>
+                          <strong style={{ color: '#595959' }}>{t('workflowMonitor.dataType')}:</strong>
                           <div style={{ 
                             marginTop: '4px',
                             padding: '4px 8px',
@@ -1314,7 +1376,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {variable.description && (
                           <div style={{ gridColumn: '1 / -1' }}>
-                            <strong style={{ color: '#595959' }}>描述:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.description')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '8px 12px',
@@ -1330,7 +1392,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         )}
                         
                         <div>
-                          <strong style={{ color: '#595959' }}>當前值:</strong>
+                          <strong style={{ color: '#595959' }}>{t('workflowMonitor.currentValue')}:</strong>
                           <div style={{ 
                             marginTop: '4px',
                             padding: '8px 12px',
@@ -1347,7 +1409,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {variable.defaultValue && (
                           <div>
-                            <strong style={{ color: '#595959' }}>默認值:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.defaultValue')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1362,7 +1424,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {variable.setAt && (
                           <div>
-                            <strong style={{ color: '#595959' }}>設置時間:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.setAt')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1377,7 +1439,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {variable.setBy && (
                           <div>
-                            <strong style={{ color: '#595959' }}>設置者:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.setBy')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1392,7 +1454,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {variable.sourceType && (
                           <div>
-                            <strong style={{ color: '#595959' }}>來源類型:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.sourceType')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1407,7 +1469,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {variable.sourceReference && (
                           <div style={{ gridColumn: '1 / -1' }}>
-                            <strong style={{ color: '#595959' }}>來源引用:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.sourceReference')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1428,18 +1490,18 @@ const InstanceDetailModal = ({ instance, onClose }) => {
             </div>
           ) : (
             <Empty 
-              description="暫無流程變量" 
+              description={t('workflowMonitor.noProcessVariables')} 
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ margin: '40px 0' }}
             />
           )}
         </TabPane>
         
-        <TabPane tab="表單實例" key="forms">
+        <TabPane tab={t('workflowMonitor.formInstances')} key="forms">
           {loadingEforms ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <Spin size="large" />
-              <p style={{ marginTop: 16 }}>載入表單實例中...</p>
+              <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingEformInstances')}</p>
             </div>
           ) : eformInstances.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1467,7 +1529,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         marginBottom: '12px' 
                       }}>
                         <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>
-                          {eform.formName || '未命名表單'}
+                          {eform.formName || t('workflowMonitor.unnamedForm')}
                         </h4>
                         <Tag color={getEformStatusColor(eform.status)}>
                           {getEformStatusText(eform.status)}
@@ -1481,7 +1543,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         fontSize: '14px'
                       }}>
                         <div>
-                          <strong style={{ color: '#595959' }}>實例名稱:</strong>
+                          <strong style={{ color: '#595959' }}>{t('workflowMonitor.instanceName')}:</strong>
                           <div style={{ 
                             marginTop: '4px',
                             padding: '4px 8px',
@@ -1494,7 +1556,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         </div>
                         
                         <div>
-                          <strong style={{ color: '#595959' }}>創建時間:</strong>
+                          <strong style={{ color: '#595959' }}>{t('workflowMonitor.createdAt')}:</strong>
                           <div style={{ 
                             marginTop: '4px',
                             padding: '4px 8px',
@@ -1508,7 +1570,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {eform.userMessage && (
                           <div style={{ gridColumn: '1 / -1' }}>
-                            <strong style={{ color: '#595959' }}>用戶輸入:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.userInput')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '8px 12px',
@@ -1525,7 +1587,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {eform.approvalBy && (
                           <div>
-                            <strong style={{ color: '#595959' }}>審批人:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.approvalBy')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1540,7 +1602,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {eform.approvalAt && (
                           <div>
-                            <strong style={{ color: '#595959' }}>審批時間:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.approvalAt')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '4px 8px',
@@ -1555,7 +1617,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                         
                         {eform.approvalNote && (
                           <div style={{ gridColumn: '1 / -1' }}>
-                            <strong style={{ color: '#595959' }}>審批備註:</strong>
+                            <strong style={{ color: '#595959' }}>{t('workflowMonitor.approvalNote')}:</strong>
                             <div style={{ 
                               marginTop: '4px',
                               padding: '8px 12px',
@@ -1585,7 +1647,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
                           borderColor: '#1890ff'
                         }}
                       >
-                        查看詳情
+                        {t('workflowMonitor.viewDetails')}
                       </Button>
                     </div>
                   </div>
@@ -1594,7 +1656,7 @@ const InstanceDetailModal = ({ instance, onClose }) => {
             </div>
           ) : (
             <Empty 
-              description="暫無表單實例" 
+              description={t('workflowMonitor.noEformInstances')} 
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ margin: '40px 0' }}
             />
@@ -1621,11 +1683,11 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
 
   const getStatusTag = (status) => {
     const statusConfig = {
-      Pending: { color: 'default', text: '等待中' },
-      InProgress: { color: 'processing', text: '發送中' },
-      Completed: { color: 'success', text: '已完成' },
-      Failed: { color: 'error', text: '失敗' },
-      PartiallyFailed: { color: 'warning', text: '部分失敗' }
+      Pending: { color: 'default', text: t('workflowMonitor.statusPending') },
+      InProgress: { color: 'processing', text: t('workflowMonitor.statusInProgress') },
+      Completed: { color: 'success', text: t('workflowMonitor.statusCompleted') },
+      Failed: { color: 'error', text: t('workflowMonitor.statusFailed') },
+      PartiallyFailed: { color: 'warning', text: t('workflowMonitor.statusPartiallyFailed') }
     };
     
     const config = statusConfig[status] || statusConfig.Pending;
@@ -1639,12 +1701,12 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
 
   const getRecipientStatusTag = (status) => {
     const statusConfig = {
-      Pending: { color: 'default', text: '等待中' },
-      Sent: { color: 'processing', text: '已發送' },
-      Delivered: { color: 'success', text: '已送達' },
-      Read: { color: 'success', text: '已讀' },
-      Failed: { color: 'error', text: '失敗' },
-      Retrying: { color: 'warning', text: '重試中' }
+      Pending: { color: 'default', text: t('workflowMonitor.statusPending') },
+      Sent: { color: 'processing', text: t('workflowMonitor.statusSent') },
+      Delivered: { color: 'success', text: t('workflowMonitor.statusDelivered') },
+      Read: { color: 'success', text: t('workflowMonitor.statusRead') },
+      Failed: { color: 'error', text: t('workflowMonitor.statusFailed') },
+      Retrying: { color: 'warning', text: t('workflowMonitor.statusRetrying') }
     };
     
     const config = statusConfig[status] || statusConfig.Pending;
@@ -1658,11 +1720,11 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
 
   const getRecipientTypeTag = (type) => {
     const typeConfig = {
-      User: { color: 'blue', text: '用戶' },
-      Contact: { color: 'green', text: '聯絡人' },
-      Group: { color: 'orange', text: '群組' },
-      Hashtag: { color: 'purple', text: '標籤' },
-      Initiator: { color: 'red', text: '流程啟動人' }
+      User: { color: 'blue', text: t('workflowMonitor.recipientTypeUser') },
+      Contact: { color: 'green', text: t('workflowMonitor.recipientTypeContact') },
+      Group: { color: 'orange', text: t('workflowMonitor.recipientTypeGroup') },
+      Hashtag: { color: 'purple', text: t('workflowMonitor.recipientTypeHashtag') },
+      Initiator: { color: 'red', text: t('workflowMonitor.recipientTypeInitiator') }
     };
     
     const config = typeConfig[type] || typeConfig.User;
@@ -1677,29 +1739,29 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
   return (
     <div>
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
-        <TabPane tab="基本信息" key="basic">
+        <TabPane tab={t('workflowMonitor.basicInfo')} key="basic">
           <Descriptions bordered column={2}>
-            <Descriptions.Item label="發送記錄ID">{messageSend.id}</Descriptions.Item>
-            <Descriptions.Item label="工作流程執行ID">{messageSend.workflowExecutionId}</Descriptions.Item>
-            <Descriptions.Item label="節點ID">{messageSend.nodeId}</Descriptions.Item>
-            <Descriptions.Item label="節點類型">{messageSend.nodeType}</Descriptions.Item>
-            <Descriptions.Item label="消息類型">{messageSend.messageType}</Descriptions.Item>
-            <Descriptions.Item label="狀態">{getStatusTag(messageSend.status)}</Descriptions.Item>
-            <Descriptions.Item label="總收件人數">{messageSend.totalRecipients}</Descriptions.Item>
-            <Descriptions.Item label="成功發送數">{messageSend.successCount}</Descriptions.Item>
-            <Descriptions.Item label="失敗發送數">{messageSend.failedCount}</Descriptions.Item>
-            <Descriptions.Item label="開始時間">
+            <Descriptions.Item label={t('workflowMonitor.messageSendId')}>{messageSend.id}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.workflowExecutionId')}>{messageSend.workflowExecutionId}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.nodeId')}>{messageSend.nodeId}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.nodeType')}>{messageSend.nodeType}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.messageType')}>{messageSend.messageType}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.status')}>{getStatusTag(messageSend.status)}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.totalRecipients')}>{messageSend.totalRecipients}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.successCount')}>{messageSend.successCount}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.failedCount')}>{messageSend.failedCount}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.startedAt')}>
               {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>
-            <Descriptions.Item label="完成時間">
+            <Descriptions.Item label={t('workflowMonitor.completedAt')}>
               {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="創建者">{messageSend.createdBy}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.createdBy')}>{messageSend.createdBy}</Descriptions.Item>
           </Descriptions>
           
           {messageSend.messageContent && (
             <div style={{ marginTop: 16 }}>
-              <Text strong>消息內容:</Text>
+              <Text strong>{t('workflowMonitor.messageContent')}:</Text>
               <div style={{ 
                 marginTop: 8,
                 padding: 12,
@@ -1716,7 +1778,7 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
           
           {messageSend.errorMessage && (
             <Alert
-              message="錯誤信息"
+              message={t('workflowMonitor.errorMessage')}
               description={messageSend.errorMessage}
               type="error"
               showIcon
@@ -1725,11 +1787,11 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
           )}
         </TabPane>
         
-        <TabPane tab="收件人詳情" key="recipients">
+        <TabPane tab={t('workflowMonitor.recipientDetails')} key="recipients">
           {loadingRecipients ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>
               <Spin size="large" />
-              <p style={{ marginTop: 16 }}>載入收件人詳情中...</p>
+              <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingRecipientDetails')}</p>
             </div>
           ) : recipients.length > 0 ? (
             <Table
@@ -1739,7 +1801,7 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
               scroll={{ x: 800 }}
               columns={[
                 {
-                  title: '收件人',
+                  title: t('workflowMonitor.recipient'),
                   dataIndex: 'recipientName',
                   key: 'recipientName',
                   width: 200,
@@ -1751,21 +1813,21 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
                   )
                 },
                 {
-                  title: '類型',
+                  title: t('workflowMonitor.type'),
                   dataIndex: 'recipientType',
                   key: 'recipientType',
                   width: 100,
                   render: (type) => getRecipientTypeTag(type)
                 },
                 {
-                  title: '狀態',
+                  title: t('workflowMonitor.status'),
                   dataIndex: 'status',
                   key: 'status',
                   width: 100,
                   render: (status) => getRecipientStatusTag(status)
                 },
                 {
-                  title: 'WhatsApp消息ID',
+                  title: t('workflowMonitor.whatsAppMessageId'),
                   dataIndex: 'whatsAppMessageId',
                   key: 'whatsAppMessageId',
                   width: 200,
@@ -1773,28 +1835,28 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
                   render: (text) => text || '-'
                 },
                 {
-                  title: '發送時間',
+                  title: t('workflowMonitor.sentAt'),
                   dataIndex: 'sentAt',
                   key: 'sentAt',
                   width: 150,
                   render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
-                  title: '送達時間',
+                  title: t('workflowMonitor.deliveredAt'),
                   dataIndex: 'deliveredAt',
                   key: 'deliveredAt',
                   width: 150,
                   render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
-                  title: '已讀時間',
+                  title: t('workflowMonitor.readAt'),
                   dataIndex: 'readAt',
                   key: 'readAt',
                   width: 150,
                   render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
-                  title: '錯誤信息',
+                  title: t('workflowMonitor.errorMessage'),
                   dataIndex: 'errorMessage',
                   key: 'errorMessage',
                   width: 200,
@@ -1805,11 +1867,465 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
             />
           ) : (
             <Empty 
-              description="暫無收件人記錄" 
+              description={t('workflowMonitor.noRecipientRecords')} 
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ margin: '40px 0' }}
             />
           )}
+        </TabPane>
+      </Tabs>
+    </div>
+  );
+};
+
+// 消息發送詳細狀態組件
+const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend, onViewMessageSendDetail }) => {
+  const { t } = useLanguage();
+  const [activeTab, setActiveTab] = useState('overview');
+  const [recipients, setRecipients] = useState([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
+  const [statistics, setStatistics] = useState({
+    total: 0,
+    sent: 0,
+    delivered: 0,
+    read: 0,
+    failed: 0,
+    pending: 0
+  });
+
+  // 載入收件人數據
+  useEffect(() => {
+    if (messageSend && messageSend.recipients) {
+      setRecipients(messageSend.recipients);
+      calculateStatistics(messageSend.recipients);
+    }
+  }, [messageSend]);
+
+  const calculateStatistics = (recipientsData) => {
+    const stats = {
+      total: recipientsData.length,
+      sent: 0,
+      delivered: 0,
+      read: 0,
+      failed: 0,
+      pending: 0
+    };
+
+    recipientsData.forEach(recipient => {
+      switch (recipient.status) {
+        case 'Sent':
+          stats.sent++;
+          break;
+        case 'Delivered':
+          stats.delivered++;
+          break;
+        case 'Read':
+          stats.read++;
+          break;
+        case 'Failed':
+          stats.failed++;
+          break;
+        case 'Pending':
+        default:
+          stats.pending++;
+          break;
+      }
+    });
+
+    setStatistics(stats);
+  };
+
+  const getStatusTag = (status) => {
+    const statusConfig = {
+      Pending: { color: 'default', text: t('workflowMonitor.statusPending') },
+      InProgress: { color: 'processing', text: t('workflowMonitor.statusInProgress') },
+      Completed: { color: 'success', text: t('workflowMonitor.statusCompleted') },
+      Failed: { color: 'error', text: t('workflowMonitor.statusFailed') },
+      PartiallyFailed: { color: 'warning', text: t('workflowMonitor.statusPartiallyFailed') }
+    };
+    
+    const config = statusConfig[status] || statusConfig.Pending;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
+  const getRecipientStatusTag = (status) => {
+    const statusConfig = {
+      Pending: { color: 'default', text: t('workflowMonitor.statusPending') },
+      Sent: { color: 'processing', text: t('workflowMonitor.statusSent') },
+      Delivered: { color: 'success', text: t('workflowMonitor.statusDelivered') },
+      Read: { color: 'success', text: t('workflowMonitor.statusRead') },
+      Failed: { color: 'error', text: t('workflowMonitor.statusFailed') },
+      Retrying: { color: 'warning', text: t('workflowMonitor.statusRetrying') }
+    };
+    
+    const config = statusConfig[status] || statusConfig.Pending;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
+  const getRecipientTypeTag = (type) => {
+    const typeConfig = {
+      User: { color: 'blue', text: t('workflowMonitor.recipientTypeUser') },
+      Contact: { color: 'green', text: t('workflowMonitor.recipientTypeContact') },
+      Group: { color: 'orange', text: t('workflowMonitor.recipientTypeGroup') },
+      Hashtag: { color: 'purple', text: t('workflowMonitor.recipientTypeHashtag') },
+      Initiator: { color: 'red', text: t('workflowMonitor.recipientTypeInitiator') },
+      PhoneNumber: { color: 'cyan', text: t('workflowMonitor.recipientTypePhoneNumber') }
+    };
+    
+    const config = typeConfig[type] || typeConfig.User;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
+  return (
+    <div>
+      <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <TabPane tab={t('workflowMonitor.sendOverview')} key="overview">
+          {/* 統計卡片 */}
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} sm={12} md={8}>
+              <Card>
+                <Statistic
+                  title={t('workflowMonitor.totalRecipients')}
+                  value={statistics.total}
+                  prefix={<MessageOutlined />}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card>
+                <Statistic
+                  title={t('workflowMonitor.sent')}
+                  value={statistics.sent}
+                  prefix={<CheckCircleOutlined />}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card>
+                <Statistic
+                  title={t('workflowMonitor.delivered')}
+                  value={statistics.delivered}
+                  prefix={<CheckCircleOutlined />}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card>
+                <Statistic
+                  title={t('workflowMonitor.read')}
+                  value={statistics.read}
+                  prefix={<EyeOutlined />}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card>
+                <Statistic
+                  title={t('workflowMonitor.failed')}
+                  value={statistics.failed}
+                  prefix={<CloseCircleOutlined />}
+                  valueStyle={{ color: '#ff4d4f' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Card>
+                <Statistic
+                  title={t('workflowMonitor.pending')}
+                  value={statistics.pending}
+                  prefix={<ClockCircleOutlined />}
+                  valueStyle={{ color: '#faad14' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {/* 基本信息 */}
+          <Card title={t('workflowMonitor.sendBasicInfo')} style={{ marginBottom: 16 }}>
+            <Descriptions bordered column={2}>
+              <Descriptions.Item label={t('workflowMonitor.messageSendId')}>{messageSend.id}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.workflowExecutionId')}>{messageSend.workflowExecutionId}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.nodeId')}>{messageSend.nodeId}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.nodeType')}>{messageSend.nodeType}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.messageType')}>{messageSend.messageType}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.status')}>{getStatusTag(messageSend.status)}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.totalRecipients')}>{messageSend.totalRecipients}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.successCount')}>{messageSend.successCount}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.failedCount')}>{messageSend.failedCount}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.startedAt')}>
+                {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.completedAt')}>
+                {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.createdBy')}>{messageSend.createdBy}</Descriptions.Item>
+            </Descriptions>
+            
+            {messageSend.messageContent && (
+              <div style={{ marginTop: 16 }}>
+                <Text strong>{t('workflowMonitor.messageContent')}:</Text>
+                <div style={{ 
+                  marginTop: 8,
+                  padding: 12,
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: 6,
+                  border: '1px solid #d9d9d9',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}>
+                  {messageSend.messageContent}
+                </div>
+              </div>
+            )}
+            
+            {messageSend.errorMessage && (
+              <Alert
+                message={t('workflowMonitor.errorMessage')}
+                description={messageSend.errorMessage}
+                type="error"
+                showIcon
+                style={{ marginTop: 16 }}
+              />
+            )}
+          </Card>
+        </TabPane>
+        
+        <TabPane tab={t('workflowMonitor.recipientDetails')} key="recipients">
+          {loadingRecipients ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingRecipientDetails')}</p>
+            </div>
+          ) : recipients.length > 0 ? (
+            <Table
+              dataSource={recipients}
+              rowKey="id"
+              pagination={{ pageSize: 10 }}
+              scroll={{ x: 1000 }}
+              columns={[
+                {
+                  title: t('workflowMonitor.recipient'),
+                  dataIndex: 'recipientName',
+                  key: 'recipientName',
+                  width: 200,
+                  render: (text, record) => (
+                    <div>
+                      <div style={{ fontWeight: 'bold' }}>{text || t('workflowMonitor.unnamed')}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>{record.phoneNumber}</div>
+                    </div>
+                  )
+                },
+                {
+                  title: t('workflowMonitor.type'),
+                  dataIndex: 'recipientType',
+                  key: 'recipientType',
+                  width: 100,
+                  render: (type) => getRecipientTypeTag(type)
+                },
+                {
+                  title: t('workflowMonitor.status'),
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 100,
+                  render: (status) => getRecipientStatusTag(status)
+                },
+                {
+                  title: t('workflowMonitor.whatsAppMessageId'),
+                  dataIndex: 'whatsAppMessageId',
+                  key: 'whatsAppMessageId',
+                  width: 200,
+                  ellipsis: true,
+                  render: (text) => text || '-'
+                },
+                {
+                  title: t('workflowMonitor.sentAt'),
+                  dataIndex: 'sentAt',
+                  key: 'sentAt',
+                  width: 150,
+                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                },
+                {
+                  title: t('workflowMonitor.deliveredAt'),
+                  dataIndex: 'deliveredAt',
+                  key: 'deliveredAt',
+                  width: 150,
+                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                },
+                {
+                  title: t('workflowMonitor.readAt'),
+                  dataIndex: 'readAt',
+                  key: 'readAt',
+                  width: 150,
+                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                },
+                {
+                  title: t('workflowMonitor.retryCount'),
+                  dataIndex: 'retryCount',
+                  key: 'retryCount',
+                  width: 80,
+                  render: (count, record) => (
+                    <div>
+                      <Text>{count || 0}</Text>
+                      {record.maxRetries && (
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          / {record.maxRetries}
+                        </div>
+                      )}
+                    </div>
+                  )
+                },
+                {
+                  title: t('workflowMonitor.errorMessage'),
+                  dataIndex: 'errorMessage',
+                  key: 'errorMessage',
+                  width: 200,
+                  ellipsis: true,
+                  render: (text) => text || '-'
+                }
+              ]}
+            />
+          ) : (
+            <Empty 
+              description={t('workflowMonitor.noRecipientRecords')} 
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              style={{ margin: '40px 0' }}
+            />
+          )}
+        </TabPane>
+
+        <TabPane tab={t('workflowMonitor.statusAnalysis')} key="analysis">
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
+              <Card title={t('workflowMonitor.sendStatusDistribution')} style={{ height: '300px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{t('workflowMonitor.read')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Progress 
+                        percent={statistics.total > 0 ? Math.round((statistics.read / statistics.total) * 100) : 0} 
+                        size="small" 
+                        strokeColor="#52c41a"
+                        style={{ width: '100px' }}
+                      />
+                      <span>{statistics.read}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{t('workflowMonitor.delivered')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Progress 
+                        percent={statistics.total > 0 ? Math.round((statistics.delivered / statistics.total) * 100) : 0} 
+                        size="small" 
+                        strokeColor="#52c41a"
+                        style={{ width: '100px' }}
+                      />
+                      <span>{statistics.delivered}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{t('workflowMonitor.sent')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Progress 
+                        percent={statistics.total > 0 ? Math.round((statistics.sent / statistics.total) * 100) : 0} 
+                        size="small" 
+                        strokeColor="#1890ff"
+                        style={{ width: '100px' }}
+                      />
+                      <span>{statistics.sent}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{t('workflowMonitor.failed')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Progress 
+                        percent={statistics.total > 0 ? Math.round((statistics.failed / statistics.total) * 100) : 0} 
+                        size="small" 
+                        strokeColor="#ff4d4f"
+                        style={{ width: '100px' }}
+                      />
+                      <span>{statistics.failed}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{t('workflowMonitor.pending')}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Progress 
+                        percent={statistics.total > 0 ? Math.round((statistics.pending / statistics.total) * 100) : 0} 
+                        size="small" 
+                        strokeColor="#faad14"
+                        style={{ width: '100px' }}
+                      />
+                      <span>{statistics.pending}</span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} md={12}>
+              <Card title={t('workflowMonitor.timeAnalysis')} style={{ height: '300px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <Text strong>{t('workflowMonitor.sendStartTime')}:</Text>
+                    <div style={{ marginTop: '4px', color: '#666' }}>
+                      {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
+                    </div>
+                  </div>
+                  <div>
+                    <Text strong>{t('workflowMonitor.sendCompleteTime')}:</Text>
+                    <div style={{ marginTop: '4px', color: '#666' }}>
+                      {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : t('workflowMonitor.inProgress')}
+                    </div>
+                  </div>
+                  <div>
+                    <Text strong>{t('workflowMonitor.totalSendTime')}:</Text>
+                    <div style={{ marginTop: '4px', color: '#666' }}>
+                      {messageSend.completedAt ? 
+                        `${dayjs.duration(dayjs(messageSend.completedAt).diff(dayjs(messageSend.startedAt))).asMinutes().toFixed(1)} ${t('workflowMonitor.minutes')}` : 
+                        t('workflowMonitor.inProgress')
+                      }
+                    </div>
+                  </div>
+                  <div>
+                    <Text strong>{t('workflowMonitor.successRate')}:</Text>
+                    <div style={{ marginTop: '4px', color: '#666' }}>
+                      {statistics.total > 0 ? 
+                        `${((statistics.sent / statistics.total) * 100).toFixed(1)}%` : 
+                        '0%'
+                      }
+                    </div>
+                  </div>
+                  <div>
+                    <Text strong>{t('workflowMonitor.deliveryRate')}:</Text>
+                    <div style={{ marginTop: '4px', color: '#666' }}>
+                      {statistics.total > 0 ? 
+                        `${((statistics.delivered / statistics.total) * 100).toFixed(1)}%` : 
+                        '0%'
+                      }
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          </Row>
         </TabPane>
       </Tabs>
     </div>

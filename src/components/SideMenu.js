@@ -83,6 +83,12 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
           icon: <ClockCircleOutlined />,
           label: t('menu.pendingTasks'),
           url: '/pending-tasks',
+        },
+        {
+          key: 'workflowMonitor',
+          icon: <BarChartOutlined />,
+          label: t('menu.runningApps'),
+          url: '/workflow-monitor',
         }
       ]
     },
@@ -154,13 +160,6 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
           icon: <BranchesOutlined />,
           label: t('menu.whatsappWorkflow'),
           url: '/workflow-list',
-        },
-        // 流程監控
-        {
-          key: 'workflowMonitor',
-          icon: <BarChartOutlined />,
-          label: t('menu.workflowMonitor'),
-          url: '/workflow-monitor',
         },
         // 數據集管理
         {

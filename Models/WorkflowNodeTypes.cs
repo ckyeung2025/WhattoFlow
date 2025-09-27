@@ -63,15 +63,15 @@ namespace PurpleRice.Models
                 }
             },
             
-            ["dbquery"] = new WorkflowNodeTypeDefinition
+            ["datasetquery"] = new WorkflowNodeTypeDefinition
             {
-                Type = "dbQuery",
-                Label = "Database Query/Update",
+                Type = "dataSetQuery",
+                Label = "DataSet Query/Update",
                 Category = "Data",
-                Description = "執行 SQL 查詢或更新資料庫",
+                Description = "DataSet 查詢、插入、更新或刪除",
                 IsImplemented = true,
                 HasExecution = true,
-                DefaultData = new { taskName = "Database Query/Update", sql = "" }
+                DefaultData = new { taskName = "DataSet Query/Update", dataSetId = "", operationType = "SELECT", queryConditionGroups = new object[] { }, operationData = new { }, mappedFields = new object[] { } }
             },
             
             ["callapi"] = new WorkflowNodeTypeDefinition

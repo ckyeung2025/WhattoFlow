@@ -74,6 +74,17 @@ namespace PurpleRice.Controllers
                 _logger.LogInformation("獲取消息發送記錄詳情，MessageSendId: {MessageSendId}", messageSendId);
 
                 var companyId = GetCurrentCompanyId();
+                
+                // 先檢查記錄是否存在（不包含關聯數據）
+                var exists = await _db.WorkflowMessageSends
+                    .AnyAsync(ms => ms.Id == messageSendId && ms.IsActive);
+                
+                if (!exists)
+                {
+                    _logger.LogWarning("消息發送記錄不存在，MessageSendId: {MessageSendId}", messageSendId);
+                    return NotFound(new { error = "找不到消息發送記錄" });
+                }
+                
                 var messageSend = await _messageSendService.GetMessageSendAsync(messageSendId);
 
                 if (messageSend == null || messageSend.CompanyId != companyId)
@@ -87,6 +98,33 @@ namespace PurpleRice.Controllers
             {
                 _logger.LogError(ex, "獲取消息發送記錄詳情失敗");
                 return StatusCode(500, new { error = "獲取消息發送記錄詳情失敗", details = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 獲取消息發送記錄詳細狀態（包含收件人詳情）
+        /// </summary>
+        [HttpGet("{messageSendId}/detail")]
+        public async Task<IActionResult> GetMessageSendDetail(Guid messageSendId)
+        {
+            try
+            {
+                _logger.LogInformation("獲取消息發送記錄詳細狀態，MessageSendId: {MessageSendId}", messageSendId);
+
+                var companyId = GetCurrentCompanyId();
+                var messageSend = await _messageSendService.GetMessageSendAsync(messageSendId);
+
+                if (messageSend == null || messageSend.CompanyId != companyId)
+                {
+                    return NotFound(new { error = "找不到消息發送記錄" });
+                }
+
+                return Ok(new { data = messageSend });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "獲取消息發送記錄詳細狀態失敗");
+                return StatusCode(500, new { error = "獲取消息發送記錄詳細狀態失敗", details = ex.Message });
             }
         }
 
