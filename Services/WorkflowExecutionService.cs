@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PurpleRice.Data;
 using PurpleRice.Models;
+using Microsoft.AspNetCore.Hosting;
+using System.IO;
 
 
 namespace PurpleRice.Services
@@ -27,19 +29,22 @@ namespace PurpleRice.Services
         private readonly IProcessVariableService _processVariableService;
         private readonly ILogger<WorkflowExecutionService> _logger;
         private readonly UserSessionService _userSessionService;
+        private readonly IWebHostEnvironment _environment;
 
         public WorkflowExecutionService(
             PurpleRiceDbContext context,
             IQRCodeService qrCodeService,
             IProcessVariableService processVariableService,
             ILogger<WorkflowExecutionService> logger,
-            UserSessionService userSessionService)
+            UserSessionService userSessionService,
+            IWebHostEnvironment environment)
         {
             _context = context;
             _qrCodeService = qrCodeService;
             _processVariableService = processVariableService;
             _logger = logger;
             _userSessionService = userSessionService;
+            _environment = environment;
         }
 
         public async Task<WorkflowExecution> StartWorkflowAsync(int workflowDefinitionId, string initiatedBy, Dictionary<string, object> initialVariables = null)
@@ -99,7 +104,7 @@ namespace PurpleRice.Services
                     return false;
                 }
 
-                // 掃描 QR Code
+                // 掃描 QR Code（圖片已經在控制器中保存了）
                 string scannedValue = null;
                 if (imageData != null && imageData.Length > 0)
                 {

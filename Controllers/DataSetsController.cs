@@ -922,6 +922,134 @@ namespace PurpleRice.Controllers
             }
         }
 
+        // 添加預設連接測試 API
+        [HttpPost("test-preset-connection")]
+        public async Task<IActionResult> TestPresetConnection([FromBody] TestPresetConnectionRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.PresetConnection))
+                {
+                    return BadRequest(new { success = false, message = "預設連接名稱不能為空" });
+                }
+
+                // 獲取預設連接字符串
+                var connectionString = GetPresetConnectionString(request.PresetConnection);
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    return BadRequest(new { success = false, message = $"找不到預設連接 '{request.PresetConnection}'" });
+                }
+                
+                // 測試連接
+                using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+                await connection.OpenAsync();
+                
+                // 執行簡單查詢測試
+                using var command = new Microsoft.Data.SqlClient.SqlCommand("SELECT 1", connection);
+                await command.ExecuteScalarAsync();
+                
+                _loggingService.LogInformation($"預設連接 '{request.PresetConnection}' 測試成功");
+                return Ok(new { success = true, message = $"預設連接 '{request.PresetConnection}' 測試成功" });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"預設連接 '{request.PresetConnection}' 測試失敗: {ex.Message}", ex);
+                return BadRequest(new { success = false, message = $"預設連接測試失敗: {ex.Message}" });
+            }
+        }
+
+        // 新增：根據預設連接的 SQL 查詢生成欄位定義 API
+        [HttpPost("generate-columns-from-preset-sql")]
+        public async Task<IActionResult> GenerateColumnsFromPresetSql([FromBody] GenerateColumnsFromPresetSqlRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.PresetConnection))
+                {
+                    return BadRequest(new { success = false, message = "預設連接名稱不能為空" });
+                }
+
+                if (string.IsNullOrEmpty(request.SqlQuery))
+                {
+                    return BadRequest(new { success = false, message = "SQL 查詢語句不能為空" });
+                }
+
+                // 獲取預設連接字符串
+                var connectionString = GetPresetConnectionString(request.PresetConnection);
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    return BadRequest(new { success = false, message = $"找不到預設連接 '{request.PresetConnection}'" });
+                }
+
+                _loggingService.LogInformation($"開始根據預設連接 '{request.PresetConnection}' 的 SQL 查詢生成欄位定義");
+                _loggingService.LogInformation($"SQL 查詢: {request.SqlQuery}");
+
+                // 構建一個簡單的查詢來獲取欄位信息（只取前幾行數據）
+                string sampleQuery;
+                var trimmedQuery = request.SqlQuery.Trim();
+                
+                if (trimmedQuery.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 檢查是否已經包含 TOP 關鍵字
+                    var upperQuery = trimmedQuery.ToUpper();
+                    if (upperQuery.Contains(" TOP "))
+                    {
+                        // 如果已經有 TOP，直接使用原查詢
+                        sampleQuery = trimmedQuery;
+                    }
+                    else
+                    {
+                        // 如果沒有 TOP，用子查詢包裝來限制結果
+                        sampleQuery = $"SELECT TOP 1 * FROM ({trimmedQuery}) AS temp";
+                    }
+                }
+                else
+                {
+                    // 如果不是 SELECT 開頭，用子查詢包裝
+                    sampleQuery = $"SELECT TOP 1 * FROM ({trimmedQuery}) AS temp";
+                }
+
+                _loggingService.LogInformation($"樣本查詢: {sampleQuery}");
+
+                // 執行查詢獲取欄位信息
+                var result = await ExecuteSqlQuery(connectionString, sampleQuery, null);
+                
+                if (result.Success && result.Data.Any())
+                {
+                    var columns = new List<object>();
+                    var firstRow = result.Data.First();
+                    
+                    foreach (var kvp in firstRow)
+                    {
+                        var columnName = kvp.Key;
+                        var value = kvp.Value;
+                        
+                        columns.Add(new
+                        {
+                            columnName = columnName,
+                            displayName = columnName,
+                            dataType = InferDataTypeFromValue(value),
+                            maxLength = GetMaxLengthFromValue(value),
+                            defaultValue = (string)null
+                        });
+                    }
+                    
+                    _loggingService.LogInformation($"成功為預設連接 '{request.PresetConnection}' 生成 {columns.Count} 個欄位定義");
+                    return Ok(new { success = true, columns = columns });
+                }
+                else
+                {
+                    _loggingService.LogWarning($"預設連接 '{request.PresetConnection}' 的查詢沒有返回數據");
+                    return Ok(new { success = true, columns = new List<object>(), message = "查詢沒有返回數據" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"為預設連接生成欄位定義失敗: {ex.Message}", ex);
+                return BadRequest(new { success = false, message = $"生成欄位定義失敗: {ex.Message}" });
+            }
+        }
+
         // 新增：根據 SQL 查詢生成欄位定義 API
         [HttpPost("generate-columns-from-sql")]
         public async Task<IActionResult> GenerateColumnsFromSql([FromBody] GenerateColumnsFromSqlRequest request)
@@ -956,10 +1084,8 @@ namespace PurpleRice.Controllers
                     }
                     else
                     {
-                        // 如果沒有 TOP，在 SELECT 後插入 TOP 1
-                        var selectIndex = trimmedQuery.IndexOf("SELECT", StringComparison.OrdinalIgnoreCase);
-                        var afterSelect = trimmedQuery.Substring(selectIndex + 6); // "SELECT " 是 6 個字符
-                        sampleQuery = trimmedQuery.Substring(0, selectIndex + 6) + "TOP 1 " + afterSelect;
+                        // 如果沒有 TOP，用子查詢包裝來限制結果
+                        sampleQuery = $"SELECT TOP 1 * FROM ({trimmedQuery}) AS temp";
                     }
                 }
                 else
@@ -1031,14 +1157,48 @@ namespace PurpleRice.Controllers
                 return "string";
         }
 
+        private int GetMaxLengthFromValue(object value)
+        {
+            if (value == null) return 255;
+            
+            var valueType = value.GetType();
+            
+            if (valueType == typeof(string))
+            {
+                var stringValue = value.ToString();
+                return Math.Max(stringValue?.Length ?? 0, 255);
+            }
+            else if (valueType == typeof(int) || valueType == typeof(long) || valueType == typeof(short))
+                return 20;
+            else if (valueType == typeof(decimal) || valueType == typeof(double) || valueType == typeof(float))
+                return 20;
+            else if (valueType == typeof(DateTime))
+                return 50;
+            else if (valueType == typeof(bool))
+                return 10;
+            else
+                return 255;
+        }
+
         public class TestSqlConnectionRequest
         {
             public string ConnectionString { get; set; } = string.Empty;
         }
 
+        public class TestPresetConnectionRequest
+        {
+            public string PresetConnection { get; set; } = string.Empty;
+        }
+
         public class GenerateColumnsFromSqlRequest
         {
             public string ConnectionString { get; set; } = string.Empty;
+            public string SqlQuery { get; set; } = string.Empty;
+        }
+
+        public class GenerateColumnsFromPresetSqlRequest
+        {
+            public string PresetConnection { get; set; } = string.Empty;
             public string SqlQuery { get; set; } = string.Empty;
         }
 

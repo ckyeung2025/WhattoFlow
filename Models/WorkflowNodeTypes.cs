@@ -50,7 +50,7 @@ namespace PurpleRice.Models
             {
                 Type = "waitReply",
                 Label = "Wait for User Reply",
-                Category = "Interaction",
+                Category = "Control",
                 Description = "暫停流程等待用戶輸入",
                 IsImplemented = true,
                 HasExecution = true,
@@ -100,7 +100,7 @@ namespace PurpleRice.Models
             {
                 Type = "waitForQRCode",
                 Label = "Wait for QR Code",
-                Category = "Interaction",
+                Category = "Control",
                 Description = "等待用戶上傳包含 QR Code 的圖片並掃描",
                 IsImplemented = true,
                 HasExecution = true,

@@ -95,45 +95,6 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
     {
       type: 'divider',
     },
-    // Administrator Tools 管理工具區域
-    {
-      key: 'adminTools',
-      icon: <SettingOutlined />,
-      label: t('menu.adminTools'),
-      children: [
-        // 聯絡人管理
-        {
-          key: 'contactList',
-          icon: <ContactsOutlined />,
-          label: t('menu.contactList'),
-          url: '/contacts',
-        },
-        // 廣播群組管理
-        {
-          key: 'broadcastGroups',
-          icon: <TeamOutlined />,
-          label: t('menu.broadcastGroups'),
-          url: '/broadcast-groups',
-        },
-        // 標籤管理
-        {
-          key: 'hashtags',
-          icon: <TagsOutlined />,
-          label: t('menu.hashtags'),
-          url: '/hashtags',
-        },
-        // 公司/用戶管理
-        {
-          key: 'companyUserAdmin',
-          icon: <UserOutlined />,
-          label: t('menu.companyUserAdmin'),
-          url: '/company-user-admin',
-        }
-      ]
-    },
-    {
-      type: 'divider',
-    },
     // Studio 工作室區域
     {
       key: 'studio',
@@ -167,6 +128,45 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
           icon: <DatabaseOutlined />,
           label: t('dataSetManagement.title'),
           url: '/data-sets',
+        }
+      ]
+    },
+    {
+      type: 'divider',
+    },
+    // Administrator Tools 管理工具區域
+    {
+      key: 'adminTools',
+      icon: <SettingOutlined />,
+      label: t('menu.adminTools'),
+      children: [
+        // 聯絡人管理
+        {
+          key: 'contactList',
+          icon: <ContactsOutlined />,
+          label: t('menu.contactList'),
+          url: '/contacts',
+        },
+        // 廣播群組管理
+        {
+          key: 'broadcastGroups',
+          icon: <TeamOutlined />,
+          label: t('menu.broadcastGroups'),
+          url: '/broadcast-groups',
+        },
+        // 標籤管理
+        {
+          key: 'hashtags',
+          icon: <TagsOutlined />,
+          label: t('menu.hashtags'),
+          url: '/hashtags',
+        },
+        // 公司/用戶管理
+        {
+          key: 'companyUserAdmin',
+          icon: <UserOutlined />,
+          label: t('menu.companyUserAdmin'),
+          url: '/company-user-admin',
         }
       ]
     },
@@ -256,17 +256,26 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
           theme="dark"
           mode="inline"
           selectedKeys={[selectedKey]}
-          openKeys={collapsed ? [] : openKeys}
+          openKeys={openKeys}
           onOpenChange={handleOpenChange}
           items={menuItems}
-          onClick={({ key }) => {
+          onClick={({ key, keyPath }) => {
+            console.log('Menu click:', { key, keyPath, collapsed });
+            
             if (key === 'logout') {
               onLogout();
             } else if (key === 'application' || key === 'studio' || key === 'adminTools') {
-              // 這些是父級菜單，不需要處理點擊
+              // 在收合狀態下，點擊父級菜單時展開子菜單
+              if (collapsed) {
+                console.log('Setting openKeys to:', [key]);
+                setOpenKeys([key]);
+              }
               return;
             } else {
-              onMenuSelect(key);
+              // 在收合狀態下，keyPath 會包含實際的子菜單 key
+              const actualKey = keyPath && keyPath.length > 0 ? keyPath[0] : key;
+              console.log('Calling onMenuSelect with:', actualKey);
+              onMenuSelect(actualKey);
             }
           }}
           style={{

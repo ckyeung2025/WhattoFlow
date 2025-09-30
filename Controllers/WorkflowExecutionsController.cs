@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using PurpleRice.Services;
+using System.IO;
 
 namespace PurpleRice.Controllers
 {
@@ -395,6 +396,163 @@ namespace PurpleRice.Controllers
                     innerException = ex.InnerException?.Message
                 });
             }
+        }
+
+        // GET: api/workflowexecutions/{id}/images
+        [HttpGet("{id}/images")]
+        public async Task<IActionResult> GetExecutionImages(int id)
+        {
+            try
+            {
+                // 檢查流程實例是否存在
+                var execution = await _db.WorkflowExecutions.FindAsync(id);
+                if (execution == null)
+                {
+                    return NotFound(new { error = "Workflow execution not found" });
+                }
+
+                // 根據流程實例 ID 查找對應的圖片目錄
+                // 假設圖片存儲在 Uploads/Whatsapp_Images/{executionId}/ 目錄中
+                var imagesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Images", id.ToString());
+                
+                if (!Directory.Exists(imagesDirectory))
+                {
+                    return Ok(new { data = new List<object>() });
+                }
+
+                var imageFiles = Directory.GetFiles(imagesDirectory)
+                    .Where(file => IsImageFile(file))
+                    .Select(file => new
+                    {
+                        id = Path.GetFileNameWithoutExtension(file),
+                        filename = Path.GetFileName(file),
+                        url = $"/Uploads/Whatsapp_Images/{id}/{Path.GetFileName(file)}",
+                        size = new FileInfo(file).Length,
+                        receivedAt = System.IO.File.GetCreationTime(file),
+                        status = GetImageStatusFromFilename(Path.GetFileName(file))
+                    })
+                    .OrderByDescending(img => img.receivedAt)
+                    .ToList();
+
+                return Ok(new { data = imageFiles });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取流程實例圖片時出錯: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        // GET: api/workflowexecutions/{id}/media-files
+        [HttpGet("{id}/media-files")]
+        public async Task<IActionResult> GetExecutionMediaFiles(int id)
+        {
+            try
+            {
+                // 檢查流程實例是否存在
+                var execution = await _db.WorkflowExecutions.FindAsync(id);
+                if (execution == null)
+                {
+                    return NotFound(new { error = "Workflow execution not found" });
+                }
+
+                var mediaFiles = new List<object>();
+
+                // 檢查多個可能的媒體文件目錄
+                var possibleDirectories = new[]
+                {
+                    Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Images", id.ToString()),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Videos", id.ToString()),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Documents", id.ToString()),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Audio", id.ToString()),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Workflow_Media", id.ToString())
+                };
+
+                foreach (var directory in possibleDirectories)
+                {
+                    if (Directory.Exists(directory))
+                    {
+                        var folderName = Path.GetFileName(Path.GetDirectoryName(directory)) ?? "root";
+                        var files = Directory.GetFiles(directory)
+                            .Where(file => IsMediaFile(file))
+                            .Select(file => new
+                            {
+                                id = Path.GetFileNameWithoutExtension(file),
+                                fileName = Path.GetFileName(file),
+                                filePath = file.Replace(Directory.GetCurrentDirectory(), "").Replace("\\", "/"),
+                                fileSize = new FileInfo(file).Length,
+                                createdAt = System.IO.File.GetCreationTime(file),
+                                folderPath = folderName,
+                                fileType = GetFileType(file)
+                            })
+                            .OrderByDescending(file => file.createdAt)
+                            .ToList();
+
+                        mediaFiles.AddRange(files);
+                    }
+                }
+
+                return Ok(new { data = mediaFiles });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取流程實例媒體文件時出錯: {ex.Message}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        private bool IsImageFile(string filePath)
+        {
+            var imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            return imageExtensions.Contains(extension);
+        }
+
+        private bool IsMediaFile(string filePath)
+        {
+            var mediaExtensions = new[] { 
+                // 圖片
+                ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".tiff", ".ico",
+                // 視頻
+                ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".3gp",
+                // 音頻
+                ".mp3", ".wav", ".ogg", ".aac", ".flac", ".m4a", ".wma",
+                // 文檔
+                ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".rtf"
+            };
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            return mediaExtensions.Contains(extension);
+        }
+
+        private string GetFileType(string filePath)
+        {
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            
+            var imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".tiff", ".ico" };
+            var videoExtensions = new[] { ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".3gp" };
+            var audioExtensions = new[] { ".mp3", ".wav", ".ogg", ".aac", ".flac", ".m4a", ".wma" };
+            
+            if (imageExtensions.Contains(extension))
+                return "image";
+            else if (videoExtensions.Contains(extension))
+                return "video";
+            else if (audioExtensions.Contains(extension))
+                return "audio";
+            else
+                return "document";
+        }
+
+        private string GetImageStatusFromFilename(string filename)
+        {
+            // 根據文件名判斷狀態，例如：20250929221838_1423145165457_187_Failed.jpg
+            if (filename.Contains("_Success"))
+                return "Success";
+            else if (filename.Contains("_Failed"))
+                return "Failed";
+            else if (filename.Contains("_Processing"))
+                return "Processing";
+            else
+                return "Pending";
         }
 
         // 從 WorkflowEngineController 合併的統計信息方法

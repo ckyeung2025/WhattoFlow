@@ -52,7 +52,21 @@ import {
   ClockCircleFilled,
   ExclamationCircleFilled,
   SyncOutlined as SyncOutlinedIcon,
-  MessageOutlined
+  MessageOutlined,
+  PictureOutlined,
+  VideoCameraOutlined,
+  FolderOutlined,
+  FileImageOutlined,
+  FileOutlined,
+  LeftOutlined,
+  RightOutlined,
+  RotateLeftOutlined,
+  RotateRightOutlined,
+  SwapOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
+  ReloadOutlined as ResetOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
@@ -865,6 +879,18 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
   const [loadingEforms, setLoadingEforms] = useState(false);
   const [processVariables, setProcessVariables] = useState([]);
   const [loadingProcessVariables, setLoadingProcessVariables] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [loadingMediaFiles, setLoadingMediaFiles] = useState(false);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
+  const [lightboxFile, setLightboxFile] = useState(null);
+  const [lightboxFiles, setLightboxFiles] = useState([]);
+  const [lightboxCurrentIndex, setLightboxCurrentIndex] = useState(0);
+  const [lightboxTransform, setLightboxTransform] = useState({
+    rotate: 0,
+    scale: 1,
+    flipH: false,
+    flipV: false
+  });
 
   // 載入表單實例數據
   useEffect(() => {
@@ -879,6 +905,83 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
       loadProcessVariables();
     }
   }, [activeTab, instance.id]);
+
+  // 載入媒體文件數據
+  useEffect(() => {
+    if (activeTab === 'media') {
+      loadMediaFiles();
+    }
+  }, [activeTab, instance.id]);
+
+  // 鍵盤快捷鍵支持
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (!lightboxVisible) return;
+      
+      switch (event.key) {
+        case 'Escape':
+          closeLightbox();
+          break;
+        case 'ArrowLeft':
+          if (lightboxFiles.length > 1) {
+            goToPrevious();
+          }
+          break;
+        case 'ArrowRight':
+          if (lightboxFiles.length > 1) {
+            goToNext();
+          }
+          break;
+        case 'r':
+        case 'R':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            rotateImage('right');
+          }
+          break;
+        case 'l':
+        case 'L':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            rotateImage('left');
+          }
+          break;
+        case 'h':
+        case 'H':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            flipImage('horizontal');
+          }
+          break;
+        case 'v':
+        case 'V':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            flipImage('vertical');
+          }
+          break;
+        case '+':
+        case '=':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            zoomImage('in');
+          }
+          break;
+        case '-':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            zoomImage('out');
+          }
+          break;
+        case '0':
+          if (getFileType(lightboxFile?.fileName) === 'image') {
+            resetTransform();
+          }
+          break;
+        default:
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [lightboxVisible, lightboxFiles, lightboxFile]);
 
   const loadEformInstances = async () => {
     try {
@@ -962,6 +1065,47 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
     }
   };
 
+  const loadMediaFiles = async () => {
+    try {
+      setLoadingMediaFiles(true);
+      console.log(t('workflowMonitor.loadingMediaFiles', { instanceId: instance.id }));
+      
+      const response = await fetch(`/api/workflowexecutions/${instance.id}/media-files`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log(t('workflowMonitor.mediaFilesApiNotExists'));
+          setMediaFiles([]);
+          message.warning(t('workflowMonitor.mediaFilesApiNotImplemented'));
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(t('workflowMonitor.loadedMediaFilesData'), data);
+      setMediaFiles(data.data || []);
+    } catch (error) {
+      console.error(t('workflowMonitor.loadMediaFilesFailed'), error);
+      
+      if (error.message.includes('404')) {
+        message.error(t('workflowMonitor.mediaFilesApiNotExists'));
+      } else if (error.message.includes('500')) {
+        message.error(t('workflowMonitor.backendServerError'));
+      } else {
+        message.error(t('workflowMonitor.loadMediaFilesFailed') + ': ' + error.message);
+      }
+      
+      setMediaFiles([]);
+    } finally {
+      setLoadingMediaFiles(false);
+    }
+  };
+
   const getEformStatusColor = (status) => {
     switch (status) {
       case 'Pending': return 'orange';
@@ -1012,6 +1156,194 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
       case 'json': return 'magenta';
       default: return 'default';
     }
+  };
+
+  // 媒體文件相關函數
+  const getFileIcon = (fileName) => {
+    const extension = fileName.split('.').pop().toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+      case 'svg':
+      case 'tiff':
+      case 'ico':
+        return <FileImageOutlined style={{ color: '#52c41a' }} />;
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+      case 'wmv':
+      case 'flv':
+      case 'webm':
+      case 'mkv':
+      case 'm4v':
+      case '3gp':
+        return <VideoCameraOutlined style={{ color: '#1890ff' }} />;
+      case 'mp3':
+      case 'wav':
+      case 'ogg':
+      case 'aac':
+      case 'flac':
+      case 'm4a':
+      case 'wma':
+        return <FileOutlined style={{ color: '#fa8c16' }} />;
+      default:
+        return <FileOutlined style={{ color: '#8c8c8c' }} />;
+    }
+  };
+
+  const getFileType = (fileName) => {
+    const extension = fileName.split('.').pop().toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+      case 'svg':
+      case 'tiff':
+      case 'ico':
+        return 'image';
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+      case 'wmv':
+      case 'flv':
+      case 'webm':
+      case 'mkv':
+      case 'm4v':
+      case '3gp':
+        return 'video';
+      case 'mp3':
+      case 'wav':
+      case 'ogg':
+      case 'aac':
+      case 'flac':
+      case 'm4a':
+      case 'wma':
+        return 'audio';
+      default:
+        return 'document';
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const groupFilesByFolder = (files) => {
+    const grouped = {};
+    files.forEach(file => {
+      const folder = file.folderPath || 'root';
+      if (!grouped[folder]) {
+        grouped[folder] = [];
+      }
+      grouped[folder].push(file);
+    });
+    return grouped;
+  };
+
+  // Lightbox 相關函數
+  const openLightbox = (file, allFiles = []) => {
+    const imageVideoFiles = allFiles.filter(f => {
+      const fileType = getFileType(f.fileName);
+      return fileType === 'image' || fileType === 'video';
+    });
+    
+    const currentIndex = imageVideoFiles.findIndex(f => f.id === file.id);
+    
+    setLightboxFiles(imageVideoFiles);
+    setLightboxFile(file);
+    setLightboxCurrentIndex(currentIndex >= 0 ? currentIndex : 0);
+    setLightboxTransform({
+      rotate: 0,
+      scale: 1,
+      flipH: false,
+      flipV: false
+    });
+    setLightboxVisible(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxVisible(false);
+    setLightboxFile(null);
+    setLightboxFiles([]);
+    setLightboxCurrentIndex(0);
+    setLightboxTransform({
+      rotate: 0,
+      scale: 1,
+      flipH: false,
+      flipV: false
+    });
+  };
+
+  const goToPrevious = () => {
+    if (lightboxFiles.length > 0) {
+      const newIndex = lightboxCurrentIndex > 0 ? lightboxCurrentIndex - 1 : lightboxFiles.length - 1;
+      setLightboxCurrentIndex(newIndex);
+      setLightboxFile(lightboxFiles[newIndex]);
+      setLightboxTransform({
+        rotate: 0,
+        scale: 1,
+        flipH: false,
+        flipV: false
+      });
+    }
+  };
+
+  const goToNext = () => {
+    if (lightboxFiles.length > 0) {
+      const newIndex = lightboxCurrentIndex < lightboxFiles.length - 1 ? lightboxCurrentIndex + 1 : 0;
+      setLightboxCurrentIndex(newIndex);
+      setLightboxFile(lightboxFiles[newIndex]);
+      setLightboxTransform({
+        rotate: 0,
+        scale: 1,
+        flipH: false,
+        flipV: false
+      });
+    }
+  };
+
+  const rotateImage = (direction) => {
+    setLightboxTransform(prev => ({
+      ...prev,
+      rotate: prev.rotate + (direction === 'left' ? -90 : 90)
+    }));
+  };
+
+  const flipImage = (direction) => {
+    setLightboxTransform(prev => ({
+      ...prev,
+      flipH: direction === 'horizontal' ? !prev.flipH : prev.flipH,
+      flipV: direction === 'vertical' ? !prev.flipV : prev.flipV
+    }));
+  };
+
+  const zoomImage = (direction) => {
+    setLightboxTransform(prev => ({
+      ...prev,
+      scale: direction === 'in' 
+        ? Math.min(prev.scale * 1.2, 5) 
+        : Math.max(prev.scale / 1.2, 0.1)
+    }));
+  };
+
+  const resetTransform = () => {
+    setLightboxTransform({
+      rotate: 0,
+      scale: 1,
+      flipH: false,
+      flipV: false
+    });
   };
 
   return (
@@ -1497,6 +1829,223 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
           )}
         </TabPane>
         
+        <TabPane tab={t('workflowMonitor.receivedMedia')} key="media">
+          {loadingMediaFiles ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingMediaFiles')}</p>
+            </div>
+          ) : mediaFiles.length > 0 ? (
+            <div>
+              <div style={{ 
+                marginBottom: '16px',
+                paddingBottom: '8px',
+                borderBottom: '1px solid #f0f0f0'
+              }}>
+                <Text strong style={{ fontSize: '16px' }}>
+                  {t('workflowMonitor.totalFiles')}: {mediaFiles.length}
+                </Text>
+              </div>
+              
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '16px'
+              }}>
+                {mediaFiles.map((file) => {
+                        const fileType = getFileType(file.fileName);
+                        const isImage = fileType === 'image';
+                        const isVideo = fileType === 'video';
+                        const isAudio = fileType === 'audio';
+                        const isDocument = fileType === 'document';
+                        
+                        return (
+                          <Card
+                            key={file.id}
+                            size="small"
+                            hoverable
+                            style={{ 
+                              border: '1px solid #e8e8e8',
+                              borderRadius: '8px',
+                              overflow: 'hidden'
+                            }}
+                            bodyStyle={{ padding: '8px' }}
+                          >
+                            <div style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              textAlign: 'center'
+                            }}>
+                              {/* 文件預覽 */}
+                              <div 
+                                style={{ 
+                                  width: '100%', 
+                                  height: '120px',
+                                  backgroundColor: '#f5f5f5',
+                                  borderRadius: '6px',
+                                  marginBottom: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  overflow: 'hidden',
+                                  position: 'relative',
+                                  cursor: (isImage || isVideo) ? 'pointer' : 'default'
+                                }}
+                                onClick={() => {
+                                  if (isImage || isVideo) {
+                                    openLightbox(file, mediaFiles);
+                                  }
+                                }}
+                              >
+                                {isImage ? (
+                                  <img
+                                    src={file.filePath}
+                                    alt={file.fileName}
+                                    style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      objectFit: 'cover',
+                                      borderRadius: '4px'
+                                    }}
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                ) : isVideo ? (
+                                  <video
+                                    src={file.filePath}
+                                    style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      objectFit: 'cover',
+                                      borderRadius: '4px'
+                                    }}
+                                    controls={false}
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                ) : null}
+                                
+                                {/* 備用圖標 */}
+                                <div style={{ 
+                                  display: isImage || isVideo ? 'none' : 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '100%',
+                                  height: '100%',
+                                  backgroundColor: '#f0f0f0'
+                                }}>
+                                  {getFileIcon(file.fileName)}
+                                </div>
+                              </div>
+                              
+                              {/* 文件信息 */}
+                              <div style={{ width: '100%' }}>
+                                <Text 
+                                  strong 
+                                  style={{ 
+                                    fontSize: '12px',
+                                    display: 'block',
+                                    marginBottom: '4px',
+                                    wordBreak: 'break-all',
+                                    lineHeight: '1.2'
+                                  }}
+                                  title={file.fileName}
+                                >
+                                  {file.fileName.length > 20 ? 
+                                    file.fileName.substring(0, 20) + '...' : 
+                                    file.fileName
+                                  }
+                                </Text>
+                                
+                                <div style={{ 
+                                  display: 'flex', 
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  fontSize: '11px',
+                                  color: '#666'
+                                }}>
+                                  <span>{formatFileSize(file.fileSize || 0)}</span>
+                                  <Tag 
+                                    color={isImage ? 'green' : isVideo ? 'blue' : isAudio ? 'orange' : 'default'}
+                                    style={{ fontSize: '10px', margin: 0 }}
+                                  >
+                                    {isImage ? t('workflowMonitor.image') : 
+                                     isVideo ? t('workflowMonitor.video') : 
+                                     isAudio ? t('workflowMonitor.audio') :
+                                     t('workflowMonitor.document')}
+                                  </Tag>
+                                </div>
+                                
+                                {file.createdAt && (
+                                  <div style={{ 
+                                    fontSize: '10px', 
+                                    color: '#999',
+                                    marginTop: '4px'
+                                  }}>
+                                    {new Date(file.createdAt).toLocaleDateString('zh-TW')}
+                                  </div>
+                                )}
+                                
+                                {/* 操作按鈕 */}
+                                <div style={{ 
+                                  marginTop: '8px',
+                                  display: 'flex',
+                                  gap: '4px',
+                                  justifyContent: 'center'
+                                }}>
+                                  <Button 
+                                    type="text" 
+                                    size="small"
+                                    icon={<EyeOutlined />}
+                                    onClick={() => {
+                                      if (isImage || isVideo) {
+                                        openLightbox(file, mediaFiles);
+                                      } else {
+                                        // 對於非圖片/視頻文件，在新標籤頁中打開
+                                        window.open(file.filePath, '_blank');
+                                      }
+                                    }}
+                                    style={{ fontSize: '10px', padding: '2px 6px' }}
+                                  >
+                                    {t('workflowMonitor.view')}
+                                  </Button>
+                                  <Button 
+                                    type="text" 
+                                    size="small"
+                                    icon={<DownloadOutlined />}
+                                    onClick={() => {
+                                      // 下載文件
+                                      const link = document.createElement('a');
+                                      link.href = file.filePath;
+                                      link.download = file.fileName;
+                                      link.click();
+                                    }}
+                                    style={{ fontSize: '10px', padding: '2px 6px' }}
+                                  >
+                                    {t('workflowMonitor.download')}
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      })}
+              </div>
+            </div>
+          ) : (
+            <Empty 
+              description={t('workflowMonitor.noMediaFiles')} 
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              style={{ margin: '40px 0' }}
+            />
+          )}
+        </TabPane>
+        
         <TabPane tab={t('workflowMonitor.formInstances')} key="forms">
           {loadingEforms ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>
@@ -1663,6 +2212,227 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
           )}
         </TabPane>
       </Tabs>
+      
+      {/* Lightbox 組件 */}
+      <Modal
+        title={lightboxFile ? lightboxFile.fileName : ''}
+        visible={lightboxVisible}
+        onCancel={closeLightbox}
+        footer={null}
+        width="95%"
+        style={{ top: 10 }}
+        bodyStyle={{ 
+          padding: 0, 
+          display: 'flex', 
+          flexDirection: 'column',
+          justifyContent: 'center', 
+          alignItems: 'center',
+          minHeight: '85vh',
+          backgroundColor: '#000',
+          position: 'relative'
+        }}
+        closable={false}
+      >
+        {lightboxFile && (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center', 
+            alignItems: 'center',
+            width: '100%',
+            height: '100%',
+            position: 'relative'
+          }}>
+            {/* 關閉按鈕 */}
+            <Button
+              type="text"
+              icon={<CloseOutlined />}
+              onClick={closeLightbox}
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                zIndex: 1000,
+                color: '#fff',
+                fontSize: '20px',
+                width: '40px',
+                height: '40px',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                border: 'none'
+              }}
+            />
+            
+            {/* 導航按鈕 */}
+            {lightboxFiles.length > 1 && (
+              <>
+                <Button
+                  type="text"
+                  icon={<LeftOutlined />}
+                  onClick={goToPrevious}
+                  style={{
+                    position: 'absolute',
+                    left: 20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 1000,
+                    color: '#fff',
+                    fontSize: '24px',
+                    width: '50px',
+                    height: '50px',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    border: 'none'
+                  }}
+                />
+                <Button
+                  type="text"
+                  icon={<RightOutlined />}
+                  onClick={goToNext}
+                  style={{
+                    position: 'absolute',
+                    right: 20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 1000,
+                    color: '#fff',
+                    fontSize: '24px',
+                    width: '50px',
+                    height: '50px',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    border: 'none'
+                  }}
+                />
+              </>
+            )}
+            
+            {/* 媒體內容 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              width: '100%',
+              height: '100%',
+              transform: `
+                rotate(${lightboxTransform.rotate}deg) 
+                scale(${lightboxTransform.scale}) 
+                scaleX(${lightboxTransform.flipH ? -1 : 1}) 
+                scaleY(${lightboxTransform.flipV ? -1 : 1})
+              `,
+              transition: 'transform 0.3s ease'
+            }}>
+              {getFileType(lightboxFile.fileName) === 'image' ? (
+                <img
+                  src={lightboxFile.filePath}
+                  alt={lightboxFile.fileName}
+                  style={{
+                    maxWidth: '90%',
+                    maxHeight: '80vh',
+                    objectFit: 'contain'
+                  }}
+                />
+              ) : getFileType(lightboxFile.fileName) === 'video' ? (
+                <video
+                  src={lightboxFile.filePath}
+                  controls
+                  style={{
+                    maxWidth: '90%',
+                    maxHeight: '80vh'
+                  }}
+                />
+              ) : null}
+            </div>
+            
+            {/* 工具欄 */}
+            {getFileType(lightboxFile.fileName) === 'image' && (
+              <div style={{
+                position: 'absolute',
+                bottom: 20,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                gap: '8px',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                zIndex: 1000
+              }}>
+                <Button
+                  type="text"
+                  icon={<RotateLeftOutlined />}
+                  onClick={() => rotateImage('left')}
+                  style={{ color: '#fff' }}
+                  title="逆時針旋轉"
+                />
+                <Button
+                  type="text"
+                  icon={<RotateRightOutlined />}
+                  onClick={() => rotateImage('right')}
+                  style={{ color: '#fff' }}
+                  title="順時針旋轉"
+                />
+                <Button
+                  type="text"
+                  icon={<SwapOutlined />}
+                  onClick={() => flipImage('horizontal')}
+                  style={{ 
+                    color: '#fff',
+                    transform: lightboxTransform.flipH ? 'scaleX(-1)' : 'none'
+                  }}
+                  title="水平翻轉"
+                />
+                <Button
+                  type="text"
+                  icon={<SwapOutlined />}
+                  onClick={() => flipImage('vertical')}
+                  style={{ 
+                    color: '#fff',
+                    transform: lightboxTransform.flipV ? 'scaleY(-1)' : 'none'
+                  }}
+                  title="垂直翻轉"
+                />
+                <Button
+                  type="text"
+                  icon={<ZoomInOutlined />}
+                  onClick={() => zoomImage('in')}
+                  style={{ color: '#fff' }}
+                  title="放大"
+                />
+                <Button
+                  type="text"
+                  icon={<ZoomOutOutlined />}
+                  onClick={() => zoomImage('out')}
+                  style={{ color: '#fff' }}
+                  title="縮小"
+                />
+                <Button
+                  type="text"
+                  icon={<ResetOutlined />}
+                  onClick={resetTransform}
+                  style={{ color: '#fff' }}
+                  title="重置"
+                />
+              </div>
+            )}
+            
+            {/* 文件信息 */}
+            <div style={{
+              position: 'absolute',
+              bottom: 20,
+              left: 20,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              color: '#fff',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              zIndex: 1000
+            }}>
+              {lightboxFiles.length > 1 && (
+                <div>{lightboxCurrentIndex + 1} / {lightboxFiles.length}</div>
+              )}
+              <div>{formatFileSize(lightboxFile.fileSize || 0)}</div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

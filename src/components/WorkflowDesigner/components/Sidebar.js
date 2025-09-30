@@ -87,6 +87,9 @@ const Sidebar = ({
                     defaultData: {}
                   }));
               
+              // 定義分類顯示順序
+              const categoryOrder = ['Control', 'Communication', 'Form', 'Data', 'Integration', 'Other'];
+              
               return Object.entries(
                 availableNodeTypes.reduce((acc, nodeType) => {
                   const category = nodeType.category || 'Other';
@@ -94,7 +97,14 @@ const Sidebar = ({
                   acc[category].push(nodeType);
                   return acc;
                 }, {})
-              ).map(([category, types]) => (
+              )
+              .sort(([a], [b]) => {
+                const indexA = categoryOrder.indexOf(a);
+                const indexB = categoryOrder.indexOf(b);
+                // 如果分類在順序列表中，按順序排列；否則排在最後
+                return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+              })
+              .map(([category, types]) => (
                 <div key={category} style={{ marginBottom: '16px' }}>
                   <h5 style={{ margin: '8px 0', fontSize: '12px', color: '#666', textTransform: 'uppercase' }}>
                     {category}

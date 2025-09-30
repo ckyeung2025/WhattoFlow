@@ -57,13 +57,17 @@ namespace PurpleRice.Services
                 var oldExecution = await _context.WorkflowExecutions.FindAsync(session.CurrentWorkflowExecutionId.Value);
                 if (oldExecution != null)
                 {
-                    // 只有未完成的流程才應該被取消
-                    if (oldExecution.Status != "Completed" && oldExecution.Status != "Cancelled" && oldExecution.Status != "Failed")
-                    {
-                        oldExecution.Status = "Cancelled";
-                        oldExecution.IsWaiting = false;
-                        oldExecution.EndedAt = DateTime.Now;
-                    }
+                // 只有未完成的流程才應該被取消，但排除 eform 等待審批的流程
+                // eform 等待審批不會干擾 WhatsApp 對話會話，因此不應該被取消
+                if (oldExecution.Status != "Completed" && 
+                    oldExecution.Status != "Cancelled" && 
+                    oldExecution.Status != "Failed" &&
+                    oldExecution.Status != "WaitingForFormApproval")
+                {
+                    oldExecution.Status = "Cancelled";
+                    oldExecution.IsWaiting = false;
+                    oldExecution.EndedAt = DateTime.Now;
+                }
                 }
             }
 

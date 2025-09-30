@@ -45,6 +45,8 @@ namespace PurpleRice.Controllers
         [HttpPost("scan")]
         public async Task<IActionResult> ScanQRCode([FromForm] IFormFile imageFile)
         {
+            byte[] imageData = null; // 在方法開始時聲明變量
+            
             if (imageFile == null || imageFile.Length == 0)
                 return BadRequest("No image uploaded.");
 
@@ -57,7 +59,14 @@ namespace PurpleRice.Controllers
 
             try
             {
-                using var stream = imageFile.OpenReadStream();
+                // 先將圖片轉換為 byte[] 以便後續處理
+                using (var memoryStream = new MemoryStream())
+                {
+                    await imageFile.CopyToAsync(memoryStream);
+                    imageData = memoryStream.ToArray();
+                }
+
+                using var stream = new MemoryStream(imageData);
                 using var bitmap = new Bitmap(stream);
 
                 var options = new DecodingOptions
@@ -76,7 +85,15 @@ namespace PurpleRice.Controllers
                 var result = reader.Decode(bitmap);
 
                 if (result == null)
-                    return NotFound("No QR code found in the image.");
+                {
+                    // 保存失敗的圖片
+                    var failureImagePath = await SaveQRCodeImageAsync(imageData, "failure");
+                    
+                    return NotFound(new { 
+                        message = "No QR code found in the image.",
+                        imagePath = failureImagePath
+                    });
+                }
 
                 var qrCodeText = result.Text.Trim();
                 
@@ -151,10 +168,46 @@ namespace PurpleRice.Controllers
             }
             catch (ArgumentException ex)
             {
+                // 保存格式錯誤的圖片
+                try
+                {
+                    if (imageData != null && imageData.Length > 0)
+                    {
+                        var errorImagePath = await SaveQRCodeImageAsync(imageData, "format_error");
+                        return BadRequest(new { 
+                            message = $"Invalid image format: {ex.Message}",
+                            imagePath = errorImagePath
+                        });
+                    }
+                }
+                catch (Exception saveEx)
+                {
+                    _loggingService.LogError($"保存格式錯誤圖片失敗: {saveEx.Message}", saveEx);
+                }
+                
                 return BadRequest($"Invalid image format: {ex.Message}");
             }
             catch (Exception ex)
             {
+                _loggingService.LogError($"QR Code 掃描發生錯誤: {ex.Message}", ex);
+                
+                // 保存異常錯誤的圖片
+                try
+                {
+                    if (imageData != null && imageData.Length > 0)
+                    {
+                        var errorImagePath = await SaveQRCodeImageAsync(imageData, "error");
+                        return StatusCode(500, new { 
+                            message = $"Internal error: {ex.Message}",
+                            imagePath = errorImagePath
+                        });
+                    }
+                }
+                catch (Exception saveEx)
+                {
+                    _loggingService.LogError($"保存錯誤圖片失敗: {saveEx.Message}", saveEx);
+                }
+                
                 return StatusCode(500, $"Internal error: {ex.Message}");
             }
         }
@@ -685,6 +738,45 @@ namespace PurpleRice.Controllers
             if (imageBytes != null)
             {
                 await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
+            }
+        }
+
+        /// <summary>
+        /// 保存 QR Code 圖片到指定目錄
+        /// </summary>
+        /// <param name="imageData">圖片數據</param>
+        /// <param name="status">掃描狀態 (success/failure)</param>
+        /// <returns>保存的圖片路徑</returns>
+        private async Task<string> SaveQRCodeImageAsync(byte[] imageData, string status)
+        {
+            try
+            {
+                // 創建目錄結構：Uploads\Whatsapp_Images
+                var uploadsPath = Path.Combine(_environment.ContentRootPath, "Uploads", "Whatsapp_Images");
+                
+                if (!Directory.Exists(uploadsPath))
+                {
+                    Directory.CreateDirectory(uploadsPath);
+                    _loggingService.LogInformation($"創建 QR Code 圖片目錄: {uploadsPath}");
+                }
+
+                // 生成文件名：使用時間戳和 GUID 確保唯一性
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var guid = Guid.NewGuid().ToString("N")[..8]; // 取前8位
+                var fileName = $"qr_scan_{status}_{timestamp}_{guid}.jpg";
+                
+                var filePath = Path.Combine(uploadsPath, fileName);
+
+                // 保存圖片文件
+                await System.IO.File.WriteAllBytesAsync(filePath, imageData);
+                
+                _loggingService.LogInformation($"QR Code 圖片已保存: {filePath}");
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"保存 QR Code 圖片失敗: {ex.Message}", ex);
+                throw;
             }
         }
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal } from 'antd';
-import { FormOutlined, EditOutlined, DeleteOutlined, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
 import RecipientSelector from './RecipientSelector';
@@ -57,6 +57,7 @@ const NodePropertyDrawer = ({
   const [dataSets, setDataSets] = useState([]);
   const [dataSetColumns, setDataSetColumns] = useState([]);
   const [operationDataFields, setOperationDataFields] = useState([]);
+  const [availableProcessVariables, setAvailableProcessVariables] = useState([]);
   const [loadingDataSets, setLoadingDataSets] = useState(false);
   const [testingOperation, setTestingOperation] = useState(false);
   
@@ -71,6 +72,10 @@ const NodePropertyDrawer = ({
   // DataSet 欄位映射相關狀態
   const [dataSetFieldMappingModalVisible, setDataSetFieldMappingModalVisible] = useState(false);
   const [dataSetFieldMappingForm] = Form.useForm();
+  
+  // 操作數據設置相關狀態
+  const [operationDataModalVisible, setOperationDataModalVisible] = useState(false);
+  const [editingOperationData, setEditingOperationData] = useState([]);
   
   // PV 模擬數據相關狀態
   const [pvSimulationData, setPvSimulationData] = useState({});
@@ -199,10 +204,10 @@ const NodePropertyDrawer = ({
       setDataSetConditionGroupModalVisible(false);
       setEditingDataSetConditionGroup(null);
       dataSetConditionGroupForm.resetFields();
-      message.success('查詢條件組保存成功');
+      message.success(t('workflowDesigner.dataSet.queryConditionGroupSaved'));
     } catch (error) {
-      console.error('保存查詢條件組失敗:', error);
-      message.error('保存查詢條件組失敗');
+      console.error(t('workflowDesigner.dataSet.queryConditionGroupSaveFailed') + ':', error);
+      message.error(t('workflowDesigner.dataSet.queryConditionGroupSaveFailed'));
     }
   };
 
@@ -260,10 +265,10 @@ const NodePropertyDrawer = ({
       setDataSetConditionEditModalVisible(false);
       setEditingDataSetCondition(null);
       dataSetConditionForm.resetFields();
-      message.success('查詢條件保存成功');
+      message.success(t('workflowDesigner.dataSet.queryConditionSaved'));
     } catch (error) {
-      console.error('保存查詢條件失敗:', error);
-      message.error('保存查詢條件失敗');
+      console.error(t('workflowDesigner.dataSet.queryConditionSaveFailed') + ':', error);
+      message.error(t('workflowDesigner.dataSet.queryConditionSaveFailed'));
     }
   };
 
@@ -273,11 +278,42 @@ const NodePropertyDrawer = ({
       handleNodeDataChange({ mappedFields });
       setDataSetFieldMappingModalVisible(false);
       dataSetFieldMappingForm.resetFields();
-      message.success('欄位映射保存成功');
+      message.success(t('workflowDesigner.dataSet.fieldMappingSaved'));
     } catch (error) {
-      console.error('保存欄位映射失敗:', error);
-      message.error('保存欄位映射失敗');
+      console.error(t('workflowDesigner.dataSet.fieldMappingSaveFailed') + ':', error);
+      message.error(t('workflowDesigner.dataSet.fieldMappingSaveFailed'));
     }
+  };
+
+  // 處理操作數據設置
+  const handleOpenOperationDataModal = () => {
+    setEditingOperationData([...operationDataFields]);
+    setOperationDataModalVisible(true);
+  };
+
+  const handleSaveOperationData = () => {
+    setOperationDataFields([...editingOperationData]);
+    setOperationDataModalVisible(false);
+    message.success(t('workflowDesigner.dataSet.operationDataSaved'));
+  };
+
+  const handleCancelOperationData = () => {
+    setOperationDataModalVisible(false);
+  };
+
+  const handleAddOperationDataField = () => {
+    setEditingOperationData([...editingOperationData, { name: '', value: '' }]);
+  };
+
+  const handleRemoveOperationDataField = (index) => {
+    const newFields = editingOperationData.filter((_, i) => i !== index);
+    setEditingOperationData(newFields);
+  };
+
+  const handleUpdateOperationDataField = (index, field, value) => {
+    const newFields = [...editingOperationData];
+    newFields[index][field] = value;
+    setEditingOperationData(newFields);
   };
 
   // 當 selectedNode 改變時，更新 Form 的字段值
@@ -298,8 +334,8 @@ const NodePropertyDrawer = ({
         replyType: selectedNode.data.replyType || '',
         specifiedUsers: selectedNode.data.specifiedUsers || '',
         qrCodeVariable: selectedNode.data.qrCodeVariable || '',
-        qrCodeSuccessMessage: selectedNode.data.qrCodeSuccessMessage || 'QR Code 掃描成功！流程將繼續執行。',
-        qrCodeErrorMessage: selectedNode.data.qrCodeErrorMessage || '無法處理您上傳的圖片，請重新上傳。',
+        qrCodeSuccessMessage: selectedNode.data.qrCodeSuccessMessage || t('workflowDesigner.dataSet.qrCodeSuccessMessage'),
+        qrCodeErrorMessage: selectedNode.data.qrCodeErrorMessage || t('workflowDesigner.dataSet.qrCodeErrorMessage'),
         approvalResultVariable: selectedNode.data.approvalResultVariable || '',
         activationType: selectedNode.data.activationType || 'manual',
         webhookToken: selectedNode.data.webhookToken || '',
@@ -318,10 +354,11 @@ const NodePropertyDrawer = ({
     }
   }, [selectedNode?.id, form]); // 只依賴 selectedNode.id，而不是整個 selectedNode 對象
 
-  // 載入 DataSet 列表
+  // 載入 DataSet 列表和流程變量
   useEffect(() => {
     if (selectedNode?.data?.type === 'dataSetQuery') {
       loadDataSets();
+      loadAvailableProcessVariables();
     }
   }, [selectedNode?.data?.type]);
 
@@ -352,6 +389,30 @@ const NodePropertyDrawer = ({
       message.error('載入 DataSet 列表失敗: ' + error.message);
     } finally {
       setLoadingDataSets(false);
+    }
+  };
+
+  // 載入可用的流程變量
+  const loadAvailableProcessVariables = async () => {
+    try {
+      // 這裡可以從工作流定義中獲取已定義的流程變量
+      // 或者從當前工作流執行中獲取可用的變量
+      // 暫時使用一些示例變量
+      const commonVariables = [
+        'QRCode_Text',
+        'CustomerNo',
+        'InvoiceNo',
+        'OrderNo',
+        'Amount',
+        'Status',
+        'Date',
+        'Time',
+        'User',
+        'Company'
+      ];
+      setAvailableProcessVariables(commonVariables);
+    } catch (error) {
+      console.error('載入流程變量失敗:', error);
     }
   };
 
@@ -425,12 +486,12 @@ const NodePropertyDrawer = ({
       const currentNode = nodes.find(node => node.id === selectedNode?.id);
       
       if (!currentNode?.data?.dataSetId) {
-        message.error('請先選擇 DataSet');
+        message.error(t('workflowDesigner.dataSet.pleaseSelectDataSet'));
         return;
       }
       
       if (!currentNode?.data?.operationType) {
-        message.error('請先選擇操作類型');
+        message.error(t('workflowDesigner.dataSet.pleaseSelectOperationType'));
         return;
       }
       
@@ -462,16 +523,16 @@ const NodePropertyDrawer = ({
       
       // 生成 SQL 預覽
       const whereClause = generateWhereClause(processedConditionGroups);
-      console.log('生成的 WHERE 條件:', whereClause);
+      console.log(t('workflowDesigner.dataSet.generatedWhereClause') + ':', whereClause);
       
       // 顯示測試預覽
       const previewInfo = {
         DataSet: dataSets.find(ds => ds.id === requestData.dataSetId)?.name || '未知',
-        操作類型: requestData.operationType,
-        查詢條件: whereClause || '無',
-        操作數據: Object.keys(requestData.operationData).length > 0 ? JSON.stringify(requestData.operationData) : '無',
-        欄位映射: requestData.mappedFields.length > 0 ? 
-          requestData.mappedFields.map(m => `${m.fieldName} → $${m.variableName}`).join(', ') : '無'
+        [t('workflowDesigner.dataSet.operationType')]: requestData.operationType,
+        [t('workflowDesigner.dataSet.queryConditions')]: whereClause || t('workflowDesigner.dataSet.noQueryConditions'),
+        [t('workflowDesigner.dataSet.operationData')]: Object.keys(requestData.operationData).length > 0 ? JSON.stringify(requestData.operationData) : t('workflowDesigner.dataSet.noOperationData'),
+        [t('workflowDesigner.dataSet.fieldMapping')]: requestData.mappedFields.length > 0 ? 
+          requestData.mappedFields.map(m => `${m.fieldName} → $${m.variableName}`).join(', ') : t('workflowDesigner.dataSet.noFieldMapping')
       };
       
       console.log('測試預覽:', previewInfo);
@@ -704,7 +765,7 @@ const NodePropertyDrawer = ({
                   </div>
                 </div>
               </Form.Item>
-              <Form.Item label="模板">
+              <Form.Item label={t('workflowDesigner.dataSet.template')}>
                 <Input 
                   value={selectedNode.data.templateName || ''}
                   placeholder={t('workflowDesigner.selectTemplate')} 
@@ -718,6 +779,67 @@ const NodePropertyDrawer = ({
                   <p><strong>{t('workflowDesigner.templateId')}</strong>{selectedNode.data.templateId}</p>
                   <p><strong>{t('workflowDesigner.templateName')}</strong>{selectedNode.data.templateName}</p>
                 </Card>
+              )}
+              
+              {/* 模板變數編輯 */}
+              {selectedNode.data.templateId && (
+                <Form.Item label={t('workflowDesigner.templateVariables')}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Button 
+                      type="dashed" 
+                      onClick={() => {
+                        const currentVariables = selectedNode.data.variables || {};
+                        const newVariables = { ...currentVariables, [`var_${Date.now()}`]: '' };
+                        handleNodeDataChange({ variables: newVariables });
+                      }}
+                      style={{ width: '100%' }}
+                    >
+                      <PlusOutlined /> {t('workflowDesigner.addVariable')}
+                    </Button>
+                  </div>
+                  
+                  {selectedNode.data.variables && Object.keys(selectedNode.data.variables).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {Object.entries(selectedNode.data.variables).map(([key, value]) => (
+                        <div key={key} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <Input
+                            placeholder={t('workflowDesigner.variableName')}
+                            value={key}
+                            onChange={(e) => {
+                              const newVariables = { ...selectedNode.data.variables };
+                              delete newVariables[key];
+                              newVariables[e.target.value] = value;
+                              handleNodeDataChange({ variables: newVariables });
+                            }}
+                            style={{ flex: 1 }}
+                          />
+                          <Input
+                            placeholder={t('workflowDesigner.variableValue')}
+                            value={value}
+                            onChange={(e) => {
+                              const newVariables = { ...selectedNode.data.variables };
+                              newVariables[key] = e.target.value;
+                              handleNodeDataChange({ variables: newVariables });
+                            }}
+                            style={{ flex: 2 }}
+                          />
+                          <Button
+                            type="text"
+                            danger
+                            onClick={() => {
+                              const newVariables = { ...selectedNode.data.variables };
+                              delete newVariables[key];
+                              handleNodeDataChange({ variables: newVariables });
+                            }}
+                          >
+                            <DeleteOutlined />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                </Form.Item>
               )}
             </>
           )}
@@ -979,14 +1101,14 @@ const NodePropertyDrawer = ({
               <Form.Item label={t('workflowDesigner.qrCodeSuccessMessage')} name="qrCodeSuccessMessage">
                 <Input.TextArea 
                   rows={2} 
-                  placeholder="QR Code 掃描成功！流程將繼續執行。"
+                  placeholder={t('workflowDesigner.dataSet.qrCodeSuccessMessage')}
                 />
               </Form.Item>
               
               <Form.Item label={t('workflowDesigner.qrCodeErrorMessage')} name="qrCodeErrorMessage">
                 <Input.TextArea 
                   rows={2} 
-                  placeholder="無法處理您上傳的圖片，請重新上傳。"
+                  placeholder={t('workflowDesigner.dataSet.qrCodeErrorMessage')}
                 />
               </Form.Item>
               
@@ -1007,9 +1129,9 @@ const NodePropertyDrawer = ({
           {/* DataSet 查詢節點 */}
           {selectedNode.data.type === 'dataSetQuery' && (
             <>
-              <Form.Item label="選擇 DataSet" name="dataSetId">
+              <Form.Item label={t('workflowDesigner.dataSet.selectDataSet')} name="dataSetId">
                 <Select 
-                  placeholder="選擇要操作的 DataSet"
+                  placeholder={t('workflowDesigner.dataSet.selectDataSetPlaceholder')}
                   loading={loadingDataSets}
                   onChange={(value) => {
                     handleNodeDataChange({ dataSetId: value });
@@ -1024,9 +1146,9 @@ const NodePropertyDrawer = ({
                 </Select>
               </Form.Item>
               
-              <Form.Item label="操作類型" name="operationType">
+              <Form.Item label={t('workflowDesigner.dataSet.operationType')} name="operationType">
                 <Select 
-                  placeholder="選擇操作類型"
+                  placeholder={t('workflowDesigner.dataSet.operationTypePlaceholder')}
                   onChange={(value) => {
                     // 清除查詢結果預覽
                     setQueryPreviewData([]);
@@ -1034,10 +1156,10 @@ const NodePropertyDrawer = ({
                     handleNodeDataChange({ operationType: value });
                   }}
                 >
-                  <Select.Option value="SELECT">查詢 (SELECT)</Select.Option>
-                  <Select.Option value="INSERT">插入 (INSERT)</Select.Option>
-                  <Select.Option value="UPDATE">更新 (UPDATE)</Select.Option>
-                  <Select.Option value="DELETE">刪除 (DELETE)</Select.Option>
+                  <Select.Option value="SELECT">{t('workflowDesigner.dataSet.select')}</Select.Option>
+                  <Select.Option value="INSERT">{t('workflowDesigner.dataSet.insert')}</Select.Option>
+                  <Select.Option value="UPDATE">{t('workflowDesigner.dataSet.update')}</Select.Option>
+                  <Select.Option value="DELETE">{t('workflowDesigner.dataSet.delete')}</Select.Option>
                 </Select>
               </Form.Item>
               
@@ -1045,7 +1167,7 @@ const NodePropertyDrawer = ({
                 {(selectedNode.data.operationType === 'SELECT' || 
                   selectedNode.data.operationType === 'UPDATE' || 
                   selectedNode.data.operationType === 'DELETE') && (
-                  <Form.Item label="查詢條件">
+                  <Form.Item label={t('workflowDesigner.dataSet.queryConditions')}>
                     <div style={{ marginBottom: '8px' }}>
                       <Button 
                         type="dashed" 
@@ -1061,7 +1183,7 @@ const NodePropertyDrawer = ({
                         }}
                         style={{ width: '100%' }}
                       >
-                        添加查詢條件組
+                        {t('workflowDesigner.dataSet.addQueryConditionGroup')}
                       </Button>
                     </div>
                     {(() => {
@@ -1089,10 +1211,10 @@ const NodePropertyDrawer = ({
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                               <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
-                                查詢條件組 {groupIndex + 1}
+                                {t('workflowDesigner.dataSet.queryConditionGroup')} {groupIndex + 1}
                               </div>
                               <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                                條件數量: {group.conditions?.length || 0}
+                                {t('workflowDesigner.dataSet.conditionCount')}: {group.conditions?.length || 0}
                                 {group.relation && ` • ${group.relation.toUpperCase()}`}
                               </div>
                               {group.conditions && group.conditions.length > 0 && (
@@ -1154,7 +1276,7 @@ const NodePropertyDrawer = ({
                             fontSize: '12px',
                             color: '#666'
                           }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>生成的 WHERE 條件:</div>
+                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{t('workflowDesigner.dataSet.generatedWhereClause')}:</div>
                             <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
                               {sqlPreview}
                             </div>
@@ -1170,46 +1292,37 @@ const NodePropertyDrawer = ({
               {(selectedNode.data.operationType === 'INSERT' || 
                 selectedNode.data.operationType === 'UPDATE') && (
                 <>
-                  <Form.Item label="操作數據">
-                    <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', padding: '8px' }}>
-                      {operationDataFields.map((field, index) => (
-                        <div key={index} style={{ marginBottom: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <Input 
-                            placeholder="欄位名稱"
-                            value={field.name}
-                            onChange={(e) => updateOperationDataField(index, 'name', e.target.value)}
-                            style={{ width: '40%' }}
-                          />
-                          <Input 
-                            placeholder="欄位值或流程變量 ${variableName}"
-                            value={field.value}
-                            onChange={(e) => updateOperationDataField(index, 'value', e.target.value)}
-                            style={{ width: '50%' }}
-                          />
-                          <Button 
-                            type="text" 
-                            danger 
-                            icon={<MinusCircleOutlined />}
-                            onClick={() => removeOperationDataField(index)}
-                          />
-                        </div>
-                      ))}
+                  <Form.Item label={t('workflowDesigner.dataSet.operationData')}>
+                    <div style={{ marginBottom: '8px' }}>
                       <Button 
                         type="dashed" 
-                        icon={<PlusOutlined />}
-                        onClick={addOperationDataField}
+                        onClick={handleOpenOperationDataModal}
+                        icon={<SettingOutlined />}
                         style={{ width: '100%' }}
+                        disabled={!selectedNode.data.dataSetId}
                       >
-                        添加欄位
+                        {t('workflowDesigner.dataSet.setOperationData')}
                       </Button>
                     </div>
+                    {operationDataFields.length > 0 && (
+                      <div style={{ 
+                        border: '1px solid #d9d9d9', 
+                        borderRadius: '4px', 
+                        padding: '8px', 
+                        backgroundColor: '#f9f9f9',
+                        fontSize: '12px',
+                        color: '#666'
+                      }}>
+                        {t('workflowDesigner.dataSet.operationDataSummary', { count: operationDataFields.length })}
+                      </div>
+                    )}
                   </Form.Item>
                 </>
               )}
               
                 {/* 映射字段 - SELECT 時顯示 */}
                 {selectedNode.data.operationType === 'SELECT' && (
-                  <Form.Item label="映射到流程變量的關鍵字段">
+                  <Form.Item label={t('workflowDesigner.dataSet.fieldMapping')}>
                     <div style={{ marginBottom: '8px' }}>
                       <Button 
                         type="dashed" 
@@ -1222,7 +1335,7 @@ const NodePropertyDrawer = ({
                         style={{ width: '100%' }}
                         disabled={!selectedNode.data.dataSetId}
                       >
-                        設置欄位映射
+                        {t('workflowDesigner.dataSet.setFieldMapping')}
                       </Button>
                     </div>
                     {(() => {
@@ -1237,7 +1350,7 @@ const NodePropertyDrawer = ({
                             backgroundColor: '#fafafa'
                           }}>
                             <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                              已設置 {mappedFields.length} 個欄位映射：
+                              {t('workflowDesigner.dataSet.fieldMappingSummary', { count: mappedFields.length })}:
                             </div>
                             {mappedFields.slice(0, 3).map((mapping, index) => (
                               <div key={index} style={{ fontSize: '11px', color: '#999', marginBottom: '2px' }}>
@@ -1260,17 +1373,17 @@ const NodePropertyDrawer = ({
                           border: '1px dashed #d9d9d9',
                           borderRadius: '4px'
                         }}>
-                          暫無欄位映射
+                          {t('workflowDesigner.dataSet.noFieldMapping')}
                         </div>
                       );
                     })()}
                     <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                      點擊上方按鈕設置 DataSet 欄位到流程變量的映射關係
+                      {t('workflowDesigner.dataSet.clickToSetFieldMapping')}
                     </div>
                   </Form.Item>
                 )}
               
-                <Form.Item label="操作預覽">
+                <Form.Item label={t('workflowDesigner.dataSet.operationPreview')}>
                   <div style={{ 
                     padding: '8px 12px', 
                     backgroundColor: '#f5f5f5', 
@@ -1282,18 +1395,18 @@ const NodePropertyDrawer = ({
                     {selectedNode.data.dataSetId && selectedNode.data.operationType ? (
                       <div>
                         <div><strong>DataSet:</strong> {dataSets.find(ds => ds.id === selectedNode.data.dataSetId)?.name}</div>
-                        <div><strong>操作類型:</strong> {selectedNode.data.operationType}</div>
+                        <div><strong>{t('workflowDesigner.dataSet.operationType')}:</strong> {selectedNode.data.operationType}</div>
                         {(() => {
                           const currentNode = nodes.find(node => node.id === selectedNode?.id);
                           const conditionGroups = currentNode?.data?.queryConditionGroups || [];
                           if (conditionGroups.length > 0) {
                             const sqlPreview = generateWhereClause(conditionGroups);
-                            return <div><strong>查詢條件:</strong> {sqlPreview}</div>;
+                            return <div><strong>{t('workflowDesigner.dataSet.queryConditions')}:</strong> {sqlPreview}</div>;
                           }
                           return null;
                         })()}
                         {Object.keys(selectedNode.data.operationData || {}).length > 0 && (
-                          <div><strong>操作數據:</strong> {JSON.stringify(selectedNode.data.operationData)}</div>
+                          <div><strong>{t('workflowDesigner.dataSet.operationData')}:</strong> {JSON.stringify(selectedNode.data.operationData)}</div>
                         )}
                         {(() => {
                           const currentNode = nodes.find(node => node.id === selectedNode?.id);
@@ -1301,7 +1414,7 @@ const NodePropertyDrawer = ({
                           if (mappedFields.length > 0) {
                             return (
                               <div>
-                                <strong>欄位映射:</strong>
+                                <strong>{t('workflowDesigner.dataSet.fieldMapping')}:</strong>
                                 <ul style={{ margin: '4px 0', paddingLeft: '16px' }}>
                                   {mappedFields.map((mapping, index) => (
                                     <li key={index}>
@@ -1316,7 +1429,7 @@ const NodePropertyDrawer = ({
                         })()}
                       </div>
                     ) : (
-                      '請先選擇 DataSet 和操作類型'
+                      t('workflowDesigner.dataSet.pleaseSelectDataSetAndOperationType')
                     )}
                   </div>
                 </Form.Item>
@@ -1330,7 +1443,7 @@ const NodePropertyDrawer = ({
                   disabled={!selectedNode.data.dataSetId || !selectedNode.data.operationType}
                   style={{ width: '100%' }}
                 >
-                  測試操作
+                  {t('workflowDesigner.dataSet.testOperation')}
                 </Button>
               </Form.Item>
 
@@ -1785,12 +1898,110 @@ const NodePropertyDrawer = ({
         t={t}
       />
 
+      {/* 操作數據設置模態框 */}
+      <Modal
+        title={t('workflowDesigner.dataSet.setOperationData')}
+        open={operationDataModalVisible}
+        onCancel={handleCancelOperationData}
+        width={800}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          layout="vertical"
+          onFinish={handleSaveOperationData}
+        >
+          <Form.Item label={t('workflowDesigner.dataSet.operationData')}>
+            <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
+              {editingOperationData.map((field, index) => (
+                <div key={index} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  marginBottom: '8px',
+                  padding: '8px',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '4px'
+                }}>
+                  <Select
+                    placeholder={t('workflowDesigner.dataSet.selectDataSetField')}
+                    value={field.name}
+                    onChange={(value) => handleUpdateOperationDataField(index, 'name', value)}
+                    style={{ width: '40%' }}
+                    showSearch
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={dataSetColumns.map(col => ({
+                      value: col.columnName,
+                      label: `${col.displayName || col.columnName} (${col.dataType})`
+                    }))}
+                  />
+                  <span style={{ color: '#666', fontSize: '14px' }}>←</span>
+                  <Select
+                    placeholder={t('workflowDesigner.dataSet.selectProcessVariable')}
+                    value={field.value}
+                    onChange={(value) => handleUpdateOperationDataField(index, 'value', value)}
+                    style={{ width: '40%' }}
+                    showSearch
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={availableProcessVariables.map(pv => ({
+                      value: `\${${pv}}`,
+                      label: pv
+                    }))}
+                  />
+                  <Button 
+                    type="text" 
+                    danger 
+                    size="small"
+                    icon={<MinusCircleOutlined />}
+                    onClick={() => handleRemoveOperationDataField(index)}
+                  />
+                </div>
+              ))}
+              
+              {editingOperationData.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+                  {t('workflowDesigner.dataSet.noOperationData')}
+                </div>
+              )}
+              
+              <Button 
+                type="dashed" 
+                icon={<PlusOutlined />}
+                onClick={handleAddOperationDataField}
+                style={{ width: '100%' }}
+              >
+                {t('workflowDesigner.dataSet.addFieldMapping')}
+              </Button>
+            </div>
+          </Form.Item>
+          
+          <div style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
+            {t('workflowDesigner.dataSet.operationDataDescription')}
+          </div>
+          
+          <div style={{ textAlign: 'right' }}>
+            <Space>
+              <Button onClick={handleCancelOperationData}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="primary" htmlType="submit">
+                {t('common.save')}
+              </Button>
+            </Space>
+          </div>
+        </Form>
+      </Modal>
+
       {/* 查詢結果預覽模態窗口 */}
       <Modal
         title={
           <div>
             <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
-              DataSet 查詢結果預覽
+              {t('workflowDesigner.dataSet.queryResultPreview')}
             </div>
             {/* PV 模擬數據輸入 - 在模態窗口標題中顯示 */}
             {(() => {
@@ -1808,7 +2019,7 @@ const NodePropertyDrawer = ({
                     marginTop: '8px'
                   }}>
                     <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '12px' }}>
-                      為查詢條件中的流程變量輸入測試值：
+                      {t('workflowDesigner.dataSet.pvSimulationDataDescription')}
                     </div>
                     
                     {usedVariables.map(variableName => (
@@ -1832,7 +2043,7 @@ const NodePropertyDrawer = ({
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
                       <div style={{ fontSize: '12px', color: '#6c757d' }}>
-                        輸入測試值後點擊「測試查詢」查看結果
+                        {t('workflowDesigner.dataSet.pvSimulationDataHelp')}
                       </div>
                       <Button 
                         type="primary" 
@@ -1894,7 +2105,7 @@ const NodePropertyDrawer = ({
                         loading={testingOperation}
                         disabled={!selectedNode?.data?.dataSetId}
                       >
-                        測試查詢
+                        {t('workflowDesigner.dataSet.testQuery')}
                       </Button>
                     </div>
                   </div>
@@ -1909,14 +2120,14 @@ const NodePropertyDrawer = ({
         width={1000}
         footer={[
           <Button key="close" onClick={() => setQueryPreviewModalVisible(false)}>
-            關閉
+            {t('workflowDesigner.dataSet.close')}
           </Button>
         ]}
         destroyOnClose
       >
         <div style={{ marginBottom: '16px' }}>
           <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
-            基於輸入的模擬數據查詢結果（前10條）：
+            {t('workflowDesigner.dataSet.queryResultDescription')}
           </div>
           {(() => {
             const currentNode = nodes.find(node => node.id === selectedNode?.id);
@@ -1932,9 +2143,9 @@ const NodePropertyDrawer = ({
                 color: '#666',
                 marginBottom: '16px'
               }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>生成的 WHERE 條件:</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{t('workflowDesigner.dataSet.generatedWhereClause')}:</div>
                 <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                  {whereClause || '無查詢條件'}
+                  {whereClause || t('workflowDesigner.dataSet.noQueryConditions')}
                 </div>
               </div>
             );
@@ -1964,12 +2175,12 @@ const NodePropertyDrawer = ({
           />
         ) : (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-            暫無查詢結果數據
+            {t('workflowDesigner.dataSet.noQueryResultData')}
           </div>
         )}
         
         <div style={{ fontSize: '12px', color: '#666', marginTop: '12px', textAlign: 'right' }}>
-          共 {queryPreviewData.length} 條記錄
+          {t('workflowDesigner.dataSet.totalRecords', { count: queryPreviewData.length })}
         </div>
       </Modal>
     </Drawer>

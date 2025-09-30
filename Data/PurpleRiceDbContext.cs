@@ -45,6 +45,10 @@ namespace PurpleRice.Data
         // Workflow Message Send 相關 DbSet
         public DbSet<WorkflowMessageSend> WorkflowMessageSends { get; set; }
         public DbSet<WorkflowMessageRecipient> WorkflowMessageRecipients { get; set; }
+        
+        // Workflow DataSet Query 相關 DbSet
+        public DbSet<WorkflowDataSetQueryResult> WorkflowDataSetQueryResults { get; set; }
+        public DbSet<WorkflowDataSetQueryRecord> WorkflowDataSetQueryRecords { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

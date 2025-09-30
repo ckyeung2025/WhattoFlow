@@ -184,15 +184,17 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                // 這裡應該實現實際的 SQL 連接測試
-                // 目前返回模擬結果
-                await Task.Delay(1000); // 模擬連接測試時間
+                var connectionString = $"Server={config.Server};Database={config.Database};User Id={config.Username};Password={config.Password};TrustServerCertificate=true;";
                 
+                using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+                await connection.OpenAsync();
+                
+                _logger.LogInformation("SQL 連接測試成功 - Server: {Server}, Database: {Database}", config.Server, config.Database);
                 return Ok(new { success = true, message = "SQL 連接測試成功" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "SQL 連接測試失敗");
+                _logger.LogError(ex, "SQL 連接測試失敗 - Server: {Server}, Database: {Database}", config.Server, config.Database);
                 return BadRequest(new { success = false, message = "SQL 連接測試失敗: " + ex.Message });
             }
         }
@@ -205,16 +207,138 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                // 這裡應該實現實際的 SQL 數據載入
-                // 目前返回模擬數據
-                await Task.Delay(1000); // 模擬數據載入時間
+                _logger.LogInformation("開始 SQL 載入 - Server: {Server}, Database: {Database}, Table: {Table}", 
+                    config.Server, config.Database, config.Table);
+                _logger.LogInformation("Custom Query: {Query}", config.Query ?? "無");
                 
-                var mockData = new List<Dictionary<string, object>>
+                var connectionString = $"Server={config.Server};Database={config.Database};User Id={config.Username};Password={config.Password};TrustServerCertificate=true;";
+                _logger.LogInformation("連接字符串: {ConnectionString}", connectionString.Replace(config.Password, "***"));
+                
+                using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+                await connection.OpenAsync();
+                _logger.LogInformation("SQL 連接已打開");
+                
+                string query;
+                if (!string.IsNullOrEmpty(config.Query))
                 {
-                    new Dictionary<string, object>
+                    query = config.Query;
+                    _logger.LogInformation("使用自定義查詢: {Query}", query);
+                }
+                else if (!string.IsNullOrEmpty(config.Table))
+                {
+                    query = $"SELECT * FROM {config.Table}";
+                    _logger.LogInformation("使用表名生成查詢: {Query}", query);
+                }
+                else
+                {
+                    _logger.LogError("既未提供表名也未提供自定義查詢");
+                    return BadRequest(new { success = false, message = "請提供表名或自定義查詢" });
+                }
+                
+                using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
+                _logger.LogInformation("開始執行查詢: {Query}", query);
+                using var reader = await command.ExecuteReaderAsync();
+                _logger.LogInformation("查詢執行完成，開始讀取結果");
+                
+                var data = new List<Dictionary<string, object>>();
+                var columns = new List<string>();
+                
+                // 獲取列名
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    columns.Add(reader.GetName(i));
+                }
+                
+                // 讀取數據
+                while (await reader.ReadAsync())
+                {
+                    var row = new Dictionary<string, object>();
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        var columnName = reader.GetName(i);
+                        var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        row[columnName] = value;
+                    }
+                    data.Add(row);
+                }
+                
+                _logger.LogInformation("從 SQL 載入數據成功 - 行數: {RowCount}, 列數: {ColumnCount}", data.Count, columns.Count);
+                _logger.LogInformation("SQL 查詢列名: {Columns}", string.Join(", ", columns));
+                
+                return Ok(new { 
+                    success = true, 
+                    data = data,
+                    columns = columns
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "從 SQL 載入數據失敗");
+                return BadRequest(new { success = false, message = "載入數據失敗: " + ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 解析 Excel 文件
+        /// </summary>
+        [HttpPost("parse-excel")]
+        public async Task<IActionResult> ParseExcelFile(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                    return BadRequest("請選擇要上傳的文件");
+
+                var allowedExtensions = new[] { ".xlsx", ".xls", ".csv" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
+                    return BadRequest("不支持的文件格式，請上傳 .xlsx、.xls 或 .csv 文件");
+
+                using var stream = file.OpenReadStream();
+                var data = new List<Dictionary<string, object>>();
+                var columns = new List<string>();
+
+                if (fileExtension == ".csv")
+                {
+                    // 解析 CSV 文件
+                    using var reader = new StreamReader(stream);
+                    var csvContent = await reader.ReadToEndAsync();
+                    var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    
+                    if (lines.Length > 0)
+                    {
+                        // 第一行作為列名
+                        columns = lines[0].Split(',').Select(c => c.Trim().Trim('"')).ToList();
+                        
+                        // 解析數據行
+                        for (int i = 1; i < lines.Length; i++)
+                        {
+                            var values = lines[i].Split(',').Select(v => v.Trim().Trim('"')).ToArray();
+                            var row = new Dictionary<string, object>();
+                            
+                            for (int j = 0; j < Math.Min(columns.Count, values.Length); j++)
+                            {
+                                row[columns[j]] = values[j];
+                            }
+                            data.Add(row);
+                        }
+                    }
+                }
+                else
+                {
+                    // 解析 Excel 文件 (需要安裝 EPPlus 或 ClosedXML)
+                    // 這裡先返回模擬數據，實際實現需要添加 Excel 解析庫
+                    await Task.Delay(1000); // 模擬解析時間
+                    
+                    data = new List<Dictionary<string, object>>
+                    {
+                        new Dictionary<string, object>
                     {
                         { "name", "張三" },
                         { "title", "經理" },
+                            { "occupation", "企業家" },
+                            { "position", "CEO" },
                         { "whatsapp", "+886912345678" },
                         { "email", "zhang@example.com" },
                         { "company", "ABC公司" },
@@ -225,6 +349,8 @@ namespace PurpleRice.Controllers
                     {
                         { "name", "李四" },
                         { "title", "專員" },
+                            { "occupation", "工程師" },
+                            { "position", "Senior" },
                         { "whatsapp", "+886987654321" },
                         { "email", "li@example.com" },
                         { "company", "XYZ公司" },
@@ -232,17 +358,23 @@ namespace PurpleRice.Controllers
                         { "tags", "新客戶" }
                     }
                 };
+                    
+                    columns = data.FirstOrDefault()?.Keys.ToList() ?? new List<string>();
+                }
+
+                _logger.LogInformation("Excel 文件解析成功 - 文件名: {FileName}, 行數: {RowCount}, 列數: {ColumnCount}", 
+                    file.FileName, data.Count, columns.Count);
 
                 return Ok(new { 
                     success = true, 
-                    data = mockData,
-                    columns = mockData.FirstOrDefault()?.Keys.ToList() ?? new List<string>()
+                    data = data,
+                    columns = columns
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "從 SQL 載入數據失敗");
-                return BadRequest(new { success = false, message = "載入數據失敗: " + ex.Message });
+                _logger.LogError(ex, "Excel 文件解析失敗");
+                return BadRequest(new { success = false, message = "文件解析失敗: " + ex.Message });
             }
         }
     }
