@@ -25,10 +25,17 @@ namespace PurpleRice.Controllers
         }
 
         [HttpPost("scan")]
-        public async Task<IActionResult> ScanQRCode([FromForm] IFormFile image)
+        public async Task<IActionResult> ScanQRCode([FromForm] IFormFile image, [FromForm] int executionId)
         {
+            byte[] imageData = null; // 在方法開始時聲明變量
+            
             try
             {
+                if (executionId <= 0)
+                {
+                    return BadRequest(new { success = false, message = "Valid execution ID is required" });
+                }
+
                 if (image == null || image.Length == 0)
                 {
                     return BadRequest(new { success = false, message = "No image provided" });
@@ -47,19 +54,61 @@ namespace PurpleRice.Controllers
                     return BadRequest(new { success = false, message = "Image size too large. Maximum size is 5MB." });
                 }
 
+                // 先將圖片轉換為 byte[]
                 using var stream = image.OpenReadStream();
-                var qrCodeValue = await _qrCodeService.ScanQRCodeAsync(stream);
-
-                if (string.IsNullOrEmpty(qrCodeValue))
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                imageData = memoryStream.ToArray();
+                
+                // 使用 ScanQRCodeAndSaveImageWithResultAsync 來掃描並保存圖片
+                try
                 {
-                    return Ok(new { success = false, message = "No QR Code found in the image" });
-                }
+                    var (qrCodeValue, savedImagePath) = await _qrCodeService.ScanQRCodeAndSaveImageWithResultAsync(imageData, executionId);
+                    _logger.LogInformation("Image saved: {ImagePath}, QR Code: {QRCode}", savedImagePath, qrCodeValue ?? "null");
 
-                return Ok(new { success = true, data = qrCodeValue });
+                    if (string.IsNullOrEmpty(qrCodeValue))
+                    {
+                        return Ok(new { success = false, message = "No QR Code found in the image" });
+                    }
+
+                    return Ok(new { success = true, data = qrCodeValue });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to scan and save QR Code image");
+                    
+                    // 即使發生異常也要嘗試保存圖片
+                    try
+                    {
+                        var savedImagePath = await _qrCodeService.ScanQRCodeAndSaveImageAsync(imageData, executionId);
+                        _logger.LogInformation("Error image saved: {ImagePath}", savedImagePath);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        _logger.LogError(saveEx, "Failed to save error image");
+                    }
+                    
+                    return StatusCode(500, new { success = false, message = "Internal server error" });
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error scanning QR Code");
+                
+                // 即使發生異常也要保存圖片
+                if (imageData != null && imageData.Length > 0)
+                {
+                    try
+                    {
+                        var savedImagePath = await _qrCodeService.ScanQRCodeAndSaveImageAsync(imageData, 0);
+                        _logger.LogInformation("Error image saved: {ImagePath}", savedImagePath);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        _logger.LogError(saveEx, "Failed to save error image");
+                    }
+                }
+                
                 return StatusCode(500, new { success = false, message = "Internal server error" });
             }
         }
@@ -67,6 +116,8 @@ namespace PurpleRice.Controllers
         [HttpPost("process-workflow-input")]
         public async Task<IActionResult> ProcessWorkflowInput([FromForm] WorkflowQRCodeInput input)
         {
+            byte[] imageData = null; // 在方法開始時聲明變量
+            
             try
             {
                 if (input.ExecutionId <= 0)
@@ -79,13 +130,23 @@ namespace PurpleRice.Controllers
                     return BadRequest(new { success = false, message = "Node ID is required" });
                 }
 
-                byte[] imageData = null;
                 if (input.Image != null && input.Image.Length > 0)
                 {
                     using var stream = input.Image.OpenReadStream();
                     using var memoryStream = new MemoryStream();
                     await stream.CopyToAsync(memoryStream);
                     imageData = memoryStream.ToArray();
+                    
+                    // 在掃描之前先保存圖片（無論成功失敗都要保存）
+                    try
+                    {
+                        var savedImagePath = await _qrCodeService.ScanQRCodeAndSaveImageAsync(imageData, input.ExecutionId);
+                        _logger.LogInformation("Image saved before scanning: {ImagePath}", savedImagePath);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        _logger.LogError(saveEx, "Failed to save image before scanning for execution: {ExecutionId}", input.ExecutionId);
+                    }
                 }
 
                 var result = await _workflowExecutionService.ProcessQRCodeInputAsync(

@@ -50,8 +50,8 @@ const DataSetQueryConditionModal = ({
   return (
     <Modal
       title={editingConditionGroup && editingConditionGroup.groupIndex === -1 ? 
-        '添加查詢條件組' : 
-        '編輯查詢條件組'
+        t('workflowDesigner.dataSet.addQueryConditionGroup') : 
+        t('workflowDesigner.dataSet.editQueryConditionGroup')
       }
       open={visible}
       onCancel={onCancel}
@@ -65,17 +65,17 @@ const DataSetQueryConditionModal = ({
         onFinish={onSave}
       >
         <Form.Item
-          label="條件關係"
+          label={t('workflowDesigner.dataSet.conditionRelation')}
           name="relation"
-          rules={[{ required: true, message: '請選擇條件關係' }]}
+          rules={[{ required: true, message: t('workflowDesigner.dataSet.conditionRelationPlaceholder') }]}
         >
           <Select>
-            <Select.Option value="and">AND - 所有條件都必須滿足</Select.Option>
-            <Select.Option value="or">OR - 任一條件滿足即可</Select.Option>
+            <Select.Option value="and">{t('workflowDesigner.dataSet.and')} - {t('workflowDesigner.dataSet.andDescription')}</Select.Option>
+            <Select.Option value="or">{t('workflowDesigner.dataSet.or')} - {t('workflowDesigner.dataSet.orDescription')}</Select.Option>
           </Select>
         </Form.Item>
         
-        <Form.Item label="查詢條件">
+        <Form.Item label={t('workflowDesigner.dataSet.queryConditions')}>
           <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
             {console.log('=== DataSet 查詢條件模態框渲染條件列表 ===')}
             {console.log('currentConditions:', currentConditions)}
@@ -111,7 +111,7 @@ const DataSetQueryConditionModal = ({
             
             {(!currentConditions || currentConditions.length === 0) && (
               <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                暫無查詢條件
+                {t('workflowDesigner.dataSet.noQueryConditions')}
               </div>
             )}
             
@@ -120,7 +120,7 @@ const DataSetQueryConditionModal = ({
               onClick={onAddCondition}
               style={{ width: '100%' }}
             >
-              添加查詢條件
+              {t('workflowDesigner.dataSet.addCondition')}
             </Button>
           </div>
         </Form.Item>
@@ -128,10 +128,10 @@ const DataSetQueryConditionModal = ({
         <div style={{ textAlign: 'right' }}>
           <Space>
             <Button onClick={onCancel}>
-              取消
+              {t('workflowDesigner.dataSet.cancel')}
             </Button>
             <Button type="primary" htmlType="submit">
-              {editingConditionGroup && editingConditionGroup.groupIndex === -1 ? '添加' : '更新'}
+              {editingConditionGroup && editingConditionGroup.groupIndex === -1 ? t('workflowDesigner.dataSet.add') : t('workflowDesigner.dataSet.update')}
             </Button>
           </Space>
         </div>

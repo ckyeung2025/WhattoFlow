@@ -14,7 +14,7 @@ const DataSetQueryConditionEditModal = ({
 }) => {
   return (
     <Modal
-      title="編輯查詢條件"
+      title={t('workflowDesigner.dataSet.editQueryCondition')}
       open={visible}
       onCancel={onCancel}
       width={600}
@@ -27,11 +27,11 @@ const DataSetQueryConditionEditModal = ({
         onFinish={onSave}
       >
         <Form.Item
-          label="選擇 DataSet 欄位"
+          label={t('workflowDesigner.dataSet.selectDataSetField')}
           name="fieldName"
-          rules={[{ required: true, message: '請選擇 DataSet 欄位' }]}
+          rules={[{ required: true, message: t('workflowDesigner.dataSet.selectDataSetFieldPlaceholder') }]}
         >
-          <Select placeholder="選擇 DataSet 欄位">
+          <Select placeholder={t('workflowDesigner.dataSet.selectDataSetField')}>
             {dataSetColumns.length > 0 ? (
               dataSetColumns.map(col => (
                 <Select.Option key={col.columnName} value={col.columnName}>
@@ -40,21 +40,21 @@ const DataSetQueryConditionEditModal = ({
               ))
             ) : (
               <Select.Option value="" disabled>
-                暫無 DataSet 欄位
+                {t('workflowDesigner.dataSet.noDataSetFields')}
               </Select.Option>
             )}
           </Select>
           {dataSetColumns.length === 0 && (
             <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
-              請先選擇 DataSet
+              {t('workflowDesigner.dataSet.pleaseSelectDataSet')}
             </div>
           )}
         </Form.Item>
         
         <Form.Item
-          label="操作符"
+          label={t('workflowDesigner.dataSet.operator')}
           name="operator"
-          rules={[{ required: true, message: '請選擇操作符' }]}
+          rules={[{ required: true, message: t('workflowDesigner.dataSet.operatorPlaceholder') }]}
         >
           <Select>
             <Select.Option value="equals">等於 (=)</Select.Option>
@@ -74,25 +74,25 @@ const DataSetQueryConditionEditModal = ({
         </Form.Item>
         
         <Form.Item
-          label="條件值"
+          label={t('workflowDesigner.dataSet.conditionValue')}
           name="value"
-          rules={[{ required: true, message: '請輸入條件值' }]}
+          rules={[{ required: true, message: t('workflowDesigner.dataSet.conditionValuePlaceholder') }]}
         >
-          <Input placeholder="輸入條件值，可使用流程變量 ${variableName}" />
+          <Input placeholder={t('workflowDesigner.dataSet.conditionValueInputPlaceholder')} />
         </Form.Item>
         
         <Form.Item
-          label="條件標籤"
+          label={t('workflowDesigner.dataSet.conditionLabel')}
           name="label"
         >
-          <Input placeholder="可選的條件描述標籤" />
+          <Input placeholder={t('workflowDesigner.dataSet.conditionLabelPlaceholder')} />
         </Form.Item>
         
         {/* 顯示可用的流程變量 */}
         {processVariables && processVariables.length > 0 && (
-          <Form.Item label="可用流程變量">
+          <Form.Item label={t('workflowDesigner.dataSet.availableProcessVariables')}>
             <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-              點擊變量名稱可插入到條件值中
+              {t('workflowDesigner.dataSet.clickVariableToInsert')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {processVariables.map(pv => (
@@ -124,10 +124,10 @@ const DataSetQueryConditionEditModal = ({
         <div style={{ textAlign: 'right' }}>
           <Space>
             <Button onClick={onCancel}>
-              取消
+              {t('workflowDesigner.dataSet.cancel')}
             </Button>
             <Button type="primary" htmlType="submit">
-              {editingCondition && editingCondition.condIndex !== -1 ? '更新' : '添加'}
+              {editingCondition && editingCondition.condIndex !== -1 ? t('workflowDesigner.dataSet.update') : t('workflowDesigner.dataSet.add')}
             </Button>
           </Space>
         </div>

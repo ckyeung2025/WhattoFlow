@@ -65,7 +65,7 @@ export const useWorkflowState = (isNodeSelected) => {
       { type: 'waitForQRCode', label: t('workflowDesigner.waitForQRCodeNode'), icon: ClockCircleOutlined },
       { type: 'switch', label: t('workflowDesigner.switchNode'), icon: CheckCircleOutlined },
       { type: 'dataSetQuery', label: t('workflowDesigner.dataSetQueryNode'), icon: DatabaseOutlined },
-      { type: 'callApi', label: t('workflowDesigner.webhookNode'), icon: ApiOutlined },
+      { type: 'callApi', label: t('workflowDesigner.callApiNode'), icon: ApiOutlined },
       { type: 'sendEForm', label: t('workflowDesigner.formNode'), icon: FormOutlined },
       { type: 'end', label: t('workflowDesigner.endNode'), icon: StopOutlined },
     ];

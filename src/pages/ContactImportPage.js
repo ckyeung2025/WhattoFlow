@@ -106,10 +106,10 @@ const ContactImportPage = () => {
       // 使用真實的 API 解析文件
       const parsedData = await contactImportApi.parseExcelFile(file);
       setPreviewData(parsedData.data);
-      setPreviewColumns(parsedData.columns);
+      setPreviewColumns(parsedData.columns.map(col => ({ title: col, dataIndex: col, key: col })));
       
       // 自動映射字段
-      const autoMapping = generateAutoMapping(parsedData.columns);
+      const autoMapping = generateAutoMapping(parsedData.columns.map(col => ({ dataIndex: col })));
       setFieldMapping(autoMapping);
       mappingForm.setFieldsValue(autoMapping);
       
@@ -150,6 +150,8 @@ const ContactImportPage = () => {
       const key = col.dataIndex.toLowerCase();
       if (key.includes('name') || key.includes('姓名')) mapping.name = col.dataIndex;
       else if (key.includes('title') || key.includes('職稱')) mapping.title = col.dataIndex;
+      else if (key.includes('occupation') || key.includes('職業')) mapping.occupation = col.dataIndex;
+      else if (key.includes('position') || key.includes('職位')) mapping.position = col.dataIndex;
       else if (key.includes('whatsapp') || key.includes('電話')) mapping.whatsappNumber = col.dataIndex;
       else if (key.includes('email') || key.includes('郵件')) mapping.email = col.dataIndex;
       else if (key.includes('company') || key.includes('公司')) mapping.companyName = col.dataIndex;
@@ -219,10 +221,17 @@ const ContactImportPage = () => {
   // 從 SQL 載入數據
   const loadFromSql = async () => {
     try {
+      console.log('發送的 SQL 配置:', sqlConfig);
       const result = await contactImportApi.loadFromSql(sqlConfig);
       if (result.success) {
+        console.log('SQL 查詢結果:', result);
+        console.log('SQL 列名:', result.columns);
+        console.log('SQL 數據樣本:', result.data.slice(0, 2));
+        
         setPreviewData(result.data);
         setPreviewColumns(result.columns.map(col => ({ title: col, dataIndex: col, key: col })));
+        
+        console.log('設置的 previewColumns:', result.columns.map(col => ({ title: col, dataIndex: col, key: col })));
         
         const autoMapping = generateAutoMapping(result.columns.map(col => ({ dataIndex: col })));
         setFieldMapping(autoMapping);
@@ -466,18 +475,63 @@ const ContactImportPage = () => {
           <Col span={12}>
             <Card title={t('contactImport.dataPreview')}>
               <Table
-                columns={previewColumns}
+                columns={previewColumns.map(col => ({
+                  ...col,
+                  ellipsis: true,
+                  resizable: true,
+                  width: 120,
+                  title: (
+                    <div style={{ 
+                      overflow: 'hidden', 
+                      textOverflow: 'ellipsis', 
+                      whiteSpace: 'nowrap',
+                      maxWidth: '120px'
+                    }}>
+                      {col.title}
+                    </div>
+                  )
+                }))}
                 dataSource={previewData}
-                pagination={false}
+                pagination={{ 
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total, range) => `第 ${range[0]}-${range[1]} 筆，共 ${total} 筆`
+                }}
                 size="small"
-                scroll={{ y: 300 }}
+                scroll={{ x: 'max-content', y: 400 }}
+                bordered
+                components={{
+                  header: {
+                    cell: (props) => (
+                      <th 
+                        {...props} 
+                        style={{ 
+                          ...props.style, 
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          minWidth: '120px',
+                          maxWidth: '200px',
+                          resize: 'horizontal',
+                          cursor: 'col-resize'
+                        }} 
+                      />
+                    )
+                  }
+                }}
               />
             </Card>
           </Col>
           
           <Col span={12}>
-            <Card title={t('contactImport.fieldMapping')}>
-              <Form form={mappingForm} layout="vertical">
+            <Card 
+              title={t('contactImport.fieldMapping')} 
+              style={{ height: '500px' }}
+              bodyStyle={{ height: '450px', padding: '16px' }}
+            >
+              <div style={{ height: '100%', overflowY: 'auto', paddingRight: '8px' }}>
+                <Form form={mappingForm} layout="vertical">
                 <Form.Item label={t('contactImport.name')} name="name">
                   <Select placeholder={t('contactImport.selectColumn')}>
                     {previewColumns.map(col => (
@@ -489,6 +543,26 @@ const ContactImportPage = () => {
                 </Form.Item>
                 
                 <Form.Item label={t('contactImport.title')} name="title">
+                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
+                    {previewColumns.map(col => (
+                      <Option key={col.dataIndex} value={col.dataIndex}>
+                        {col.title}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item label={t('contactImport.occupation')} name="occupation">
+                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
+                    {previewColumns.map(col => (
+                      <Option key={col.dataIndex} value={col.dataIndex}>
+                        {col.title}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item label={t('contactImport.position')} name="position">
                   <Select placeholder={t('contactImport.selectColumn')} allowClear>
                     {previewColumns.map(col => (
                       <Option key={col.dataIndex} value={col.dataIndex}>
@@ -558,6 +632,7 @@ const ContactImportPage = () => {
                   </Select>
                 </Form.Item>
               </Form>
+              </div>
             </Card>
           </Col>
         </Row>

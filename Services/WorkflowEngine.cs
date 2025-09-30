@@ -21,9 +21,12 @@ namespace PurpleRice.Services
         private readonly EFormService _eFormService;
         private readonly ISwitchConditionService _switchConditionService;
         private readonly UserSessionService _userSessionService;
+        private readonly DataSetQueryService _dataSetQueryService;
+        private readonly IVariableReplacementService _variableReplacementService;
+        private readonly PurpleRiceDbContext _context;
 
         public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, 
-            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService)
+            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService, DataSetQueryService dataSetQueryService, IVariableReplacementService variableReplacementService, PurpleRiceDbContext context)
         {
             _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
@@ -32,6 +35,9 @@ namespace PurpleRice.Services
             _eFormService = eFormService;
             _switchConditionService = switchConditionService;
             _userSessionService = userSessionService;
+            _dataSetQueryService = dataSetQueryService;
+            _variableReplacementService = variableReplacementService;
+            _context = context;
         }
 
         private void WriteLog(string message)
@@ -346,10 +352,15 @@ namespace PurpleRice.Services
                     // 找到下一個節點
                     if (adjacencyList.ContainsKey(waitNodeId))
                     {
-                        var nextNodeId = adjacencyList[waitNodeId].FirstOrDefault();
+                        // ✅ 修復：過濾掉不存在的節點，只取第一個有效的節點
+                        var nextNodeIds = adjacencyList[waitNodeId];
+                        var nodeMap = flowData.Nodes.ToDictionary(n => n.Id);
+                        var nextNodeId = nextNodeIds.FirstOrDefault(id => nodeMap.ContainsKey(id));
+                        
                         if (nextNodeId != null)
                         {
                             WriteLog($"找到下一個節點: {nextNodeId}");
+                            WriteLog($"注意: 等待節點有 {nextNodeIds.Count} 個後續連接，已過濾無效節點");
                             
                             // 更新執行狀態
                             execution.IsWaiting = false;
@@ -364,7 +375,7 @@ namespace PurpleRice.Services
                         }
                         else
                         {
-                            WriteLog($"錯誤: 等待節點 {waitNodeId} 沒有後續節點");
+                            WriteLog($"錯誤: 等待節點 {waitNodeId} 沒有有效的後續節點（可能有無效邊連接）");
                         }
                     }
                     else
@@ -487,6 +498,9 @@ namespace PurpleRice.Services
 
                 case "end":
                     return await ExecuteEnd(nodeId, stepExec, execution);
+
+                case "dataSetQuery":
+                    return await ExecuteDataSetQuery(nodeData, stepExec, execution);
 
                 default:
                     WriteLog($"未處理的節點類型: {nodeData?.Type}");
@@ -666,6 +680,12 @@ namespace PurpleRice.Services
                 
                 try
                 {
+                    WriteLog($"🔍 [DEBUG] 開始處理變數替換");
+                    // 替換訊息內容中的變數
+                    var processedMessage = await _variableReplacementService.ReplaceVariablesAsync(nodeData.Message, execution.Id);
+                    WriteLog($"🔍 [DEBUG] 原始訊息: {nodeData.Message}");
+                    WriteLog($"🔍 [DEBUG] 處理後訊息: {processedMessage}");
+                    
                     WriteLog($"🔍 [DEBUG] 開始構建收件人詳情");
                     // 構建收件人詳情
                     string recipientDetailsJson;
@@ -700,7 +720,7 @@ namespace PurpleRice.Services
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
                         nodeData.To,
                         recipientDetailsJson,
-                        nodeData.Message,
+                        processedMessage,
                         execution,
                         stepExec,
                         stepExec.Id.ToString(), // nodeId
@@ -761,6 +781,19 @@ namespace PurpleRice.Services
                 
                 try
                 {
+                    WriteLog($"🔍 [DEBUG] 開始處理模板變數替換");
+                    // 替換模板變數中的變數
+                    var processedVariables = new Dictionary<string, string>();
+                    if (nodeData.Variables != null)
+                    {
+                        foreach (var kvp in nodeData.Variables)
+                        {
+                            var processedValue = await _variableReplacementService.ReplaceVariablesAsync(kvp.Value, execution.Id);
+                            processedVariables[kvp.Key] = processedValue;
+                            WriteLog($"🔍 [DEBUG] 模板變數 {kvp.Key}: {kvp.Value} -> {processedValue}");
+                        }
+                    }
+                    
                     // 構建收件人詳情
                     string recipientDetailsJson;
                     if (nodeData.RecipientDetails != null)
@@ -791,7 +824,7 @@ namespace PurpleRice.Services
                         recipientDetailsJson,
                         nodeData.TemplateId,
                         nodeData.TemplateName,
-                        nodeData.Variables ?? new Dictionary<string, string>(),
+                        processedVariables,
                         execution,
                         stepExec,
                         stepExec.Id.ToString(), // nodeId
@@ -1496,141 +1529,309 @@ namespace PurpleRice.Services
                 WriteLog($"執行 Switch 後續節點時發生錯誤: {ex.Message}");
             }
         }
+
+    // DataSet 查詢執行方法
+    private async Task<bool> ExecuteDataSetQuery(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
+    {
+        try
+        {
+            WriteLog($"執行 DataSet 查詢節點: {nodeData?.TaskName}");
+
+            // 獲取節點配置
+            var dataSetId = nodeData?.DataSetId;
+            var operationType = nodeData?.OperationType ?? "SELECT";
+            var queryConditionGroups = nodeData?.QueryConditionGroups ?? new List<object>();
+            var operationData = nodeData?.OperationData ?? new Dictionary<string, object>();
+            var mappedFields = nodeData?.MappedFields ?? new List<object>();
+
+            // 調試日誌：記錄原始查詢條件
+            WriteLog($"原始查詢條件組數量: {queryConditionGroups.Count}");
+            foreach (var group in queryConditionGroups)
+            {
+                WriteLog($"查詢條件組: {JsonSerializer.Serialize(group)}");
+            }
+
+            if (string.IsNullOrEmpty(dataSetId))
+            {
+                WriteLog("DataSet ID 為空，跳過執行");
+                stepExec.Status = "Skipped";
+                stepExec.OutputJson = JsonSerializer.Serialize(new { message = "DataSet ID 未配置" });
+                return true;
+            }
+
+            // 獲取當前流程變量值
+            var processVariables = await GetCurrentProcessVariables(execution.Id);
+
+            // 構建查詢請求
+            var request = new Models.DTOs.DataSetQueryRequest
+            {
+                DataSetId = Guid.Parse(dataSetId),
+                OperationType = operationType,
+                ProcessVariableValues = processVariables
+            };
+
+            // 轉換查詢條件
+            foreach (var groupObj in queryConditionGroups)
+            {
+                var groupJson = JsonSerializer.Serialize(groupObj);
+                WriteLog($"轉換查詢條件組 JSON: {groupJson}");
+                
+                // 嘗試直接反序列化
+                var group = JsonSerializer.Deserialize<Models.DTOs.QueryConditionGroup>(groupJson);
+                if (group != null)
+                {
+                    WriteLog($"成功轉換查詢條件組，條件數量: {group.Conditions.Count}");
+                    if (group.Conditions.Count > 0)
+                    {
+                        WriteLog($"第一個條件: FieldName={group.Conditions[0].FieldName}, Operator={group.Conditions[0].Operator}, Value={group.Conditions[0].Value}");
+                    }
+                    request.QueryConditionGroups.Add(group);
+                }
+                else
+                {
+                    WriteLog("查詢條件組轉換失敗，group 為 null");
+                }
+            }
+
+            // 轉換欄位映射
+            foreach (var mappingObj in mappedFields)
+            {
+                var mappingJson = JsonSerializer.Serialize(mappingObj);
+                WriteLog($"轉換欄位映射 JSON: {mappingJson}");
+                
+                var mapping = JsonSerializer.Deserialize<Models.DTOs.FieldMapping>(mappingJson);
+                if (mapping != null)
+                {
+                    WriteLog($"成功轉換欄位映射: {mapping.FieldName} → {mapping.VariableName}");
+                    request.MappedFields.Add(mapping);
+                }
+                else
+                {
+                    WriteLog("欄位映射轉換失敗，mapping 為 null");
+                }
+            }
+
+            // 執行查詢
+            var result = await _dataSetQueryService.ExecuteDataSetQueryAsync(
+                execution.Id,
+                stepExec.Id,
+                request
+            );
+
+            // 更新步驟執行狀態
+            if (result.Success)
+            {
+                stepExec.Status = "Completed";
+                stepExec.OutputJson = JsonSerializer.Serialize(new
+                {
+                    success = true,
+                    message = result.Message,
+                    totalCount = result.TotalCount,
+                    queryResultId = result.QueryResultId,
+                    dataSetName = result.DataSetName
+                });
+                WriteLog($"DataSet 查詢成功: {result.Message}");
+            }
+            else
+            {
+                stepExec.Status = "Failed";
+                stepExec.OutputJson = JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    message = result.Message
+                });
+                WriteLog($"DataSet 查詢失敗: {result.Message}");
+            }
+
+            return result.Success;
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"執行 DataSet 查詢節點時發生錯誤: {ex.Message}");
+            stepExec.Status = "Error";
+            stepExec.OutputJson = JsonSerializer.Serialize(new
+            {
+                success = false,
+                message = ex.Message
+            });
+            return false;
+        }
     }
 
-    // 圖形結構模型
-    public class WorkflowGraph
+    // 獲取當前流程變量值
+    private async Task<Dictionary<string, object>> GetCurrentProcessVariables(int workflowExecutionId)
     {
-        public List<WorkflowNode> Nodes { get; set; } = new List<WorkflowNode>();
-        public List<WorkflowEdge> Edges { get; set; } = new List<WorkflowEdge>();
-    }
+        try
+        {
+            var variables = await _context.ProcessVariableValues
+                .Where(pv => pv.WorkflowExecutionId == workflowExecutionId)
+                .ToListAsync();
 
-    public class WorkflowNode
-    {
-        public string Id { get; set; }
-        public string Type { get; set; }
-        public WorkflowNodeData Data { get; set; }
-        public WorkflowPosition Position { get; set; }
+            var result = new Dictionary<string, object>();
+            foreach (var variable in variables)
+            {
+                result[variable.VariableName] = variable.GetValue();
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"獲取流程變量失敗: {ex.Message}");
+            return new Dictionary<string, object>();
+        }
     }
+}
 
-    public class WorkflowNodeData
-    {
-        public string Type { get; set; }
-        public string TaskName { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("to")]
-        public string To { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("message")]
-        public string Message { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("templateId")]
-        public string TemplateId { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("templateName")]
-        public string TemplateName { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("variables")]
-        public Dictionary<string, string> Variables { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("replyType")]
-        public string ReplyType { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("specifiedUsers")]
-        public string SpecifiedUsers { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("recipientDetails")]
-        public object RecipientDetails { get; set; }
-        
-        public WorkflowValidation Validation { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("sql")]
-        public string Sql { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("url")]
-        public string Url { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("formName")]
-        public string FormName { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("formId")]
-        public string FormId { get; set; }
-        
-        // Switch 節點相關屬性
-        [System.Text.Json.Serialization.JsonPropertyName("conditionGroups")]
-        public List<SwitchConditionGroup> ConditionGroups { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("defaultPath")]
-        public string DefaultPath { get; set; }
-        
-        // QR Code 節點相關屬性
-        [System.Text.Json.Serialization.JsonPropertyName("qrCodeVariable")]
-        public string QrCodeVariable { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("timeout")]
-        public int? Timeout { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessage")]
-        public string QrCodeSuccessMessage { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessage")]
-        public string QrCodeErrorMessage { get; set; }
-        
-        // e-Form 節點相關屬性
-        [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]
-        public string ApprovalResultVariable { get; set; }
-        
-        // 通用 JSON 數據存儲
-        [System.Text.Json.Serialization.JsonPropertyName("json")]
-        public string Json { get; set; }
-    }
+// 圖形結構模型
+public class WorkflowGraph
+{
+    public List<WorkflowNode> Nodes { get; set; } = new List<WorkflowNode>();
+    public List<WorkflowEdge> Edges { get; set; } = new List<WorkflowEdge>();
+}
 
-    public class WorkflowPosition
-    {
-        public double X { get; set; }
-        public double Y { get; set; }
-    }
+public class WorkflowNode
+{
+    public string Id { get; set; }
+    public string Type { get; set; }
+    public WorkflowNodeData Data { get; set; }
+    public WorkflowPosition Position { get; set; }
+}
 
-    public class WorkflowEdge
-    {
-        public string Id { get; set; }
-        public string Source { get; set; }
-        public string Target { get; set; }
-        public string Type { get; set; }
-        
-        // 新增屬性以支持新的 workflow designer
-        [System.Text.Json.Serialization.JsonPropertyName("sourceHandle")]
-        public string SourceHandle { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("targetHandle")]
-        public string TargetHandle { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("markerEnd")]
-        public object MarkerEnd { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("data")]
-        public Dictionary<string, object> Data { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("style")]
-        public Dictionary<string, object> Style { get; set; }
-        
-        [System.Text.Json.Serialization.JsonPropertyName("animated")]
-        public bool? Animated { get; set; }
-    }
+public class WorkflowNodeData
+{
+    public string Type { get; set; }
+    public string TaskName { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("to")]
+    public string To { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("message")]
+    public string Message { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("templateId")]
+    public string TemplateId { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("templateName")]
+    public string TemplateName { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("variables")]
+    public Dictionary<string, string> Variables { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("replyType")]
+    public string ReplyType { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("specifiedUsers")]
+    public string SpecifiedUsers { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("recipientDetails")]
+    public object RecipientDetails { get; set; }
+    
+    public WorkflowValidation Validation { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("sql")]
+    public string Sql { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("url")]
+    public string Url { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("formName")]
+    public string FormName { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("formId")]
+    public string FormId { get; set; }
+    
+    // Switch 節點相關屬性
+    [System.Text.Json.Serialization.JsonPropertyName("conditionGroups")]
+    public List<SwitchConditionGroup> ConditionGroups { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("defaultPath")]
+    public string DefaultPath { get; set; }
+    
+    // QR Code 節點相關屬性
+    [System.Text.Json.Serialization.JsonPropertyName("qrCodeVariable")]
+    public string QrCodeVariable { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("timeout")]
+    public int? Timeout { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessage")]
+    public string QrCodeSuccessMessage { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessage")]
+    public string QrCodeErrorMessage { get; set; }
+    
+    // e-Form 節點相關屬性
+    [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]
+    public string ApprovalResultVariable { get; set; }
+    
+    // 通用 JSON 數據存儲
+    [System.Text.Json.Serialization.JsonPropertyName("json")]
+    public string Json { get; set; }
+    
+    // DataSet 查詢節點相關屬性
+    [System.Text.Json.Serialization.JsonPropertyName("dataSetId")]
+    public string DataSetId { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("operationType")]
+    public string OperationType { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("queryConditionGroups")]
+    public List<object> QueryConditionGroups { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("operationData")]
+    public Dictionary<string, object> OperationData { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("mappedFields")]
+    public List<object> MappedFields { get; set; }
+}
 
-    public class WorkflowValidation
-    {
-        public bool Enabled { get; set; }
-        public string ValidatorType { get; set; }
-        public string Prompt { get; set; }
-        public string RetryMessage { get; set; }
-        public int MaxRetries { get; set; }
-    }
+public class WorkflowPosition
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+}
 
-    // 工作流程執行結果模型
-    public class WorkflowExecutionResult
-    {
-        public string? Status { get; set; }
-        public object? OutputData { get; set; }
-    }
+public class WorkflowEdge
+{
+    public string Id { get; set; }
+    public string Source { get; set; }
+    public string Target { get; set; }
+    public string Type { get; set; }
+    
+    // 新增屬性以支持新的 workflow designer
+    [System.Text.Json.Serialization.JsonPropertyName("sourceHandle")]
+    public string SourceHandle { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("targetHandle")]
+    public string TargetHandle { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("markerEnd")]
+    public object MarkerEnd { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("data")]
+    public Dictionary<string, object> Data { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("style")]
+    public Dictionary<string, object> Style { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("animated")]
+    public bool? Animated { get; set; }
+}
+
+public class WorkflowValidation
+{
+    public bool Enabled { get; set; }
+    public string ValidatorType { get; set; }
+    public string Prompt { get; set; }
+    public string RetryMessage { get; set; }
+    public int MaxRetries { get; set; }
+}
+
+}
+
+// 工作流程執行結果模型
+public class WorkflowExecutionResult
+{
+    public string? Status { get; set; }
+    public object? OutputData { get; set; }
 } 

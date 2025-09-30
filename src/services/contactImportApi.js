@@ -118,30 +118,19 @@ export const contactImportApi = {
       console.log('📋 ContactImportApi - 文件名:', file.name);
       console.log('📋 ContactImportApi - 文件大小:', file.size);
       
-      // 這裡應該實現實際的 Excel 解析
-      // 目前返回模擬數據
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 模擬解析時間
+      const formData = new FormData();
+      formData.append('file', file);
       
-      const mockData = [
-        { name: '張三', title: '經理', whatsapp: '+886912345678', email: 'zhang@example.com', company: 'ABC公司', department: '技術部', tags: 'VIP,重要客戶' },
-        { name: '李四', title: '專員', whatsapp: '+886987654321', email: 'li@example.com', company: 'XYZ公司', department: '銷售部', tags: '新客戶' },
-        { name: '王五', title: '主任', whatsapp: '+886955555555', email: 'wang@example.com', company: 'DEF公司', department: '財務部', tags: '長期客戶' }
-      ];
-      
-      const columns = [
-        { title: '姓名', dataIndex: 'name', key: 'name' },
-        { title: '職稱', dataIndex: 'title', key: 'title' },
-        { title: 'WhatsApp', dataIndex: 'whatsapp', key: 'whatsapp' },
-        { title: '電子郵件', dataIndex: 'email', key: 'email' },
-        { title: '公司', dataIndex: 'company', key: 'company' },
-        { title: '部門', dataIndex: 'department', key: 'department' },
-        { title: '標籤', dataIndex: 'tags', key: 'tags' }
-      ];
+      const response = await api.post('/parse-excel', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       
       console.log('✅ ContactImportApi - Excel 文件解析成功');
-      console.log('📊 ContactImportApi - 解析數據:', mockData);
+      console.log('📊 ContactImportApi - 解析數據:', response.data);
       
-      return { data: mockData, columns };
+      return response.data;
     } catch (error) {
       console.error('❌ ContactImportApi - Excel 文件解析失敗:', error);
       throw error;

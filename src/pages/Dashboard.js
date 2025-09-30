@@ -66,6 +66,15 @@ const colorPalette = [
   }
 ];
 
+// 數字顏色編碼系統
+const numberColors = {
+  positive: '#7234CF',    // WhatoFlow 紫色 - 正面含義（正常、成功、活躍）
+  neutral: '#fa8c16',     // 橙色 - 中性含義（運行中、待處理）
+  negative: '#ff4d4f',    // 紅色 - 負面含義（失敗、錯誤、非活躍）
+  warning: '#faad14',     // 黃色 - 警告含義
+  success: '#52c41a'      // 綠色 - 成功含義
+};
+
 const Dashboard = ({ onMenuSelect }) => {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -375,7 +384,8 @@ const Dashboard = ({ onMenuSelect }) => {
     stats = null, // 新增統計數據參數
     recentItems = [], // 最近項目列表
     onRecentClick = null, // 最近項目點擊處理
-    menuKey = null // 新增菜單鍵，用於圖標點擊跳轉
+    menuKey = null, // 新增菜單鍵，用於圖標點擊跳轉
+    numberColor = 'positive' // 新增數字顏色類型
   }) => (
     <Card
       hoverable
@@ -466,8 +476,9 @@ const Dashboard = ({ onMenuSelect }) => {
               <div style={{ 
                 fontSize: '28px', 
                 fontWeight: 'bold', 
-                color: '#333333',
-                lineHeight: 1
+                color: numberColors[numberColor] || numberColors.positive,
+                lineHeight: 1,
+                textShadow: '0 1px 2px rgba(0,0,0,0.1)'
               }}>
                 {count}
               </div>
@@ -494,25 +505,67 @@ const Dashboard = ({ onMenuSelect }) => {
             borderRadius: '8px',
             backdropFilter: 'blur(5px)'
           }}>
-            {Object.entries(stats).map(([key, value], index) => (
-              <div key={key} style={{ textAlign: 'center', flex: 1 }}>
-                <div style={{ 
-                  fontSize: '18px', 
-                  fontWeight: 'bold', 
-                  color: '#333333',
-                  lineHeight: 1
-                }}>
-                  {value}
+            {Object.entries(stats).map(([key, value], index) => {
+              // 根據統計項目的名稱判斷顏色
+              const getStatColor = (statKey, statValue) => {
+                const keyLower = statKey.toLowerCase();
+                const valueNum = parseInt(statValue) || 0;
+                
+                // 負面含義的統計項目 - 紅色
+                if (keyLower.includes('failed') || keyLower.includes('error') || 
+                    keyLower.includes('inactive') || keyLower.includes('disabled') ||
+                    keyLower.includes('draft') || keyLower.includes('停用') ||
+                    keyLower.includes('錯誤') || keyLower.includes('失敗') ||
+                    keyLower.includes('offline') || keyLower.includes('blocked') ||
+                    keyLower.includes('suspended') || keyLower.includes('deleted') ||
+                    keyLower.includes('cancelled') || keyLower.includes('rejected')) {
+                  return numberColors.negative;
+                }
+                
+                // 警告含義的統計項目
+                if (keyLower.includes('pending') || keyLower.includes('warning')) {
+                  return numberColors.warning;
+                }
+                
+                // 中性含義的統計項目
+                if (keyLower.includes('running') || keyLower.includes('processing')) {
+                  return numberColors.neutral;
+                }
+                
+                // 正面含義的統計項目
+                if (keyLower.includes('active') || keyLower.includes('enabled') ||
+                    keyLower.includes('completed') || keyLower.includes('success') ||
+                    keyLower.includes('total') || keyLower.includes('published')) {
+                  return numberColors.positive;
+                }
+                
+                // 默認為正面顏色
+                return numberColors.positive;
+              };
+              
+              const statColor = getStatColor(key, value);
+              
+              return (
+                <div key={key} style={{ textAlign: 'center', flex: 1 }}>
+                  <div style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 'bold', 
+                    color: statColor,
+                    lineHeight: 1,
+                    textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                  }}>
+                    {value}
+                  </div>
+                  <div style={{ 
+                    fontSize: '12px', 
+                    color: 'rgba(0,0,0,0.6)',
+                    marginTop: '2px'
+                  }}>
+                    {key}
+                  </div>
                 </div>
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: 'rgba(0,0,0,0.6)',
-                  marginTop: '2px'
-                }}>
-                  {key}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         
@@ -606,7 +659,7 @@ const Dashboard = ({ onMenuSelect }) => {
           <Col xs={24} lg={8}>
             <div className="section-container left-section">
               <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <RocketOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
+                <RocketOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
                 <Title level={2} style={{ margin: 0, fontSize: '24px' }}>{t('dashboard.applicationTitle')}</Title>
               </div>
               <Text style={{ color: 'rgba(0,0,0,0.7)', fontSize: '14px', marginBottom: '16px', display: 'block' }}>
@@ -623,6 +676,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.publishedWorkflows}
                     color={colorPalette[0].color}
                     gradient={colorPalette[0].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('publishedApps')}
                     stats={{
                       [t('dashboard.active')]: stats.publishedWorkflows,
@@ -640,6 +694,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.pendingApprovals}
                     color={colorPalette[1].color}
                     gradient={colorPalette[1].gradient}
+                    numberColor="warning"
                     onClick={() => {
                       console.log('🎯 待處理事項按鈕被點擊');
                       navigate('/pending-tasks');
@@ -656,6 +711,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.runningInstances}
                     color={colorPalette[2].color}
                     gradient={colorPalette[2].gradient}
+                    numberColor="neutral"
                     onClick={() => handleNavigation('workflowMonitor')}
                     stats={{
                       [t('dashboard.running')]: stats.runningInstances,
@@ -698,6 +754,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.activeEforms || 0}
                     color={colorPalette[0].color}
                     gradient={colorPalette[0].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('eformList')}
                     stats={{
                       [t('dashboard.enabled')]: stats.activeEforms || 0,
@@ -721,6 +778,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.whatsappTemplates}
                     color={colorPalette[1].color}
                     gradient={colorPalette[1].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('whatsappTemplates')}
                     stats={(() => {
                       const byType = stats.whatsappTemplatesByType || {};
@@ -787,6 +845,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.publishedWorkflows}
                     color={colorPalette[2].color}
                     gradient={colorPalette[2].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('whatsappWorkflow')}
                     stats={{
                       [t('dashboard.published')]: stats.publishedWorkflows,
@@ -810,6 +869,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.dataSets}
                     color={colorPalette[3].color}
                     gradient={colorPalette[3].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('dataSets')}
                     stats={{
                       [t('dashboard.totalDatasets')]: stats.dataSets,
@@ -837,7 +897,7 @@ const Dashboard = ({ onMenuSelect }) => {
           <Col xs={24}>
             <div className="section-container">
               <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <SettingOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
+                <SettingOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
                 <Title level={2} style={{ margin: 0, fontSize: '24px' }}>{t('dashboard.adminToolsTitle')}</Title>
               </div>
               <Text style={{ color: 'rgba(0,0,0,0.7)', fontSize: '14px', marginBottom: '16px', display: 'block' }}>
@@ -854,6 +914,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.totalUsers || 0}
                     color={colorPalette[0].color}
                     gradient={colorPalette[0].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('contactList')}
                     stats={{
                       [t('dashboard.totalContacts')]: stats.totalUsers || 0,
@@ -872,11 +933,12 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.broadcastGroups || 0}
                     color={colorPalette[1].color}
                     gradient={colorPalette[1].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('broadcastGroups')}
                     stats={{
                       [t('dashboard.totalGroups')]: stats.broadcastGroups || 0,
                       [t('dashboard.active')]: stats.activeGroups || 0,
-                      [t('dashboard.members')]: stats.totalMembers || 0
+                      [t('dashboard.totalMembers')]: stats.totalMembers || 0
                     }}
                   />
                 </Col>
@@ -890,11 +952,12 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.hashtags || 0}
                     color={colorPalette[2].color}
                     gradient={colorPalette[2].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('hashtags')}
                     stats={{
                       [t('dashboard.totalHashtags')]: stats.hashtags || 0,
                       [t('dashboard.active')]: stats.activeHashtags || 0,
-                      [t('dashboard.usage')]: stats.hashtagUsage || 0
+                      [t('dashboard.hashtagUsage')]: stats.hashtagUsage || 0
                     }}
                   />
                 </Col>
@@ -908,11 +971,12 @@ const Dashboard = ({ onMenuSelect }) => {
                     count={stats.totalUsers || 0}
                     color={colorPalette[3].color}
                     gradient={colorPalette[3].gradient}
+                    numberColor="positive"
                     onClick={() => handleNavigation('companyUserAdmin')}
                     stats={{
                       [t('dashboard.totalUsers')]: stats.totalUsers || 0,
                       [t('dashboard.admins')]: stats.adminUsers || 0,
-                      [t('dashboard.companies')]: stats.totalCompanies || 0
+                      [t('dashboard.totalCompanies')]: stats.totalCompanies || 0
                     }}
                   />
                 </Col>

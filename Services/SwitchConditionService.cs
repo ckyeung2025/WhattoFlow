@@ -21,13 +21,16 @@ namespace PurpleRice.Services
     {
         private readonly PurpleRiceDbContext _context;
         private readonly ILogger<SwitchConditionService> _logger;
+        private readonly IVariableReplacementService _variableReplacementService;
 
         public SwitchConditionService(
             PurpleRiceDbContext context,
-            ILogger<SwitchConditionService> logger)
+            ILogger<SwitchConditionService> logger,
+            IVariableReplacementService variableReplacementService)
         {
             _context = context;
             _logger = logger;
+            _variableReplacementService = variableReplacementService;
         }
 
         public async Task<string> EvaluateConditionsAsync(int workflowExecutionId, List<SwitchCondition> conditions, string defaultPath)
@@ -72,6 +75,10 @@ namespace PurpleRice.Services
                     return false;
                 }
 
+                // 替換條件值中的變數
+                var processedValue = await _variableReplacementService.ReplaceVariablesAsync(condition.Value, workflowExecutionId);
+                _logger.LogInformation("條件值變數替換: {OriginalValue} -> {ProcessedValue}", condition.Value, processedValue);
+
                 // 獲取變量值
                 var variableValue = await _context.ProcessVariableValues
                     .FirstOrDefaultAsync(pvv => pvv.WorkflowExecutionId == workflowExecutionId 
@@ -87,12 +94,13 @@ namespace PurpleRice.Services
                 // 根據操作符評估條件
                 return condition.Operator.ToLower() switch
                 {
-                    "equals" => EvaluateEquals(variableValue, condition.Value),
-                    "notequals" => !EvaluateEquals(variableValue, condition.Value),
-                    "greaterthan" => EvaluateGreaterThan(variableValue, condition.Value),
-                    "lessthan" => EvaluateLessThan(variableValue, condition.Value),
-                    "contains" => EvaluateContains(variableValue, condition.Value),
+                    "equals" => EvaluateEquals(variableValue, processedValue),
+                    "notequals" => !EvaluateEquals(variableValue, processedValue),
+                    "greaterthan" => EvaluateGreaterThan(variableValue, processedValue),
+                    "lessthan" => EvaluateLessThan(variableValue, processedValue),
+                    "contains" => EvaluateContains(variableValue, processedValue),
                     "isempty" => EvaluateIsEmpty(variableValue),
+                    "isnotempty" => !EvaluateIsEmpty(variableValue),
                     _ => false
                 };
             }

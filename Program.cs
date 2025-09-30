@@ -96,6 +96,7 @@ builder.Services.AddScoped<IVariableReplacementService, VariableReplacementServi
 
 // 註冊 SwitchCondition 服務
 builder.Services.AddScoped<ISwitchConditionService, SwitchConditionService>();
+builder.Services.AddScoped<DataSetQueryService>();
 
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();

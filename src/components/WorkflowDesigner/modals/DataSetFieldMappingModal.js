@@ -29,10 +29,10 @@ const DataSetFieldMappingModal = ({
     try {
       onSave(mappedFields);
       setMappedFields([]);
-      message.success('欄位映射保存成功');
+      message.success(t('workflowDesigner.dataSet.fieldMappingSaved'));
     } catch (error) {
       console.error('保存欄位映射失敗:', error);
-      message.error('保存欄位映射失敗');
+      message.error(t('workflowDesigner.dataSet.fieldMappingSaveFailed'));
     }
   };
 
@@ -54,7 +54,7 @@ const DataSetFieldMappingModal = ({
 
   return (
     <Modal
-      title="設置欄位映射"
+      title={t('workflowDesigner.dataSet.setFieldMapping')}
       open={visible}
       onCancel={onCancel}
       width={800}
@@ -66,7 +66,7 @@ const DataSetFieldMappingModal = ({
         layout="vertical"
         onFinish={handleSave}
       >
-        <Form.Item label="欄位映射設置">
+        <Form.Item label={t('workflowDesigner.dataSet.fieldMapping')}>
           <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
             {mappedFields.map((mapping, index) => (
               <div key={index} style={{ 
@@ -79,7 +79,7 @@ const DataSetFieldMappingModal = ({
                 borderRadius: '4px'
               }}>
                 <Select 
-                  placeholder="選擇 DataSet 欄位"
+                  placeholder={t('workflowDesigner.dataSet.selectDataSetField')}
                   value={mapping.fieldName}
                   onChange={(value) => handleFieldChange(index, 'fieldName', value)}
                   style={{ width: '40%' }}
@@ -92,7 +92,7 @@ const DataSetFieldMappingModal = ({
                 </Select>
                 <span style={{ color: '#666', fontSize: '14px' }}>→</span>
                 <Select 
-                  placeholder="選擇流程變量"
+                  placeholder={t('workflowDesigner.dataSet.selectProcessVariable')}
                   value={mapping.variableName}
                   onChange={(value) => handleFieldChange(index, 'variableName', value)}
                   style={{ width: '40%' }}
@@ -125,7 +125,7 @@ const DataSetFieldMappingModal = ({
             
             {mappedFields.length === 0 && (
               <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                暫無欄位映射
+                {t('workflowDesigner.dataSet.noFieldMapping')}
               </div>
             )}
             
@@ -135,22 +135,22 @@ const DataSetFieldMappingModal = ({
               onClick={handleAddMapping}
               style={{ width: '100%' }}
             >
-              添加欄位映射
+              {t('workflowDesigner.dataSet.addFieldMapping')}
             </Button>
           </div>
         </Form.Item>
         
         <div style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
-          選擇 DataSet 欄位並從現有流程變量中選擇對應的變量，查詢結果會自動映射到流程變量中
+          {t('workflowDesigner.dataSet.fieldMappingDescription')}
         </div>
         
         <div style={{ textAlign: 'right' }}>
           <Space>
             <Button onClick={onCancel}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="primary" htmlType="submit">
-              保存
+              {t('common.save')}
             </Button>
           </Space>
         </div>

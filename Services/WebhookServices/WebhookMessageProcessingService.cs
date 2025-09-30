@@ -473,8 +473,8 @@ namespace PurpleRice.Services.WebhookServices
             catch (Exception ex)
             {
                 _loggingService.LogError($"處理等待流程回覆時發生錯誤: {ex.Message}");
-                // 發送錯誤訊息給用戶
-                await SendWhatsAppMessage(company, messageData.WaId, "處理您的回覆時發生錯誤，請稍後再試。");
+                _loggingService.LogError($"錯誤堆疊: {ex.StackTrace}");
+                // 不向用戶發送錯誤消息，只記錄到日誌
             }
         }
 
@@ -1206,12 +1206,28 @@ namespace PurpleRice.Services.WebhookServices
                 var qrCodeService = scope.ServiceProvider.GetRequiredService<IQRCodeService>();
                 var workflowExecutionService = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionService>();
                 
-                // 掃描 QR Code
-                var qrCodeValue = await qrCodeService.ScanQRCodeAsync(imageBytes);
+                // 掃描 QR Code 並保存圖片
+                string qrCodeValue = null;
+                try
+                {
+                    var (scannedValue, savedImagePath) = await qrCodeService.ScanQRCodeAndSaveImageWithResultAsync(imageBytes, execution.Id);
+                    qrCodeValue = scannedValue;
+                    _loggingService.LogInformation($"圖片已保存: {savedImagePath}");
+                }
+                catch (Exception scanEx)
+                {
+                    _loggingService.LogError($"掃描和保存 QR Code 圖片時發生錯誤: {scanEx.Message}");
+                    // 即使保存失敗，也要嘗試掃描
+                    qrCodeValue = await qrCodeService.ScanQRCodeAsync(imageBytes);
+                }
+                
                 if (string.IsNullOrEmpty(qrCodeValue))
                 {
                     _loggingService.LogWarning("無法從圖片中掃描到 QR Code");
-                    await SendWhatsAppMessage(company, messageData.WaId, "無法識別圖片中的 QR Code，請確保圖片清晰且包含有效的 QR Code。");
+                    var scanErrorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
+                        ? nodeInfo.QrCodeErrorMessage 
+                        : "無法識別圖片中的 QR Code，請確保圖片清晰且包含有效的 QR Code。";
+                    await SendWhatsAppMessage(company, messageData.WaId, scanErrorMessage);
                     return;
                 }
                 
