@@ -98,6 +98,9 @@ builder.Services.AddScoped<IVariableReplacementService, VariableReplacementServi
 builder.Services.AddScoped<ISwitchConditionService, SwitchConditionService>();
 builder.Services.AddScoped<DataSetQueryService>();
 
+// 註冊 WhatsApp Meta Template 服務
+builder.Services.AddScoped<IWhatsAppMetaTemplateService, WhatsAppMetaTemplateService>();
+
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();
 

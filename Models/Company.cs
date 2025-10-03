@@ -16,6 +16,7 @@ namespace PurpleRice.Models
         public string? Website { get; set; }
         public string? WA_API_Key { get; set; }
         public string? WA_PhoneNo_ID { get; set; }
+        public string? WA_Business_Account_ID { get; set; }
         public string? WA_VerifyToken { get; set; }
         public string? WA_WebhookToken { get; set; }
         public string? LogoUrl { get; set; }

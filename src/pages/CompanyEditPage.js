@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography } from 'antd';
-import { SaveOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography, Modal, Divider, Tag, Space } from 'antd';
+import { SaveOutlined, ArrowLeftOutlined, SafetyOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
 import zhTC from '../locales/zh-TC';
@@ -33,6 +33,7 @@ const CompanyEditPage = () => {
             website: data.website,
             wA_API_Key: data.wA_API_Key,
             wA_PhoneNo_ID: data.wA_PhoneNo_ID,
+            wA_Business_Account_ID: data.wA_Business_Account_ID,
             wA_VerifyToken: data.wA_VerifyToken,
             wA_WebhookToken: data.wA_WebhookToken,
             wA_WebhookUrl: data.wA_WebhookToken ? `${window.location.origin}/api/MetaWebhook/${data.wA_WebhookToken}` : '',
@@ -67,6 +68,116 @@ const CompanyEditPage = () => {
       navigate('/company-user-admin');
     } catch {
       message.error('儲存失敗');
+    }
+  };
+
+  // 驗證 Token 權限
+  const handleValidateToken = async () => {
+    try {
+      // 獲取表單中當前的值
+      const waApiKey = form.getFieldValue('wA_API_Key');
+      const waBusinessAccountId = form.getFieldValue('wA_Business_Account_ID');
+      const waPhoneNoId = form.getFieldValue('wA_PhoneNo_ID');
+
+      // 驗證必填欄位
+      if (!waApiKey) {
+        message.warning('請先輸入 WA API Key (Access Token)');
+        return;
+      }
+
+      if (!waBusinessAccountId) {
+        message.warning('請先輸入 WhatsApp Business Account ID');
+        return;
+      }
+
+      message.loading('正在驗證 Token 權限...', 0);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/whatsapptokenvalidation/validate-permissions', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // 檢查 HTTP 狀態碼
+      if (!response.ok) {
+        message.destroy();
+        const errorResult = await response.json();
+        console.error('❌ Token 驗證 API 錯誤:', errorResult);
+        
+        Modal.error({
+          title: '❌ 驗證失敗',
+          content: errorResult.error || errorResult.message || '無法驗證 Token 權限，請檢查您的設定'
+        });
+        return;
+      }
+      
+      const result = await response.json();
+      message.destroy();
+
+      // 調試：打印 API 響應
+      console.log('🔍 Token 驗證 API 響應:', result);
+
+      if (result.success) {
+        Modal.info({
+          title: '🔐 Token 權限檢查結果',
+          width: 600,
+          content: (
+            <div>
+              <p><strong>Token 狀態：</strong>{result.tokenValid ? '✅ 有效' : '❌ 無效'}</p>
+              {result.company && <p><strong>公司：</strong>{result.company.name}</p>}
+              <Divider />
+              
+              {result.capabilities && (
+                <>
+                  <p><strong>功能權限：</strong></p>
+                  <ul>
+                    <li>發送訊息：{result.capabilities.canSendMessages ? '✅ 可用' : '❌ 不可用'}</li>
+                    <li>接收 Webhook：{result.capabilities.canReceiveWebhooks ? '✅ 可用' : '❌ 不可用'}</li>
+                    <li>管理 Meta 範本：{result.capabilities.canManageTemplates ? '✅ 可用' : '❌ 不可用'}</li>
+                    <li>建立 WhatsApp Flow：{result.capabilities.canCreateFlows ? '✅ 可用' : '❌ 不可用'}</li>
+                  </ul>
+                  <Divider />
+                </>
+              )}
+              
+              {result.permissions && result.permissions.length > 0 && (
+                <>
+                  <p><strong>詳細權限：</strong></p>
+                  <ul>
+                    {result.permissions.map((p, i) => (
+                      <li key={i}>
+                        {p.permission}: <Tag color={p.status === 'granted' ? 'green' : 'red'}>{p.status}</Tag>
+                      </li>
+                    ))}
+                  </ul>
+                  <Divider />
+                </>
+              )}
+              
+              {result.recommendations && result.recommendations.length > 0 && (
+                <>
+                  <p><strong>建議：</strong></p>
+                  <ul>
+                    {result.recommendations.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )
+        });
+      } else {
+        Modal.error({
+          title: '❌ 權限檢查失敗',
+          content: result.error || '無法驗證 Token 權限，請檢查您的設定'
+        });
+      }
+    } catch (error) {
+      message.destroy();
+      Modal.error({
+        title: '❌ 驗證失敗',
+        content: error.message || '檢查 Token 權限時發生錯誤，請稍後重試'
+      });
     }
   };
 
@@ -155,8 +266,37 @@ const CompanyEditPage = () => {
                 <Input style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item name="wA_PhoneNo_ID" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waPhoneNoId')}</span>}>
-                <Input style={{ width: '100%' }} />
+                <Input style={{ width: '100%' }} placeholder="例如: 690383010830837" />
               </Form.Item>
+              <Form.Item name="wA_Business_Account_ID" label={<span style={{ fontWeight: 600 }}>WhatsApp Business Account ID</span>}>
+                <Input 
+                  style={{ width: '100%' }} 
+                  placeholder="例如: 1102096678464098"
+                  suffix={
+                    <Tooltip title="用於管理 Meta 官方模板">
+                      <span style={{ color: '#666', fontSize: '12px' }}>模板管理</span>
+                    </Tooltip>
+                  }
+                />
+              </Form.Item>
+              
+              {/* 驗證 Token 權限按鈕 */}
+              <Form.Item>
+                <Button 
+                  icon={<SafetyOutlined />}
+                  onClick={handleValidateToken}
+                  style={{ width: '100%' }}
+                  type="dashed"
+                >
+                  驗證 Token 權限
+                </Button>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                  輸入 API Key 和 Business Account ID 後點擊驗證
+                </div>
+              </Form.Item>
+              
+              <Divider style={{ margin: '16px 0' }} />
+              
               <Form.Item name="wA_VerifyToken" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waVerifyToken')}</span>}>
                 <Input style={{ width: '100%' }} />
               </Form.Item>
