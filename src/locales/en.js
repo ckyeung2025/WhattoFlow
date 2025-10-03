@@ -835,7 +835,252 @@ const en = {
     add: "Add",
     title: "Message Template Management",
     templateLanguage: "Template Language",
-    templateVersion: "Template Version"
+    templateVersion: "Template Version",
+    
+    // Meta Template related translations
+    metaTemplate: {
+      // Buttons and actions
+      createMetaTemplate: "Create Meta Template",
+      preview: "Preview",
+      delete: "Delete",
+      confirm: "Confirm",
+      cancel: "Cancel",
+      insert: "Insert",
+      search: "Search",
+      refresh: "Refresh",
+      clearFilter: "Clear Filter",
+      submit: "Submit to Meta Review",
+      
+      // Format button tooltips
+      boldTooltip: "Bold (*text*)",
+      italicTooltip: "Italic (_text_)",
+      strikethroughTooltip: "Strikethrough (~text~)",
+      codeTooltip: "Code (```text```)",
+      insertVariableTooltip: "Insert Variable",
+      
+      // Form labels
+      templateName: "Template Name",
+      category: "Category",
+      language: "Language",
+      headerOptional: "Header (Optional)",
+      bodyContent: "Body Content",
+      footerOptional: "Footer (Optional)",
+      
+      // Form hints and help
+      templateNameHelp: "Only lowercase letters, numbers and underscores allowed, e.g.: welcome_message_001",
+      templateNamePlaceholder: "e.g.: welcome_message",
+      categoryPlaceholder: "Select template category",
+      languagePlaceholder: "Select language",
+      headerPlaceholder: "e.g.: Important Notice",
+      bodyPlaceholder: "e.g.: Your order {{1}} has been confirmed\nAmount: *${{2}}*\nEstimated delivery: _{{3}}_",
+      bodyHelp: "Supported formats: *bold* _italic_ ~strikethrough~ ```code```",
+      footerPlaceholder: "e.g.: Thank you for using",
+      
+      // Status options
+      approved: "Approved",
+      pending: "Pending",
+      rejected: "Rejected",
+      paused: "Paused",
+      
+      // Category options
+      marketing: "Marketing",
+      utility: "Utility",
+      authentication: "Authentication",
+      marketingFull: "Marketing (MARKETING)",
+      utilityFull: "Utility (UTILITY)",
+      authenticationFull: "Authentication (AUTHENTICATION)",
+      
+      // Language options
+      traditionalChinese: "Traditional Chinese",
+      simplifiedChinese: "Simplified Chinese",
+      english: "English",
+      
+      // Action confirmations
+      deleteConfirmTitle: "Are you sure you want to delete this Meta template?",
+      deleteConfirmDescription: "This action will permanently delete the template from Meta platform",
+      
+      // Button types
+      quickReply: "Quick Reply",
+      url: "URL",
+      phoneNumber: "Phone",
+      
+      // Variable related
+      addVariable: "Add Variable",
+      insertVariable: "Insert Variable",
+      variableType: "Variable Type",
+      numberVariable: "Number Variable",
+      nameVariable: "Named Variable",
+      recommended: "Recommended",
+      variableName: "Variable Name",
+      variableNamePlaceholder: "e.g.: customer_name, order_id, amount",
+      variableNameHelp: "Use lowercase letters and underscores, e.g.: customer_name",
+      autoNumberHelp: "System will automatically find the next available number and insert it",
+      
+      // Titles and descriptions
+      createTitle: "Create Meta Template",
+      previewTitle: "Template Preview",
+      insertVariableTitle: "Insert Variable",
+      basicInfo: "Basic Information",
+      contentComponents: "Content Components",
+      buttonsOptional: "Buttons (Optional)",
+      
+      // Category descriptions
+      categoryDescription: "Category Description (Meta will automatically adjust based on content):",
+      marketingDescription: "Promotions, offers, new product recommendations, welcome messages",
+      utilityDescription: "Order confirmations, shipping notifications, account updates, appointment reminders",
+      authenticationDescription: "Only for OTP verification codes",
+      utilityWarning: "Content must be transactional notifications, cannot contain promotional language, otherwise it will be changed to MARKETING",
+      
+      // Format help
+      formatHelp: "WhatsApp formatting syntax:",
+      formatExamples: "• *text* = bold • _text_ = italic • ~text~ = strikethrough • ```text``` = monospace font",
+      variableHelp: "Use Add Variable button to insert {{1}} {{2}} etc. variables",
+      
+      // Button configuration
+      buttonText: "Button Text",
+      buttonTextPlaceholder: "Button Text",
+      buttonType: "Button Type",
+      urlPlaceholder: "https://example.com",
+      phonePlaceholder: "+852 1234 5678",
+      addButton: "Add Button",
+      buttonCount: "Add Button ({count}/3)",
+      
+      // Variable examples
+      variableExamples: "Variable Examples:",
+      variableExampleLabel: "Example value for variable {{index}}",
+      variableExamplePlaceholder: "e.g.: John, 12345, etc.",
+      
+      // Search and filter
+      searchPlaceholder: "Search template name",
+      selectStatus: "Select Status",
+      selectCategory: "Select Category",
+      selectLanguage: "Select Language",
+      query: "Query",
+      
+      // Tip cards
+      metaOfficialTemplates: "Meta Official Templates:",
+      metaDescription: "Need to be submitted to Meta for review, can only be used after approval.",
+      applicableScenarios: "Applicable Scenarios:",
+      applicableScenariosDesc: "Proactively send marketing campaigns, order notifications, customer service messages",
+      sessionWindow: "24-hour Conversation Window Limit:",
+      withinWindowLabel: "Within Window",
+      withinWindow: " (within 24 hours of customer's last message): Can send any message (template or free format)",
+      outsideWindowLabel: "Outside Window",
+      outsideWindow: " (over 24 hours): Can only send approved template messages",
+      tip: "Tip:",
+      tipDescription: "It is recommended to pre-create and review templates for common scenarios, so you can proactively contact customers at any time",
+      
+      // Status labels
+      statusApproved: "Approved",
+      statusPending: "Pending",
+      statusRejected: "Rejected",
+      statusPaused: "Paused",
+      
+      // Language labels
+      langTraditionalChinese: "Traditional Chinese",
+      langSimplifiedChinese: "Simplified Chinese",
+      langEnglish: "English",
+      
+      // Category labels
+      categoryMarketing: "Marketing",
+      categoryUtility: "Utility",
+      categoryAuthentication: "Authentication",
+      
+      // Basic info
+      basicInfoTitle: "Basic Information",
+      templateContent: "Template Content",
+      
+      // Operation results
+      submitSuccess: "Meta template submitted for review!",
+      submitFailed: "Submit failed",
+      deleteSuccess: "Meta template deleted",
+      deleteFailed: "Delete failed",
+      loading: "Submitting to Meta review...",
+      deleting: "Deleting...",
+      
+      // Form validation
+      nameRequired: "Please enter template name",
+      namePattern: "Only lowercase letters, numbers and underscores allowed",
+      categoryRequired: "Please select category",
+      languageRequired: "Please select language",
+      bodyRequired: "Please enter body content",
+      
+      // Table column titles
+      templateName: "Template Name",
+      category: "Category",
+      language: "Language",
+      reviewStatus: "Review Status",
+      metaId: "Meta ID",
+      action: "Action",
+      
+      // Status text
+      approved: "Approved",
+      pending: "Pending",
+      rejected: "Rejected",
+      paused: "Paused",
+      
+      // Category text
+      marketing: "Marketing",
+      utility: "Utility",
+      authentication: "Authentication",
+      
+      // Language text
+      traditionalChinese: "Traditional Chinese",
+      simplifiedChinese: "Simplified Chinese",
+      english: "English",
+      
+      // Error and warning messages
+      cannotGetInputElement: "Cannot get input element, please try again",
+      pleaseSelectTextToFormat: "Please select text to format first",
+      cannotInsertVariable: "Cannot insert variable, please try again",
+      pleaseEnterVariableName: "Please enter variable name",
+      maxButtonsWarning: "Maximum 3 buttons allowed",
+      variableInserted: "Variable inserted",
+      
+      // Character count
+      characters: "characters",
+      
+      // Category descriptions
+      categoryDescriptionTitle: "Category Description (Meta will automatically adjust based on content):",
+      marketingDescription: "Promotions, offers, new product recommendations, welcome messages",
+      utilityDescription: "Order confirmations, shipping notifications, account updates, appointment reminders",
+      authenticationDescription: "Only for OTP verification codes",
+      utilityWarning: "Content must be transactional notifications, cannot contain promotional language, otherwise it will be changed to MARKETING",
+      
+      // Variable examples
+      variableExamples: "Variable Examples:",
+      variableExampleLabel: "Example value for variable {{index}}",
+      variableExamplePlaceholder: "e.g.: John, 12345, etc.",
+      
+      // Preview template
+      name: "Name:",
+      category: "Category:",
+      language: "Language:",
+      status: "Status:",
+      
+      // Variable type descriptions
+      autoNumberDescription: "Auto numbering:",
+      customNameDescription: "Custom name:",
+      metaStandardFormat: "Suitable for Meta official templates, complies with WhatsApp standard format",
+      moreReadable: "More readable, but requires correct variable name mapping when sending",
+      
+      // Total display
+      totalTemplates: "Total {count} templates",
+      
+      // Error messages
+      validationFailed: "Validation failed",
+      createFailed: "Create failed",
+      
+      // Example value
+      exampleValue: "Example value {index}"
+    },
+    
+    // WhatsApp template list page
+    templateList: {
+      internalTemplates: "Internal Templates",
+      metaOfficialTemplates: "Meta Official Templates",
+      description: "Manage WhatsApp message templates: Internal templates are used for rapid iteration, Meta official templates are used for formal marketing activities"
+    }
   },
   
       // WhatsApp Workflow Designer

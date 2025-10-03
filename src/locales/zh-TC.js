@@ -1389,7 +1389,252 @@ const zhTC = {
     pleaseEnterContactPhone: "請輸入聯絡人電話",
     pleaseEnterContactEmail: "請輸入聯絡人 Email（可選）",
     searchAddress: "搜索地址",
-    selectThisLocation: "選擇此位置"
+    selectThisLocation: "選擇此位置",
+    
+    // Meta 模板相關翻譯
+    metaTemplate: {
+      // 按鈕和操作
+      createMetaTemplate: "創建 Meta 模板",
+      preview: "預覽",
+      delete: "刪除",
+      confirm: "確定",
+      cancel: "取消",
+      insert: "插入",
+      search: "搜索",
+      refresh: "刷新",
+      clearFilter: "清空篩選",
+      submit: "提交到 Meta 審核",
+      
+      // 格式化按鈕提示
+      boldTooltip: "粗體 (*文字*)",
+      italicTooltip: "斜體 (_文字_)",
+      strikethroughTooltip: "刪除線 (~文字~)",
+      codeTooltip: "代碼 (```文字```)",
+      insertVariableTooltip: "插入變數",
+      
+      // 表單標籤
+      templateName: "模板名稱",
+      category: "類別",
+      language: "語言",
+      headerOptional: "標題 (可選)",
+      bodyContent: "正文內容",
+      footerOptional: "頁腳 (可選)",
+      
+      // 表單提示和幫助
+      templateNameHelp: "只能使用小寫字母、數字和下劃線，例如：welcome_message_001",
+      templateNamePlaceholder: "例如：welcome_message",
+      categoryPlaceholder: "選擇模板類別",
+      languagePlaceholder: "選擇語言",
+      headerPlaceholder: "例如：重要通知",
+      bodyPlaceholder: "例如：您的訂單 {{1}} 已確認\n金額：*${{2}}*\n預計送達：_{{3}}_",
+      bodyHelp: "支持格式：*粗體* _斜體_ ~刪除線~ ```代碼```",
+      footerPlaceholder: "例如：感謝您的使用",
+      
+      // 狀態選項
+      approved: "已通過",
+      pending: "審核中",
+      rejected: "已拒絕",
+      paused: "已暫停",
+      
+      // 類別選項
+      marketing: "營銷",
+      utility: "實用",
+      authentication: "驗證",
+      marketingFull: "營銷 (MARKETING)",
+      utilityFull: "實用 (UTILITY)",
+      authenticationFull: "驗證 (AUTHENTICATION)",
+      
+      // 語言選項
+      traditionalChinese: "繁體中文",
+      simplifiedChinese: "簡體中文",
+      english: "英文",
+      
+      // 操作確認
+      deleteConfirmTitle: "確定要刪除此 Meta 模板嗎？",
+      deleteConfirmDescription: "此操作將從 Meta 平台永久刪除該模板",
+      
+      // 按鈕類型
+      quickReply: "快速回覆",
+      url: "網址",
+      phoneNumber: "電話",
+      
+      // 變數相關
+      addVariable: "新增變數",
+      insertVariable: "插入變數",
+      variableType: "變數類型",
+      numberVariable: "數字變數",
+      nameVariable: "命名變數",
+      recommended: "推薦",
+      variableName: "變數名稱",
+      variableNamePlaceholder: "例如：customer_name, order_id, amount",
+      variableNameHelp: "建議使用小寫英文字母和下劃線，例如：customer_name",
+      autoNumberHelp: "系統會自動找到下一個可用編號並插入",
+      
+      // 標題和描述
+      createTitle: "創建 Meta 模板",
+      previewTitle: "模板預覽",
+      insertVariableTitle: "插入變數",
+      basicInfo: "基本信息",
+      contentComponents: "內容組件",
+      buttonsOptional: "按鈕 (可選)",
+      
+      // 分類說明
+      categoryDescription: "類別說明（Meta 會根據內容自動調整）：",
+      marketingDescription: "促銷、優惠、新品推薦、歡迎訊息",
+      utilityDescription: "訂單確認、發貨通知、帳戶更新、預約提醒",
+      authenticationDescription: "僅用於 OTP 驗證碼",
+      utilityWarning: "內容必須是交易性通知，不能含促銷語言，否則會被改為 MARKETING",
+      
+      // 格式化說明
+      formatHelp: "WhatsApp 格式化語法：",
+      formatExamples: "• *文字* = 粗體 • _文字_ = 斜體 • ~文字~ = 刪除線 • ```文字``` = 等寬字體",
+      variableHelp: "使用 新增變數 按鈕插入 {{1}} {{2}} 等變數",
+      
+      // 按鈕配置
+      buttonText: "按鈕文字",
+      buttonTextPlaceholder: "按鈕文字",
+      buttonType: "按鈕類型",
+      urlPlaceholder: "https://example.com",
+      phonePlaceholder: "+852 1234 5678",
+      addButton: "添加按鈕",
+      buttonCount: "添加按鈕 ({count}/3)",
+      
+      // 變數示例
+      variableExamples: "變數示例：",
+      variableExampleLabel: "變數 {{{index}}} 的示例值",
+      variableExamplePlaceholder: "例如：張三、12345 等",
+      
+      // 搜索和篩選
+      searchPlaceholder: "搜索模板名稱",
+      selectStatus: "選擇狀態",
+      selectCategory: "選擇類別",
+      selectLanguage: "選擇語言",
+      query: "查詢",
+      
+      // 提示卡片
+      metaOfficialTemplates: "Meta 官方模板：",
+      metaDescription: "需要提交到 Meta 審核，審核通過後才能使用。",
+      applicableScenarios: "適用場景：",
+      applicableScenariosDesc: "主動發送營銷活動、訂單通知、客戶服務訊息",
+      sessionWindow: "24 小時會話窗口限制：",
+      withinWindowLabel: "窗口內",
+      withinWindow: "（客戶最後訊息起 24 小時內）：可發送任何訊息（模板或自由格式）",
+      outsideWindowLabel: "窗口外",
+      outsideWindow: "（超過 24 小時）：只能發送已審核通過的模板訊息",
+      tip: "提示：",
+      tipDescription: "建議為常用場景預先創建並審核模板，以便隨時主動聯絡客戶",
+      
+      // 狀態標籤
+      statusApproved: "已通過",
+      statusPending: "審核中",
+      statusRejected: "已拒絕",
+      statusPaused: "已暫停",
+      
+      // 語言標籤
+      langTraditionalChinese: "繁體中文",
+      langSimplifiedChinese: "簡體中文",
+      langEnglish: "英文",
+      
+      // 類別標籤
+      categoryMarketing: "營銷",
+      categoryUtility: "實用",
+      categoryAuthentication: "驗證",
+      
+      // 基本信息
+      basicInfoTitle: "基本信息",
+      templateContent: "模板內容",
+      
+      // 操作結果
+      submitSuccess: "Meta 模板已提交審核！",
+      submitFailed: "提交失敗",
+      deleteSuccess: "Meta 模板已刪除",
+      deleteFailed: "刪除失敗",
+      loading: "正在提交到 Meta 審核...",
+      deleting: "正在刪除...",
+      
+      // 表單驗證
+      nameRequired: "請輸入模板名稱",
+      namePattern: "只能使用小寫字母、數字和下劃線",
+      categoryRequired: "請選擇類別",
+      languageRequired: "請選擇語言",
+      bodyRequired: "請輸入正文內容",
+      
+      // 表格列標題
+      templateName: "模板名稱",
+      category: "類別",
+      language: "語言",
+      reviewStatus: "審核狀態",
+      metaId: "Meta ID",
+      action: "操作",
+      
+      // 狀態文本
+      approved: "已通過",
+      pending: "審核中",
+      rejected: "已拒絕",
+      paused: "已暫停",
+      
+      // 類別文本
+      marketing: "營銷",
+      utility: "實用",
+      authentication: "驗證",
+      
+      // 語言文本
+      traditionalChinese: "繁體中文",
+      simplifiedChinese: "簡體中文",
+      english: "英文",
+      
+      // 錯誤和警告消息
+      cannotGetInputElement: "無法獲取輸入框元素，請重試",
+      pleaseSelectTextToFormat: "請先選擇要格式化的文字",
+      cannotInsertVariable: "無法插入變數，請重試",
+      pleaseEnterVariableName: "請輸入變數名稱",
+      maxButtonsWarning: "最多只能添加 3 個按鈕",
+      variableInserted: "已插入變數",
+      
+      // 字符計數
+      characters: "字元",
+      
+      // 分類說明
+      categoryDescriptionTitle: "類別說明（Meta 會根據內容自動調整）：",
+      marketingDescription: "促銷、優惠、新品推薦、歡迎訊息",
+      utilityDescription: "訂單確認、發貨通知、帳戶更新、預約提醒",
+      authenticationDescription: "僅用於 OTP 驗證碼",
+      utilityWarning: "內容必須是交易性通知，不能含促銷語言，否則會被改為 MARKETING",
+      
+      // 變數示例
+      variableExamples: "變數示例：",
+      variableExampleLabel: "變數 {{index}} 的示例值",
+      variableExamplePlaceholder: "例如：張三、12345 等",
+      
+      // 預覽模板
+      name: "名稱：",
+      category: "類別：",
+      language: "語言：",
+      status: "狀態：",
+      
+      // 變數類型說明
+      autoNumberDescription: "自動編號：",
+      customNameDescription: "自定義名稱：",
+      metaStandardFormat: "適用於 Meta 官方模板，符合 WhatsApp 標準格式",
+      moreReadable: "更易讀，但需要在發送時正確映射變數名稱",
+      
+      // 總計顯示
+      totalTemplates: "共 {count} 個模板",
+      
+      // 錯誤消息
+      validationFailed: "驗證失敗",
+      createFailed: "創建失敗",
+      
+      // 示例值
+      exampleValue: "示例值{index}"
+    },
+    
+    // WhatsApp 模板列表頁面
+    templateList: {
+      internalTemplates: "內部模板",
+      metaOfficialTemplates: "Meta 官方模板",
+      description: "管理 WhatsApp 訊息模板：內部模板用於快速迭代，Meta 官方模板用於正式營銷活動"
+    }
   },
   
   // WhatsApp Workflow Designer
