@@ -1550,48 +1550,6 @@ const en = {
   
   // Workflow Monitor
   workflowMonitor: {
-    
-    // Media files related
-    receivedMedia: 'Received Media',
-    loadingMediaFiles: 'Loading media files...',
-    noMediaFiles: 'No media files',
-    mediaFilesApiNotExists: 'Media files API does not exist',
-    mediaFilesApiNotImplemented: 'Media files API not implemented',
-    loadMediaFilesFailed: 'Load media files failed',
-    loadedMediaFilesData: 'Loaded media files data',
-    rootFolder: 'Root Folder',
-    files: 'files',
-    totalFiles: 'Total Files',
-    image: 'Image',
-    video: 'Video',
-    audio: 'Audio',
-    document: 'Document',
-    file: 'File',
-    view: 'View',
-    download: 'Download',
-    unnamed: 'Unnamed',
-    setAt: 'Set At',
-    approvalAt: 'Approval At',
-    
-    // Advanced features translation keys
-    copyNodes: 'Copy Nodes',
-    pasteNodes: 'Paste Nodes',
-    align: 'Align',
-    alignNodes: 'Align Nodes',
-    alignLeft: 'Align Left',
-    alignCenter: 'Align Center',
-    alignRight: 'Align Right',
-    alignTop: 'Align Top',
-    alignMiddle: 'Align Middle',
-    alignBottom: 'Align Bottom',
-    
-    // Node type labels
-    sendEFormNode: 'Send eForm',
-    
-  },
-  
-  // Workflow Monitor
-  workflowMonitor: {
     title: 'Workflow Monitor',
     description: 'Monitor and manage your WhatsApp workflow instances',
     runningAppsTitle: 'Running Apps',
@@ -1631,6 +1589,9 @@ const en = {
     statusPaused: 'Paused',
     statusCancelled: 'Cancelled',
     statusPending: 'Pending',
+    statusSent: 'Sent',
+    statusDelivered: 'Delivered',
+    statusRead: 'Read',
     statusPartiallyFailed: 'Partially Failed',
     
     // Actions
@@ -1953,7 +1914,45 @@ const en = {
     notificationEvents: 'Notification Events',
     notifyOnError: 'Notify on Error',
     notifyOnCompletion: 'Notify on Completion',
-    notifyOnDelay: 'Notify on Delay'
+    notifyOnDelay: 'Notify on Delay',
+    
+    // Media files related
+    receivedMedia: 'Received Media',
+    loadingMediaFiles: 'Loading media files...',
+    noMediaFiles: 'No media files',
+    mediaFilesApiNotExists: 'Media files API does not exist',
+    mediaFilesApiNotImplemented: 'Media files API not implemented',
+    loadMediaFilesFailed: 'Load media files failed',
+    loadedMediaFilesData: 'Loaded media files data',
+    rootFolder: 'Root Folder',
+    files: 'files',
+    totalFiles: 'Total Files',
+    image: 'Image',
+    video: 'Video',
+    audio: 'Audio',
+    document: 'Document',
+    file: 'File',
+    view: 'View',
+    download: 'Download',
+    unnamed: 'Unnamed',
+    
+    // Lightbox toolbar
+    rotateLeft: 'Rotate Left',
+    rotateRight: 'Rotate Right',
+    flipHorizontal: 'Flip Horizontal',
+    flipVertical: 'Flip Vertical',
+    zoomIn: 'Zoom In',
+    zoomOut: 'Zoom Out',
+    reset: 'Reset',
+    
+    // User replies (message validations)
+    userReplies: 'User Replies',
+    validationPassed: 'Valid',
+    validationFailed: 'Invalid',
+    others: 'Others',
+    caption: 'Caption: ',
+    reply: 'reply',
+    replies: 'replies'
   },
 
   // Workflow List Page

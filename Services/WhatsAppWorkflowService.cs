@@ -230,23 +230,32 @@ namespace PurpleRice.Services
         /// <returns>格式化後的電話號碼</returns>
         private string FormatPhoneNumber(string phoneNumber)
         {
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+            {
+                return phoneNumber;
+            }
+            
+            // ✅ 第一步：移除所有非數字字符（+, -, 空格等）
+            var cleanedNumber = new string(phoneNumber.Where(char.IsDigit).ToArray());
+            _loggingService.LogInformation($"清理後的電話號碼: {cleanedNumber}");
+            
             var countryCode = "852"; // 暫時硬編碼香港區號，可以之後從公司設定獲取
             
             // 檢查電話號碼是否已經包含國家代碼
-            if (!phoneNumber.StartsWith(countryCode))
+            if (!cleanedNumber.StartsWith(countryCode))
             {
                 // 移除開頭的 0（如果有的話）
-                if (phoneNumber.StartsWith("0"))
+                if (cleanedNumber.StartsWith("0"))
                 {
-                    phoneNumber = phoneNumber.Substring(1);
+                    cleanedNumber = cleanedNumber.Substring(1);
                 }
                 // 添加國家代碼
-                return countryCode + phoneNumber;
+                return countryCode + cleanedNumber;
             }
             else
             {
                 // 已經包含國家代碼，直接使用
-                return phoneNumber;
+                return cleanedNumber;
             }
         }
 
@@ -983,6 +992,18 @@ namespace PurpleRice.Services
             catch (Exception ex)
             {
                 _loggingService.LogError($"發送 WhatsApp 消息並記錄失敗: {ex.Message}", ex);
+                
+                // 記錄詳細的內部異常
+                var innerEx = ex.InnerException;
+                int level = 1;
+                while (innerEx != null)
+                {
+                    _loggingService.LogError($"InnerException (Level {level}): {innerEx.Message}");
+                    _loggingService.LogError($"InnerException Type (Level {level}): {innerEx.GetType().FullName}");
+                    innerEx = innerEx.InnerException;
+                    level++;
+                }
+                
                 throw;
             }
         }

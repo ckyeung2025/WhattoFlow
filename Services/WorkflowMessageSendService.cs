@@ -94,6 +94,7 @@ namespace PurpleRice.Services
 
                 var messageRecipients = recipients.Select(r => new WorkflowMessageRecipient
                 {
+                    Id = r.Id, // ✅ 關鍵修復：使用 ResolvedRecipient 的 Id
                     MessageSendId = messageSendId,
                     PhoneNumber = r.PhoneNumber,
                     RecipientType = r.RecipientType,

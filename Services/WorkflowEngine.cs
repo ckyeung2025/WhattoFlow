@@ -24,9 +24,10 @@ namespace PurpleRice.Services
         private readonly DataSetQueryService _dataSetQueryService;
         private readonly IVariableReplacementService _variableReplacementService;
         private readonly PurpleRiceDbContext _context;
+        private readonly RecipientResolverService _recipientResolverService;
 
         public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, 
-            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService, DataSetQueryService dataSetQueryService, IVariableReplacementService variableReplacementService, PurpleRiceDbContext context)
+            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService, DataSetQueryService dataSetQueryService, IVariableReplacementService variableReplacementService, PurpleRiceDbContext context, RecipientResolverService recipientResolverService)
         {
             _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
@@ -38,6 +39,7 @@ namespace PurpleRice.Services
             _dataSetQueryService = dataSetQueryService;
             _variableReplacementService = variableReplacementService;
             _context = context;
+            _recipientResolverService = recipientResolverService;
         }
 
         private void WriteLog(string message)
@@ -136,7 +138,7 @@ namespace PurpleRice.Services
                 WriteLog($"起始節點: {startNode.Id}");
 
                 // 使用多分支執行引擎
-                await ExecuteMultiBranchWorkflow(startNode.Id, flowData.Nodes, adjacencyList, execution, userId);
+                await ExecuteMultiBranchWorkflow(startNode.Id, flowData.Nodes, adjacencyList, execution, userId, flowData.Edges);
                 
                 WriteLog($"=== 工作流程執行完成 ===");
             }
@@ -328,7 +330,7 @@ namespace PurpleRice.Services
             await SaveExecution(execution);
 
             // 直接執行 sendEForm 節點的後續節點，而不是重新執行 sendEForm 節點本身
-            await ExecuteAllNextNodes(sendEFormNodeId, flowData.Nodes.ToDictionary(n => n.Id), adjacencyList, execution, execution.WaitingForUser);
+            await ExecuteAllNextNodes(sendEFormNodeId, flowData.Nodes.ToDictionary(n => n.Id), adjacencyList, execution, execution.WaitingForUser, flowData.Edges);
         }
 
         // 從等待回覆狀態繼續
@@ -336,15 +338,61 @@ namespace PurpleRice.Services
         {
                     WriteLog($"流程狀態為 {execution.Status}，使用等待用戶回覆邏輯");
                     
-                    var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply" || n.Data?.Type == "waitForQRCode" || n.Data?.Type == "waitforqrcode");
-                    if (waitNode == null)
+                    // ✅ 修復：查找當前正在等待的步驟執行記錄，而不是流程中的第一個等待節點
+                    using var scope = _serviceProvider.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                    
+                    var currentWaitingStep = await db.WorkflowStepExecutions
+                        .Where(s => s.WorkflowExecutionId == execution.Id && s.IsWaiting)
+                        .OrderByDescending(s => s.Id)
+                        .FirstOrDefaultAsync();
+                    
+                    if (currentWaitingStep == null)
                     {
-                        WriteLog($"錯誤: 找不到等待節點");
+                        WriteLog($"警告: 找不到當前等待的步驟執行記錄，使用舊邏輯查找第一個等待節點");
+                        var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply" || n.Data?.Type == "waitForQRCode" || n.Data?.Type == "waitforqrcode");
+                        if (waitNode == null)
+                        {
+                            WriteLog($"錯誤: 找不到等待節點");
+                            return;
+                        }
+                        // 先提取節點類型，避免在 LINQ 表達式中使用 null 條件運算符
+                        var waitNodeType = waitNode.Data?.Type;
+                        currentWaitingStep = await db.WorkflowStepExecutions
+                            .FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.StepType == waitNodeType);
+                    }
+                    
+                    // 從 InputJson 中提取節點 ID
+                    string waitNodeId = null;
+                    if (!string.IsNullOrEmpty(currentWaitingStep.InputJson))
+                    {
+                        try
+                        {
+                            var nodeData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(currentWaitingStep.InputJson);
+                            // 嘗試從多個可能的字段中提取節點信息
+                            foreach (var flowNode in flowData.Nodes)
+                            {
+                                if (flowNode.Data?.Type == currentWaitingStep.StepType && 
+                                    flowNode.Data?.TaskName == currentWaitingStep.TaskName)
+                                {
+                                    waitNodeId = flowNode.Id;
+                                    break;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            WriteLog($"警告: 無法解析步驟的 InputJson");
+                        }
+                    }
+                    
+                    if (waitNodeId == null)
+                    {
+                        WriteLog($"錯誤: 無法確定等待節點的 ID");
                         return;
                     }
-
-                    var waitNodeId = waitNode.Id;
-                    WriteLog($"找到等待節點: {waitNodeId}");
+                    
+                    WriteLog($"找到當前等待節點: {waitNodeId} (StepType: {currentWaitingStep.StepType}, TaskName: {currentWaitingStep.TaskName})");
 
             // 標記 waitReply 步驟完成
             await MarkWaitReplyStepComplete(execution.Id);
@@ -371,7 +419,7 @@ namespace PurpleRice.Services
                     await SaveExecution(execution);
 
                             WriteLog($"執行狀態已更新，開始執行下一個節點: {nextNodeId}");
-                    await ExecuteMultiBranchWorkflow(nextNodeId, flowData.Nodes, adjacencyList, execution, execution.WaitingForUser);
+                    await ExecuteMultiBranchWorkflow(nextNodeId, flowData.Nodes, adjacencyList, execution, execution.WaitingForUser, flowData.Edges);
                         }
                         else
                         {
@@ -386,7 +434,7 @@ namespace PurpleRice.Services
                 
         // 核心：多分支執行引擎
         private async Task ExecuteMultiBranchWorkflow(string startNodeId, List<WorkflowNode> nodes, 
-            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId)
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId, List<WorkflowEdge> edges = null)
         {
             WriteLog($"=== 開始多分支執行引擎 ===");
             WriteLog($"起始節點: {startNodeId}");
@@ -395,14 +443,14 @@ namespace PurpleRice.Services
             var nodeMap = nodes.ToDictionary(n => n.Id);
             
             // 從起始節點開始執行
-            await ExecuteNodeWithBranches(startNodeId, nodeMap, adjacencyList, execution, userId);
+            await ExecuteNodeWithBranches(startNodeId, nodeMap, adjacencyList, execution, userId, edges);
             
             WriteLog($"=== 多分支執行引擎完成 ===");
         }
 
         // 執行單個節點並處理其所有分支
         private async Task ExecuteNodeWithBranches(string nodeId, Dictionary<string, WorkflowNode> nodeMap, 
-            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId)
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId, List<WorkflowEdge> edges = null)
         {
             if (!nodeMap.ContainsKey(nodeId)) return;
 
@@ -443,12 +491,12 @@ namespace PurpleRice.Services
                 // 根據節點類型選擇執行方式
                 if (nodeData?.Type == "switch")
                 {
-                    await ExecuteSwitchNextNodes(nodeId, nodeMap, adjacencyList, execution, userId, stepExec);
+                    await ExecuteSwitchNextNodes(nodeId, nodeMap, adjacencyList, execution, userId, stepExec, edges);
                 }
                 else
                 {
                     // 找到並執行所有後續節點（多分支並行執行）
-                    await ExecuteAllNextNodes(nodeId, nodeMap, adjacencyList, execution, userId);
+                    await ExecuteAllNextNodes(nodeId, nodeMap, adjacencyList, execution, userId, edges);
                 }
             }
             catch (Exception ex)
@@ -511,7 +559,7 @@ namespace PurpleRice.Services
 
         // 執行所有後續節點（多分支並行執行）
         private async Task ExecuteAllNextNodes(string currentNodeId, Dictionary<string, WorkflowNode> nodeMap, 
-            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId)
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId, List<WorkflowEdge> edges = null)
         {
             if (!adjacencyList.ContainsKey(currentNodeId))
             {
@@ -543,7 +591,7 @@ namespace PurpleRice.Services
             foreach (var nextNodeId in nextNodeIds)
             {
                 WriteLog($"創建任務: {nextNodeId}");
-                var task = ExecuteNodeWithBranches(nextNodeId, nodeMap, adjacencyList, execution, userId);
+                var task = ExecuteNodeWithBranches(nextNodeId, nodeMap, adjacencyList, execution, userId, edges);
                 tasks.Add(task);
             }
 
@@ -563,6 +611,7 @@ namespace PurpleRice.Services
                 WorkflowExecutionId = execution.Id,
                 StepIndex = execution.CurrentStep ?? 0,
                 StepType = nodeData?.Type,
+                TaskName = nodeData?.TaskName, // 保存用戶自定義的任務名稱
                 Status = "Running",
                 InputJson = JsonSerializer.Serialize(nodeData),
                 StartedAt = DateTime.Now
@@ -633,14 +682,20 @@ namespace PurpleRice.Services
             }
         }
 
-        // 標記 waitReply 步驟完成
+        // 標記等待步驟完成（支持 waitReply 和 waitForQRCode）
         private async Task MarkWaitReplyStepComplete(int executionId)
         {
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
             
+            // ✅ 修復：查找所有等待類型的步驟（waitReply, waitForQRCode, waitForUserReply）
             var waitStepExecution = await db.WorkflowStepExecutions
-                .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "waitReply")
+                .Where(s => s.WorkflowExecutionId == executionId && 
+                           s.IsWaiting == true &&
+                           (s.StepType == "waitReply" || 
+                            s.StepType == "waitForQRCode" || 
+                            s.StepType == "waitforqrcode" || 
+                            s.StepType == "waitForUserReply"))
                 .OrderByDescending(s => s.StartedAt)
                 .FirstOrDefaultAsync();
             
@@ -651,15 +706,16 @@ namespace PurpleRice.Services
                 waitStepExecution.EndedAt = DateTime.Now;
                 waitStepExecution.OutputJson = JsonSerializer.Serialize(new { 
                     message = "User replied, continuing workflow",
+                    stepType = waitStepExecution.StepType,
                     timestamp = DateTime.Now,
                     userResponse = "User provided response"
                 });
                 await db.SaveChangesAsync();
-                WriteLog($"waitReply 節點狀態已更新為 Completed，步驟ID: {waitStepExecution.Id}");
+                WriteLog($"✅ 等待節點狀態已更新為 Completed，步驟ID: {waitStepExecution.Id}, 類型: {waitStepExecution.StepType}");
                                  }
                                  else
                                  {
-                WriteLog($"警告: 找不到 waitReply 步驟執行記錄");
+                WriteLog($"警告: 找不到等待步驟執行記錄（executionId: {executionId}）");
             }
         }
 
@@ -686,40 +742,21 @@ namespace PurpleRice.Services
                     WriteLog($"🔍 [DEBUG] 原始訊息: {nodeData.Message}");
                     WriteLog($"🔍 [DEBUG] 處理後訊息: {processedMessage}");
                     
-                    WriteLog($"🔍 [DEBUG] 開始構建收件人詳情");
-                    // 構建收件人詳情
-                    string recipientDetailsJson;
-                    if (nodeData.RecipientDetails != null)
-                    {
-                        WriteLog($"🔍 [DEBUG] 使用原始 RecipientDetails");
-                        recipientDetailsJson = JsonSerializer.Serialize(nodeData.RecipientDetails);
-                        WriteLog($"🔍 [DEBUG] 原始 RecipientDetails JSON: {recipientDetailsJson}");
-                    }
-                    else
-                    {
-                        WriteLog($"🔍 [DEBUG] RecipientDetails 為 null，使用回退機制");
-                        // 當沒有 RecipientDetails 時，使用 To 欄位構建
-                        // 檢查 To 欄位是否包含 ${initiator}
-                        bool isInitiator = nodeData.To == "${initiator}";
-                        var fallbackRecipientDetails = new
-                        {
-                            users = new object[0],
-                            contacts = new object[0],
-                            groups = new object[0],
-                            hashtags = new object[0],
-                            useInitiator = isInitiator, // 根據 To 欄位內容設置
-                            phoneNumbers = isInitiator ? new string[0] : new[] { nodeData.To } // 如果是 ${initiator}，則不添加到 phoneNumbers
-                        };
-                        recipientDetailsJson = JsonSerializer.Serialize(fallbackRecipientDetails);
-                        WriteLog($"🔍 [DEBUG] 回退 RecipientDetails JSON: {recipientDetailsJson}");
-                        WriteLog($"🔍 [DEBUG] 檢測到 ${{initiator}}: {isInitiator}");
-                    }
+                    WriteLog($"🔍 [DEBUG] 開始解析收件人");
+                    // 使用 RecipientResolverService 解析收件人
+                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                        nodeData.To, 
+                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
+                        execution.Id,
+                        execution.WorkflowDefinition.CompanyId
+                    );
                     
-                    WriteLog($"🔍 [DEBUG] 準備調用 SendWhatsAppMessageWithTrackingAsync");
-                    // 使用新的帶追蹤功能的方法
+                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    
+                    // 發送消息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                        nodeData.To,
-                        recipientDetailsJson,
+                        nodeData.To, // 使用原始收件人值
+                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
                         processedMessage,
                         execution,
                         stepExec,
@@ -727,20 +764,15 @@ namespace PurpleRice.Services
                         "sendWhatsApp",
                         db
                     );
-                    WriteLog($"🔍 [DEBUG] SendWhatsAppMessageWithTrackingAsync 返回 MessageSendId: {messageSendId}");
                     
-                    WriteLog($"WhatsApp 消息發送完成: {nodeData.TaskName}, MessageSendId: {messageSendId}");
+                    WriteLog($"🔍 [DEBUG] 消息發送記錄創建完成，ID: {messageSendId}");
                     
-                    // 由於 SendWhatsAppMessageWithTrackingAsync 已經同步完成了所有狀態更新，
-                    // 我們可以直接信任其結果，不需要再次檢查狀態
-                    // 如果發送過程中出現異常，會直接拋出異常，不會到達這裡
-                    
-                    WriteLog($"🔍 [DEBUG] 消息發送已同步完成，直接標記為成功");
+                    WriteLog($"🔍 [DEBUG] 消息發送完成，收件人數量: {resolvedRecipients.Count}");
                     
                     stepExec.OutputJson = JsonSerializer.Serialize(new { 
                         success = true, 
-                        message = "WhatsApp message sent successfully",
-                        to = nodeData.To,
+                        message = "WhatsApp messages sent successfully",
+                        recipientCount = resolvedRecipients.Count,
                         taskName = nodeData.TaskName,
                         messageSendId = messageSendId
                     });
@@ -794,34 +826,21 @@ namespace PurpleRice.Services
                         }
                     }
                     
-                    // 構建收件人詳情
-                    string recipientDetailsJson;
-                    if (nodeData.RecipientDetails != null)
-                    {
-                        recipientDetailsJson = JsonSerializer.Serialize(nodeData.RecipientDetails);
-                    }
-                    else
-                    {
-                        // 當沒有 RecipientDetails 時，使用 To 欄位構建
-                        // 檢查 To 欄位是否包含 ${initiator}
-                        bool isInitiator = nodeData.To == "${initiator}";
-                        var fallbackRecipientDetails = new
-                        {
-                            users = new object[0],
-                            contacts = new object[0],
-                            groups = new object[0],
-                            hashtags = new object[0],
-                            useInitiator = isInitiator, // 根據 To 欄位內容設置
-                            phoneNumbers = isInitiator ? new string[0] : new[] { nodeData.To } // 如果是 ${initiator}，則不添加到 phoneNumbers
-                        };
-                        recipientDetailsJson = JsonSerializer.Serialize(fallbackRecipientDetails);
-                        WriteLog($"🔍 [DEBUG] sendWhatsAppTemplate 回退機制 - 檢測到 ${{initiator}}: {isInitiator}");
-                    }
+                    WriteLog($"🔍 [DEBUG] 開始解析收件人");
+                    // 使用 RecipientResolverService 解析收件人
+                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                        nodeData.To, 
+                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
+                        execution.Id,
+                        execution.WorkflowDefinition.CompanyId
+                    );
                     
-                    // 使用新的帶追蹤功能的方法
+                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    
+                    // 發送模板消息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
-                        nodeData.To,
-                        recipientDetailsJson,
+                        nodeData.To, // 使用原始收件人值
+                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
                         nodeData.TemplateId,
                         nodeData.TemplateName,
                         processedVariables,
@@ -832,18 +851,14 @@ namespace PurpleRice.Services
                         db
                     );
                     
-                    WriteLog($"WhatsApp 模板消息發送完成: {nodeData.TaskName}, MessageSendId: {messageSendId}");
+                    WriteLog($"🔍 [DEBUG] 模板消息發送記錄創建完成，ID: {messageSendId}");
                     
-                    // 由於 SendWhatsAppTemplateMessageWithTrackingAsync 已經同步完成了所有狀態更新，
-                    // 我們可以直接信任其結果，不需要再次檢查狀態
-                    // 如果發送過程中出現異常，會直接拋出異常，不會到達這裡
-                    
-                    WriteLog($"🔍 [DEBUG] 模板消息發送已同步完成，直接標記為成功");
+                    WriteLog($"🔍 [DEBUG] 模板消息發送完成，收件人數量: {resolvedRecipients.Count}");
                     
                     stepExec.OutputJson = JsonSerializer.Serialize(new { 
                         success = true, 
-                        message = "WhatsApp template message sent successfully",
-                        to = nodeData.To,
+                        message = "WhatsApp template messages sent successfully",
+                        recipientCount = resolvedRecipients.Count,
                         templateName = nodeData.TemplateName,
                         messageSendId = messageSendId
                     });
@@ -902,33 +917,55 @@ namespace PurpleRice.Services
                 var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
                 if (company != null)
                 {
-                    // 根據回覆類型決定發送給誰
-                    string waId;
-                    if (nodeData.ReplyType == "specified" && !string.IsNullOrEmpty(nodeData.SpecifiedUsers))
+                    WriteLog($"🔍 [DEBUG] 開始解析 waitReply 收件人");
+                    WriteLog($"🔍 [DEBUG] nodeData.SpecifiedUsers: '{nodeData.SpecifiedUsers}'");
+                    WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
+                    WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                    
+                    // 根據 replyType 決定收件人
+                    string recipientValue;
+                    string recipientDetailsJson;
+                    
+                    // ✅ 修復：只根據 replyType 判斷，不檢查 specifiedUsers 是否為空
+                    if (nodeData.ReplyType == "initiator")
                     {
-                        // 發送給指定用戶
-                        waId = nodeData.SpecifiedUsers;
-                        WriteLog($"使用指定用戶發送等待提示訊息: {waId}");
+                        // 使用流程啟動人
+                        recipientValue = "${initiator}";
+                        recipientDetailsJson = JsonSerializer.Serialize(new 
+                        { 
+                            users = new List<object>(),
+                            contacts = new List<object>(),
+                            groups = new List<object>(),
+                            hashtags = new List<object>(),
+                            processVariables = new List<string>(),
+                            useInitiator = true,
+                            phoneNumbers = new List<string>()
+                        });
+                        WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
                     }
                     else
                     {
-                        // 發送給流程啟動人
-                        waId = execution.InitiatedBy ?? userId ?? "85296366318";
-                        WriteLog($"使用流程啟動人發送等待提示訊息: {waId}");
+                        // ✅ 使用 recipientDetails（即使 specifiedUsers 為空）
+                        recipientValue = nodeData.SpecifiedUsers ?? "";
+                        recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
+                        WriteLog($"🔍 [DEBUG] 使用 recipientDetails 配置（replyType={nodeData.ReplyType}）");
+                        WriteLog($"🔍 [DEBUG] recipientDetailsJson: {recipientDetailsJson}");
                     }
                     
-                    // 使用帶追蹤功能的方法發送訊息
-                    // 檢查 waId 是否為 ${initiator}
-                    bool isInitiator = waId == "${initiator}";
-                    var recipientDetails = new
-                    {
-                        useInitiator = isInitiator,
-                        phoneNumbers = isInitiator ? new string[0] : new[] { waId }
-                    };
+                    // 使用 RecipientResolverService 解析收件人
+                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                        recipientValue,
+                        recipientDetailsJson, 
+                        execution.Id,
+                        execution.WorkflowDefinition.CompanyId
+                    );
                     
+                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    
+                    // 發送等待提示訊息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                        waId,
-                        JsonSerializer.Serialize(recipientDetails),
+                        recipientValue,
+                        recipientDetailsJson,
                         nodeData.Message,
                         execution,
                         stepExec,
@@ -937,7 +974,9 @@ namespace PurpleRice.Services
                         db
                     );
                     
-                    WriteLog($"成功發送等待提示訊息: '{nodeData.Message}' 到用戶: {waId}, MessageSendId: {messageSendId}");
+                    WriteLog($"🔍 [DEBUG] 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
+                    
+                    WriteLog($"🔍 [DEBUG] 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
                 }
             }
             
@@ -986,33 +1025,53 @@ namespace PurpleRice.Services
                 var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
                 if (company != null)
                 {
-                    // 根據回覆類型決定發送給誰
-                    string waId;
-                    if (nodeData.ReplyType == "specified" && !string.IsNullOrEmpty(nodeData.SpecifiedUsers))
+                    WriteLog($"🔍 [DEBUG] 開始解析 waitForQRCode 收件人");
+                    WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
+                    WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                    
+                    // 根據 replyType 決定收件人
+                    string recipientValue;
+                    string recipientDetailsJson;
+                    
+                    // ✅ 修復：只根據 replyType 判斷
+                    if (nodeData.ReplyType == "initiator")
                     {
-                        // 發送給指定用戶
-                        waId = nodeData.SpecifiedUsers;
-                        WriteLog($"使用指定用戶發送 QR Code 等待提示訊息: {waId}");
+                        // 使用流程啟動人
+                        recipientValue = "${initiator}";
+                        recipientDetailsJson = JsonSerializer.Serialize(new 
+                        { 
+                            users = new List<object>(),
+                            contacts = new List<object>(),
+                            groups = new List<object>(),
+                            hashtags = new List<object>(),
+                            processVariables = new List<string>(),
+                            useInitiator = true,
+                            phoneNumbers = new List<string>()
+                        });
+                        WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
                     }
                     else
                     {
-                        // 發送給流程啟動人
-                        waId = execution.InitiatedBy ?? userId ?? "85296366318";
-                        WriteLog($"使用流程啟動人發送 QR Code 等待提示訊息: {waId}");
+                        // ✅ 使用 recipientDetails
+                        recipientValue = nodeData.SpecifiedUsers ?? "";
+                        recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
+                        WriteLog($"🔍 [DEBUG] 使用 recipientDetails 配置（replyType={nodeData.ReplyType}）");
                     }
                     
-                    // 使用帶追蹤功能的方法發送訊息
-                    // 檢查 waId 是否為 ${initiator}
-                    bool isInitiator = waId == "${initiator}";
-                    var recipientDetails = new
-                    {
-                        useInitiator = isInitiator,
-                        phoneNumbers = isInitiator ? new string[0] : new[] { waId }
-                    };
+                    // 使用 RecipientResolverService 解析收件人
+                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                        recipientValue,
+                        recipientDetailsJson, 
+                        execution.Id,
+                        execution.WorkflowDefinition.CompanyId
+                    );
                     
+                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    
+                    // 發送 QR Code 等待提示訊息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                        waId,
-                        JsonSerializer.Serialize(recipientDetails),
+                        recipientValue,
+                        recipientDetailsJson,
                         nodeData.Message,
                         execution,
                         stepExec,
@@ -1021,7 +1080,9 @@ namespace PurpleRice.Services
                         db
                     );
                     
-                    WriteLog($"成功發送 QR Code 等待提示訊息: '{nodeData.Message}' 到用戶: {waId}, MessageSendId: {messageSendId}");
+                    WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
+                    
+                    WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
                 }
             }
             
@@ -1101,35 +1162,22 @@ namespace PurpleRice.Services
                                 db.EFormInstances.Add(eFormInstance);
                                 await db.SaveChangesAsync();
 
-                                // 構建收件人詳情
-                                string recipientDetailsJson;
-                                if (nodeData.RecipientDetails != null)
-                                {
-                                    recipientDetailsJson = JsonSerializer.Serialize(nodeData.RecipientDetails);
-                                }
-                                else
-                                {
-                                    // 當沒有 RecipientDetails 時，使用 To 欄位構建
-                                    // 檢查 To 欄位是否包含 ${initiator}
-                                    bool isInitiator = nodeData.To == "${initiator}";
-                                    var fallbackRecipientDetails = new
-                                    {
-                                        users = new object[0],
-                                        contacts = new object[0],
-                                        groups = new object[0],
-                                        hashtags = new object[0],
-                                        useInitiator = isInitiator, // 根據 To 欄位內容設置
-                                        phoneNumbers = isInitiator ? new string[0] : new[] { nodeData.To } // 如果是 ${initiator}，則不添加到 phoneNumbers
-                                    };
-                                    recipientDetailsJson = JsonSerializer.Serialize(fallbackRecipientDetails);
-                                    WriteLog($"🔍 [DEBUG] sendEForm 回退機制 - 檢測到 ${{initiator}}: {isInitiator}");
-                                }
+                                WriteLog($"🔍 [DEBUG] 開始解析收件人");
+                                // 使用 RecipientResolverService 解析收件人
+                                var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                                    nodeData.To, 
+                                    nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
+                                    execution.Id,
+                                    execution.WorkflowDefinition.CompanyId
+                                );
                                 
-                                // 發送 WhatsApp 消息通知用戶
+                                WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                                
+                                // 發送 WhatsApp 消息通知所有收件人
                                 var message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
                                 var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                                    nodeData.To,
-                                    recipientDetailsJson,
+                                    nodeData.To, // 使用原始收件人值
+                                    nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
                                     message,
                                     execution,
                                     stepExec,
@@ -1137,15 +1185,19 @@ namespace PurpleRice.Services
                                     "sendEForm",
                                     db
                                 );
-                                WriteLog($"EForm 通知消息發送完成: {nodeData.FormName}, MessageSendId: {messageSendId}");
+                                
+                                WriteLog($"🔍 [DEBUG] EForm 通知訊息發送記錄創建完成，ID: {messageSendId}");
+                                
+                                WriteLog($"🔍 [DEBUG] EForm 通知發送完成，收件人數量: {resolvedRecipients.Count}");
 
-                    // 設置為等待表單審批狀態
-                                 execution.Status = "WaitingForFormApproval";
+                                // 設置為等待表單審批狀態
+                                execution.Status = "WaitingForFormApproval";
                                  stepExec.Status = "Waiting";
                                  stepExec.OutputJson = JsonSerializer.Serialize(new { 
                                      success = true, 
                                      message = "EForm sent successfully, waiting for approval",
                                      formInstanceId = eFormInstance.Id,
+                                     recipientCount = resolvedRecipients.Count,
                                      messageSendId = messageSendId,
                                      waitingSince = DateTime.Now 
                                  });
@@ -1420,33 +1472,172 @@ namespace PurpleRice.Services
             return false;
         }
         
+        // 從邊 ID 中提取目標節點（智能處理正向和反向邊）
+        private string ExtractTargetNodeFromEdge(string edgeId, string currentNodeId)
+        {
+            if (string.IsNullOrEmpty(edgeId))
+                return null;
+            
+            WriteLog($"🔍 解析邊 ID: {edgeId}");
+            WriteLog($"🔍 當前節點: {currentNodeId}");
+            
+            // 邊 ID 格式：
+            // xy-edge__{sourceNode}{sourceHandle}-source-{targetNode}{targetHandle}-target
+            // 例如：xy-edge__switch_xxxbottom-source-waitReply_xxxtop-target
+            // 或反向：xy-edge__waitReply_xxxtop-source-switch_xxxbottom-target
+            
+            // 分割邊 ID 以提取 source 和 target 節點
+            var parts = edgeId.Split(new[] { "-source-", "-target" }, StringSplitOptions.None);
+            if (parts.Length < 2)
+            {
+                WriteLog($"❌ 邊 ID 格式不正確");
+                return null;
+            }
+            
+            // 提取前綴後的第一個節點（source 節點）
+            var prefix = edgeId.StartsWith("xy-edge__") ? "xy-edge__" : 
+                         edgeId.StartsWith("reactflow__edge-") ? "reactflow__edge-" : "";
+            
+            if (string.IsNullOrEmpty(prefix))
+            {
+                WriteLog($"❌ 無法識別邊 ID 前綴");
+                return null;
+            }
+            
+            var afterPrefix = edgeId.Substring(prefix.Length);
+            
+            // 查找 source 和 target 的位置
+            var sourceMarkerIndex = afterPrefix.IndexOf("-source-");
+            if (sourceMarkerIndex < 0)
+            {
+                WriteLog($"❌ 找不到 -source- 標記");
+                return null;
+            }
+            
+            // 提取 source 節點（去除 handle 後綴）
+            var sourceWithHandle = afterPrefix.Substring(0, sourceMarkerIndex);
+            var sourceNodeId = RemoveHandleSuffix(sourceWithHandle);
+            
+            // 提取 target 節點（在 -source- 之後，在 -target 之前）
+            var afterSource = afterPrefix.Substring(sourceMarkerIndex + 8); // 跳過 "-source-"
+            var targetMarkerIndex = afterSource.IndexOf("-target");
+            if (targetMarkerIndex < 0)
+            {
+                WriteLog($"❌ 找不到 -target 標記");
+                return null;
+            }
+            
+            var targetWithHandle = afterSource.Substring(0, targetMarkerIndex);
+            var targetNodeId = RemoveHandleSuffix(targetWithHandle);
+            
+            WriteLog($"📍 Source 節點: {sourceNodeId}");
+            WriteLog($"📍 Target 節點: {targetNodeId}");
+            
+            // 判斷當前節點在邊的哪一端，返回另一端的節點
+            if (currentNodeId == sourceNodeId)
+            {
+                WriteLog($"✅ 當前節點在 source 端，目標是: {targetNodeId}");
+                return targetNodeId;
+            }
+            else if (currentNodeId == targetNodeId)
+            {
+                WriteLog($"✅ 當前節點在 target 端（反向邊），目標是: {sourceNodeId}");
+                return sourceNodeId;
+            }
+            else
+            {
+                WriteLog($"⚠️ 當前節點 {currentNodeId} 不在邊的任何一端，默認返回 target: {targetNodeId}");
+                return targetNodeId;
+            }
+        }
+        
+        // 移除 handle 後綴（top, bottom, left, right）
+        private string RemoveHandleSuffix(string nodeIdWithHandle)
+        {
+            var suffixes = new[] { "top", "bottom", "left", "right" };
+            foreach (var suffix in suffixes)
+            {
+                if (nodeIdWithHandle.EndsWith(suffix))
+                {
+                    return nodeIdWithHandle.Substring(0, nodeIdWithHandle.Length - suffix.Length);
+                }
+            }
+            return nodeIdWithHandle;
+        }
+        
         // 從路徑中提取目標節點 ID
         private string GetTargetNodeIdFromPath(string path, Dictionary<string, List<string>> adjacencyList)
         {
-            // 路徑格式通常是: "reactflow__edge-switch_xxxbottom-source-sendWhatsApp_xxxtop-target"
-            // 需要提取 sendWhatsApp_xxx 部分
+            // 路徑格式可能是:
+            // 1. "reactflow__edge-switch_xxxbottom-source-sendWhatsApp_xxxtop-target"
+            // 2. "xy-edge__switch_xxxbottom-source-sendWhatsApp_xxxtop-target"
+            // 3. "xy-edge__waitReply_xxxtop-source-switch_xxxbottom-target" (反向邊)
             
             if (string.IsNullOrEmpty(path))
                 return null;
-                
-            // 查找 "source-" 和 "top-target" 之間的部分
-            var sourceIndex = path.IndexOf("source-");
-            var targetIndex = path.IndexOf("top-target");
             
-            if (sourceIndex >= 0 && targetIndex > sourceIndex)
+            WriteLog($"🔍 [DEBUG] 解析路徑: {path}");
+                
+            // 嘗試多種格式提取節點 ID
+            
+            // 格式 1: "source-" 和 "top-target" 之間
+            var sourceIndex = path.IndexOf("source-");
+            var topTargetIndex = path.IndexOf("top-target");
+            
+            if (sourceIndex >= 0 && topTargetIndex > sourceIndex)
             {
-                var nodeId = path.Substring(sourceIndex + 7, targetIndex - sourceIndex - 7);
-                WriteLog($"從路徑 {path} 提取節點 ID: {nodeId}");
+                var nodeId = path.Substring(sourceIndex + 7, topTargetIndex - sourceIndex - 7);
+                WriteLog($"✅ 從路徑提取節點 ID (格式1): {nodeId}");
                 return nodeId;
             }
             
-            WriteLog($"無法從路徑 {path} 提取節點 ID");
+            // 格式 2: "source-" 和 "bottom-target" 之間
+            var bottomTargetIndex = path.IndexOf("bottom-target");
+            if (sourceIndex >= 0 && bottomTargetIndex > sourceIndex)
+            {
+                var nodeId = path.Substring(sourceIndex + 7, bottomTargetIndex - sourceIndex - 7);
+                WriteLog($"✅ 從路徑提取節點 ID (格式2): {nodeId}");
+                return nodeId;
+            }
+            
+            // 格式 3: "source-" 和 "right-target" 之間
+            var rightTargetIndex = path.IndexOf("right-target");
+            if (sourceIndex >= 0 && rightTargetIndex > sourceIndex)
+            {
+                var nodeId = path.Substring(sourceIndex + 7, rightTargetIndex - sourceIndex - 7);
+                WriteLog($"✅ 從路徑提取節點 ID (格式3): {nodeId}");
+                return nodeId;
+            }
+            
+            // 格式 4: 反向邊 - 從邊 ID 的開頭部分提取（xy-edge__{nodeId}top-source-...）
+            if (path.StartsWith("xy-edge__") || path.StartsWith("reactflow__edge-"))
+            {
+                var prefix = path.StartsWith("xy-edge__") ? "xy-edge__" : "reactflow__edge-";
+                var remaining = path.Substring(prefix.Length);
+                
+                // 查找第一個 "source" 或 "target" 關鍵字之前的部分
+                var keywords = new[] { "top-source", "bottom-source", "left-source", "right-source", 
+                                      "top-target", "bottom-target", "left-target", "right-target" };
+                
+                foreach (var keyword in keywords)
+                {
+                    var keywordIndex = remaining.IndexOf(keyword);
+                    if (keywordIndex > 0)
+                    {
+                        var possibleNodeId = remaining.Substring(0, keywordIndex);
+                        WriteLog($"✅ 從路徑提取節點 ID (格式4-反向邊): {possibleNodeId}");
+                        return possibleNodeId;
+                    }
+                }
+            }
+            
+            WriteLog($"❌ 無法從路徑 {path} 提取節點 ID");
             return null;
         }
         
         // 執行 Switch 節點的後續節點（根據條件結果選擇性執行）
         private async Task ExecuteSwitchNextNodes(string currentNodeId, Dictionary<string, WorkflowNode> nodeMap, 
-            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId, WorkflowStepExecution stepExec)
+            Dictionary<string, List<string>> adjacencyList, WorkflowExecution execution, string userId, WorkflowStepExecution stepExec, List<WorkflowEdge> edges = null)
         {
             try
             {
@@ -1493,21 +1684,60 @@ namespace PurpleRice.Services
                 var tasks = new List<Task>();
                 foreach (var path in selectedPaths)
                 {
-                    var targetNodeId = GetTargetNodeIdFromPath(path, adjacencyList);
+                    WriteLog($"🔍 處理選擇的路徑（邊 ID）: {path}");
+                    
+                    string targetNodeId = null;
+                    
+                    // ✅ 優先使用邊列表（最準確）
+                    if (edges != null && edges.Any())
+                    {
+                        var edge = edges.FirstOrDefault(e => e.Id == path);
+                        if (edge != null)
+                        {
+                            // 從邊的 source 和 target 屬性判斷目標節點
+                            if (edge.Source == currentNodeId)
+                            {
+                                targetNodeId = edge.Target;
+                                WriteLog($"✅ 從邊屬性找到目標節點 (source->target): {targetNodeId}");
+                            }
+                            else if (edge.Target == currentNodeId)
+                            {
+                                targetNodeId = edge.Source;
+                                WriteLog($"✅ 從邊屬性找到目標節點 (target->source 反向): {targetNodeId}");
+                            }
+                            else
+                            {
+                                // 當前節點不在邊的任一端，默認使用 target
+                                targetNodeId = edge.Target;
+                                WriteLog($"⚠️ 當前節點 {currentNodeId} 不在邊的任何一端，默認使用 target: {targetNodeId}");
+                            }
+                        }
+                        else
+                        {
+                            WriteLog($"⚠️ 在邊列表中找不到邊 ID: {path}");
+                        }
+                    }
+                    
+                    // 如果沒有邊列表或找不到邊，嘗試解析邊 ID
+                    if (string.IsNullOrEmpty(targetNodeId))
+                    {
+                        WriteLog($"嘗試從邊 ID 解析目標節點...");
+                        targetNodeId = ExtractTargetNodeFromEdge(path, currentNodeId);
+                    }
                     
                     if (string.IsNullOrEmpty(targetNodeId))
                     {
-                        WriteLog($"無法從路徑 {path} 找到目標節點");
+                        WriteLog($"❌ 無法找到目標節點");
                         continue;
                     }
                     
-                    WriteLog($"目標節點: {targetNodeId}");
+                    WriteLog($"✅ 最終目標節點: {targetNodeId}");
                     
                     // 執行目標節點
                     if (nodeMap.ContainsKey(targetNodeId))
                     {
                         WriteLog($"開始執行目標節點: {targetNodeId}");
-                        var task = ExecuteNodeWithBranches(targetNodeId, nodeMap, adjacencyList, execution, userId);
+                        var task = ExecuteNodeWithBranches(targetNodeId, nodeMap, adjacencyList, execution, userId, edges);
                         tasks.Add(task);
                     }
                     else

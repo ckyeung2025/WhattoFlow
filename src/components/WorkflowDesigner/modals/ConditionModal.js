@@ -40,7 +40,7 @@ const ConditionModal = ({
           rules={[{ required: true, message: t('workflowDesigner.selectProcessVariableRequired') }]}
         >
           <Select placeholder={t('workflowDesigner.selectProcessVariable')}>
-            {processVariables.length > 0 ? (
+            {processVariables && processVariables.length > 0 ? (
               processVariables.map(pv => (
                 <Select.Option key={pv.id} value={pv.variableName}>
                   {pv.variableName} ({pv.dataType})
@@ -52,7 +52,7 @@ const ConditionModal = ({
               </Select.Option>
             )}
           </Select>
-          {processVariables.length === 0 && (
+          {(!processVariables || processVariables.length === 0) && (
             <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
               {t('workflowDesigner.noProcessVariablesHint')}
             </div>

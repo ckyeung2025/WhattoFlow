@@ -11,7 +11,8 @@ const RecipientModal = ({
   value,
   allowMultiple = true,
   placeholder = '選擇收件人',
-  recipientDetails // 新增：詳細的選擇信息
+  recipientDetails, // 新增：詳細的選擇信息
+  workflowDefinitionId // 新增：工作流定義ID
 }) => {
   console.log('🚀 RecipientModal 組件已渲染');
   console.log('📋 RecipientModal props:', { visible, allowMultiple, placeholder });
@@ -40,6 +41,7 @@ const RecipientModal = ({
         placeholder={placeholder}
         allowMultiple={allowMultiple}
         recipientDetails={recipientDetails}
+        workflowDefinitionId={workflowDefinitionId}
         t={t}
       />
     </Modal>

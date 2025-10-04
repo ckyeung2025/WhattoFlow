@@ -881,6 +881,8 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
   const [loadingProcessVariables, setLoadingProcessVariables] = useState(false);
   const [mediaFiles, setMediaFiles] = useState([]);
   const [loadingMediaFiles, setLoadingMediaFiles] = useState(false);
+  const [messageValidations, setMessageValidations] = useState([]);
+  const [loadingMessageValidations, setLoadingMessageValidations] = useState(false);
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const [lightboxFile, setLightboxFile] = useState(null);
   const [lightboxFiles, setLightboxFiles] = useState([]);
@@ -910,6 +912,13 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
   useEffect(() => {
     if (activeTab === 'media') {
       loadMediaFiles();
+    }
+  }, [activeTab, instance.id]);
+
+  // 載入消息驗證數據
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadMessageValidations();
     }
   }, [activeTab, instance.id]);
 
@@ -1103,6 +1112,34 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
       setMediaFiles([]);
     } finally {
       setLoadingMediaFiles(false);
+    }
+  };
+
+  const loadMessageValidations = async () => {
+    try {
+      setLoadingMessageValidations(true);
+      console.log('加載消息驗證記錄...', instance.id);
+      
+      const response = await fetch(`/api/workflowexecutions/${instance.id}/message-validations`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        console.log('消息驗證記錄 API 調用失敗:', response.status);
+        setMessageValidations([]);
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('已載入消息驗證記錄:', data);
+      setMessageValidations(data.data || []);
+    } catch (error) {
+      console.error('載入消息驗證記錄失敗:', error);
+      setMessageValidations([]);
+    } finally {
+      setLoadingMessageValidations(false);
     }
   };
 
@@ -1354,12 +1391,24 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
             <Descriptions.Item label={t('workflowMonitor.instanceId')}>{instance.id}</Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.workflowName')}>{instance.workflowName}</Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.status')}>
-              {instance.status === 'running' ? (
+              {instance.status?.toLowerCase() === 'running' ? (
                 <Tag color="processing" icon={<SyncOutlinedIcon spin />}>
                   {t('workflowMonitor.statusRunning')}
                 </Tag>
+              ) : instance.status?.toLowerCase() === 'completed' ? (
+                <Tag color="success" icon={<CheckCircleOutlined />}>
+                  {instance.status}
+                </Tag>
+              ) : instance.status?.toLowerCase() === 'waiting' || instance.status?.toLowerCase() === 'waitingforqrcode' ? (
+                <Tag color="warning" icon={<ClockCircleOutlined />}>
+                  {instance.status}
+                </Tag>
+              ) : instance.status?.toLowerCase() === 'failed' || instance.status?.toLowerCase() === 'error' ? (
+                <Tag color="error" icon={<CloseCircleOutlined />}>
+                  {instance.status}
+                </Tag>
               ) : (
-                <Tag color={instance.status === 'completed' ? 'success' : 'error'}>
+                <Tag color="default">
                   {instance.status}
                 </Tag>
               )}
@@ -1401,6 +1450,14 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                 // 調試信息：檢查步驟數據結構
                 console.log(t('workflowMonitor.stepData', { stepNumber: index + 1 }), step);
                 console.log(t('workflowMonitor.stepAvailableFields', { stepNumber: index + 1 }), Object.keys(step));
+                console.log('🔍 Step Type Fields:', {
+                  stepType: step.stepType,
+                  nodeType: step.nodeType,
+                  type: step.type,
+                  taskType: step.taskType,
+                  stepName: step.stepName,
+                  nodeName: step.nodeName
+                });
                 console.log(t('workflowMonitor.stepOutputJson', { stepNumber: index + 1 }), step.outputJson);
                 console.log(t('workflowMonitor.stepOutputJsonCapital', { stepNumber: index + 1 }), step.OutputJson);
                 console.log(t('workflowMonitor.stepOutput', { stepNumber: index + 1 }), step.output);
@@ -1497,34 +1554,294 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                   });
                 }
 
+                // 優先使用 taskName，如果沒有則使用 stepName
+                const displayName = step.taskName || step.stepName || `${t('workflowMonitor.step')} ${index + 1}`;
+                const nodeType = step.stepType || step.nodeType || step.type;
+                
+                // 查找該步驟的用戶回覆（waitReply 或 waitForQRCode）
+                // 使用 step.stepIndex 而不是數組索引 index
+                const stepValidations = messageValidations.filter(mv => mv.stepIndex === step.stepIndex);
+                const isWaitNode = nodeType === 'waitReply' || nodeType === 'waitForQRCode' || nodeType === 'waitforqrcode';
+                
+                // 調試日誌
+                if (isWaitNode) {
+                  console.log(`🔍 等待節點 "${displayName}" (stepIndex: ${step.stepIndex}):`, {
+                    nodeType,
+                    stepIndex: step.stepIndex,
+                    totalValidations: messageValidations.length,
+                    matchedValidations: stepValidations.length,
+                    validations: stepValidations
+                  });
+                }
+
                 return (
                   <Timeline.Item 
                     key={step.id} 
                     color={(step.status === 'Completed' || step.status === 'completed') ? 'green' : (step.status === 'Failed' || step.status === 'failed') ? 'red' : 'blue'}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <p>{t('workflowMonitor.executionStep')}: {step.stepName || `${t('workflowMonitor.step')} ${index + 1}`}</p>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <Text strong style={{ fontSize: '15px' }}>
+                            {displayName}
+                          </Text>
+                          {nodeType && (
+                            <Tag color="blue">
+                              {nodeType}
+                            </Tag>
+                          )}
+                        </div>
                         <p>{t('workflowMonitor.stepStatus')}: {step.status}</p>
                         <p>{t('workflowMonitor.stepStartTime')}: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
                         {step.endedAt && (
                           <p>{t('workflowMonitor.stepEndTime')}: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
                         )}
+                        
+                        {/* 顯示用戶回覆（waitReply 或 waitForQRCode 節點） */}
+                        {isWaitNode && stepValidations.length > 0 && (
+                          <div style={{ marginTop: '12px' }}>
+                            <Text strong style={{ color: '#1890ff' }}>{t('workflowMonitor.userReplies')}:</Text>
+                            
+                            {/* 按驗證狀態分組顯示 */}
+                            {(() => {
+                              // 分組：有效的和無效的
+                              const validValidations = stepValidations.filter(v => v.isValid);
+                              const invalidValidations = stepValidations.filter(v => !v.isValid);
+                              
+                              const renderValidationGroup = (validations, isValid, nodeType) => {
+                                if (validations.length === 0) return null;
+                                
+                                // 分離文本消息和圖片消息
+                                const textValidations = validations.filter(v => v.messageType === 'text');
+                                const imageValidations = validations.filter(v => v.messageType === 'image');
+                                
+                                // 判斷是否為 QR Code 節點
+                                const isQRCodeNode = nodeType === 'waitForQRCode' || nodeType === 'waitforqrcode';
+                                
+                                // 為 QR Code 節點的 invalid 使用不同的樣式（橙色）
+                                const bgColor = isValid ? '#f6ffed' : (isQRCodeNode ? '#fff7e6' : '#fff2f0');
+                                const borderColor = isValid ? '#b7eb8f' : (isQRCodeNode ? '#ffd591' : '#ffccc7');
+                                
+                                return (
+                                  <div 
+                                    style={{
+                                      marginTop: '8px',
+                                      padding: '12px',
+                                      backgroundColor: bgColor,
+                                      border: `1px solid ${borderColor}`,
+                                      borderRadius: '6px'
+                                    }}
+                                  >
+                                    {/* 文本消息 */}
+                                    {textValidations.map((validation, idx) => (
+                                      <div key={validation.id} style={{ marginBottom: idx < textValidations.length - 1 ? '8px' : '0' }}>
+                                        <Text>{validation.userMessage}</Text>
+                                        <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
+                                          {dayjs(validation.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                                        </div>
+                                      </div>
+                                    ))}
+                                    
+                                    {/* 圖片消息 - 網格顯示 */}
+                                    {imageValidations.length > 0 && (
+                                      <div style={{ marginTop: textValidations.length > 0 ? '12px' : '0' }}>
+                                        {/* 顯示所有 QR Code 結果和 Caption */}
+                                        <div style={{ marginBottom: '8px' }}>
+                                          {imageValidations.map((validation, idx) => {
+                                            try {
+                                              const processedData = validation.processedData ? JSON.parse(validation.processedData) : null;
+                                              
+                                              // waitForQRCode 節點：userMessage = QR Code 值，caption 在 processedData 中
+                                              // waitReply 節點：userMessage = caption（圖片文字說明），processedData 可能沒有 caption
+                                              let qrCodeValue = null;
+                                              let caption = null;
+                                              
+                                              if (isQRCodeNode) {
+                                                // QR Code 節點
+                                                qrCodeValue = validation.userMessage;
+                                                caption = processedData?.caption || '';
+                                              } else {
+                                                // waitReply 節點：直接使用 userMessage 作為文字說明
+                                                caption = validation.userMessage || '';
+                                              }
+                                              
+                                              return (
+                                                <div key={validation.id} style={{ marginBottom: '4px' }}>
+                                                  {/* 只在 waitForQRCode 節點顯示 QR Code 標籤 */}
+                                                  {isQRCodeNode && qrCodeValue && (
+                                                    <Tag color="green">QR Code: {qrCodeValue}</Tag>
+                                                  )}
+                                                  
+                                                  {/* 顯示 Caption（圖片文字說明） */}
+                                                  {caption && (
+                                                    <Text style={{ marginLeft: (isQRCodeNode && qrCodeValue) ? '8px' : '0' }}>
+                                                      <strong>{t('workflowMonitor.caption')}</strong>
+                                                      {caption}
+                                                    </Text>
+                                                  )}
+                                                  
+                                                  <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>
+                                                    {dayjs(validation.createdAt).format('HH:mm:ss')}
+                                                  </span>
+                                                </div>
+                                              );
+                                            } catch (e) {
+                                              // 解析失敗時的後備顯示
+                                              const displayText = validation.userMessage;
+                                              return displayText ? (
+                                                <div key={validation.id} style={{ marginBottom: '4px' }}>
+                                                  {/* waitReply 節點直接顯示文字，不加標籤 */}
+                                                  {isQRCodeNode ? (
+                                                    <Tag color="green">QR Code: {displayText}</Tag>
+                                                  ) : (
+                                                    <Text>{displayText}</Text>
+                                                  )}
+                                                  <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>
+                                                    {dayjs(validation.createdAt).format('HH:mm:ss')}
+                                                  </span>
+                                                </div>
+                                              ) : null;
+                                            }
+                                          })}
+                                        </div>
+                                        
+                                        {/* 圖片網格 - 響應式布局 */}
+                                        <div style={{ 
+                                          display: 'flex',
+                                          flexWrap: 'wrap',
+                                          gap: '8px',
+                                          marginTop: '8px'
+                                        }}>
+                                          {imageValidations.map((validation) => (
+                                            <div
+                                              key={validation.id}
+                                              style={{
+                                                width: '100px',
+                                                height: '100px',
+                                                border: '1px solid #d9d9d9',
+                                                borderRadius: '4px',
+                                                overflow: 'hidden',
+                                                cursor: 'pointer',
+                                                transition: 'transform 0.2s, box-shadow 0.2s'
+                                              }}
+                                              onClick={() => {
+                                                // 點擊打開 Lightbox，顯示所有圖片
+                                                const allImages = imageValidations.map(v => ({
+                                                  id: v.id,
+                                                  fileName: `reply_${v.id}.jpg`,
+                                                  filePath: v.mediaUrl,
+                                                  fileSize: 0,
+                                                  createdAt: v.createdAt
+                                                }));
+                                                const currentIndex = imageValidations.findIndex(v => v.id === validation.id);
+                                                openLightbox(allImages[currentIndex], allImages);
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.currentTarget.style.transform = 'scale(1.05)';
+                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.currentTarget.style.transform = 'scale(1)';
+                                                e.currentTarget.style.boxShadow = 'none';
+                                              }}
+                                            >
+                                              <img
+                                                src={validation.mediaUrl}
+                                                alt="User reply"
+                                                style={{
+                                                  width: '100%',
+                                                  height: '100%',
+                                                  objectFit: 'cover'
+                                                }}
+                                                onError={(e) => {
+                                                  e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjEyIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj5JbWFnZTwvdGV4dD48L3N2Zz4=';
+                                                }}
+                                              />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* 驗證狀態標籤 */}
+                                    <div style={{ 
+                                      marginTop: '12px',
+                                      paddingTop: '8px',
+                                      borderTop: '1px solid ' + (isValid ? '#d9f7be' : (isQRCodeNode ? '#ffe7ba' : '#ffccc7'))
+                                    }}>
+                                      {/* 根據節點類型顯示不同的標籤 */}
+                                      {isValid ? (
+                                        <Tag color="success">
+                                          {t('workflowMonitor.validationPassed')}
+                                        </Tag>
+                                      ) : (
+                                        <Tag color={isQRCodeNode ? 'orange' : 'error'}>
+                                          {isQRCodeNode ? t('workflowMonitor.others') : t('workflowMonitor.validationFailed')}
+                                        </Tag>
+                                      )}
+                                      <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                                        {validations.length} {validations.length === 1 ? t('workflowMonitor.reply') : t('workflowMonitor.replies')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              };
+                              
+                              return (
+                                <>
+                                  {renderValidationGroup(validValidations, true, nodeType)}
+                                  {renderValidationGroup(invalidValidations, false, nodeType)}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </div>
-                      {isMessageSendNode && (step.status === 'Completed' || step.status === 'completed') && (
+                      {/* ✅ sendWhatsApp、waitReply、waitForQRCode 節點都可能發送消息 */}
+                      {(isMessageSendNode || isWaitNode) && (step.status === 'Completed' || step.status === 'completed') && (
                         <Space style={{ marginLeft: '16px' }}>
                           <Button 
                             type="default" 
                             size="small" 
                             icon={<BarChartOutlined />}
-                            onClick={() => {
-                              // 從 outputData 中提取 messageSendId
-                              if (outputData && outputData.messageSendId) {
-                                onViewMessageSendDetail(outputData.messageSendId);
-                              } else {
-                                console.log(t('workflowMonitor.sendWhatsAppStepOutputData'), outputData);
-                                console.log(t('workflowMonitor.stepData'), step);
-                                message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                            onClick={async () => {
+                              try {
+                                let messageSendId = null;
+                                
+                                // 對於 sendWhatsApp 節點，優先從 outputData 獲取
+                                if (isMessageSendNode && outputData && outputData.messageSendId) {
+                                  messageSendId = outputData.messageSendId;
+                                  console.log('從 outputData 獲取 messageSendId:', messageSendId);
+                                } else {
+                                  // ✅ 對於所有節點，使用 stepExecutionId 查找
+                                  console.log('📞 使用 stepExecutionId 查詢 messageSendId:', step.id);
+                                  
+                                  const response = await fetch(`/api/workflowexecutions/step/${step.id}/message-send-id`, {
+                                    headers: {
+                                      'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                    }
+                                  });
+                                  
+                                  if (response.ok) {
+                                    const data = await response.json();
+                                    messageSendId = data.messageSendId;
+                                    console.log('✅ 從 API 獲取 messageSendId:', messageSendId);
+                                  } else {
+                                    console.warn('❌ 找不到消息發送記錄，stepExecutionId:', step.id);
+                                    message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                                    return;
+                                  }
+                                }
+                                
+                                // 打開消息發送狀態模態框
+                                if (messageSendId) {
+                                  onViewMessageSendDetail(messageSendId);
+                                } else {
+                                  message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                                }
+                              } catch (error) {
+                                console.error('查詢消息發送記錄時發生錯誤:', error);
+                                message.error('查詢消息發送記錄失敗');
                               }
                             }}
                           >
@@ -2360,14 +2677,14 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                   icon={<RotateLeftOutlined />}
                   onClick={() => rotateImage('left')}
                   style={{ color: '#fff' }}
-                  title="逆時針旋轉"
+                  title={t('workflowMonitor.rotateLeft')}
                 />
                 <Button
                   type="text"
                   icon={<RotateRightOutlined />}
                   onClick={() => rotateImage('right')}
                   style={{ color: '#fff' }}
-                  title="順時針旋轉"
+                  title={t('workflowMonitor.rotateRight')}
                 />
                 <Button
                   type="text"
@@ -2377,7 +2694,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                     color: '#fff',
                     transform: lightboxTransform.flipH ? 'scaleX(-1)' : 'none'
                   }}
-                  title="水平翻轉"
+                  title={t('workflowMonitor.flipHorizontal')}
                 />
                 <Button
                   type="text"
@@ -2387,28 +2704,28 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                     color: '#fff',
                     transform: lightboxTransform.flipV ? 'scaleY(-1)' : 'none'
                   }}
-                  title="垂直翻轉"
+                  title={t('workflowMonitor.flipVertical')}
                 />
                 <Button
                   type="text"
                   icon={<ZoomInOutlined />}
                   onClick={() => zoomImage('in')}
                   style={{ color: '#fff' }}
-                  title="放大"
+                  title={t('workflowMonitor.zoomIn')}
                 />
                 <Button
                   type="text"
                   icon={<ZoomOutOutlined />}
                   onClick={() => zoomImage('out')}
                   style={{ color: '#fff' }}
-                  title="縮小"
+                  title={t('workflowMonitor.zoomOut')}
                 />
                 <Button
                   type="text"
                   icon={<ResetOutlined />}
                   onClick={resetTransform}
                   style={{ color: '#fff' }}
-                  title="重置"
+                  title={t('workflowMonitor.reset')}
                 />
               </div>
             )}

@@ -140,6 +140,7 @@ namespace PurpleRice.Data
                 entity.Property(e => e.WorkflowExecutionId).HasColumnName("WorkflowExecutionId");
                 entity.Property(e => e.StepIndex).HasColumnName("StepIndex");
                 entity.Property(e => e.StepType).HasColumnName("StepType").HasMaxLength(50);
+                entity.Property(e => e.TaskName).HasColumnName("TaskName").HasMaxLength(500);
                 entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
                 entity.Property(e => e.InputJson).HasColumnName("InputJson");
                 entity.Property(e => e.OutputJson).HasColumnName("OutputJson");
@@ -228,6 +229,9 @@ namespace PurpleRice.Data
                 entity.Property(e => e.StepIndex).HasColumnName("step_index").IsRequired();
                 entity.Property(e => e.UserWaId).HasColumnName("user_wa_id").HasMaxLength(50).IsRequired();
                 entity.Property(e => e.UserMessage).HasColumnName("user_message").IsRequired();
+                entity.Property(e => e.MessageType).HasColumnName("message_type").HasMaxLength(20);
+                entity.Property(e => e.MediaId).HasColumnName("media_id").HasMaxLength(200);
+                entity.Property(e => e.MediaUrl).HasColumnName("media_url").HasMaxLength(500);
                 entity.Property(e => e.IsValid).HasColumnName("is_valid").IsRequired();
                 entity.Property(e => e.ErrorMessage).HasColumnName("error_message").HasMaxLength(500);
                 entity.Property(e => e.ValidatorType).HasColumnName("validator_type").HasMaxLength(50);

@@ -59,11 +59,12 @@ namespace PurpleRice.Services
                     };
                     var details = System.Text.Json.JsonSerializer.Deserialize<RecipientDetails>(recipientDetails, options);
                     
-                    _logger.LogInformation("反序列化後的 details: Users={UserCount}, Contacts={ContactCount}, Groups={GroupCount}, Hashtags={HashtagCount}, PhoneNumbers={PhoneCount}, UseInitiator={UseInitiator}", 
+                    _logger.LogInformation("反序列化後的 details: Users={UserCount}, Contacts={ContactCount}, Groups={GroupCount}, Hashtags={HashtagCount}, ProcessVariables={ProcessVariableCount}, PhoneNumbers={PhoneCount}, UseInitiator={UseInitiator}", 
                         details?.Users?.Count ?? 0, 
                         details?.Contacts?.Count ?? 0, 
                         details?.Groups?.Count ?? 0, 
                         details?.Hashtags?.Count ?? 0, 
+                        details?.ProcessVariables?.Count ?? 0, 
                         details?.PhoneNumbers?.Count ?? 0, 
                         details?.UseInitiator ?? false);
                     
@@ -116,7 +117,7 @@ namespace PurpleRice.Services
                         var recipient = new ResolvedRecipient
                         {
                             Id = Guid.NewGuid(),
-                            PhoneNumber = user.Phone,
+                            PhoneNumber = CleanPhoneNumber(user.Phone), // ✅ 清理電話號碼
                             RecipientType = "User",
                             RecipientId = user.Id,
                             RecipientName = user.Name,
@@ -144,7 +145,7 @@ namespace PurpleRice.Services
                 {
                     recipients.Add(new ResolvedRecipient
                     {
-                        PhoneNumber = contact.WhatsAppNumber,
+                        PhoneNumber = CleanPhoneNumber(contact.WhatsAppNumber), // ✅ 清理電話號碼
                         RecipientType = "Contact",
                         RecipientId = contact.Id,
                         RecipientName = contact.Name,
@@ -165,6 +166,14 @@ namespace PurpleRice.Services
             {
                 var hashtagRecipients = await ResolveHashtagsAsync(details.Hashtags, companyId);
                 recipients.AddRange(hashtagRecipients);
+            }
+
+            // 處理流程變量選擇
+            if (details.ProcessVariables != null && details.ProcessVariables.Any())
+            {
+                _logger.LogInformation("找到 {ProcessVariableCount} 個流程變量選擇", details.ProcessVariables.Count);
+                var processVariableRecipients = await ResolveProcessVariablesAsync(details.ProcessVariables, workflowExecutionId, companyId);
+                recipients.AddRange(processVariableRecipients);
             }
 
             // 處理流程啟動人
@@ -204,18 +213,21 @@ namespace PurpleRice.Services
                         }
                         else
                         {
+                            // ✅ 清理電話號碼：移除加號、連字符、空格等特殊字符
+                            var cleanedPhone = CleanPhoneNumber(phoneNumber);
+                            
                             var recipient = new ResolvedRecipient
                             {
                                 Id = Guid.NewGuid(),
-                                PhoneNumber = phoneNumber,
+                                PhoneNumber = cleanedPhone, // ✅ 使用清理後的電話號碼
                                 RecipientType = "PhoneNumber",
-                                RecipientId = phoneNumber,
-                                RecipientName = phoneNumber,
+                                RecipientId = cleanedPhone,
+                                RecipientName = phoneNumber, // 保留原始格式作為顯示名稱
                                 CompanyId = companyId
                             };
                             
                             recipients.Add(recipient);
-                            _logger.LogInformation("已添加電話號碼收件人: {PhoneNumber}", phoneNumber);
+                            _logger.LogInformation("已添加電話號碼收件人: {PhoneNumber} (原始: {Original})", cleanedPhone, phoneNumber);
                         }
                     }
                 }
@@ -223,6 +235,24 @@ namespace PurpleRice.Services
 
             _logger.LogInformation("=== 從詳細信息解析收件人完成，共 {Count} 個收件人 ===", recipients.Count);
             return recipients;
+        }
+
+        /// <summary>
+        /// 清理電話號碼：移除所有非數字字符
+        /// </summary>
+        /// <param name="phoneNumber">原始電話號碼</param>
+        /// <returns>只包含數字的電話號碼</returns>
+        private string CleanPhoneNumber(string phoneNumber)
+        {
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+            {
+                return phoneNumber;
+            }
+            
+            // 移除所有非數字字符（+, -, 空格, 括號等）
+            var cleaned = new string(phoneNumber.Where(char.IsDigit).ToArray());
+            _logger.LogInformation("清理電話號碼: '{Original}' → '{Cleaned}'", phoneNumber, cleaned);
+            return cleaned;
         }
 
         /// <summary>
@@ -256,9 +286,9 @@ namespace PurpleRice.Services
                     {
                         recipients.Add(new ResolvedRecipient
                         {
-                            PhoneNumber = phone,
+                            PhoneNumber = CleanPhoneNumber(phone), // ✅ 清理電話號碼
                             RecipientType = "Unknown",
-                            RecipientName = phone,
+                            RecipientName = phone, // 保留原始格式作為顯示名稱
                             CompanyId = companyId
                         });
                     }
@@ -279,9 +309,9 @@ namespace PurpleRice.Services
                 {
                     recipients.Add(new ResolvedRecipient
                     {
-                        PhoneNumber = recipientValue,
+                        PhoneNumber = CleanPhoneNumber(recipientValue), // ✅ 清理電話號碼
                         RecipientType = "Unknown",
-                        RecipientName = recipientValue,
+                        RecipientName = recipientValue, // 保留原始格式作為顯示名稱
                         CompanyId = companyId
                     });
                 }
@@ -309,7 +339,7 @@ namespace PurpleRice.Services
                     {
                         recipients.Add(new ResolvedRecipient
                         {
-                            PhoneNumber = contact.WhatsAppNumber,
+                            PhoneNumber = CleanPhoneNumber(contact.WhatsAppNumber), // ✅ 清理電話號碼
                             RecipientType = "Group",
                             RecipientId = contact.Id.ToString(),
                             RecipientName = $"{contact.Name} (群組: {group.Name})",
@@ -347,7 +377,7 @@ namespace PurpleRice.Services
                     {
                         recipients.Add(new ResolvedRecipient
                         {
-                            PhoneNumber = contact.WhatsAppNumber,
+                            PhoneNumber = CleanPhoneNumber(contact.WhatsAppNumber), // ✅ 清理電話號碼
                             RecipientType = "Hashtag",
                             RecipientId = contact.Id.ToString(),
                             RecipientName = $"{contact.Name} (標籤: #{hashtag.Name})",
@@ -358,6 +388,90 @@ namespace PurpleRice.Services
             }
 
             return recipients;
+        }
+
+        /// <summary>
+        /// 解析流程變量
+        /// </summary>
+        private async Task<List<ResolvedRecipient>> ResolveProcessVariablesAsync(List<string> processVariableIds, int workflowExecutionId, Guid companyId)
+        {
+            var recipients = new List<ResolvedRecipient>();
+
+            foreach (var processVariableId in processVariableIds)
+            {
+                _logger.LogInformation("解析流程變量: {ProcessVariableId}", processVariableId);
+
+                // 查找流程變量定義
+                var processVariableDefinition = await _db.ProcessVariableDefinitions
+                    .Where(pv => pv.Id == Guid.Parse(processVariableId))
+                    .FirstOrDefaultAsync();
+
+                if (processVariableDefinition != null)
+                {
+                    // 嘗試獲取流程變量的實際值（如果存在）
+                    var processVariableValue = await _db.ProcessVariableValues
+                        .Where(pv => pv.WorkflowExecutionId == workflowExecutionId && 
+                                    pv.VariableName == processVariableDefinition.VariableName)
+                        .FirstOrDefaultAsync();
+
+                    string phoneNumber;
+                    string displayName;
+
+                    if (processVariableValue != null)
+                    {
+                        // 使用實際值
+                        var value = processVariableValue.GetValue();
+                        phoneNumber = value?.ToString()?.Trim() ?? "";
+                        displayName = $"{processVariableDefinition.DisplayName ?? processVariableDefinition.VariableName} (流程變量: {phoneNumber})";
+                    }
+                    else
+                    {
+                        // 使用默認值
+                        phoneNumber = processVariableDefinition.DefaultValue?.Trim() ?? "";
+                        displayName = $"{processVariableDefinition.DisplayName ?? processVariableDefinition.VariableName} (流程變量定義)";
+                    }
+                    
+                    if (!string.IsNullOrEmpty(phoneNumber) && IsValidPhoneNumber(phoneNumber))
+                    {
+                        var recipient = new ResolvedRecipient
+                        {
+                            Id = Guid.NewGuid(),
+                            PhoneNumber = CleanPhoneNumber(phoneNumber), // ✅ 清理電話號碼
+                            RecipientType = "ProcessVariable",
+                            RecipientId = processVariableDefinition.Id.ToString(),
+                            RecipientName = displayName,
+                            CompanyId = companyId
+                        };
+
+                        recipients.Add(recipient);
+                        _logger.LogInformation("已添加流程變量收件人: {ProcessVariableName} -> {PhoneNumber} (原始: {Original})", 
+                            processVariableDefinition.VariableName, recipient.PhoneNumber, phoneNumber);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("流程變量 {ProcessVariableName} 的值不是有效的電話號碼: {Value}", processVariableDefinition.VariableName, phoneNumber);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("找不到流程變量定義: {ProcessVariableId}", processVariableId);
+                }
+            }
+
+            return recipients;
+        }
+
+        /// <summary>
+        /// 驗證電話號碼格式
+        /// </summary>
+        private bool IsValidPhoneNumber(string phoneNumber)
+        {
+            if (string.IsNullOrEmpty(phoneNumber))
+                return false;
+
+            // 簡單的電話號碼驗證：包含數字、+、-、()、空格
+            var phoneRegex = new System.Text.RegularExpressions.Regex(@"^[\+]?[\d\s\-\(\)]+$");
+            return phoneRegex.IsMatch(phoneNumber) && phoneNumber.Length >= 8;
         }
 
         /// <summary>
@@ -375,7 +489,7 @@ namespace PurpleRice.Services
             {
                 return new ResolvedRecipient
                 {
-                    PhoneNumber = execution.InitiatedBy,
+                    PhoneNumber = CleanPhoneNumber(execution.InitiatedBy), // ✅ 清理電話號碼
                     RecipientType = "Initiator",
                     RecipientId = execution.Id.ToString(),
                     RecipientName = $"流程啟動人 ({execution.InitiatedBy})",
@@ -396,6 +510,7 @@ namespace PurpleRice.Services
         public List<ContactInfo> Contacts { get; set; } = new List<ContactInfo>();
         public List<string> Groups { get; set; } = new List<string>();
         public List<string> Hashtags { get; set; } = new List<string>();
+        public List<string> ProcessVariables { get; set; } = new List<string>();
         public bool UseInitiator { get; set; }
         public List<string> PhoneNumbers { get; set; } = new List<string>();
     }

@@ -212,7 +212,10 @@ namespace PurpleRice.Services
                 await System.IO.File.WriteAllBytesAsync(filePath, imageData);
                 _logger.LogInformation("QR Code image saved successfully: {FilePath}", filePath);
                 
-                return filePath;
+                // ✅ 返回相對 URL 路徑而不是絕對路徑，以便前端可以直接使用
+                var relativeUrl = $"/Uploads/Whatsapp_Images/{directoryName}/{fileName}";
+                _logger.LogInformation("Returning relative URL: {RelativeUrl}", relativeUrl);
+                return relativeUrl;
             }
             catch (Exception ex)
             {

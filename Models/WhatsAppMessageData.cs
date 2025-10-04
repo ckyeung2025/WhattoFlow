@@ -50,6 +50,11 @@ namespace PurpleRice.Models
         /// 媒體 ID（如果是媒體消息）
         /// </summary>
         public string MediaId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 圖片文字說明（caption，如果圖片消息包含文字）
+        /// </summary>
+        public string Caption { get; set; } = string.Empty;
     }
 }
 
