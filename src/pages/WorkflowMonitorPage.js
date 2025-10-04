@@ -144,6 +144,10 @@ const WorkflowMonitorPage = () => {
   const [messageSendDetailModalVisible, setMessageSendDetailModalVisible] = useState(false);
   const [selectedMessageSendDetail, setSelectedMessageSendDetail] = useState(null);
   
+  // 右側詳情面板狀態
+  const [detailPanelVisible, setDetailPanelVisible] = useState(false);
+  const [selectedInstanceId, setSelectedInstanceId] = useState(null);
+  
   // 表格列寬調整相關狀態
   const [resizableColumns, setResizableColumns] = useState([]);
 
@@ -326,10 +330,17 @@ const WorkflowMonitorPage = () => {
 
       const details = await response.json();
       setSelectedInstance(details);
-      setDetailModalVisible(true);
+      setSelectedInstanceId(instance.id);
+      setDetailPanelVisible(true);
     } catch (error) {
       message.error(t('workflowMonitor.loadDetailsFailed') + ': ' + error.message);
     }
+  };
+
+  // 關閉右側詳情面板
+  const handleCloseDetailPanel = () => {
+    setDetailPanelVisible(false);
+    setSelectedInstanceId(null);
   };
 
   const getStatusTag = (status) => {
@@ -553,23 +564,18 @@ const WorkflowMonitorPage = () => {
     {
       title: t('common.action'),
       key: 'action',
-      width: 250, // 增加寬度以容納新按鈕
+      width: 250,
       render: (_, record) => (
-        <Space size="small">
-          <Tooltip title={t('workflowMonitor.viewDetails')}>
-            <Button 
-              type="text" 
-              icon={<EyeOutlined />} 
-              onClick={() => handleViewDetails(record)}
-            />
-          </Tooltip>
-          
+        <Space size="small" onClick={(e) => e.stopPropagation()}>
           {/* WhatsApp 對話按鈕 */}
           <Tooltip title={t('workflowMonitor.whatsappChat')}>
             <Button 
               type="text" 
               icon={<MessageOutlined />} 
-              onClick={() => handleOpenChat(record)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenChat(record);
+              }}
               style={{ color: '#25d366' }}
             />
           </Tooltip>
@@ -580,14 +586,20 @@ const WorkflowMonitorPage = () => {
                 <Button 
                   type="text" 
                   icon={<PauseCircleOutlined />} 
-                  onClick={() => handleInstanceAction('pause', record)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleInstanceAction('pause', record);
+                  }}
                 />
               </Tooltip>
               <Tooltip title={t('workflowMonitor.cancel')}>
                 <Button 
                   type="text" 
                   icon={<StopOutlined />} 
-                  onClick={() => handleInstanceAction('cancel', record)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleInstanceAction('cancel', record);
+                  }}
                 />
               </Tooltip>
             </>
@@ -598,7 +610,10 @@ const WorkflowMonitorPage = () => {
               <Button 
                 type="text" 
                 icon={<ReloadOutlined />} 
-                onClick={() => handleInstanceAction('retry', record)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleInstanceAction('retry', record);
+                }}
               />
             </Tooltip>
           )}
@@ -608,7 +623,10 @@ const WorkflowMonitorPage = () => {
               <Button 
                 type="text" 
                 icon={<PlayCircleOutlined />} 
-                onClick={() => handleInstanceAction('resume', record)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleInstanceAction('resume', record);
+                }}
               />
             </Tooltip>
           )}
@@ -644,67 +662,77 @@ const WorkflowMonitorPage = () => {
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
-      <Content style={{ padding: '24px' }}>
-        {/* 頁面標題 */}
-        <div style={{ marginBottom: 24 }}>
-          <Title level={2}>
-            <BarChartOutlined style={{ marginRight: 12, color: '#1890ff' }} />
-            {t('workflowMonitor.runningAppsTitle')}
-          </Title>
-          <Text type="secondary">
-            {t('workflowMonitor.runningAppsDescription')}
-          </Text>
-        </div>
+      <Content style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 32px)' }}>
+        {/* 主內容區域 - 左右分欄 */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '16px', 
+          flex: 1,
+          overflow: 'hidden'
+        }}>
+          {/* 左側列表區域 */}
+          <div style={{ 
+            flex: detailPanelVisible ? '0 0 60%' : '1',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            overflow: 'hidden', // 不允許左側整體滾動，只讓表格內部滾動
+            transition: 'flex 0.3s ease',
+            minHeight: 0 // 確保 flex 子元素可以正確收縮
+          }}>
 
-        {/* 統計卡片 */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title={t('workflowMonitor.totalInstancesCount')}
-                value={statistics.total}
-                prefix={<FileTextOutlined />}
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title={t('workflowMonitor.runningCount')}
-                value={statistics.running}
-                prefix={<SyncOutlinedIcon spin />}
-                valueStyle={{ color: '#52c41a' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title={t('workflowMonitor.completedCount')}
-                value={statistics.completed}
-                prefix={<CheckCircleOutlined />}
-                valueStyle={{ color: '#52c41a' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title={t('workflowMonitor.successRate')}
-                value={statistics.successRate}
-                suffix="%"
-                prefix={<CheckCircleOutlined />}
-                valueStyle={{ color: '#52c41a' }}
-              />
-            </Card>
-          </Col>
-        </Row>
+            {/* 統計卡片 */}
+            <div style={{ flexShrink: 0 }}>
+              <Row gutter={[12, 12]}>
+                <Col xs={24} sm={12} md={6}>
+                  <Card size="small" bodyStyle={{ padding: '12px' }}>
+                    <Statistic
+                      title={t('workflowMonitor.totalInstancesCount')}
+                      value={statistics.total}
+                      prefix={<FileTextOutlined />}
+                      valueStyle={{ color: '#1890ff', fontSize: '20px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Card size="small" bodyStyle={{ padding: '12px' }}>
+                    <Statistic
+                      title={t('workflowMonitor.runningCount')}
+                      value={statistics.running}
+                      prefix={<SyncOutlinedIcon spin />}
+                      valueStyle={{ color: '#52c41a', fontSize: '20px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Card size="small" bodyStyle={{ padding: '12px' }}>
+                    <Statistic
+                      title={t('workflowMonitor.completedCount')}
+                      value={statistics.completed}
+                      prefix={<CheckCircleOutlined />}
+                      valueStyle={{ color: '#52c41a', fontSize: '20px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Card size="small" bodyStyle={{ padding: '12px' }}>
+                    <Statistic
+                      title={t('workflowMonitor.successRate')}
+                      value={statistics.successRate}
+                      suffix="%"
+                      prefix={<CheckCircleOutlined />}
+                      valueStyle={{ color: '#52c41a', fontSize: '20px' }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
+            </div>
 
         {/* 篩選和搜索 */}
-        <Card style={{ marginBottom: 24 }}>
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={12} md={6}>
+            <div style={{ flexShrink: 0 }}>
+              <Card size="small" bodyStyle={{ padding: '12px' }}>
+                <Row gutter={[8, 8]} align="middle" wrap={false} style={{ flexWrap: 'nowrap' }}>
+            <Col flex="150px">
               <Select
                 placeholder={t('workflowMonitor.selectStatus')}
                 value={filters.status}
@@ -719,7 +747,7 @@ const WorkflowMonitorPage = () => {
               </Select>
             </Col>
             
-            <Col xs={24} sm={12} md={6}>
+            <Col flex="240px">
               <RangePicker
                 placeholder={[t('workflowMonitor.startDateRange'), t('workflowMonitor.startDateRange')]}
                 value={filters.startDateRange}
@@ -728,7 +756,7 @@ const WorkflowMonitorPage = () => {
               />
             </Col>
             
-            <Col xs={24} sm={12} md={6}>
+            <Col flex="240px">
               <RangePicker
                 placeholder={[t('workflowMonitor.endDateRange'), t('workflowMonitor.endDateRange')]}
                 value={filters.endDateRange}
@@ -737,7 +765,7 @@ const WorkflowMonitorPage = () => {
               />
             </Col>
             
-            <Col xs={24} sm={12} md={6}>
+            <Col flex="auto">
               <Search
                 placeholder={t('workflowMonitor.searchPlaceholder')}
                 value={filters.searchText}
@@ -747,7 +775,7 @@ const WorkflowMonitorPage = () => {
               />
             </Col>
             
-            <Col xs={24} sm={12} md={6}>
+            <Col flex="none">
               <Space>
                 <Button 
                   icon={<ReloadOutlined />} 
@@ -767,10 +795,27 @@ const WorkflowMonitorPage = () => {
             </Col>
           </Row>
         </Card>
+            </div>
 
-        {/* 實例列表 */}
-        <Card>
-          <div style={{ marginBottom: 16 }}>
+            {/* 實例列表 */}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <Card 
+                size="small"
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }}
+                bodyStyle={{
+                  padding: '12px',
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }}
+              >
+          <div style={{ marginBottom: 12, flexShrink: 0 }}>
             <Space>
               <Text strong>{t('workflowMonitor.instanceList')}</Text>
               <Badge count={instances.length} showZero />
@@ -783,47 +828,106 @@ const WorkflowMonitorPage = () => {
             </Space>
           </div>
           
-          <Table
-            components={components}
-            columns={mergedColumns}
-            dataSource={instances}
-            rowKey="id"
-            loading={loading}
-            pagination={{
-              ...pagination,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) => 
-                t('workflowMonitor.paginationTotal', { start: range[0], end: range[1], total })
-            }}
-            rowSelection={{
-              selectedRowKeys: selectedInstances.map(i => i.id),
-              onChange: (selectedRowKeys, selectedRows) => {
-                setSelectedInstances(selectedRows);
-              }
-            }}
-            onChange={handleTableChange}
-            scroll={{ x: 1200 }}
-          />
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <Table
+              components={components}
+              columns={mergedColumns}
+              dataSource={instances}
+              rowKey="id"
+              loading={loading}
+              pagination={{
+                ...pagination,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total, range) => 
+                  t('workflowMonitor.paginationTotal', { start: range[0], end: range[1], total }),
+                locale: {
+                  items_per_page: t('workflowMonitor.itemsPerPage'),
+                  jump_to: t('workflowMonitor.jumpTo'),
+                  jump_to_confirm: t('workflowMonitor.confirm'),
+                  page: t('workflowMonitor.page')
+                }
+              }}
+              rowSelection={{
+                selectedRowKeys: selectedInstances.map(i => i.id),
+                onChange: (selectedRowKeys, selectedRows) => {
+                  setSelectedInstances(selectedRows);
+                }
+              }}
+              onChange={handleTableChange}
+              scroll={{ 
+                x: 1200,
+                y: 'calc(100vh - 380px)' // 固定高度，不隨詳情面板變化
+              }}
+              sticky={{
+                offsetHeader: 0
+              }}
+              onRow={(record) => ({
+                onClick: () => handleViewDetails(record),
+                style: {
+                  cursor: 'pointer',
+                  backgroundColor: selectedInstanceId === record.id ? '#e6f7ff' : 'transparent'
+                }
+              })}
+            />
+          </div>
         </Card>
-
-        {/* 實例詳情彈窗 */}
-        <Modal
-          title={t('workflowMonitor.instanceDetails')}
-          visible={detailModalVisible}
-          onCancel={() => setDetailModalVisible(false)}
-          footer={null}
-          width={800}
-        >
+            </div>
+          </div>
+          
+          {/* 右側詳情面板 */}
+          {detailPanelVisible && (
+            <div style={{
+              flex: '0 0 40%',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease'
+            }}>
+              {/* 詳情面板標題欄 */}
+              <div style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid #f0f0f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#fafafa'
+              }}>
+                <Title level={4} style={{ margin: 0 }}>
+                  {t('workflowMonitor.instanceDetails')}
+                </Title>
+                <Button 
+                  type="text" 
+                  icon={<CloseOutlined />}
+                  onClick={handleCloseDetailPanel}
+                  style={{ 
+                    color: '#666',
+                    fontSize: '16px'
+                  }}
+                />
+              </div>
+              
+              {/* 詳情面板內容 */}
+              <div style={{
+                flex: 1,
+                overflow: 'auto',
+                padding: '24px'
+              }}>
           {selectedInstance && (
             <InstanceDetailModal 
               instance={selectedInstance} 
-              onClose={() => setDetailModalVisible(false)}
+                    onClose={handleCloseDetailPanel}
               onViewMessageSend={handleViewMessageSend}
               onViewMessageSendDetail={handleViewMessageSendDetail}
             />
           )}
-        </Modal>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* WhatsApp 對話框 */}
         <WhatsAppChat
@@ -1638,7 +1742,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                         <Text>{validation.userMessage}</Text>
                                         <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
                                           {dayjs(validation.createdAt).format('YYYY-MM-DD HH:mm:ss')}
-                                        </div>
+                      </div>
                                       </div>
                                     ))}
                                     
@@ -1812,7 +1916,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                 if (isMessageSendNode && outputData && outputData.messageSendId) {
                                   messageSendId = outputData.messageSendId;
                                   console.log('從 outputData 獲取 messageSendId:', messageSendId);
-                                } else {
+                              } else {
                                   // ✅ 對於所有節點，使用 stepExecutionId 查找
                                   console.log('📞 使用 stepExecutionId 查詢 messageSendId:', step.id);
                                   
@@ -1828,7 +1932,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                     console.log('✅ 從 API 獲取 messageSendId:', messageSendId);
                                   } else {
                                     console.warn('❌ 找不到消息發送記錄，stepExecutionId:', step.id);
-                                    message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                                message.warning(t('workflowMonitor.cannotFindMessageSendId'));
                                     return;
                                   }
                                 }
