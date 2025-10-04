@@ -67,7 +67,7 @@ namespace PurpleRice.Services.WebhookServices
                 var root = doc.RootElement;
 
                 // 提取 WhatsApp 訊息數據
-                messageData = ExtractWhatsAppMessageData(root);
+                messageData = await ExtractWhatsAppMessageData(root);
                 if (messageData == null)
                 {
                     _loggingService.LogInformation("無法提取有效的訊息數據或檢測到狀態更新，跳過處理");
@@ -128,7 +128,7 @@ namespace PurpleRice.Services.WebhookServices
         /// </summary>
         /// <param name="root">JSON 根元素</param>
         /// <returns>消息數據</returns>
-        private WhatsAppMessageData ExtractWhatsAppMessageData(JsonElement root)
+        private async Task<WhatsAppMessageData> ExtractWhatsAppMessageData(JsonElement root)
         {
             try
             {
@@ -141,8 +141,10 @@ namespace PurpleRice.Services.WebhookServices
                 // 檢查是否是狀態更新而不是用戶訊息
                 if (value.TryGetProperty("statuses", out var statuses))
                 {
-                    _loggingService.LogInformation("檢測到狀態更新，跳過處理");
-                    return null; // 返回 null 表示這是狀態更新，不需要處理
+                    _loggingService.LogInformation("檢測到狀態更新，處理消息狀態變更");
+                    // ✅ 處理狀態更新（sent, delivered, read, failed）
+                    await ProcessStatusUpdateAsync(statuses);
+                    return null; // 返回 null 表示這是狀態更新，已處理完成
                 }
 
                 // 提取聯絡人資訊
@@ -223,16 +225,27 @@ namespace PurpleRice.Services.WebhookServices
                     else if (messageType == "image")
                     {
                         _loggingService.LogInformation($"檢測到圖片訊息，將檢查是否需要 QR Code 掃描");
-                        // 圖片訊息不需要提取文字內容，QR Code 掃描會在後續檢查等待流程時處理
-                        messageText = ""; // 圖片訊息沒有文字內容
+                        // 預設為空，如果有 caption 則會被覆蓋
+                        messageText = "";
                         
-                        // 提取媒體 ID
+                        // 提取媒體 ID 和 caption
                         if (message.TryGetProperty("image", out var imageData))
                         {
                             if (imageData.TryGetProperty("id", out var mediaIdProperty))
                             {
                                 mediaId = mediaIdProperty.GetString();
                                 _loggingService.LogInformation($"提取到媒體 ID: {mediaId}");
+                            }
+                            
+                            // ✅ 提取圖片的文字說明（caption）
+                            if (imageData.TryGetProperty("caption", out var captionProperty))
+                            {
+                                messageText = captionProperty.GetString();
+                                _loggingService.LogInformation($"✅ 提取到圖片文字說明（caption）: '{messageText}'");
+                            }
+                            else
+                            {
+                                _loggingService.LogInformation($"圖片消息沒有文字說明（caption）");
                             }
                         }
                     }
@@ -408,20 +421,55 @@ namespace PurpleRice.Services.WebhookServices
             try
             {
                 _loggingService.LogInformation($"處理等待流程回覆，執行ID: {execution.Id}，步驟: {execution.CurrentWaitingStep}");
+                _loggingService.LogInformation($"消息類型: {messageData.MessageType}, MediaId: {messageData.MediaId}");
                 
-                // 記錄驗證
+                // 如果是圖片消息，下載並保存圖片
+                string savedImagePath = null;
+                if (messageData.MessageType == "image" && !string.IsNullOrEmpty(messageData.MediaId))
+                {
+                    try
+                    {
+                        _loggingService.LogInformation($"檢測到圖片消息，開始下載並保存圖片");
+                        var imageBytes = await DownloadWhatsAppImage(company, messageData.MediaId);
+                        
+                        if (imageBytes != null && imageBytes.Length > 0)
+                        {
+                            savedImagePath = await SaveWaitReplyImageAsync(execution.Id, imageBytes);
+                            _loggingService.LogInformation($"圖片已保存到: {savedImagePath}");
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning($"圖片下載失敗或為空");
+                        }
+                    }
+                    catch (Exception imgEx)
+                    {
+                        _loggingService.LogError($"下載或保存圖片時發生錯誤: {imgEx.Message}");
+                        // 繼續處理，不因圖片保存失敗而中斷流程
+                    }
+                }
+                
+                // 獲取步驟執行記錄中的驗證配置（先查詢以獲取正確的 StepIndex）
+                var stepExecution = await _context.WorkflowStepExecutions
+                    .FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.IsWaiting);
+                
+                // ✅ 使用 stepExecution.StepIndex 而不是 execution.CurrentWaitingStep
+                int stepIndex = stepExecution?.StepIndex ?? execution.CurrentWaitingStep ?? 0;
+                
+                _loggingService.LogInformation($"📊 保存消息驗證記錄 - StepIndex: {stepIndex}");
+
+                // 記錄驗證（包含媒體信息）
                 var validation = new MessageValidation
                 {
                     WorkflowExecutionId = execution.Id,
-                    StepIndex = execution.CurrentWaitingStep ?? 0,
+                    StepIndex = stepIndex, // ✅ 使用實際的 StepIndex
                     UserWaId = messageData.WaId,
                     UserMessage = messageData.MessageText,
+                    MessageType = messageData.MessageType, // ✅ 保存消息類型
+                    MediaId = messageData.MediaId, // ✅ 保存媒體 ID
+                    MediaUrl = savedImagePath, // ✅ 保存圖片本地路徑
                     CreatedAt = DateTime.Now
                 };
-
-                // 獲取步驟執行記錄中的驗證配置
-                var stepExecution = await _context.WorkflowStepExecutions
-                    .FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.StepIndex == execution.CurrentWaitingStep);
 
                 // 執行驗證
                 var validationResult = await _messageValidator.ValidateMessageAsync(
@@ -455,18 +503,15 @@ namespace PurpleRice.Services.WebhookServices
                 execution.LastUserActivity = DateTime.Now;
                 execution.Status = "Running";
 
-                // 更新步驟執行記錄狀態
-                if (stepExecution != null)
-                {
-                    stepExecution.IsWaiting = false;
-                    stepExecution.Status = "Completed";
-                    _loggingService.LogInformation($"更新步驟執行記錄狀態為 Completed，步驟索引: {stepExecution.StepIndex}");
-                }
-
+                // ✅ 重要：不要在這裡更新 stepExecution.IsWaiting 和 Status
+                // 讓 WorkflowEngine 的 ContinueFromWaitReply 方法來查找並更新
+                // 否則引擎無法找到當前等待的步驟（因為 IsWaiting 已經是 false）
+                
                 await _context.SaveChangesAsync();
 
                 // 繼續執行流程 - 直接調用 WorkflowEngine
-                _loggingService.LogInformation($"調用 WorkflowEngine.ContinueWorkflowFromWaitReply...");
+                // WorkflowEngine 會查找 IsWaiting == true 的步驟並標記為 Completed
+                _loggingService.LogInformation($"調用 WorkflowEngine.ContinueWorkflowFromWaitReply（IsWaiting 仍為 true，由引擎更新）...");
                 await _workflowEngine.ContinueWorkflowFromWaitReply(execution, messageData);
                 _loggingService.LogInformation($"WorkflowEngine.ContinueWorkflowFromWaitReply 調用完成");
             }
@@ -1208,10 +1253,12 @@ namespace PurpleRice.Services.WebhookServices
                 
                 // 掃描 QR Code 並保存圖片
                 string qrCodeValue = null;
+                string savedImagePath = null;
                 try
                 {
-                    var (scannedValue, savedImagePath) = await qrCodeService.ScanQRCodeAndSaveImageWithResultAsync(imageBytes, execution.Id);
+                    var (scannedValue, imagePath) = await qrCodeService.ScanQRCodeAndSaveImageWithResultAsync(imageBytes, execution.Id);
                     qrCodeValue = scannedValue;
+                    savedImagePath = imagePath;
                     _loggingService.LogInformation($"圖片已保存: {savedImagePath}");
                 }
                 catch (Exception scanEx)
@@ -1220,6 +1267,43 @@ namespace PurpleRice.Services.WebhookServices
                     // 即使保存失敗，也要嘗試掃描
                     qrCodeValue = await qrCodeService.ScanQRCodeAsync(imageBytes);
                 }
+                
+                // ✅ 先查詢當前等待的步驟執行記錄以獲取正確的 StepIndex
+                var stepExecution = await _context.WorkflowStepExecutions
+                    .FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.IsWaiting);
+                
+                int stepIndex = stepExecution?.StepIndex ?? execution.CurrentWaitingStep ?? 0;
+                _loggingService.LogInformation($"📊 保存 QR Code 驗證記錄 - StepIndex: {stepIndex}");
+                
+                // ✅ 記錄到 message_validations 表（無論是否掃描成功）
+                var validation = new MessageValidation
+                {
+                    WorkflowExecutionId = execution.Id,
+                    StepIndex = stepIndex, // ✅ 使用實際的 StepIndex
+                    UserWaId = messageData.WaId,
+                    UserMessage = qrCodeValue ?? "", // QR Code 掃描結果
+                    MessageType = messageData.MessageType, // "image"
+                    MediaId = messageData.MediaId,
+                    MediaUrl = savedImagePath, // 圖片保存路徑
+                    IsValid = !string.IsNullOrEmpty(qrCodeValue), // 掃描成功則有效
+                    ErrorMessage = string.IsNullOrEmpty(qrCodeValue) ? "無法識別 QR Code" : null,
+                    ValidatorType = "qrcode",
+                    ProcessedData = !string.IsNullOrEmpty(qrCodeValue) 
+                        ? System.Text.Json.JsonSerializer.Serialize(new { 
+                            qrCodeValue, 
+                            savedImagePath, 
+                            caption = messageData.MessageText // ✅ 保存圖片的文字說明
+                        }) 
+                        : System.Text.Json.JsonSerializer.Serialize(new { 
+                            savedImagePath, 
+                            caption = messageData.MessageText // ✅ 即使掃描失敗也保存 caption
+                        }),
+                    CreatedAt = DateTime.Now
+                };
+                
+                _context.MessageValidations.Add(validation);
+                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"✅ QR Code 回覆已記錄到 message_validations，IsValid: {validation.IsValid}");
                 
                 if (string.IsNullOrEmpty(qrCodeValue))
                 {
@@ -1232,6 +1316,28 @@ namespace PurpleRice.Services.WebhookServices
                 }
                 
                 _loggingService.LogInformation($"成功掃描 QR Code: {qrCodeValue}");
+                
+                // ✅ 更新步驟執行記錄狀態為 Completed（stepExecution 已在上面查詢過）
+                if (stepExecution != null)
+                {
+                    stepExecution.IsWaiting = false;
+                    stepExecution.Status = "Completed";
+                    stepExecution.EndedAt = DateTime.Now;
+                    _loggingService.LogInformation($"✅ 更新 waitForQRCode 步驟狀態為 Completed，步驟索引: {stepExecution.StepIndex}");
+                }
+                else
+                {
+                    _loggingService.LogWarning($"⚠️ 找不到 waitForQRCode 的等待步驟執行記錄");
+                }
+                
+                // 更新流程執行狀態
+                execution.IsWaiting = false;
+                execution.WaitingSince = null;
+                execution.LastUserActivity = DateTime.Now;
+                execution.Status = "Running";
+                
+                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"✅ 流程執行狀態已更新為 Running");
                 
                 // 處理 QR Code 輸入
                 var result = await workflowExecutionService.ProcessQRCodeInputAsync(execution.Id, nodeInfo.NodeId, imageBytes, qrCodeValue);
@@ -1373,6 +1479,230 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogError($"下載 WhatsApp 圖片時發生錯誤: {ex.Message}");
                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// 保存 waitReply 節點的圖片到 Uploads\Whatsapp_Images\{executionId} 目錄
+        /// </summary>
+        /// <param name="executionId">工作流程執行 ID</param>
+        /// <param name="imageData">圖片數據</param>
+        /// <returns>保存的圖片路徑</returns>
+        private async Task<string> SaveWaitReplyImageAsync(int executionId, byte[] imageData)
+        {
+            _loggingService.LogInformation($"開始保存 waitReply 圖片，執行ID: {executionId}");
+            
+            try
+            {
+                // 創建目錄結構：Uploads\Whatsapp_Images\{executionId}
+                if (executionId <= 0)
+                {
+                    throw new ArgumentException("ExecutionId must be greater than 0", nameof(executionId));
+                }
+                
+                string directoryName = executionId.ToString();
+                var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Images", directoryName);
+                _loggingService.LogInformation($"目標目錄: {uploadsPath}");
+                
+                if (!Directory.Exists(uploadsPath))
+                {
+                    Directory.CreateDirectory(uploadsPath);
+                    _loggingService.LogInformation($"已創建目錄: {uploadsPath}");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"目錄已存在: {uploadsPath}");
+                }
+
+                // 生成文件名：使用時間戳和 GUID 確保唯一性
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var guid = Guid.NewGuid().ToString("N").Substring(0, 8); // 取前8位
+                var fileName = $"reply_image_{timestamp}_{guid}.jpg";
+                
+                var filePath = Path.Combine(uploadsPath, fileName);
+                _loggingService.LogInformation($"目標文件路徑: {filePath}");
+
+                // 保存圖片文件
+                await File.WriteAllBytesAsync(filePath, imageData);
+                _loggingService.LogInformation($"圖片保存成功: {filePath}, 大小: {imageData.Length} bytes");
+                
+                // ✅ 返回相對 URL 路徑而不是絕對路徑，以便前端可以直接使用
+                var relativeUrl = $"/Uploads/Whatsapp_Images/{directoryName}/{fileName}";
+                _loggingService.LogInformation($"返回相對 URL: {relativeUrl}");
+                return relativeUrl;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"保存 waitReply 圖片時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 處理 WhatsApp 消息狀態更新
+        /// </summary>
+        private async Task ProcessStatusUpdateAsync(JsonElement statuses)
+        {
+            try
+            {
+                _loggingService.LogInformation("=== 開始處理消息狀態更新 ===");
+                
+                foreach (var statusElement in statuses.EnumerateArray())
+                {
+                    // 提取狀態信息
+                    var messageId = statusElement.GetProperty("id").GetString();
+                    var status = statusElement.GetProperty("status").GetString();
+                    var timestamp = statusElement.GetProperty("timestamp").GetInt64();
+                    var recipientId = statusElement.GetProperty("recipient_id").GetString();
+                    
+                    _loggingService.LogInformation($"消息ID: {messageId}, 狀態: {status}, 收件人: {recipientId}");
+                    
+                    // 查找對應的收件人記錄
+                    var recipient = await _context.WorkflowMessageRecipients
+                        .FirstOrDefaultAsync(r => r.WhatsAppMessageId == messageId && r.PhoneNumber == recipientId);
+                    
+                    if (recipient == null)
+                    {
+                        _loggingService.LogWarning($"找不到對應的收件人記錄，WhatsApp MessageId: {messageId}");
+                        continue;
+                    }
+                    
+                    _loggingService.LogInformation($"找到收件人記錄，ID: {recipient.Id}, 當前狀態: {recipient.Status}");
+                    
+                    // 更新狀態
+                    var statusChanged = false;
+                    var statusTime = DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime;
+                    
+                    switch (status.ToLower())
+                    {
+                        case "sent":
+                            if (recipient.Status == "Pending")
+                            {
+                                recipient.Status = "Sent";
+                                recipient.SentAt = statusTime;
+                                statusChanged = true;
+                                _loggingService.LogInformation($"✅ 狀態更新: Pending → Sent");
+                            }
+                            break;
+                            
+                        case "delivered":
+                            if (recipient.Status == "Pending" || recipient.Status == "Sent")
+                            {
+                                recipient.Status = "Delivered";
+                                recipient.DeliveredAt = statusTime;
+                                if (recipient.SentAt == null)
+                                {
+                                    recipient.SentAt = statusTime;
+                                }
+                                statusChanged = true;
+                                _loggingService.LogInformation($"✅ 狀態更新: {recipient.Status} → Delivered");
+                            }
+                            break;
+                            
+                        case "read":
+                            recipient.Status = "Read";
+                            recipient.ReadAt = statusTime;
+                            if (recipient.DeliveredAt == null)
+                            {
+                                recipient.DeliveredAt = statusTime;
+                            }
+                            if (recipient.SentAt == null)
+                            {
+                                recipient.SentAt = statusTime;
+                            }
+                            statusChanged = true;
+                            _loggingService.LogInformation($"✅ 狀態更新: {recipient.Status} → Read");
+                            break;
+                            
+                        case "failed":
+                            recipient.Status = "Failed";
+                            recipient.FailedAt = statusTime;
+                            
+                            // 提取錯誤信息
+                            if (statusElement.TryGetProperty("errors", out var errors) && errors.GetArrayLength() > 0)
+                            {
+                                var error = errors[0];
+                                if (error.TryGetProperty("code", out var errorCode))
+                                {
+                                    recipient.ErrorCode = errorCode.GetInt32().ToString();
+                                }
+                                if (error.TryGetProperty("title", out var errorTitle))
+                                {
+                                    recipient.ErrorMessage = errorTitle.GetString();
+                                }
+                            }
+                            statusChanged = true;
+                            _loggingService.LogInformation($"❌ 狀態更新: {recipient.Status} → Failed");
+                            break;
+                    }
+                    
+                    if (statusChanged)
+                    {
+                        recipient.UpdatedAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+                        _loggingService.LogInformation($"✅ 收件人狀態已更新並保存到數據庫");
+                        
+                        // 更新 WorkflowMessageSend 的統計數據
+                        await UpdateMessageSendStatisticsAsync(recipient.MessageSendId);
+                    }
+                }
+                
+                _loggingService.LogInformation("=== 消息狀態更新處理完成 ===");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"處理消息狀態更新時發生錯誤: {ex.Message}");
+                _loggingService.LogError($"錯誤堆疊: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// 更新 WorkflowMessageSend 的統計數據
+        /// </summary>
+        private async Task UpdateMessageSendStatisticsAsync(Guid messageSendId)
+        {
+            try
+            {
+                var messageSend = await _context.WorkflowMessageSends
+                    .Include(ms => ms.Recipients)
+                    .FirstOrDefaultAsync(ms => ms.Id == messageSendId);
+                
+                if (messageSend == null)
+                {
+                    _loggingService.LogWarning($"找不到消息發送記錄: {messageSendId}");
+                    return;
+                }
+                
+                // 重新計算統計數據
+                var recipients = messageSend.Recipients.ToList();
+                messageSend.TotalRecipients = recipients.Count;
+                messageSend.SuccessCount = recipients.Count(r => r.Status == "Sent" || r.Status == "Delivered" || r.Status == "Read");
+                messageSend.FailedCount = recipients.Count(r => r.Status == "Failed");
+                
+                // 更新整體狀態
+                if (messageSend.FailedCount > 0 && messageSend.SuccessCount > 0)
+                {
+                    messageSend.Status = "PartiallyFailed";
+                }
+                else if (messageSend.FailedCount == messageSend.TotalRecipients)
+                {
+                    messageSend.Status = "Failed";
+                }
+                else if (messageSend.SuccessCount == messageSend.TotalRecipients)
+                {
+                    messageSend.Status = "Completed";
+                    messageSend.CompletedAt = DateTime.UtcNow;
+                }
+                
+                messageSend.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"✅ 消息發送統計已更新: Total={messageSend.TotalRecipients}, Success={messageSend.SuccessCount}, Failed={messageSend.FailedCount}, Status={messageSend.Status}");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"更新消息發送統計時發生錯誤: {ex.Message}");
             }
         }
     }

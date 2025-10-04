@@ -621,11 +621,16 @@ namespace PurpleRice.Controllers
                     stepExecutions = instance.StepExecutions?.Select(s => new
                     {
                         s.Id,
-                        stepName = s.StepType,
+                        stepIndex = s.StepIndex, // 添加步驟索引，用於匹配 message_validations
+                        stepName = s.TaskName ?? s.StepType, // 優先使用 TaskName，否則使用 StepType
+                        stepType = s.StepType, // 添加節點類型字段
+                        taskName = s.TaskName, // 添加任務名稱字段
                         s.Status,
                         s.StartedAt,
+                        endedAt = s.EndedAt,
                         completedAt = s.EndedAt,
                         errorMessage = s.OutputJson,
+                        outputJson = s.OutputJson,
                         output = s.OutputJson
                     }).ToList()
                 };
@@ -899,6 +904,117 @@ namespace PurpleRice.Controllers
                 _loggingService.LogError($"獲取流程啟動人時發生錯誤: {ex.Message}");
                 _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
                 return StatusCode(500, new { error = "獲取流程啟動人失敗", details = ex.Message });
+            }
+        }
+
+        // GET: api/workflowexecutions/{id}/message-validations
+        [HttpGet("{id}/message-validations")]
+        public async Task<IActionResult> GetMessageValidations(int id)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始獲取實例 {id} 的消息驗證記錄");
+
+                var validations = await _db.MessageValidations
+                    .Where(mv => mv.WorkflowExecutionId == id)
+                    .OrderBy(mv => mv.CreatedAt)
+                    .Select(mv => new
+                    {
+                        id = mv.Id,
+                        stepIndex = mv.StepIndex,
+                        userWaId = mv.UserWaId,
+                        userMessage = mv.UserMessage,
+                        messageType = mv.MessageType,
+                        mediaId = mv.MediaId,
+                        mediaUrl = mv.MediaUrl,
+                        isValid = mv.IsValid,
+                        errorMessage = mv.ErrorMessage,
+                        validatorType = mv.ValidatorType,
+                        processedData = mv.ProcessedData,
+                        createdAt = mv.CreatedAt
+                    })
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"成功獲取 {validations.Count} 條消息驗證記錄");
+
+                return Ok(new { data = validations });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取消息驗證記錄時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
+                return StatusCode(500, new { error = "獲取消息驗證記錄失敗", details = ex.Message });
+            }
+        }
+
+        // GET: api/workflowexecutions/step/{stepExecutionId}/message-send-id
+        [HttpGet("step/{stepExecutionId}/message-send-id")]
+        public async Task<IActionResult> GetMessageSendIdByStepExecutionId(int stepExecutionId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 開始查找消息發送記錄 ===");
+                _loggingService.LogInformation($"步驟執行ID: {stepExecutionId}");
+
+                // 先檢查步驟執行記錄是否存在
+                var stepExecution = await _db.WorkflowStepExecutions
+                    .FirstOrDefaultAsync(se => se.Id == stepExecutionId);
+                
+                if (stepExecution == null)
+                {
+                    _loggingService.LogWarning($"找不到步驟執行記錄，ID: {stepExecutionId}");
+                    return NotFound(new { error = "找不到步驟執行記錄", stepExecutionId });
+                }
+                
+                _loggingService.LogInformation($"步驟執行記錄: ExecutionId={stepExecution.WorkflowExecutionId}, StepType={stepExecution.StepType}, TaskName={stepExecution.TaskName}");
+
+                // 查詢該步驟的消息發送記錄
+                _loggingService.LogInformation($"開始查詢 workflow_message_sends 表...");
+                
+                var allMessageSends = await _db.WorkflowMessageSends
+                    .Where(ms => ms.WorkflowExecutionId == stepExecution.WorkflowExecutionId)
+                    .ToListAsync();
+                    
+                _loggingService.LogInformation($"該 execution 總共有 {allMessageSends.Count} 條消息發送記錄");
+                
+                var messageSend = allMessageSends
+                    .Where(ms => ms.WorkflowStepExecutionId == stepExecutionId)
+                    .OrderByDescending(ms => ms.CreatedAt)
+                    .FirstOrDefault();
+
+                if (messageSend == null)
+                {
+                    _loggingService.LogWarning($"找不到 WorkflowStepExecutionId={stepExecutionId} 的消息發送記錄");
+                    _loggingService.LogInformation($"該 execution 的所有消息發送記錄：");
+                    foreach (var ms in allMessageSends)
+                    {
+                        _loggingService.LogInformation($"  - Id={ms.Id}, StepExecutionId={ms.WorkflowStepExecutionId}, NodeType={ms.NodeType}, CreatedAt={ms.CreatedAt}");
+                    }
+                    return NotFound(new { error = "找不到消息發送記錄", stepExecutionId, hint = "該步驟可能沒有發送消息" });
+                }
+
+                _loggingService.LogInformation($"✅ 成功找到消息發送ID: {messageSend.Id}");
+
+                return Ok(new { messageSendId = messageSend.Id });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 根據步驟執行ID查找消息發送記錄時發生錯誤: {ex.Message}");
+                _loggingService.LogError($"錯誤類型: {ex.GetType().FullName}");
+                _loggingService.LogError($"錯誤堆疊: {ex.StackTrace}");
+                
+                // 記錄內部異常
+                var innerEx = ex.InnerException;
+                int level = 1;
+                while (innerEx != null)
+                {
+                    _loggingService.LogError($"InnerException (Level {level}): {innerEx.Message}");
+                    _loggingService.LogError($"InnerException Type (Level {level}): {innerEx.GetType().FullName}");
+                    innerEx = innerEx.InnerException;
+                    level++;
+                }
+                
+                return StatusCode(500, new { error = "查找消息發送記錄失敗", details = ex.Message, type = ex.GetType().Name });
             }
         }
     }

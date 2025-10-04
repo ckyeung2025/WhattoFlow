@@ -49,6 +49,13 @@ namespace PurpleRice.Services
         {
             try
             {
+                // 如果 workflowDefinitionId 為 0 或無效，返回空列表
+                if (workflowDefinitionId <= 0)
+                {
+                    _loggingService.LogInformation($"無效的 workflowDefinitionId: {workflowDefinitionId}，返回空列表");
+                    return new List<ProcessVariableDefinition>();
+                }
+
                 return await _context.ProcessVariableDefinitions
                     .Where(p => p.WorkflowDefinitionId == workflowDefinitionId)
                     .OrderBy(p => p.VariableName)
@@ -59,6 +66,14 @@ namespace PurpleRice.Services
                 _loggingService.LogError($"獲取流程變量定義失敗: {ex.Message}", ex);
                 throw;
             }
+        }
+
+
+        private bool IsPhoneNumber(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return false;
+            var phoneRegex = new System.Text.RegularExpressions.Regex(@"^[\+]?[\d\s\-\(\)]+$");
+            return phoneRegex.IsMatch(value) && value.Length >= 8;
         }
 
         public async Task<ProcessVariableDefinition?> GetVariableDefinitionAsync(Guid id)

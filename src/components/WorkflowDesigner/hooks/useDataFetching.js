@@ -9,6 +9,9 @@ export const useDataFetching = () => {
   const [searchParams] = useSearchParams();
   const workflowId = searchParams.get('id');
   
+  console.log('🔍 useDataFetching - searchParams:', searchParams.toString());
+  console.log('🔍 useDataFetching - workflowId:', workflowId, 'type:', typeof workflowId);
+  
   // 工作流程基本信息
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

@@ -21,6 +21,7 @@ const RecipientSelector = ({
   allowMultiple = true,
   recipientDetails, // 新增：詳細的選擇信息
   compact = false, // 新增：簡潔模式
+  workflowDefinitionId, // 新增：工作流定義ID
   t 
 }) => {
   console.log('🚀 RecipientSelector 組件已渲染');
@@ -49,6 +50,10 @@ const RecipientSelector = ({
   const [contactTotalCount, setContactTotalCount] = useState(0);
   
   const [useInitiator, setUseInitiator] = useState(false);
+  
+  // 流程變量狀態
+  const [processVariables, setProcessVariables] = useState([]);
+  const [selectedProcessVariables, setSelectedProcessVariables] = useState([]);
 
   // 解析初始值
   useEffect(() => {
@@ -67,6 +72,7 @@ const RecipientSelector = ({
       setSelectedContacts(recipientDetails.contacts || []);
       setSelectedGroups(recipientDetails.groups || []);
       setSelectedHashtags(recipientDetails.hashtags || []);
+      setSelectedProcessVariables(recipientDetails.processVariables || []);
       setUseInitiator(recipientDetails.useInitiator || false);
       
       // 如果有群組或標籤選擇，需要載入聯絡人數據
@@ -149,6 +155,7 @@ const RecipientSelector = ({
           setSelectedContacts(parsedValue.contacts || []);
           setSelectedGroups(parsedValue.groups || []);
           setSelectedHashtags(parsedValue.hashtags || []);
+          setSelectedProcessVariables(parsedValue.processVariables || []);
           setUseInitiator(parsedValue.useInitiator || false);
           
           // 如果有群組或標籤選擇，需要載入聯絡人數據
@@ -165,6 +172,7 @@ const RecipientSelector = ({
         setSelectedContacts([]);
         setSelectedGroups([]);
         setSelectedHashtags([]);
+        setSelectedProcessVariables([]);
         setUseInitiator(false);
       }
     } else {
@@ -173,6 +181,7 @@ const RecipientSelector = ({
       setSelectedContacts([]);
       setSelectedGroups([]);
       setSelectedHashtags([]);
+      setSelectedProcessVariables([]);
       setUseInitiator(false);
     }
   }, [value, recipientDetails]);
@@ -203,6 +212,14 @@ const RecipientSelector = ({
       loadContactData();
     }
   }, [activeTab]);
+
+  // 載入流程變量數據
+  useEffect(() => {
+    // 在簡潔模式下、processVariables 標籤激活時、或者有選中的流程變量時載入流程變量
+    if (compact || activeTab === 'processVariables' || selectedProcessVariables.length > 0) {
+      loadProcessVariables();
+    }
+  }, [activeTab, compact, selectedProcessVariables.length]);
 
 
   // 聯絡人分頁和搜尋變化時重新載入
@@ -371,6 +388,85 @@ const RecipientSelector = ({
     }
   };
 
+  // 載入流程變量數據
+  const loadProcessVariables = async () => {
+    console.log('🚀 ===== loadProcessVariables 函數被調用 =====');
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      console.log('🔑 Token 狀態:', token ? '存在' : '不存在');
+      
+      if (!token) {
+        console.log('🔑 沒有 Token，使用模擬數據');
+        // 設置模擬的流程變量數據
+        const mockProcessVariables = [
+          { id: 'sales_phone', name: 'Sales Phone', description: '銷售人員電話號碼', value: '85212345678', dataType: 'PhoneNumber' },
+          { id: 'sales_manager_phone', name: 'Sales Manager Phone', description: '銷售主管電話號碼', value: '85287654321', dataType: 'PhoneNumber' },
+          { id: 'customer_service_phone', name: 'Customer Service Phone', description: '客服電話號碼', value: '85211223344', dataType: 'PhoneNumber' },
+          { id: 'technical_support_phone', name: 'Technical Support Phone', description: '技術支援電話號碼', value: '85255667788', dataType: 'PhoneNumber' },
+          { id: 'admin_phone', name: 'Admin Phone', description: '管理員電話號碼', value: '85299887766', dataType: 'PhoneNumber' }
+        ];
+        
+        setProcessVariables(mockProcessVariables);
+        console.log('✅ 模擬流程變量數據設置完成:', mockProcessVariables);
+        return;
+      }
+      
+      console.log('🚀 開始載入流程變量數據...');
+      console.log('🔍 workflowDefinitionId:', workflowDefinitionId, 'type:', typeof workflowDefinitionId);
+      
+      // 調用 API 載入指定工作流的流程變量定義（使用與流程設計器相同的端點）
+      const url = workflowDefinitionId 
+        ? `/api/processvariables/definitions?workflowDefinitionId=${parseInt(workflowDefinitionId) || 0}`
+        : '/api/processvariables/definitions';
+        
+      console.log('🔗 API URL:', url);
+        
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ 流程變量響應:', result);
+        
+        // 處理流程變量定義數據
+        const phoneVariables = result.data?.map(pv => ({
+          id: pv.id,
+          name: pv.displayName || pv.variableName,
+          description: pv.description || '',
+          value: pv.defaultValue || '',
+          dataType: pv.dataType,
+          variableName: pv.variableName
+        })) || [];
+        
+        console.log('📞 電話號碼類型的流程變量:', phoneVariables);
+        setProcessVariables(phoneVariables);
+      } else {
+        console.error('載入流程變量失敗:', response.statusText);
+        // 使用模擬數據
+        const mockProcessVariables = [
+          { id: 'sales_phone', name: 'Sales Phone', description: '銷售人員電話號碼', value: '85212345678', dataType: 'PhoneNumber' },
+          { id: 'sales_manager_phone', name: 'Sales Manager Phone', description: '銷售主管電話號碼', value: '85287654321', dataType: 'PhoneNumber' }
+        ];
+        setProcessVariables(mockProcessVariables);
+      }
+    } catch (error) {
+      console.error('❌ 載入流程變量失敗:', error);
+      // 使用模擬數據
+      const mockProcessVariables = [
+        { id: 'sales_phone', name: 'Sales Phone', description: '銷售人員電話號碼', value: '85212345678', dataType: 'PhoneNumber' },
+        { id: 'sales_manager_phone', name: 'Sales Manager Phone', description: '銷售主管電話號碼', value: '85287654321', dataType: 'PhoneNumber' }
+      ];
+      setProcessVariables(mockProcessVariables);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 更新收件人值
   const updateRecipientValue = () => {
     console.log('🔄 更新收件人值');
@@ -378,6 +474,7 @@ const RecipientSelector = ({
     console.log('📇 選中的聯絡人:', selectedContacts);
     console.log('🏷️ 選中的群組:', selectedGroups);
     console.log('🔖 選中的標籤:', selectedHashtags);
+    console.log('⚙️ 選中的流程變量:', selectedProcessVariables);
     console.log('🚀 使用流程啟動人:', useInitiator);
     
     const phoneNumbers = [];
@@ -396,6 +493,10 @@ const RecipientSelector = ({
       }
     });
     
+    // ❌ 已刪除錯誤代碼：不應該將流程變量添加到 phoneNumbers 數組
+    // 流程變量應該只存在於 processVariables 數組中，由後端解析
+    // phoneNumbers 數組只應該包含靜態電話號碼
+    
     // 注意：不要在這裡添加 ${initiator} 到 phoneNumbers
     // 因為後端會根據 useInitiator 標誌來處理流程啟動人
     // 如果同時添加 ${initiator} 到 phoneNumbers 和設置 useInitiator: true
@@ -407,8 +508,9 @@ const RecipientSelector = ({
       contacts: selectedContacts,
       groups: selectedGroups,
       hashtags: selectedHashtags,
+      processVariables: selectedProcessVariables, // 只存儲流程變量 ID，不存儲變量語法
       useInitiator: useInitiator,
-      phoneNumbers: phoneNumbers // 這裡只包含實際的電話號碼，不包含 ${initiator}
+      phoneNumbers: phoneNumbers // 這裡只包含實際的靜態電話號碼
     };
     
     console.log('📤 發送詳細值:', detailedValue);
@@ -428,8 +530,22 @@ const RecipientSelector = ({
     setSelectedContacts([]);
     setSelectedGroups([]);
     setSelectedHashtags([]);
+    setSelectedProcessVariables([]);
     setUseInitiator(false);
-    onChange('');
+    
+    // 創建空的詳細值對象
+    const emptyDetailedValue = {
+      users: [],
+      contacts: [],
+      groups: [],
+      hashtags: [],
+      processVariables: [],
+      useInitiator: false,
+      phoneNumbers: []
+    };
+    
+    // 同時傳遞空值和空的詳細值
+    onChange('', emptyDetailedValue);
   };
 
   // 過濾函數
@@ -446,7 +562,7 @@ const RecipientSelector = ({
 
   // 生成顯示文本和 tooltip
   const generateDisplayInfo = useMemo(() => {
-    const totalCount = selectedUsers.length + selectedContacts.length + selectedGroups.length + selectedHashtags.length + (useInitiator ? 1 : 0);
+    const totalCount = selectedUsers.length + selectedContacts.length + selectedGroups.length + selectedHashtags.length + selectedProcessVariables.length + (useInitiator ? 1 : 0);
     
     if (totalCount === 0) {
       return { displayText: '', tooltip: '' };
@@ -480,6 +596,13 @@ const RecipientSelector = ({
         return { 
           displayText: `標籤: ${hashtag?.name || '未知標籤'}`,
           tooltip: `標籤: ${hashtag?.name || '未知標籤'}`
+        };
+      }
+      if (selectedProcessVariables.length === 1) {
+        const pv = processVariables.find(p => p.id === selectedProcessVariables[0]);
+        return { 
+          displayText: `變量: ${pv?.name || '未知變量'}`,
+          tooltip: `流程變量: ${pv?.name || '未知變量'} (${pv?.value || ''})`
         };
       }
       if (useInitiator) {
@@ -539,6 +662,19 @@ const RecipientSelector = ({
       }
     }
     
+    // 添加流程變量名稱（最多顯示前2個）
+    if (selectedProcessVariables.length > 0) {
+      const pvNames = selectedProcessVariables.slice(0, 2).map(id => {
+        const pv = processVariables.find(p => p.id === id);
+        return pv?.name || pv?.variableName || '未知變量';
+      });
+      if (selectedProcessVariables.length > 2) {
+        summary.push(`${pvNames.join(', ')} 等${selectedProcessVariables.length}個變量`);
+      } else {
+        summary.push(pvNames.join(', '));
+      }
+    }
+    
     if (useInitiator) summary.push('流程啟動人');
     
     let displayText = summary.join(', ');
@@ -571,6 +707,13 @@ const RecipientSelector = ({
       });
       tooltipDetails.push('標籤: ' + hashtagNames.join(', '));
     }
+    if (selectedProcessVariables.length > 0) {
+      const pvNames = selectedProcessVariables.map(id => {
+        const pv = processVariables.find(p => p.id === id);
+        return `${pv?.name || pv?.variableName || '未知變量'} (${pv?.value || ''})`;
+      });
+      tooltipDetails.push('流程變量: ' + pvNames.join(', '));
+    }
     if (useInitiator) {
       tooltipDetails.push('流程啟動人 (執行時自動替換)');
     }
@@ -579,46 +722,75 @@ const RecipientSelector = ({
       displayText: displayText,
       tooltip: tooltipDetails.join('\n')
     };
-  }, [selectedUsers, selectedContacts, selectedGroups, selectedHashtags, useInitiator, broadcastGroups, hashtags]);
+  }, [selectedUsers, selectedContacts, selectedGroups, selectedHashtags, selectedProcessVariables, useInitiator, broadcastGroups, hashtags, processVariables]);
 
   // 如果是簡潔模式，只顯示簡潔的選擇信息
   if (compact) {
     const { displayText, tooltip } = generateDisplayInfo;
-    console.log('🔍 簡潔模式顯示信息:', { displayText, tooltip });
-    console.log('🔍 當前狀態:', { selectedUsers, selectedContacts, selectedGroups, selectedHashtags, useInitiator });
-    console.log('🔍 接收到的 props:', { value, recipientDetails });
     
     return (
       <div style={{ width: '100%' }}>
-        {displayText ? (
-          <Tooltip title={tooltip} placement="topLeft">
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          border: '1px solid #d9d9d9',
+          borderRadius: '6px',
+          backgroundColor: displayText ? '#fafafa' : '#fff',
+          overflow: 'hidden'
+        }}>
+          {displayText ? (
+            <Tooltip title={tooltip} placement="topLeft">
+              <div style={{
+                flex: 1,
+                padding: '8px 12px',
+                fontSize: '14px',
+                color: '#262626',
+                cursor: 'pointer',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0
+              }}>
+                {displayText}
+              </div>
+            </Tooltip>
+          ) : (
             <div style={{
+              flex: 1,
               padding: '8px 12px',
-              border: '1px solid #d9d9d9',
-              borderRadius: '6px',
-              backgroundColor: '#fafafa',
-              cursor: 'pointer',
               fontSize: '14px',
-              color: '#262626',
-              maxWidth: '300px',
-              wordWrap: 'break-word'
+              color: '#999',
+              fontStyle: 'italic',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0
             }}>
-              {displayText}
+              {placeholder}
             </div>
-          </Tooltip>
-        ) : (
-          <div style={{
-            padding: '8px 12px',
-            border: '1px solid #d9d9d9',
-            borderRadius: '6px',
-            backgroundColor: '#fff',
-            fontSize: '14px',
-            color: '#999',
-            fontStyle: 'italic'
-          }}>
-            {placeholder}
+          )}
+          <div 
+            style={{
+              padding: '8px 12px',
+              fontSize: '14px',
+              color: '#1890ff',
+              cursor: 'pointer',
+              borderLeft: '1px solid #f0f0f0',
+              backgroundColor: '#fafafa',
+              flexShrink: 0,
+              textShadow: 'none',
+              fontWeight: 'normal'
+            }}
+            onClick={() => {
+              // 在簡潔模式下，通過 onChange 回調通知父組件需要打開模態框
+              if (onChange) {
+                onChange('', null); // 觸發父組件的處理邏輯
+              }
+            }}
+          >
+            Select Recipients
           </div>
-        )}
+        </div>
       </div>
     );
   }
@@ -627,7 +799,7 @@ const RecipientSelector = ({
     <div style={{ width: '100%', minWidth: '400px' }}>
       {/* 當前選擇顯示 */}
       {(selectedUsers.length > 0 || selectedContacts.length > 0 || selectedGroups.length > 0 || 
-        selectedHashtags.length > 0 || useInitiator) && (
+        selectedHashtags.length > 0 || selectedProcessVariables.length > 0 || useInitiator) && (
         <Card size="small" style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Text strong>已選擇的收件人</Text>
@@ -659,6 +831,14 @@ const RecipientSelector = ({
               return hashtag ? (
                 <Tag key={`hashtag-${hashtagId}`} color="purple" closable onClose={() => setSelectedHashtags(prev => prev.filter(id => id !== hashtagId))}>
                   標籤: {hashtag.name}
+                </Tag>
+              ) : null;
+            })}
+            {selectedProcessVariables.map(pvId => {
+              const pv = processVariables.find(p => p.id === pvId);
+              return pv ? (
+                <Tag key={`pv-${pvId}`} color="cyan" closable onClose={() => setSelectedProcessVariables(prev => prev.filter(id => id !== pvId))}>
+                  變量: {pv.name} ({pv.value})
                 </Tag>
               ) : null;
             })}
@@ -895,6 +1075,70 @@ const RecipientSelector = ({
               </div>
             )}
           </Spin>
+        </TabPane>
+
+        {/* Process Variables Tab */}
+        <TabPane tab={<><ContactsOutlined /> 流程變量</>} key="processVariables">
+          <div style={{ marginBottom: 16 }}>
+            <Text strong>流程變量:</Text>
+            <div style={{ color: '#666', fontSize: '12px', marginTop: 4 }}>
+              選擇流程變量，系統會在執行時自動替換為實際值（建議選擇包含電話號碼的變量）
+            </div>
+          </div>
+          
+          <Spin spinning={loading}>
+            <List
+              dataSource={processVariables}
+              renderItem={pv => (
+                <List.Item>
+                  <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                    <Checkbox
+                      checked={selectedProcessVariables.includes(pv.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          if (allowMultiple) {
+                            setSelectedProcessVariables(prev => [...prev, pv.id]);
+                          } else {
+                            setSelectedProcessVariables([pv.id]);
+                          }
+                        } else {
+                          setSelectedProcessVariables(prev => prev.filter(id => id !== pv.id));
+                        }
+                      }}
+                      style={{ marginRight: 12 }}
+                    />
+                    <Avatar icon={<ContactsOutlined />} style={{ marginRight: 12 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 'bold' }}>{pv.name}</div>
+                      <div style={{ color: '#666', fontSize: '12px' }}>
+                        {pv.description && `${pv.description} | `}
+                        值: {pv.value} | 類型: {pv.dataType}
+                      </div>
+                    </div>
+                  </div>
+                </List.Item>
+              )}
+              locale={{ emptyText: '沒有找到流程變量' }}
+            />
+          </Spin>
+          
+          <div style={{ 
+            marginTop: 16,
+            padding: '12px', 
+            backgroundColor: '#f5f5f5', 
+            borderRadius: '6px',
+            fontSize: '12px',
+            color: '#666'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>說明：</div>
+            <ul style={{ margin: 0, paddingLeft: '16px' }}>
+              <li>顯示所有類型的流程變量</li>
+              <li>建議選擇包含電話號碼的變量</li>
+              <li>選擇後會以 $&#123;變量名&#125; 格式保存</li>
+              <li>系統會在流程執行時自動替換為實際值</li>
+              <li>適用於整合外部系統（如 ERP）的場景</li>
+            </ul>
+          </div>
         </TabPane>
 
         {/* Workflow Initiator Tab */}

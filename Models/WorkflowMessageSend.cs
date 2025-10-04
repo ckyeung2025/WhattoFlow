@@ -27,40 +27,37 @@ namespace PurpleRice.Models
         /// <summary>
         /// 節點ID
         /// </summary>
-        [Required]
         [MaxLength(50)]
-        public string NodeId { get; set; }
+        public string? NodeId { get; set; }
 
         /// <summary>
         /// 節點類型
         /// </summary>
-        [Required]
         [MaxLength(50)]
-        public string NodeType { get; set; }
+        public string? NodeType { get; set; }
 
         /// <summary>
         /// 消息類型
         /// </summary>
-        [Required]
         [MaxLength(20)]
-        public string MessageType { get; set; } = "text";
+        public string? MessageType { get; set; } = "text";
 
         /// <summary>
         /// 模板ID（如果是模板消息）
         /// </summary>
         [MaxLength(50)]
-        public string TemplateId { get; set; }
+        public string? TemplateId { get; set; }
 
         /// <summary>
         /// 模板名稱
         /// </summary>
         [MaxLength(100)]
-        public string TemplateName { get; set; }
+        public string? TemplateName { get; set; }
 
         /// <summary>
         /// 消息內容
         /// </summary>
-        public string MessageContent { get; set; }
+        public string? MessageContent { get; set; }
 
         /// <summary>
         /// 總收件人數
@@ -80,9 +77,8 @@ namespace PurpleRice.Models
         /// <summary>
         /// 發送狀態
         /// </summary>
-        [Required]
         [MaxLength(20)]
-        public string Status { get; set; } = "Pending";
+        public string? Status { get; set; } = "Pending";
 
         /// <summary>
         /// 開始時間
@@ -97,7 +93,7 @@ namespace PurpleRice.Models
         /// <summary>
         /// 錯誤信息
         /// </summary>
-        public string ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
 
         /// <summary>
         /// 公司ID
@@ -108,9 +104,8 @@ namespace PurpleRice.Models
         /// <summary>
         /// 創建者
         /// </summary>
-        [Required]
         [MaxLength(50)]
-        public string CreatedBy { get; set; }
+        public string? CreatedBy { get; set; }
 
         /// <summary>
         /// 創建時間
@@ -155,9 +150,8 @@ namespace PurpleRice.Models
         /// <summary>
         /// 收件人類型
         /// </summary>
-        [Required]
         [MaxLength(20)]
-        public string RecipientType { get; set; }
+        public string? RecipientType { get; set; }
 
         /// <summary>
         /// 收件人ID（可選）
@@ -168,39 +162,37 @@ namespace PurpleRice.Models
         /// 收件人名稱
         /// </summary>
         [MaxLength(200)]
-        public string RecipientName { get; set; }
+        public string? RecipientName { get; set; }
 
         /// <summary>
         /// 電話號碼
         /// </summary>
-        [Required]
         [MaxLength(20)]
-        public string PhoneNumber { get; set; }
+        public string? PhoneNumber { get; set; }
 
         /// <summary>
         /// WhatsApp消息ID
         /// </summary>
         [MaxLength(100)]
-        public string WhatsAppMessageId { get; set; }
+        public string? WhatsAppMessageId { get; set; }
 
         /// <summary>
         /// 發送狀態
         /// </summary>
-        [Required]
         [MaxLength(20)]
-        public string Status { get; set; } = "Pending";
+        public string? Status { get; set; } = "Pending";
 
         /// <summary>
         /// 錯誤代碼
         /// </summary>
         [MaxLength(50)]
-        public string ErrorCode { get; set; }
+        public string? ErrorCode { get; set; }
 
         /// <summary>
         /// 錯誤信息
         /// </summary>
         [MaxLength(500)]
-        public string ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
 
         /// <summary>
         /// 發送時間

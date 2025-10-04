@@ -392,6 +392,7 @@ const WhatsAppWorkflowDesignerRefactored = () => {
           processVariables={processVariables}
           nodes={nodes}
           edges={edges}
+          workflowId={workflowId}
           t={t}
           isTemplateModalVisible={isTemplateModalVisible}
           setIsTemplateModalVisible={setIsTemplateModalVisible}

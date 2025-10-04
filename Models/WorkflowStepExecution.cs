@@ -9,6 +9,7 @@ namespace PurpleRice.Models
         public WorkflowExecution? WorkflowExecution { get; set; }
         public int StepIndex { get; set; }
         public string? StepType { get; set; }
+        public string? TaskName { get; set; } // 用戶自定義的任務名稱
         public string? Status { get; set; }
         public string? InputJson { get; set; }
         public string? OutputJson { get; set; }

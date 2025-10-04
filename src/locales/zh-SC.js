@@ -2264,47 +2264,6 @@ const zhSC = {
     // QR Code 节点翻译键
     qrCodeErrorMessage: 'QR Code 错误消息'
   },
-  
-  // Workflow Monitor
-  workflowMonitor: {
-    
-    // 媒体文件相关
-    receivedMedia: '已接收的媒体',
-    loadingMediaFiles: '载入媒体文件中...',
-    noMediaFiles: '暂无媒体文件',
-    mediaFilesApiNotExists: '媒体文件 API 不存在',
-    mediaFilesApiNotImplemented: '媒体文件 API 尚未实现',
-    loadMediaFilesFailed: '载入媒体文件失败',
-    loadedMediaFilesData: '已载入媒体文件数据',
-    rootFolder: '根目录',
-    files: '个文件',
-    totalFiles: '总文件数',
-    image: '图片',
-    video: '视频',
-    audio: '音频',
-    document: '文档',
-    file: '文件',
-    view: '查看',
-    download: '下载',
-    unnamed: '未命名',
-    setAt: '设置时间',
-    approvalAt: '审批时间',
-    
-    // 高级功能翻译键
-    copyNodes: '复制节点',
-    pasteNodes: '粘贴节点',
-    align: '对齐',
-    alignNodes: '对齐节点',
-    alignLeft: '左对齐',
-    alignCenter: '居中对齐',
-    alignRight: '右对齐',
-    alignTop: '顶部对齐',
-    alignMiddle: '垂直居中',
-    alignBottom: '底部对齐',
-    
-    // 节点类型标签
-    sendEFormNode: '发送 e-Form'
-  },
 
   // Workflow Monitor
   workflowMonitor: {
@@ -2347,6 +2306,9 @@ const zhSC = {
     statusPaused: '已暂停',
     statusCancelled: '已取消',
     statusPending: '等待中',
+    statusSent: '已发送',
+    statusDelivered: '已送达',
+    statusRead: '已读',
     statusPartiallyFailed: '部分失败',
     
     // Actions
@@ -2484,6 +2446,43 @@ const zhSC = {
     notifyOnError: '错误时通知',
     notifyOnCompletion: '完成时通知',
     notifyOnDelay: '延迟时通知',
+    
+    // 媒体文件相关
+    receivedMedia: '已接收的媒体',
+    loadingMediaFiles: '载入媒体文件中...',
+    noMediaFiles: '暂无媒体文件',
+    mediaFilesApiNotExists: '媒体文件 API 不存在',
+    mediaFilesApiNotImplemented: '媒体文件 API 尚未实现',
+    loadMediaFilesFailed: '载入媒体文件失败',
+    loadedMediaFilesData: '已载入媒体文件数据',
+    rootFolder: '根目录',
+    files: '个文件',
+    totalFiles: '总文件数',
+    image: '图片',
+    video: '视频',
+    audio: '音频',
+    document: '文档',
+    file: '文件',
+    view: '查看',
+    download: '下载',
+    
+    // Lightbox 工具栏
+    rotateLeft: '逆时针旋转',
+    rotateRight: '顺时针旋转',
+    flipHorizontal: '水平翻转',
+    flipVertical: '垂直翻转',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    reset: '重置',
+    
+    // 用户回复（消息验证）
+    userReplies: '用户回复',
+    validationPassed: '有效',
+    validationFailed: '无效',
+    others: '其他',
+    caption: '文字：',
+    reply: '则回复',
+    replies: '则回复',
     
     // 消息发送详情
     viewMessageSendStatus: '查看发送状态',

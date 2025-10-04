@@ -20,6 +20,7 @@ const NodePropertyDrawer = ({
   processVariables,
   nodes,
   edges,
+  workflowId,
   t,
   // 模態框狀態
   isTemplateModalVisible,
@@ -316,8 +317,15 @@ const NodePropertyDrawer = ({
     setEditingOperationData(newFields);
   };
 
+  // 調試 workflowId 傳遞
+  useEffect(() => {
+    console.log('🔍 NodePropertyDrawer - workflowId 傳遞檢查:', workflowId, 'type:', typeof workflowId);
+  }, [workflowId]);
+
   // 當 selectedNode 改變時，更新 Form 的字段值
   useEffect(() => {
+    console.log('🔍 NodePropertyDrawer - workflowId:', workflowId, 'type:', typeof workflowId);
+    console.log('🔍 NodePropertyDrawer - selectedNode:', selectedNode?.id);
     if (selectedNode && form) {
       // 重置表單並設置新的初始值
       form.resetFields();
@@ -643,11 +651,19 @@ const NodePropertyDrawer = ({
                     recipientDetails={selectedNode.data.recipientDetails}
                     placeholder={t('workflowDesigner.selectRecipients')}
                     compact={true}
+                    workflowDefinitionId={workflowId}
+                    t={t}
                     onChange={(value, detailedValue) => {
-                      handleNodeDataChange({ 
-                        to: value,
-                        recipientDetails: detailedValue 
-                      });
+                      // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                      if (value === '' && detailedValue === null) {
+                        setIsRecipientModalVisible(true);
+                      } else {
+                        // 處理正常選擇或清除操作
+                        handleNodeDataChange({ 
+                          to: value,
+                          recipientDetails: detailedValue 
+                        });
+                      }
                     }}
                   />
                   <div style={{ 
@@ -671,14 +687,6 @@ const NodePropertyDrawer = ({
                         {t('workflowDesigner.clear')}
                       </Button>
                     )}
-                    <Button 
-                      type="text" 
-                      size="small" 
-                      onClick={() => setIsRecipientModalVisible(true)}
-                      style={{ padding: '0 4px', fontSize: '12px' }}
-                    >
-                      {t('workflowDesigner.selectRecipients')}
-                    </Button>
                   </div>
                 </div>
               </Form.Item>
@@ -726,11 +734,19 @@ const NodePropertyDrawer = ({
                     recipientDetails={selectedNode.data.recipientDetails}
                     placeholder={t('workflowDesigner.selectRecipients')}
                     compact={true}
+                    workflowDefinitionId={workflowId}
+                    t={t}
                     onChange={(value, detailedValue) => {
-                      handleNodeDataChange({ 
-                        to: value,
-                        recipientDetails: detailedValue 
-                      });
+                      // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                      if (value === '' && detailedValue === null) {
+                        setIsRecipientModalVisible(true);
+                      } else {
+                        // 處理正常選擇或清除操作
+                        handleNodeDataChange({ 
+                          to: value,
+                          recipientDetails: detailedValue 
+                        });
+                      }
                     }}
                   />
                   <div style={{ 
@@ -754,14 +770,6 @@ const NodePropertyDrawer = ({
                         {t('workflowDesigner.clear')}
                       </Button>
                     )}
-                    <Button 
-                      type="text" 
-                      size="small" 
-                      onClick={() => setIsRecipientModalVisible(true)}
-                      style={{ padding: '0 4px', fontSize: '12px' }}
-                    >
-                      {t('workflowDesigner.selectRecipients')}
-                    </Button>
                   </div>
                 </div>
               </Form.Item>
@@ -864,11 +872,18 @@ const NodePropertyDrawer = ({
                       recipientDetails={selectedNode.data.recipientDetails}
                       placeholder={t('workflowDesigner.selectRecipients')}
                       compact={true}
+                      workflowDefinitionId={workflowId}
                       onChange={(value, detailedValue) => {
-                        handleNodeDataChange({ 
-                          specifiedUsers: value,
-                          recipientDetails: detailedValue 
-                        });
+                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                        if (value === '' && detailedValue === null) {
+                          setIsRecipientModalVisible(true);
+                        } else {
+                          // 處理正常選擇或清除操作
+                          handleNodeDataChange({ 
+                            specifiedUsers: value,
+                            recipientDetails: detailedValue 
+                          });
+                        }
                       }}
                     />
                     <div style={{ 
@@ -892,14 +907,6 @@ const NodePropertyDrawer = ({
                           {t('workflowDesigner.clear')}
                         </Button>
                       )}
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        onClick={() => setIsRecipientModalVisible(true)}
-                        style={{ padding: '0 4px', fontSize: '12px' }}
-                      >
-                        {t('workflowDesigner.selectRecipients')}
-                      </Button>
                     </div>
                   </div>
                 </Form.Item>
@@ -1004,11 +1011,18 @@ const NodePropertyDrawer = ({
                       recipientDetails={selectedNode.data.recipientDetails}
                       placeholder={t('workflowDesigner.selectRecipients')}
                       compact={true}
+                      workflowDefinitionId={workflowId}
                       onChange={(value, detailedValue) => {
-                        handleNodeDataChange({ 
-                          specifiedUsers: value,
-                          recipientDetails: detailedValue 
-                        });
+                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                        if (value === '' && detailedValue === null) {
+                          setIsRecipientModalVisible(true);
+                        } else {
+                          // 處理正常選擇或清除操作
+                          handleNodeDataChange({ 
+                            specifiedUsers: value,
+                            recipientDetails: detailedValue 
+                          });
+                        }
                       }}
                     />
                     <div style={{ 
@@ -1032,14 +1046,6 @@ const NodePropertyDrawer = ({
                           {t('workflowDesigner.clear')}
                         </Button>
                       )}
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        onClick={() => setIsRecipientModalVisible(true)}
-                        style={{ padding: '0 4px', fontSize: '12px' }}
-                      >
-                        {t('workflowDesigner.selectRecipients')}
-                      </Button>
                     </div>
                   </div>
                 </Form.Item>
@@ -1509,11 +1515,19 @@ const NodePropertyDrawer = ({
                     recipientDetails={selectedNode.data.recipientDetails}
                     placeholder={t('workflowDesigner.selectRecipients')}
                     compact={true}
+                    workflowDefinitionId={workflowId}
+                    t={t}
                     onChange={(value, detailedValue) => {
-                      handleNodeDataChange({ 
-                        to: value,
-                        recipientDetails: detailedValue 
-                      });
+                      // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                      if (value === '' && detailedValue === null) {
+                        setIsRecipientModalVisible(true);
+                      } else {
+                        // 處理正常選擇或清除操作
+                        handleNodeDataChange({ 
+                          to: value,
+                          recipientDetails: detailedValue 
+                        });
+                      }
                     }}
                   />
                   <div style={{ 
@@ -1537,14 +1551,6 @@ const NodePropertyDrawer = ({
                         {t('workflowDesigner.clear')}
                       </Button>
                     )}
-                    <Button 
-                      type="text" 
-                      size="small" 
-                      onClick={() => setIsRecipientModalVisible(true)}
-                      style={{ padding: '0 4px', fontSize: '12px' }}
-                    >
-                      {t('workflowDesigner.selectRecipients')}
-                    </Button>
                   </div>
                 </div>
               </Form.Item>
@@ -1843,6 +1849,7 @@ const NodePropertyDrawer = ({
         recipientDetails={selectedNode.data.recipientDetails}
         allowMultiple={true}
         placeholder={t('workflowDesigner.selectRecipients')}
+        workflowDefinitionId={workflowId}
       />
 
       {/* DataSet 查詢條件組模態框 */}
