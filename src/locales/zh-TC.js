@@ -165,6 +165,10 @@ const zhTC = {
     refresh: '刷新',
     pendingTasksList: '待處理事項列表',
     pageRange: '第 {start}-{end} 項，共 {total} 項',
+    itemsPerPage: '條/頁',
+    jumpTo: '跳至',
+    page: '頁',
+    confirm: '確定',
     loading: '載入中...',
     error: '錯誤',
     success: '成功'
@@ -1992,6 +1996,50 @@ const zhTC = {
       form: '1. 顯示表單給用戶填寫\n2. 支援多種表單類型\n3. 表單提交後會觸發後續流程',
       webhook: '1. 調用外部 API\n2. 可以發送數據到其他系統\n3. 根據 API 回應決定流程方向'
     },
+    
+    // sendEForm 節點相關翻譯
+    sendEForm: {
+      notificationMessage: '通知訊息內容',
+      notificationMessagePlaceholder: '請輸入通知訊息內容，可使用 {formName} 和 {formUrl} 變量',
+      notificationMessageHelp: '支援的變量：{formName} - 表單名稱，{formUrl} - 表單連結',
+      defaultNotificationMessage: '您的{formName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}',
+      customMessage: '自定義訊息',
+      useDefaultMessage: '使用預設訊息',
+      messageTemplate: '訊息模板',
+      messageTemplatePlaceholder: '請輸入訊息模板',
+      variablePlaceholder: '變量佔位符',
+      formNameVariable: '表單名稱變量',
+      formUrlVariable: '表單連結變量',
+      
+      // 表單填充模式
+      fillMode: '表單填充模式',
+      integrateWaitReply: '整合等待用戶回覆節點 (AI 填表)',
+      integrateDataSetQuery: '整合 DataSet Query 節點 (數據填表)',
+      manualFill: '手動填表 (獨立運行)',
+      
+      // 模式說明
+      modeDescription: '模式說明',
+      integrateWaitReplyDesc: '承接前一個 waitReply 節點的自然語言回覆，使用 AI 智能填充表單',
+      integrateDataSetQueryDesc: '使用指定 DataSet Query 節點的查詢結果數據，直接映射到表單欄位',
+      manualFillDesc: '發送空白表單給用戶自行填寫，無需依賴其他節點',
+      
+      // DataSet Query 選擇
+      selectDataSetQueryNode: '選擇 DataSet Query 節點',
+      selectDataSetQueryNodePlaceholder: '選擇要整合的 DataSet Query 節點',
+      noDataSetQueryNodes: '暫無可用的 DataSet Query 節點',
+      dataSetQueryNodeHelp: '只有操作類型為 SELECT 的 DataSet Query 節點才會顯示在此列表中',
+      
+      // 依賴檢查
+      dependencyCheck: '依賴檢查',
+      waitReplyDependency: '需要前一個節點為 waitReply',
+      dataSetQueryDependency: '需要指定的 DataSet Query 節點已完成執行',
+      noDependency: '無需依賴其他節點',
+      
+      // 警告信息
+      warningNoWaitReply: '警告：前一個節點不是 waitReply，無法使用 AI 填充功能',
+      warningNoDataSetQuery: '警告：找不到指定的 DataSet Query 節點或查詢結果',
+      warningInvalidMode: '警告：選擇的填充模式與流程結構不匹配'
+    },
     // 流程啟動人選項
     initiatorOptions: {
       initiator: '流程啟動人',
@@ -2285,6 +2333,8 @@ const zhTC = {
     
     // 消息發送詳情
     viewMessageSendStatus: '查看發送狀態',
+    viewFormInstance: '查看表單實例',
+    viewDataSet: '查看數據集',
     messageSendDetails: '消息發送詳情',
     messageSendStatusDetails: '消息發送詳細狀態',
     sendOverview: '發送概覽',
@@ -2380,6 +2430,49 @@ const zhTC = {
     approved: '已批准',
     rejected: '已拒絕',
     
+    // eForm 狀態
+    eformStatusPending: '待審批',
+    eformStatusApproved: '已批准',
+    eformStatusRejected: '已拒絕',
+    
+    // 調試和日誌相關
+    requestUrl: '請求 URL',
+    requestParams: '請求參數',
+    currentPaginationParams: '當前分頁參數',
+    dataFromMonitorApi: '來自監控 API 的數據',
+    instanceDataStructure: '實例數據結構',
+    paginationInfo: '分頁信息',
+    firstInstanceCompleteData: '第一個實例的完整數據',
+    inputJsonField: 'InputJson 字段',
+    inputJsonType: 'InputJson 類型',
+    parsedInputJson: '解析後的 InputJson',
+    parseInputJsonFailed: '解析 InputJson 失敗',
+    noInputJsonField: '沒有 InputJson 字段',
+    availableFields: '可用字段',
+    sendMessage: '發送消息',
+    tableChange: '表格變更',
+    sorterDetails: '排序詳情',
+    paginationChange: '分頁變更',
+    sortField: '排序字段',
+    sortOrder: '排序順序',
+    paginationOnlyDefaultSort: '僅分頁變更，使用默認排序',
+    apiResponseStatus: 'API 響應狀態',
+    apiResponseStatusText: 'API 響應狀態文本',
+    apiEndpointNotExists: 'API 端點不存在',
+    eformApiNotImplemented: 'eForm API 尚未實現',
+    loadedEformData: '已載入 eForm 數據',
+    loadEformInstancesFailed: '載入 eForm 實例失敗',
+    eformApiNotExists: 'eForm API 不存在',
+    backendServerError: '後端服務器錯誤',
+    processVariablesApiNotExists: '流程變量 API 不存在',
+    processVariablesApiNotImplemented: '流程變量 API 尚未實現',
+    loadedProcessVariablesData: '已載入流程變量數據',
+    loadProcessVariablesFailed: '載入流程變量失敗',
+    mediaFilesApiNotExists: '媒體文件 API 不存在',
+    mediaFilesApiNotImplemented: '媒體文件 API 尚未實現',
+    loadedMediaFilesData: '已載入媒體文件數據',
+    loadMediaFilesFailed: '載入媒體文件失敗',
+    
     // 布爾值
     yes: '是',
     no: '否',
@@ -2406,6 +2499,10 @@ const zhTC = {
     approvalBy: '審批人',
     approvalTime: '審批時間',
     approvalNote: '審批備註',
+    unnamedForm: '未命名表單',
+    unnamed: '未命名',
+    loadingEformInstances: '載入表單實例中...',
+    setAt: '設置時間',
     
     // 其他
     noStepExecutionRecords: '暫無步驟執行記錄',
@@ -2414,6 +2511,11 @@ const zhTC = {
     noProcessVariables: '暫無流程變量',
     noEformInstances: '暫無表單實例',
     noFormInstances: '暫無表單實例',
+    inProgress: '進行中',
+    loadingRecipientDetails: '載入收件人詳情中...',
+    noRecipientRecords: '暫無收件人記錄',
+    loadingMessageValidations: '載入消息驗證記錄中...',
+    loadingEforms: '載入表單實例中...',
     selectedInstances: '已選擇 {count} 個實例',
     paginationTotal: '第 {start}-{end} 項，共 {total} 項',
     pageRange: '第 {start}-{end} 項，共 {total} 項',
@@ -2422,12 +2524,35 @@ const zhTC = {
     page: '頁',
     confirm: '確定',
     whatsappChat: 'WhatsApp 對話',
+    openWhatsAppChat: '打開 WhatsApp 對話',
     openSettingsModal: '打開設置彈窗',
     cannotFindMessageSendId: '無法找到消息發送記錄ID，請檢查後端數據',
     time: '時間',
     userResponse: '用戶回應',
     error: '錯誤',
     step: '步驟',
+    
+    // 步驟調試相關
+    stepData: '步驟 {stepNumber} 數據',
+    stepAvailableFields: '步驟 {stepNumber} 可用字段',
+    stepOutputJson: '步驟 {stepNumber} OutputJson',
+    stepOutputJsonCapital: '步驟 {stepNumber} OutputJson (大寫)',
+    stepOutput: '步驟 {stepNumber} 輸出',
+    stepErrorMessage: '步驟 {stepNumber} 錯誤信息',
+    stepParsedData: '步驟 {stepNumber} 解析數據',
+    stepDetectedSuccess: '步驟 {stepNumber} 檢測到成功',
+    stepDetectedError: '步驟 {stepNumber} 檢測到錯誤',
+    stepDetectedSuccessMessage: '步驟 {stepNumber} 檢測到成功消息',
+    stepDetectedNormalMessage: '步驟 {stepNumber} 檢測到普通消息',
+    stepDetectedSwitchOutput: '步驟 {stepNumber} 檢測到 Switch 輸出',
+    stepNoClearFields: '步驟 {stepNumber} 沒有明確字段',
+    stepParseJsonFailed: '步驟 {stepNumber} 解析 JSON 失敗',
+    stepNoJsonContentField: '步驟 {stepNumber} 沒有 JSON 內容字段',
+    stepFinalResult: '步驟 {stepNumber} 最終結果',
+    stepIsSendWhatsAppNode: '步驟 {stepNumber} 是 sendWhatsApp 節點',
+    stepErrorMessageSameAsOutputJson: '步驟 {stepNumber} errorMessage 與 outputJson 相同',
+    stepErrorMessageContainsSuccess: '步驟 {stepNumber} errorMessage 包含成功信息',
+    stepErrorMessageParseFailed: '步驟 {stepNumber} errorMessage 解析失敗',
     
     qrCodeVariable: 'QR Code 變量',
     qrCodeMessagePlaceholder: '請輸入提示訊息，例如：請上傳包含 QR Code 的圖片',

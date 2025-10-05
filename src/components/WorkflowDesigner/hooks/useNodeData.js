@@ -42,7 +42,18 @@ export const useNodeData = (isReady, t) => {
         case 'callApi':
           return { taskName: 'Trigger External API', url: '' };
         case 'sendEForm':
-          return { taskName: 'Send eForm', formName: '', formId: '', formDescription: '', to: '', approvalResultVariable: '' };
+          return { 
+            taskName: 'Send eForm', 
+            formName: '', 
+            formId: '', 
+            formDescription: '', 
+            to: '', 
+            approvalResultVariable: '', 
+            messageTemplate: '', 
+            useCustomMessage: false,
+            sendEFormMode: 'integrateWaitReply',
+            integratedDataSetQueryNodeId: ''
+          };
         default:
           return { taskName: type };
       }
@@ -105,7 +116,18 @@ export const useNodeData = (isReady, t) => {
       case 'callApi':
         return { taskName: t('workflowDesigner.defaultCallApiNode'), url: '' };
       case 'sendEForm':
-        return { taskName: t('workflowDesigner.defaultSendEFormNode'), formName: '', formId: '', formDescription: '', to: '', approvalResultVariable: '' };
+        return { 
+          taskName: t('workflowDesigner.defaultSendEFormNode'), 
+          formName: '', 
+          formId: '', 
+          formDescription: '', 
+          to: '', 
+          approvalResultVariable: '',
+          messageTemplate: t('workflowDesigner.sendEForm.defaultNotificationMessage'),
+          useCustomMessage: false,
+          sendEFormMode: 'integrateWaitReply',
+          integratedDataSetQueryNodeId: ''
+        };
       default:
         return { taskName: type };
     }

@@ -606,6 +606,16 @@ namespace PurpleRice.Services
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
 
+            // 創建包含節點 ID 的完整輸入數據
+            var inputData = new
+            {
+                Id = nodeId,  // 添加節點 ID
+                NodeId = nodeId,  // 添加節點 ID 的別名
+                Type = nodeData?.Type,
+                TaskName = nodeData?.TaskName,
+                Data = nodeData
+            };
+            
             var stepExec = new WorkflowStepExecution
             {
                 WorkflowExecutionId = execution.Id,
@@ -613,7 +623,7 @@ namespace PurpleRice.Services
                 StepType = nodeData?.Type,
                 TaskName = nodeData?.TaskName, // 保存用戶自定義的任務名稱
                 Status = "Running",
-                InputJson = JsonSerializer.Serialize(nodeData),
+                InputJson = JsonSerializer.Serialize(inputData),
                 StartedAt = DateTime.Now
             };
 
@@ -1090,6 +1100,356 @@ namespace PurpleRice.Services
             return false; // 返回 false 表示暫停執行
         }
 
+        // 使用 DataSet Query 結果填充表單
+        private async Task<string> FillFormWithDataSetQueryResults(string originalHtml, string queryResult)
+        {
+            try
+            {
+                WriteLog($"🔍 [DEBUG] 開始填充表單，查詢結果: {queryResult}");
+                
+                // 解析查詢結果 JSON - 修正：應該是數組格式
+                var resultDataArray = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(queryResult);
+                if (resultDataArray == null || resultDataArray.Count == 0)
+                {
+                    WriteLog($"⚠️ [WARNING] 無法解析 DataSet Query 結果或結果為空: {queryResult}");
+                    return originalHtml;
+                }
+
+                // 使用第一條記錄來填充表單
+                var resultData = resultDataArray.First();
+                WriteLog($"🔍 [DEBUG] 使用第一條記錄填充表單，包含 {resultData.Count} 個欄位");
+                
+                string filledHtml = originalHtml;
+                int fieldsProcessed = 0;
+                
+                // 動態映射策略：
+                // 1. 首先嘗試精確匹配（欄位名稱完全相同）
+                // 2. 然後嘗試忽略大小寫匹配
+                // 3. 最後嘗試模糊匹配（包含關係）
+                WriteLog($"🔍 [DEBUG] 開始動態欄位映射，DataSet 欄位數量: {resultData.Count}");
+                
+                // 從 HTML 中提取所有可用的表單欄位名稱
+                var availableFormFields = ExtractFormFieldNames(originalHtml);
+                WriteLog($"🔍 [DEBUG] 表單中可用的欄位: {string.Join(", ", availableFormFields)}");
+                
+                // 遍歷查詢結果，動態匹配表單欄位
+                foreach (var kvp in resultData)
+                {
+                    var sourceFieldName = kvp.Key;
+                    var fieldValue = kvp.Value?.ToString() ?? "";
+                    
+                    // 跳過系統內部欄位
+                    if (sourceFieldName.StartsWith("__"))
+                    {
+                        WriteLog($"🔍 [DEBUG] 跳過系統欄位: {sourceFieldName}");
+                        continue;
+                    }
+                    
+                    // 動態查找對應的表單欄位名稱
+                    var targetFieldName = FindMatchingFormField(sourceFieldName, availableFormFields);
+                    
+                    if (!string.IsNullOrEmpty(targetFieldName))
+                    {
+                        WriteLog($"🔍 [DEBUG] 動態映射成功: {sourceFieldName} -> {targetFieldName} = {fieldValue}");
+                        
+                        // 處理日期格式轉換
+                        var processedValue = fieldValue;
+                        if (IsDateField(targetFieldName) && !string.IsNullOrEmpty(fieldValue))
+                        {
+                            // 檢查 HTML 中是否有 datetime-local 類型的欄位
+                            if (originalHtml.Contains($"type=\"datetime-local\"") && originalHtml.Contains($"name=\"{targetFieldName}\""))
+                            {
+                                processedValue = ConvertToFormDateTime(fieldValue);
+                                WriteLog($"🔍 [DEBUG] 日期時間格式轉換: {fieldValue} -> {processedValue}");
+                            }
+                            else
+                            {
+                                processedValue = ConvertToFormDate(fieldValue);
+                                WriteLog($"🔍 [DEBUG] 日期格式轉換: {fieldValue} -> {processedValue}");
+                            }
+                        }
+                        
+                        // 處理不同類型的輸入欄位
+                        filledHtml = FillFormField(filledHtml, targetFieldName, processedValue);
+                        fieldsProcessed++;
+                    }
+                    else
+                    {
+                        WriteLog($"🔍 [DEBUG] 跳過無法映射的欄位: {sourceFieldName} = {fieldValue}");
+                    }
+                }
+
+                WriteLog($"🔍 [DEBUG] DataSet Query 結果填充完成，處理了 {fieldsProcessed} 個欄位");
+                WriteLog($"🔍 [DEBUG] 填充前 HTML 長度: {originalHtml?.Length ?? 0}");
+                WriteLog($"🔍 [DEBUG] 填充後 HTML 長度: {filledHtml?.Length ?? 0}");
+                WriteLog($"🔍 [DEBUG] HTML 是否發生變化: {filledHtml != originalHtml}");
+                
+                return filledHtml;
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"❌ [ERROR] 填充表單時發生錯誤: {ex.Message}");
+                WriteLog($"❌ [ERROR] 錯誤堆疊: {ex.StackTrace}");
+                return originalHtml;
+            }
+        }
+
+        // 從 HTML 中提取所有表單欄位名稱
+        private List<string> ExtractFormFieldNames(string html)
+        {
+            var fieldNames = new List<string>();
+            
+            try
+            {
+                // 使用正則表達式提取所有 name 屬性
+                var pattern = @"name\s*=\s*[""']([^""']+)[""']";
+                var matches = System.Text.RegularExpressions.Regex.Matches(html, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                foreach (System.Text.RegularExpressions.Match match in matches)
+                {
+                    if (match.Groups.Count > 1)
+                    {
+                        var fieldName = match.Groups[1].Value.Trim();
+                        if (!string.IsNullOrEmpty(fieldName) && !fieldNames.Contains(fieldName))
+                        {
+                            fieldNames.Add(fieldName);
+                        }
+                    }
+                }
+                
+                WriteLog($"🔍 [DEBUG] 從 HTML 中提取到 {fieldNames.Count} 個欄位名稱");
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"⚠️ [WARNING] 提取表單欄位名稱時發生錯誤: {ex.Message}");
+            }
+            
+            return fieldNames;
+        }
+        
+        // 簡化的欄位匹配 - 直接精確匹配
+        private string FindMatchingFormField(string sourceFieldName, List<string> availableFormFields)
+        {
+            if (string.IsNullOrEmpty(sourceFieldName) || availableFormFields == null || availableFormFields.Count == 0)
+                return null;
+                
+            // 直接精確匹配（忽略大小寫）
+            var exactMatch = availableFormFields.FirstOrDefault(f => 
+                string.Equals(f, sourceFieldName, StringComparison.OrdinalIgnoreCase));
+                
+            if (exactMatch != null)
+            {
+                WriteLog($"🔍 [DEBUG] 精確匹配成功: {sourceFieldName} -> {exactMatch}");
+                return exactMatch;
+            }
+            
+            WriteLog($"🔍 [DEBUG] 無法找到匹配欄位: {sourceFieldName}");
+            WriteLog($"🔍 [DEBUG] 可用欄位列表: {string.Join(", ", availableFormFields)}");
+            return null;
+        }
+        
+        // 計算字符串相似度（簡單的 Jaccard 相似度）
+        private double CalculateSimilarity(string str1, string str2)
+        {
+            if (string.IsNullOrEmpty(str1) || string.IsNullOrEmpty(str2))
+                return 0;
+                
+            var set1 = new HashSet<char>(str1);
+            var set2 = new HashSet<char>(str2);
+            
+            var intersection = set1.Intersect(set2).Count();
+            var union = set1.Union(set2).Count();
+            
+            return union > 0 ? (double)intersection / union : 0;
+        }
+        
+        // 檢查是否為日期欄位
+        private bool IsDateField(string fieldName)
+        {
+            var dateFields = new[] { "orderDate", "orderdate", "invoiceDate", "invoicedate", "invdate", "createDate", "create_date", "checkDate", "check_date" };
+            return dateFields.Contains(fieldName, StringComparer.OrdinalIgnoreCase);
+        }
+        
+        // 轉換日期格式
+        private string ConvertToFormDate(string dateValue)
+        {
+            try
+            {
+                if (DateTime.TryParse(dateValue, out DateTime date))
+                {
+                    // 轉換為 YYYY-MM-DD 格式（適用於 HTML date 輸入）
+                    return date.ToString("yyyy-MM-dd");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"⚠️ [WARNING] 日期格式轉換失敗: {dateValue}, 錯誤: {ex.Message}");
+            }
+            return dateValue; // 如果轉換失敗，返回原始值
+        }
+        
+        // 轉換日期時間格式
+        private string ConvertToFormDateTime(string dateValue)
+        {
+            try
+            {
+                if (DateTime.TryParse(dateValue, out DateTime date))
+                {
+                    // 轉換為 YYYY-MM-DDTHH:mm 格式（適用於 HTML datetime-local 輸入）
+                    return date.ToString("yyyy-MM-ddTHH:mm");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"⚠️ [WARNING] 日期時間格式轉換失敗: {dateValue}, 錯誤: {ex.Message}");
+            }
+            return dateValue; // 如果轉換失敗，返回原始值
+        }
+        
+        // 完整的表單欄位填充方法 - 支持所有基本表單元素
+        private string FillFormField(string html, string fieldName, string fieldValue)
+        {
+            try
+            {
+                // 轉義特殊字符
+                var escapedValue = System.Security.SecurityElement.Escape(fieldValue);
+                
+                WriteLog($"🔍 [DEBUG] 嘗試填充欄位: {fieldName} = {fieldValue}");
+                WriteLog($"🔍 [DEBUG] 轉義後的值: {escapedValue}");
+                
+                // 檢查 HTML 中是否存在該欄位
+                var namePattern = $@"name\s*=\s*[""']?{fieldName}[""']?";
+                var nameRegex = new System.Text.RegularExpressions.Regex(namePattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                if (!nameRegex.IsMatch(html))
+                {
+                    WriteLog($"⚠️ [WARNING] HTML 中沒有找到 name=\"{fieldName}\" 的欄位");
+                    return html;
+                }
+                
+                WriteLog($"🔍 [DEBUG] 確認 HTML 中存在 name=\"{fieldName}\" 的欄位");
+                
+                // 定義多種表單元素的處理模式
+                var patterns = new (string Element, string Pattern, string Replacement)[]
+                {
+                    // 1. Input 元素 (text, email, password, number, tel, url, search, hidden 等)
+                    ("input", 
+                     $@"(<input[^>]*name=""{fieldName}""[^>]*?)(?=\s*>)", 
+                     $@"$1 value=""{escapedValue}"""),
+                    
+                    // 2. Textarea 元素
+                    ("textarea", 
+                     $@"(<textarea[^>]*name=""{fieldName}""[^>]*?>)(.*?)(</textarea>)", 
+                     $@"$1{escapedValue}$3"),
+                    
+                    // 3. Radio 元素 - 設置選中狀態
+                    ("radio", 
+                     $@"(<input[^>]*name=""{fieldName}""[^>]*value=""{escapedValue}""[^>]*?)(?=\s*>)", 
+                     $@"$1 checked"),
+                    
+                    // 4. Checkbox 元素 - 設置選中狀態
+                    ("checkbox", 
+                     $@"(<input[^>]*name=""{fieldName}""[^>]*value=""{escapedValue}""[^>]*?)(?=\s*>)", 
+                     $@"$1 checked")
+                };
+                
+                bool fieldProcessed = false;
+                
+                // 首先嘗試處理 Select 元素（需要特殊邏輯）
+                var selectPattern = $@"(<select[^>]*name=""{fieldName}""[^>]*?>)(.*?)(</select>)";
+                var selectRegex = new System.Text.RegularExpressions.Regex(selectPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                
+                if (selectRegex.IsMatch(html))
+                {
+                    WriteLog($"🔍 [DEBUG] 找到 select 元素，欄位: {fieldName}");
+                    var beforeReplace = html;
+                    html = selectRegex.Replace(html, match =>
+                    {
+                        var selectContent = match.Groups[2].Value;
+                        WriteLog($"🔍 [DEBUG] Select 內容: {selectContent.Substring(0, Math.Min(200, selectContent.Length))}...");
+                        // 在 select 內部找到對應的 option 並設置 selected
+                        var updatedContent = System.Text.RegularExpressions.Regex.Replace(selectContent, 
+                            $@"(<option[^>]*value=""{escapedValue}""[^>]*?)(?=\s*>)", 
+                            "$1 selected", 
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        return match.Value.Replace(selectContent, updatedContent);
+                    });
+                    
+                    var afterReplace = html;
+                    WriteLog($"🔍 [DEBUG] 成功填充 select 欄位: {fieldName}");
+                    WriteLog($"🔍 [DEBUG] 替換前長度: {beforeReplace.Length}, 替換後長度: {afterReplace.Length}");
+                    fieldProcessed = true;
+                }
+                
+                // 嘗試其他元素類型
+                if (!fieldProcessed)
+                {
+                    foreach (var (element, pattern, replacement) in patterns)
+                    {
+                        WriteLog($"🔍 [DEBUG] 嘗試 {element} 模式，正則: {pattern}");
+                        var regex = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                        
+                        if (regex.IsMatch(html))
+                        {
+                            WriteLog($"🔍 [DEBUG] 匹配到 {element} 模式");
+                            var beforeReplace = html;
+                            html = regex.Replace(html, replacement);
+                            var afterReplace = html;
+                            
+                            WriteLog($"🔍 [DEBUG] 成功填充 {element} 欄位: {fieldName}");
+                            WriteLog($"🔍 [DEBUG] 替換前長度: {beforeReplace.Length}, 替換後長度: {afterReplace.Length}");
+                            WriteLog($"🔍 [DEBUG] HTML 是否發生變化: {beforeReplace != afterReplace}");
+                            
+                            // 輸出替換前後的片段進行對比
+                            var beforeFragment = GetFieldFragment(beforeReplace, fieldName);
+                            var afterFragment = GetFieldFragment(afterReplace, fieldName);
+                            WriteLog($"🔍 [DEBUG] 替換前片段: {beforeFragment}");
+                            WriteLog($"🔍 [DEBUG] 替換後片段: {afterFragment}");
+                            
+                            fieldProcessed = true;
+                            break; // 找到匹配的元素類型後停止
+                        }
+                        else
+                        {
+                            WriteLog($"🔍 [DEBUG] 欄位 {fieldName} 不匹配 {element} 模式");
+                        }
+                    }
+                }
+                
+                if (!fieldProcessed)
+                {
+                    WriteLog($"⚠️ [WARNING] 欄位 {fieldName} 沒有找到任何匹配的表單元素");
+                    // 輸出該欄位周圍的 HTML 片段進行調試
+                    var fieldFragment = GetFieldFragment(html, fieldName);
+                    WriteLog($"🔍 [DEBUG] 欄位周圍的 HTML 片段: {fieldFragment}");
+                }
+                
+                return html;
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"❌ [ERROR] 填充欄位 {fieldName} 時發生錯誤: {ex.Message}");
+                WriteLog($"❌ [ERROR] 錯誤堆疊: {ex.StackTrace}");
+                return html;
+            }
+        }
+        
+        // 輔助方法：獲取欄位周圍的 HTML 片段
+        private string GetFieldFragment(string html, string fieldName)
+        {
+            try
+            {
+                var pattern = $@".{{0,100}}name\s*=\s*[""']?{fieldName}[""']?[^>]*>.*?(?=<input|<textarea|<select|$)";
+                var regex = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                var match = regex.Match(html);
+                return match.Success ? match.Value.Trim() : "未找到匹配片段";
+            }
+            catch (Exception ex)
+            {
+                return $"獲取片段時出錯: {ex.Message}";
+            }
+        }
+
         // 執行 sendEForm 節點
         private async Task<bool> ExecuteSendEForm(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
         {
@@ -1120,11 +1480,206 @@ namespace PurpleRice.Services
                         return false;
                                 }
 
-                    // 查詢用戶回覆記錄
-                                var userMessages = await db.MessageValidations
-                                    .Where(m => m.WorkflowExecutionId == execution.Id && m.IsValid)
-                                    .OrderBy(m => m.CreatedAt)
-                                    .ToListAsync();
+                    // 根據模式處理表單填充
+                                string filledHtmlCode = eFormDefinition.HtmlCode;
+                                string userMessage = null;
+                                
+                                var sendEFormMode = nodeData.SendEFormMode ?? "integrateWaitReply"; // 默認為整合等待用戶回覆模式
+                                
+                                switch (sendEFormMode)
+                                {
+                                    case "integrateWaitReply":
+                                        // 整合等待用戶回覆節點 (AI 自然語言填表)
+                                        var userMessages = await db.MessageValidations
+                                            .Where(m => m.WorkflowExecutionId == execution.Id && m.IsValid)
+                                            .OrderBy(m => m.CreatedAt)
+                                            .ToListAsync();
+
+                                        if (userMessages.Any())
+                                        {
+                                            var latestMessage = userMessages.Last();
+                                            userMessage = latestMessage.UserMessage;
+                                            filledHtmlCode = await _eFormService.FillFormWithAIAsync(eFormDefinition.HtmlCode, latestMessage.UserMessage);
+                                        }
+                                        WriteLog($"🔍 [DEBUG] 整合等待用戶回覆模式，用戶回覆數量: {userMessages.Count}");
+                                        break;
+                                        
+                                    case "integrateDataSetQuery":
+                                        // 整合 DataSet Query 節點 (結構化數據填表)
+                                        if (!string.IsNullOrEmpty(nodeData.IntegratedDataSetQueryNodeId))
+                                        {
+                                            WriteLog($"🔍 [DEBUG] 查找指定的 DataSet Query 節點: {nodeData.IntegratedDataSetQueryNodeId}");
+                                            
+                                            // 先查看所有 DataSet Query 執行記錄
+                                            var allDataSetSteps = await db.WorkflowStepExecutions
+                                                .Where(s => s.WorkflowExecutionId == execution.Id && 
+                                                           s.StepType == "dataSetQuery")
+                                                .OrderByDescending(s => s.StartedAt)
+                                                .ToListAsync();
+                                            
+                                            WriteLog($"🔍 [DEBUG] 找到 {allDataSetSteps.Count} 個 DataSet Query 執行記錄");
+                                            
+                                            foreach (var step in allDataSetSteps)
+                                            {
+                                                WriteLog($"🔍 [DEBUG] 檢查步驟 {step.Id}，InputJson 長度: {step.InputJson?.Length ?? 0}");
+                                                WriteLog($"🔍 [DEBUG] 步驟 {step.Id} 的 InputJson 內容: {step.InputJson?.Substring(0, Math.Min(200, step.InputJson?.Length ?? 0))}...");
+                                                
+                                                try
+                                                {
+                                                    var inputJson = JsonSerializer.Deserialize<JsonElement>(step.InputJson);
+                                                    
+                                                    string foundId = null;
+                                                    if (inputJson.TryGetProperty("Id", out var idElement))
+                                                    {
+                                                        foundId = idElement.GetString();
+                                                    }
+                                                    else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
+                                                    {
+                                                        foundId = nodeIdElement.GetString();
+                                                    }
+                                                    else if (inputJson.TryGetProperty("id", out var idLowerElement))
+                                                    {
+                                                        foundId = idLowerElement.GetString();
+                                                    }
+                                                    
+                                                    WriteLog($"🔍 [DEBUG] 步驟 {step.Id} 找到的 ID: '{foundId}', 目標 ID: '{nodeData.IntegratedDataSetQueryNodeId}'");
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    WriteLog($"🔍 [DEBUG] 解析步驟 {step.Id} 的 InputJson 時出錯: {ex.Message}");
+                                                }
+                                            }
+                                            
+                                            // 查找指定 DataSet Query 節點的執行記錄
+                                            // 使用精確匹配，避免部分字符串匹配
+                                            var targetStepExecution = allDataSetSteps
+                                                .Where(s => {
+                                                    try
+                                                    {
+                                                        var inputJson = JsonSerializer.Deserialize<JsonElement>(s.InputJson);
+                                                        
+                                                        string foundId = null;
+                                                        if (inputJson.TryGetProperty("Id", out var idElement))
+                                                        {
+                                                            foundId = idElement.GetString();
+                                                        }
+                                                        else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
+                                                        {
+                                                            foundId = nodeIdElement.GetString();
+                                                        }
+                                                        
+                                                        return foundId == nodeData.IntegratedDataSetQueryNodeId;
+                                                    }
+                                                    catch
+                                                    {
+                                                        return false;
+                                                    }
+                                                })
+                                                .FirstOrDefault();
+                                            
+                                            // 如果還是找不到，嘗試更精確的查找方式
+                                            if (targetStepExecution == null)
+                                            {
+                                                WriteLog($"🔍 [DEBUG] 使用原始查找方式找不到，嘗試更精確的查找");
+                                                
+                                                // 使用精確的 ID 匹配
+                                                foreach (var step in allDataSetSteps)
+                                                {
+                                                    try
+                                                    {
+                                                        var inputJson = JsonSerializer.Deserialize<JsonElement>(step.InputJson);
+                                                        
+                                                        string foundId = null;
+                                                        if (inputJson.TryGetProperty("Id", out var idElement))
+                                                        {
+                                                            foundId = idElement.GetString();
+                                                        }
+                                                        else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
+                                                        {
+                                                            foundId = nodeIdElement.GetString();
+                                                        }
+                                                        else if (inputJson.TryGetProperty("id", out var idLowerElement))
+                                                        {
+                                                            foundId = idLowerElement.GetString();
+                                                        }
+                                                        
+                                                        WriteLog($"🔍 [DEBUG] 精確匹配檢查 - 步驟 {step.Id} 找到的 ID: '{foundId}', 目標 ID: '{nodeData.IntegratedDataSetQueryNodeId}'");
+                                                        
+                                                        if (foundId == nodeData.IntegratedDataSetQueryNodeId)
+                                                        {
+                                                            targetStepExecution = step;
+                                                            WriteLog($"🔍 [DEBUG] 通過精確匹配找到 DataSet Query 節點: {step.Id}");
+                                                            break;
+                                                        }
+                                                    }
+                                                    catch (Exception ex)
+                                                    {
+                                                        WriteLog($"🔍 [DEBUG] 解析步驟 {step.Id} 的 InputJson 時出錯: {ex.Message}");
+                                                    }
+                                                }
+                                                
+                                                if (targetStepExecution == null)
+                                                {
+                                                    WriteLog($"⚠️ [WARNING] 無法找到指定的 DataSet Query 節點執行記錄，不應回退到其他查詢");
+                                                }
+                                            }
+
+                                            if (targetStepExecution != null)
+                                            {
+                                                WriteLog($"🔍 [DEBUG] 找到 DataSet Query 節點執行記錄: {targetStepExecution.Id}");
+                                                
+                                                WriteLog($"🔍 [DEBUG] 查找查詢結果 - WorkflowExecutionId: {execution.Id}, StepExecutionId: {targetStepExecution.Id}");
+                                                
+                                                var queryResults = await db.WorkflowDataSetQueryResults
+                                                    .Where(r => r.WorkflowExecutionId == execution.Id && r.StepExecutionId == targetStepExecution.Id)
+                                                    .OrderByDescending(r => r.ExecutedAt)
+                                                    .FirstOrDefaultAsync();
+
+                                                WriteLog($"🔍 [DEBUG] 查詢結果記錄: {(queryResults != null ? $"ID={queryResults.Id}, DataSetId={queryResults.DataSetId}, StepExecutionId={queryResults.StepExecutionId}" : "null")}");
+
+                                                if (queryResults != null && !string.IsNullOrEmpty(queryResults.QueryResult))
+                                                {
+                                                    WriteLog($"🔍 [DEBUG] 找到查詢結果，記錄數量: {queryResults.TotalRecords}");
+                                                    WriteLog($"🔍 [DEBUG] 查詢結果內容: {queryResults.QueryResult}");
+                                                    
+                                                    // 解析查詢結果並填充表單
+                                                    var originalHtmlLength = eFormDefinition.HtmlCode?.Length ?? 0;
+                                                    filledHtmlCode = await FillFormWithDataSetQueryResults(eFormDefinition.HtmlCode, queryResults.QueryResult);
+                                                    var filledHtmlLength = filledHtmlCode?.Length ?? 0;
+                                                    
+                                                    WriteLog($"🔍 [DEBUG] 表單填充完成 - 原始長度: {originalHtmlLength}, 填充後長度: {filledHtmlLength}");
+                                                    WriteLog($"🔍 [DEBUG] 填充後 HTML 是否與原始相同: {filledHtmlCode == eFormDefinition.HtmlCode}");
+                                                    
+                                                    if (filledHtmlCode == eFormDefinition.HtmlCode)
+                                                    {
+                                                        WriteLog($"⚠️ [WARNING] 表單填充可能失敗，HTML 沒有變化");
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    WriteLog($"⚠️ [WARNING] 找不到 DataSet Query 結果，使用空白表單");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                WriteLog($"⚠️ [WARNING] 找不到指定的 DataSet Query 節點執行記錄 (NodeId: {nodeData.IntegratedDataSetQueryNodeId})，使用空白表單");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            WriteLog($"⚠️ [WARNING] 未指定 DataSet Query 節點 ID，使用空白表單");
+                                        }
+                                        break;
+                                        
+                                    case "manualFill":
+                                        // 手動填表 (獨立運行)
+                                        WriteLog($"🔍 [DEBUG] 手動填表模式，發送空白表單");
+                                        break;
+                                        
+                                    default:
+                                        WriteLog($"⚠️ [WARNING] 未知的表單填充模式: {sendEFormMode}，使用默認模式");
+                                        break;
+                                }
 
                                 // 創建表單實例
                                 var eFormInstance = new EFormInstance
@@ -1136,23 +1691,12 @@ namespace PurpleRice.Services
                                     CompanyId = company.Id,
                                     InstanceName = $"{nodeData.FormName}_{execution.Id}_{DateTime.Now:yyyyMMddHHmmss}",
                                     OriginalHtmlCode = eFormDefinition.HtmlCode,
+                                    FilledHtmlCode = filledHtmlCode,
+                                    UserMessage = userMessage,
                                     Status = "Pending",
                                     CreatedAt = DateTime.UtcNow,
                                     UpdatedAt = DateTime.UtcNow
                                 };
-
-                    // 如果有用戶回覆，使用 AI 填充表單
-                                if (userMessages.Any())
-                                {
-                                    var latestMessage = userMessages.Last();
-                                    eFormInstance.UserMessage = latestMessage.UserMessage;
-                                    var filledHtml = await _eFormService.FillFormWithAIAsync(eFormDefinition.HtmlCode, latestMessage.UserMessage);
-                                    eFormInstance.FilledHtmlCode = filledHtml;
-                                }
-                                else
-                                {
-                                    eFormInstance.FilledHtmlCode = eFormDefinition.HtmlCode;
-                                }
 
                                 // 生成表單 URL
                                 var formUrl = $"/eform-instance/{eFormInstance.Id}";
@@ -1173,8 +1717,20 @@ namespace PurpleRice.Services
                                 
                                 WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
                                 
-                                // 發送 WhatsApp 消息通知所有收件人
-                                var message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
+                                // 構建通知消息
+                                string message;
+                                if (nodeData.UseCustomMessage && !string.IsNullOrEmpty(nodeData.MessageTemplate))
+                                {
+                                    // 使用自定義消息模板，支持變量替換
+                                    message = nodeData.MessageTemplate
+                                        .Replace("{formName}", nodeData.FormName ?? "")
+                                        .Replace("{formUrl}", formUrl);
+                                }
+                                else
+                                {
+                                    // 使用預設消息
+                                    message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
+                                }
                                 var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
                                     nodeData.To, // 使用原始收件人值
                                     nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
@@ -1969,6 +2525,20 @@ public class WorkflowNodeData
     
     [System.Text.Json.Serialization.JsonPropertyName("formId")]
     public string FormId { get; set; }
+    
+    // sendEForm 節點相關屬性
+    [System.Text.Json.Serialization.JsonPropertyName("messageTemplate")]
+    public string MessageTemplate { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("useCustomMessage")]
+    public bool UseCustomMessage { get; set; }
+    
+    // sendEForm 節點運作模式
+    [System.Text.Json.Serialization.JsonPropertyName("sendEFormMode")]
+    public string SendEFormMode { get; set; } = "integrateWaitReply"; // 默認為整合等待用戶回覆模式
+    
+    [System.Text.Json.Serialization.JsonPropertyName("integratedDataSetQueryNodeId")]
+    public string IntegratedDataSetQueryNodeId { get; set; }
     
     // Switch 節點相關屬性
     [System.Text.Json.Serialization.JsonPropertyName("conditionGroups")]

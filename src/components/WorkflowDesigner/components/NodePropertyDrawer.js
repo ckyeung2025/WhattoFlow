@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
-import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal } from 'antd';
+import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio } from 'antd';
 import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
@@ -1564,6 +1564,139 @@ const NodePropertyDrawer = ({
                   )}
                 </Card>
               )}
+
+              {/* 表單填充模式配置 */}
+              <Form.Item label={t('workflowDesigner.sendEForm.fillMode')}>
+                <div style={{ marginBottom: 8 }}>
+                  <Radio.Group
+                    value={selectedNode.data.sendEFormMode || 'integrateWaitReply'}
+                    onChange={(e) => {
+                      const mode = e.target.value;
+                      handleNodeDataChange({ 
+                        sendEFormMode: mode,
+                        integratedDataSetQueryNodeId: mode === 'integrateDataSetQuery' ? (selectedNode.data.integratedDataSetQueryNodeId || '') : ''
+                      });
+                    }}
+                  >
+                    <div style={{ marginBottom: 8 }}>
+                      <Radio value="integrateWaitReply">{t('workflowDesigner.sendEForm.integrateWaitReply')}</Radio>
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      <Radio value="integrateDataSetQuery">{t('workflowDesigner.sendEForm.integrateDataSetQuery')}</Radio>
+                    </div>
+                    <div>
+                      <Radio value="manualFill">{t('workflowDesigner.sendEForm.manualFill')}</Radio>
+                    </div>
+                  </Radio.Group>
+                </div>
+                
+                {/* 模式說明 */}
+                <div style={{ 
+                  padding: '8px 12px', 
+                  backgroundColor: '#f0f8ff', 
+                  border: '1px solid #1890ff',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  color: '#666',
+                  marginTop: 8
+                }}>
+                  {selectedNode.data.sendEFormMode === 'integrateWaitReply' && (
+                    <div>{t('workflowDesigner.sendEForm.integrateWaitReplyDesc')}</div>
+                  )}
+                  {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (
+                    <div>{t('workflowDesigner.sendEForm.integrateDataSetQueryDesc')}</div>
+                  )}
+                  {selectedNode.data.sendEFormMode === 'manualFill' && (
+                    <div>{t('workflowDesigner.sendEForm.manualFillDesc')}</div>
+                  )}
+                </div>
+                
+                {/* DataSet Query 節點選擇 */}
+                {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (
+                  <div style={{ marginTop: 12 }}>
+                    <Form.Item label={t('workflowDesigner.sendEForm.selectDataSetQueryNode')}>
+                      <Select
+                        placeholder={t('workflowDesigner.sendEForm.selectDataSetQueryNodePlaceholder')}
+                        value={selectedNode.data.integratedDataSetQueryNodeId || undefined}
+                        onChange={(value) => handleNodeDataChange({ integratedDataSetQueryNodeId: value })}
+                        allowClear
+                      >
+                        {(() => {
+                          // 從流程中獲取 DataSet Query 節點列表（操作類型為 SELECT）
+                          const dataSetQueryNodes = nodes.filter(node => 
+                            node.data?.type === 'dataSetQuery' && 
+                            node.data?.operationType === 'SELECT' &&
+                            node.id !== selectedNode.id // 排除當前節點
+                          );
+                          
+                          if (dataSetQueryNodes.length === 0) {
+                            return (
+                              <Select.Option value="" disabled>
+                                {t('workflowDesigner.sendEForm.noDataSetQueryNodes')}
+                              </Select.Option>
+                            );
+                          }
+                          
+                          return dataSetQueryNodes.map(node => (
+                            <Select.Option key={node.id} value={node.id}>
+                              {node.data?.taskName || node.data?.label || `DataSet Query Node ${node.id}`}
+                            </Select.Option>
+                          ));
+                        })()}
+                      </Select>
+                      <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                        {t('workflowDesigner.sendEForm.dataSetQueryNodeHelp')}
+                      </div>
+                    </Form.Item>
+                  </div>
+                )}
+              </Form.Item>
+
+              {/* 通知訊息配置 */}
+              <Form.Item label={t('workflowDesigner.sendEForm.notificationMessage')}>
+                <div style={{ marginBottom: 8 }}>
+                  <Radio.Group
+                    value={selectedNode.data.useCustomMessage ? 'custom' : 'default'}
+                    onChange={(e) => {
+                      const useCustom = e.target.value === 'custom';
+                      handleNodeDataChange({ 
+                        useCustomMessage: useCustom,
+                        messageTemplate: useCustom ? (selectedNode.data.messageTemplate || t('workflowDesigner.sendEForm.defaultNotificationMessage')) : t('workflowDesigner.sendEForm.defaultNotificationMessage')
+                      });
+                    }}
+                  >
+                    <Radio value="default">{t('workflowDesigner.sendEForm.useDefaultMessage')}</Radio>
+                    <Radio value="custom">{t('workflowDesigner.sendEForm.customMessage')}</Radio>
+                  </Radio.Group>
+                </div>
+                
+                {selectedNode.data.useCustomMessage && (
+                  <>
+                    <Input.TextArea
+                      value={selectedNode.data.messageTemplate || ''}
+                      placeholder={t('workflowDesigner.sendEForm.notificationMessagePlaceholder')}
+                      rows={4}
+                      onChange={(e) => handleNodeDataChange({ messageTemplate: e.target.value })}
+                    />
+                    <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                      {t('workflowDesigner.sendEForm.notificationMessageHelp')}
+                    </div>
+                  </>
+                )}
+                
+                {!selectedNode.data.useCustomMessage && (
+                  <div style={{ 
+                    padding: '8px 12px', 
+                    backgroundColor: '#f5f5f5', 
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    color: '#666'
+                  }}>
+                    {t('workflowDesigner.sendEForm.defaultNotificationMessage')}
+                  </div>
+                )}
+              </Form.Item>
               
               <Form.Item label={t('workflowDesigner.approvalResultVariable')} name="approvalResultVariable">
                 <Select

@@ -814,6 +814,46 @@ namespace PurpleRice.Controllers
             }
         }
 
+        // GET: api/workflowexecutions/step/{stepExecutionId}/data-set-query-result
+        [HttpGet("step/{stepExecutionId}/data-set-query-result")]
+        public async Task<IActionResult> GetDataSetQueryResult(int stepExecutionId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"正在查找步驟執行 ID: {stepExecutionId} 的數據集查詢結果");
+                
+                // 查找數據集查詢結果
+                var queryResult = await _db.WorkflowDataSetQueryResults
+                    .Where(r => r.StepExecutionId == stepExecutionId)
+                    .OrderByDescending(r => r.ExecutedAt)
+                    .FirstOrDefaultAsync();
+                
+                if (queryResult == null)
+                {
+                    _loggingService.LogWarning($"步驟執行 ID: {stepExecutionId} 沒有找到數據集查詢結果");
+                    return NotFound(new { error = "沒有找到數據集查詢結果" });
+                }
+                
+                _loggingService.LogInformation($"找到數據集查詢結果: StepExecutionId={queryResult.StepExecutionId}, TotalRecords={queryResult.TotalRecords}");
+
+                return Ok(new
+                {
+                    stepExecutionId = queryResult.StepExecutionId,
+                    queryResult = queryResult.QueryResult,
+                    queryType = queryResult.OperationType,
+                    recordCount = queryResult.TotalRecords,
+                    executionTime = queryResult.ExecutedAt,
+                    executedAt = queryResult.ExecutedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取數據集查詢結果時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤詳情: {ex.StackTrace}");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
         // GET: api/workflowexecutions/execution-counts
         [HttpGet("execution-counts")]
         public async Task<IActionResult> GetExecutionCounts()
