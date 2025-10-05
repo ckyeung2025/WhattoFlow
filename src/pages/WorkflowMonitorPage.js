@@ -128,6 +128,8 @@ const WorkflowMonitorPage = () => {
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [selectedInstance, setSelectedInstance] = useState(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [dataSetQueryModalVisible, setDataSetQueryModalVisible] = useState(false);
+  const [dataSetQueryResult, setDataSetQueryResult] = useState(null);
   const [statistics, setStatistics] = useState({
     total: 0,
     running: 0,
@@ -922,8 +924,87 @@ const WorkflowMonitorPage = () => {
                     onClose={handleCloseDetailPanel}
               onViewMessageSend={handleViewMessageSend}
               onViewMessageSendDetail={handleViewMessageSendDetail}
+              onViewDataSetQuery={(data) => {
+                setDataSetQueryResult(data);
+                setDataSetQueryModalVisible(true);
+              }}
             />
           )}
+          
+          {/* 數據集查詢結果模態框 */}
+          <Modal
+            title="數據集查詢結果"
+            open={dataSetQueryModalVisible}
+            onCancel={() => setDataSetQueryModalVisible(false)}
+            footer={[
+              <Button key="close" onClick={() => setDataSetQueryModalVisible(false)}>
+                關閉
+              </Button>
+            ]}
+            width={1200}
+            style={{ top: 20 }}
+          >
+            {dataSetQueryResult && (
+              <div>
+                {/* 查詢信息摘要 */}
+                <div style={{ 
+                  background: '#f0f8ff', 
+                  padding: '16px', 
+                  borderRadius: '8px', 
+                  marginBottom: '20px',
+                  border: '1px solid #1890ff'
+                }}>
+                  <Row gutter={[16, 8]}>
+                    <Col span={6}>
+                      <div>
+                        <strong>步驟執行ID:</strong><br/>
+                        <span style={{ color: '#666' }}>{dataSetQueryResult.stepExecutionId}</span>
+                      </div>
+                    </Col>
+                    <Col span={6}>
+                      <div>
+                        <strong>查詢類型:</strong><br/>
+                        <Tag color="blue">{dataSetQueryResult.queryType || 'SELECT'}</Tag>
+                      </div>
+                    </Col>
+                    <Col span={6}>
+                      <div>
+                        <strong>記錄數量:</strong><br/>
+                        <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                          {dataSetQueryResult.recordCount || 0} 條
+                        </span>
+                      </div>
+                    </Col>
+                    <Col span={6}>
+                      <div>
+                        <strong>執行時間:</strong><br/>
+                        <span style={{ color: '#666' }}>
+                          {dataSetQueryResult.executedAt ? 
+                            new Date(dataSetQueryResult.executedAt).toLocaleString('zh-TW') : 
+                            '-'
+                          }
+                        </span>
+                      </div>
+                    </Col>
+                  </Row>
+                </div>
+
+                {/* 查詢結果表格 */}
+                {dataSetQueryResult.queryResult && (
+                  <div>
+                    <h4 style={{ marginBottom: '16px', color: '#1890ff' }}>
+                      <BarChartOutlined style={{ marginRight: '8px' }} />
+                      查詢結果詳情
+                    </h4>
+                    <DataSetQueryResultTable 
+                      data={JSON.parse(dataSetQueryResult.queryResult)}
+                      recordCount={dataSetQueryResult.recordCount}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </Modal>
               </div>
             </div>
           )}
@@ -976,9 +1057,9 @@ const WorkflowMonitorPage = () => {
 };
 
 // 實例詳情組件
-const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail }) => {
+const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail, onViewDataSetQuery }) => {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState('basic');
+  const [activeTab, setActiveTab] = useState('history');
   const [eformInstances, setEformInstances] = useState([]);
   const [loadingEforms, setLoadingEforms] = useState(false);
   const [processVariables, setProcessVariables] = useState([]);
@@ -1490,59 +1571,6 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
   return (
     <div>
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
-        <TabPane tab={t('workflowMonitor.basicInfo')} key="basic">
-          <Descriptions bordered column={2}>
-            <Descriptions.Item label={t('workflowMonitor.instanceId')}>{instance.id}</Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.workflowName')}>{instance.workflowName}</Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.status')}>
-              {instance.status?.toLowerCase() === 'running' ? (
-                <Tag color="processing" icon={<SyncOutlinedIcon spin />}>
-                  {t('workflowMonitor.statusRunning')}
-                </Tag>
-              ) : instance.status?.toLowerCase() === 'completed' ? (
-                <Tag color="success" icon={<CheckCircleOutlined />}>
-                  {instance.status}
-                </Tag>
-              ) : instance.status?.toLowerCase() === 'waiting' || instance.status?.toLowerCase() === 'waitingforqrcode' ? (
-                <Tag color="warning" icon={<ClockCircleOutlined />}>
-                  {instance.status}
-                </Tag>
-              ) : instance.status?.toLowerCase() === 'failed' || instance.status?.toLowerCase() === 'error' ? (
-                <Tag color="error" icon={<CloseCircleOutlined />}>
-                  {instance.status}
-                </Tag>
-              ) : (
-                <Tag color="default">
-                  {instance.status}
-                </Tag>
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.currentStep')}>
-              {instance.currentStep || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.startedAt')}>
-              {dayjs(instance.startedAt).format('YYYY-MM-DD HH:mm:ss')}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.endedAt')}>
-              {instance.endedAt ? dayjs(instance.endedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.duration')}>
-              {instance.duration ? `${Math.round(instance.duration)} ${t('workflowMonitor.minutes')}` : '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label={t('workflowMonitor.createdBy')}>{instance.createdBy}</Descriptions.Item>
-          </Descriptions>
-          
-          {instance.errorMessage && (
-            <Alert
-              message={t('workflowMonitor.errorMessage')}
-              description={instance.errorMessage}
-              type="error"
-              showIcon
-              style={{ marginTop: 16 }}
-            />
-          )}
-        </TabPane>
-        
         <TabPane tab={t('workflowMonitor.executionHistory')} key="history">
           <Timeline>
             <Timeline.Item color="green">
@@ -1645,6 +1673,28 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                   step.stepType.includes('sendWhatsAppTemplate') ||
                   step.stepType.includes('sendEForm')
                 ));
+
+                // 優先使用 taskName，如果沒有則使用 stepName
+                const displayName = step.taskName || step.stepName || `${t('workflowMonitor.step')} ${index + 1}`;
+                const nodeType = step.stepType || step.nodeType || step.type;
+                
+                // 檢查是否為 dataSetQuery 節點
+                const isDataSetQueryNode = (step.stepName && step.stepName.includes('dataSetQuery')) || 
+                                         (step.stepType && step.stepType.includes('dataSetQuery')) ||
+                                         (nodeType === 'dataSetQuery');
+                
+                // 調試 dataSetQuery 節點
+                if (isDataSetQueryNode) {
+                  console.log('🔍 dataSetQuery 節點檢測:', {
+                    stepName: step.stepName,
+                    stepType: step.stepType,
+                    nodeType: nodeType,
+                    outputData: outputData,
+                    hasQueryResult: outputData && outputData.queryResult,
+                    hasQueryResultId: outputData && outputData.queryResultId,
+                    stepId: step.id
+                  });
+                }
                 
                 // 調試信息
                 if (step.stepName && step.stepName.includes('sendWhatsApp')) {
@@ -1658,10 +1708,6 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                   });
                 }
 
-                // 優先使用 taskName，如果沒有則使用 stepName
-                const displayName = step.taskName || step.stepName || `${t('workflowMonitor.step')} ${index + 1}`;
-                const nodeType = step.stepType || step.nodeType || step.type;
-                
                 // 查找該步驟的用戶回覆（waitReply 或 waitForQRCode）
                 // 使用 step.stepIndex 而不是數組索引 index
                 const stepValidations = messageValidations.filter(mv => mv.stepIndex === step.stepIndex);
@@ -1683,23 +1729,22 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                     key={step.id} 
                     color={(step.status === 'Completed' || step.status === 'completed') ? 'green' : (step.status === 'Failed' || step.status === 'failed') ? 'red' : 'blue'}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <Text strong style={{ fontSize: '15px' }}>
-                            {displayName}
-                          </Text>
-                          {nodeType && (
-                            <Tag color="blue">
-                              {nodeType}
-                            </Tag>
-                          )}
-                        </div>
-                        <p>{t('workflowMonitor.stepStatus')}: {step.status}</p>
-                        <p>{t('workflowMonitor.stepStartTime')}: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
-                        {step.endedAt && (
-                          <p>{t('workflowMonitor.stepEndTime')}: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <Text strong style={{ fontSize: '15px' }}>
+                          {displayName}
+                        </Text>
+                        {nodeType && (
+                          <Tag color="blue">
+                            {nodeType}
+                          </Tag>
                         )}
+                      </div>
+                      <p>{t('workflowMonitor.stepStatus')}: {step.status}</p>
+                      <p>{t('workflowMonitor.stepStartTime')}: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
+                      {step.endedAt && (
+                        <p>{t('workflowMonitor.stepEndTime')}: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                      )}
                         
                         {/* 顯示用戶回覆（waitReply 或 waitForQRCode 節點） */}
                         {isWaitNode && stepValidations.length > 0 && (
@@ -1900,60 +1945,6 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                             })()}
                           </div>
                         )}
-                      </div>
-                      {/* ✅ sendWhatsApp、waitReply、waitForQRCode 節點都可能發送消息 */}
-                      {(isMessageSendNode || isWaitNode) && (step.status === 'Completed' || step.status === 'completed') && (
-                        <Space style={{ marginLeft: '16px' }}>
-                          <Button 
-                            type="default" 
-                            size="small" 
-                            icon={<BarChartOutlined />}
-                            onClick={async () => {
-                              try {
-                                let messageSendId = null;
-                                
-                                // 對於 sendWhatsApp 節點，優先從 outputData 獲取
-                                if (isMessageSendNode && outputData && outputData.messageSendId) {
-                                  messageSendId = outputData.messageSendId;
-                                  console.log('從 outputData 獲取 messageSendId:', messageSendId);
-                              } else {
-                                  // ✅ 對於所有節點，使用 stepExecutionId 查找
-                                  console.log('📞 使用 stepExecutionId 查詢 messageSendId:', step.id);
-                                  
-                                  const response = await fetch(`/api/workflowexecutions/step/${step.id}/message-send-id`, {
-                                    headers: {
-                                      'Authorization': `Bearer ${localStorage.getItem('token')}`
-                                    }
-                                  });
-                                  
-                                  if (response.ok) {
-                                    const data = await response.json();
-                                    messageSendId = data.messageSendId;
-                                    console.log('✅ 從 API 獲取 messageSendId:', messageSendId);
-                                  } else {
-                                    console.warn('❌ 找不到消息發送記錄，stepExecutionId:', step.id);
-                                message.warning(t('workflowMonitor.cannotFindMessageSendId'));
-                                    return;
-                                  }
-                                }
-                                
-                                // 打開消息發送狀態模態框
-                                if (messageSendId) {
-                                  onViewMessageSendDetail(messageSendId);
-                                } else {
-                                  message.warning(t('workflowMonitor.cannotFindMessageSendId'));
-                                }
-                              } catch (error) {
-                                console.error('查詢消息發送記錄時發生錯誤:', error);
-                                message.error('查詢消息發送記錄失敗');
-                              }
-                            }}
-                          >
-                            {t('workflowMonitor.viewMessageSendStatus')}
-                          </Button>
-                        </Space>
-                      )}
-                    </div>
                     
                     {/* 顯示輸出信息，正確區分錯誤和正常信息 */}
                     {displayMessage && (
@@ -2031,6 +2022,118 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                         );
                       })()
                     )}
+                    
+                    {/* ✅ 操作按鈕區域 - 放在最底部 */}
+                    {((isMessageSendNode || isWaitNode) || (isDataSetQueryNode && outputData && outputData.queryResultId)) && (
+                      <div style={{ 
+                        marginTop: '16px', 
+                        paddingTop: '12px', 
+                        borderTop: '1px solid #f0f0f0',
+                        display: 'flex',
+                        gap: '8px'
+                      }}>
+                        {/* sendWhatsApp、waitReply、waitForQRCode、sendEForm 節點按鈕 */}
+                        {(isMessageSendNode || isWaitNode) && (
+                          <>
+                            <Button 
+                              type="default" 
+                              size="small" 
+                              icon={<BarChartOutlined />}
+                              onClick={async () => {
+                                try {
+                                  let messageSendId = null;
+                                  
+                                  // 對於所有消息發送節點，優先從 outputData 獲取
+                                  if (isMessageSendNode && outputData && outputData.messageSendId) {
+                                    messageSendId = outputData.messageSendId;
+                                    console.log('從 outputData 獲取 messageSendId:', messageSendId);
+                                  } else {
+                                    // ✅ 對於所有節點，使用 stepExecutionId 查找
+                                    console.log('📞 使用 stepExecutionId 查詢 messageSendId:', step.id);
+                                    
+                                    const response = await fetch(`/api/workflowexecutions/step/${step.id}/message-send-id`, {
+                                      headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                      }
+                                    });
+                                    
+                                    if (response.ok) {
+                                      const data = await response.json();
+                                      messageSendId = data.messageSendId;
+                                      console.log('✅ 從 API 獲取 messageSendId:', messageSendId);
+                                    } else {
+                                      console.warn('❌ 找不到消息發送記錄，stepExecutionId:', step.id);
+                                      message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                                      return;
+                                    }
+                                  }
+                                  
+                                  // 打開消息發送狀態模態框
+                                  if (messageSendId) {
+                                    onViewMessageSendDetail(messageSendId);
+                                  } else {
+                                    message.warning(t('workflowMonitor.cannotFindMessageSendId'));
+                                  }
+                                } catch (error) {
+                                  console.error('查詢消息發送記錄時發生錯誤:', error);
+                                  message.error('查詢消息發送記錄失敗');
+                                }
+                              }}
+                            >
+                              {t('workflowMonitor.viewMessageSendStatus')}
+                            </Button>
+                            
+                            {/* sendEForm 節點額外顯示查看表單實例按鈕 */}
+                            {nodeType === 'sendEForm' && outputData && outputData.formInstanceId && (
+                              <Button 
+                                type="default" 
+                                size="small" 
+                                icon={<FileTextOutlined />}
+                                onClick={() => {
+                                  // 在新標籤頁中打開表單實例詳情
+                                  window.open(`/eform-instance/${outputData.formInstanceId}`, '_blank');
+                                }}
+                              >
+                                {t('workflowMonitor.viewFormInstance')}
+                              </Button>
+                            )}
+                          </>
+                        )}
+                        
+                        {/* dataSetQuery 節點按鈕 */}
+                        {isDataSetQueryNode && outputData && outputData.queryResultId && (
+                          <Button 
+                            type="default" 
+                            size="small" 
+                            icon={<BarChartOutlined />}
+                            onClick={async () => {
+                              try {
+                                // 獲取查詢結果詳情
+                                const response = await fetch(`/api/workflowexecutions/step/${step.id}/data-set-query-result`, {
+                                  headers: {
+                                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                  }
+                                });
+                                
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  // 在同一界面中顯示數據集查詢結果
+                                  onViewDataSetQuery(data);
+                                } else {
+                                  message.error('無法獲取查詢結果詳情');
+                                }
+                              } catch (error) {
+                                console.error('獲取數據集查詢結果時發生錯誤:', error);
+                                message.error('獲取查詢結果失敗');
+                              }
+                            }}
+                          >
+                            {t('workflowMonitor.viewDataSet')}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    </div>
                   </Timeline.Item>
                 );
               })
@@ -3519,6 +3622,122 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
           </Row>
         </TabPane>
       </Tabs>
+    </div>
+  );
+};
+
+// 數據集查詢結果表格組件
+const DataSetQueryResultTable = ({ data, recordCount }) => {
+  // 處理數據格式，支持多種數據結構
+  const processedData = React.useMemo(() => {
+    if (!data) return [];
+    
+    // 如果是數組，直接使用
+    if (Array.isArray(data)) {
+      return data;
+    }
+    
+    // 如果是對象，嘗試找到數組字段
+    if (typeof data === 'object') {
+      // 查找可能的數組字段
+      const possibleArrayFields = ['results', 'data', 'records', 'items', 'rows'];
+      for (const field of possibleArrayFields) {
+        if (data[field] && Array.isArray(data[field])) {
+          return data[field];
+        }
+      }
+      
+      // 如果沒有找到數組字段，將對象轉為單個記錄的數組
+      return [data];
+    }
+    
+    return [];
+  }, [data]);
+
+  // 獲取所有唯一的欄位名
+  const columns = React.useMemo(() => {
+    if (processedData.length === 0) return [];
+    
+    const allKeys = new Set();
+    processedData.forEach(record => {
+      if (typeof record === 'object' && record !== null) {
+        Object.keys(record).forEach(key => allKeys.add(key));
+      }
+    });
+    
+    return Array.from(allKeys).map(key => ({
+      title: key,
+      dataIndex: key,
+      key: key,
+      width: 150,
+      ellipsis: true,
+      render: (value) => {
+        if (value === null || value === undefined) {
+          return <span style={{ color: '#999', fontStyle: 'italic' }}>空值</span>;
+        }
+        if (typeof value === 'object') {
+          return (
+            <Tooltip title={JSON.stringify(value, null, 2)}>
+              <span style={{ color: '#1890ff', cursor: 'help' }}>
+                {JSON.stringify(value)}
+              </span>
+            </Tooltip>
+          );
+        }
+        return <span>{String(value)}</span>;
+      }
+    }));
+  }, [processedData]);
+
+  if (processedData.length === 0) {
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '40px', 
+        color: '#999',
+        background: '#fafafa',
+        borderRadius: '6px'
+      }}>
+        <BarChartOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
+        <div>暫無查詢結果數據</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ 
+        marginBottom: '16px', 
+        padding: '8px 12px', 
+        background: '#f6ffed', 
+        border: '1px solid #b7eb8f',
+        borderRadius: '4px',
+        color: '#52c41a'
+      }}>
+        <strong>共找到 {recordCount || processedData.length} 條記錄</strong>
+      </div>
+      
+      <Table
+        dataSource={processedData.map((record, index) => ({
+          ...record,
+          key: index
+        }))}
+        columns={columns}
+        pagination={{
+          pageSize: 10,
+          showSizeChanger: true,
+          showQuickJumper: true,
+          showTotal: (total, range) => 
+            `第 ${range[0]}-${range[1]} 條，共 ${total} 條記錄`,
+          pageSizeOptions: ['10', '20', '50', '100']
+        }}
+        scroll={{ x: 'max-content', y: 400 }}
+        size="small"
+        bordered
+        style={{
+          background: '#fff'
+        }}
+      />
     </div>
   );
 };

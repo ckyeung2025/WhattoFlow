@@ -165,6 +165,10 @@ const en = {
     refresh: 'Refresh',
     pendingTasksList: 'Pending Tasks List',
     pageRange: 'Items {start}-{end} of {total}',
+    itemsPerPage: '/ page',
+    jumpTo: 'Go to',
+    page: 'Page',
+    confirm: 'OK',
     loading: 'Loading...',
     error: 'Error',
     success: 'Success'
@@ -1315,6 +1319,50 @@ const en = {
     approvalResultDescription2: '2. Approval result values: approve (approved), reject (rejected), pending (pending approval)',
     approvalResultDescription3: '3. This variable can be used in subsequent Switch nodes for workflow branching',
     
+    // sendEForm node related translations
+    sendEForm: {
+      fillMode: 'Form Filling Mode',
+      integrateWaitReply: 'Integrate Wait Reply Node (AI Fill)',
+      integrateDataSetQuery: 'Integrate DataSet Query Node (Data Fill)',
+      manualFill: 'Manual Fill (Independent)',
+      
+      // Mode descriptions
+      modeDescription: 'Mode Description',
+      integrateWaitReplyDesc: 'Inherit natural language reply from previous waitReply node, use AI to intelligently fill the form',
+      integrateDataSetQueryDesc: 'Use query result data from specified DataSet Query node, directly map to form fields',
+      manualFillDesc: 'Send blank form to user to fill manually, no dependency on other nodes',
+      
+      // DataSet Query selection
+      selectDataSetQueryNode: 'Select DataSet Query Node',
+      selectDataSetQueryNodePlaceholder: 'Select DataSet Query node to integrate',
+      noDataSetQueryNodes: 'No DataSet Query nodes available',
+      dataSetQueryNodeHelp: 'Only DataSet Query nodes with SELECT operation type will be shown in this list',
+      
+      // Dependency check
+      dependencyCheck: 'Dependency Check',
+      waitReplyDependency: 'Previous node must be waitReply',
+      dataSetQueryDependency: 'Specified DataSet Query node must complete execution',
+      noDependency: 'No dependency on other nodes',
+      
+      // Warning messages
+      warningNoWaitReply: 'Warning: Previous node is not waitReply, cannot use AI fill function',
+      warningNoDataSetQuery: 'Warning: Cannot find specified DataSet Query node or query results',
+      warningInvalidMode: 'Warning: Selected filling mode does not match workflow structure',
+      
+      // Notification message
+      notificationMessage: 'Notification Message',
+      notificationMessagePlaceholder: 'Enter notification message, can use {formName} and {formUrl} variables',
+      notificationMessageHelp: 'Supported variables: {formName} - Form Name, {formUrl} - Form Link',
+      defaultNotificationMessage: 'Your {formName} is ready. Please click the following link to fill it out:\n\n{formUrl}',
+      customMessage: 'Custom Message',
+      useDefaultMessage: 'Use Default Message',
+      messageTemplate: 'Message Template',
+      messageTemplatePlaceholder: 'Enter message template',
+      variablePlaceholder: 'Variable Placeholder',
+      formNameVariable: 'Form Name Variable',
+      formUrlVariable: 'Form Link Variable'
+    },
+    
     // Activation method configuration
     activationConfig: 'Activation Method Configuration',
     activationType: 'Activation Method',
@@ -1636,6 +1684,8 @@ const en = {
     
     // Message Send Details
     viewMessageSendStatus: 'View Send Status',
+    viewFormInstance: 'View Form Instance',
+    viewDataSet: 'View Dataset',
     messageSendDetails: 'Message Send Details',
     messageSendStatusDetails: 'Message Send Status Details',
     sendOverview: 'Send Overview',

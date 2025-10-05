@@ -45,38 +45,85 @@ namespace PurpleRice.Services
         {
             try
             {
-                // 創建 QR Code 讀取器
-                var reader = new BarcodeReader();
-                
-                // 配置讀取器選項
-                var options = new DecodingOptions
-                {
-                    TryHarder = true,
-                    PossibleFormats = new[] { BarcodeFormat.QR_CODE },
-                    CharacterSet = "UTF-8"
-                };
-                reader.Options = options;
-
                 // 讀取圖片
                 var bitmap = new System.Drawing.Bitmap(imageStream);
                 
-                // 掃描 QR Code
-                var result = reader.Decode(bitmap);
+                // 嘗試多種掃描策略
+                var strategies = new[]
+                {
+                    // 策略 1: 標準掃描，支援所有常見 2D 條碼格式
+                    new DecodingOptions
+                    {
+                        TryHarder = true,
+                        PureBarcode = false,
+                        PossibleFormats = new[] 
+                        { 
+                            BarcodeFormat.QR_CODE,
+                            BarcodeFormat.DATA_MATRIX,  // 香港政府常用
+                            BarcodeFormat.PDF_417,
+                            BarcodeFormat.AZTEC
+                        },
+                        CharacterSet = "UTF-8"
+                    },
+                    
+                    // 策略 2: 純條碼模式 - 假設圖片只有條碼沒有其他內容
+                    new DecodingOptions
+                    {
+                        TryHarder = true,
+                        PureBarcode = true,
+                        PossibleFormats = new[] 
+                        { 
+                            BarcodeFormat.DATA_MATRIX,  // Data Matrix 優先
+                            BarcodeFormat.QR_CODE,
+                            BarcodeFormat.PDF_417,
+                            BarcodeFormat.AZTEC
+                        },
+                        CharacterSet = "UTF-8"
+                    },
+                    
+                    // 策略 3: 只掃 Data Matrix（香港政府文件最常用）
+                    new DecodingOptions
+                    {
+                        TryHarder = true,
+                        PureBarcode = false,
+                        PossibleFormats = new[] 
+                        { 
+                            BarcodeFormat.DATA_MATRIX
+                        },
+                        CharacterSet = "UTF-8"
+                    }
+                };
                 
-                if (result != null)
+                // 依次嘗試各種策略
+                foreach (var options in strategies)
                 {
-                    _logger.LogInformation("QR Code scanned successfully: {Text}", result.Text);
-                    return result.Text;
+                    try
+                    {
+                        var reader = new BarcodeReader();
+                        reader.Options = options;
+                        
+                        var result = reader.Decode(bitmap);
+                        
+                        if (result != null)
+                        {
+                            _logger.LogInformation("條碼掃描成功 - 格式: {Format}, 內容: {Text}", 
+                                result.BarcodeFormat, result.Text);
+                            return result.Text;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "此策略掃描失敗，嘗試下一個策略");
+                        // 繼續嘗試下一個策略
+                    }
                 }
-                else
-                {
-                    _logger.LogWarning("No QR Code found in the image");
-                    return null;
-                }
+                
+                _logger.LogWarning("使用所有策略後仍未找到條碼");
+                return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error scanning QR code from stream");
+                _logger.LogError(ex, "掃描條碼時發生錯誤");
                 throw;
             }
         }

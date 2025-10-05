@@ -1553,7 +1553,23 @@ namespace PurpleRice.Services.WebhookServices
                     // 提取狀態信息
                     var messageId = statusElement.GetProperty("id").GetString();
                     var status = statusElement.GetProperty("status").GetString();
-                    var timestamp = statusElement.GetProperty("timestamp").GetInt64();
+                    
+                    // 處理 timestamp 欄位，可能是字串或數字格式
+                    long timestamp;
+                    if (statusElement.GetProperty("timestamp").ValueKind == JsonValueKind.String)
+                    {
+                        var timestampStr = statusElement.GetProperty("timestamp").GetString();
+                        if (!long.TryParse(timestampStr, out timestamp))
+                        {
+                            _loggingService.LogWarning($"無法解析 timestamp 字串: {timestampStr}");
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        timestamp = statusElement.GetProperty("timestamp").GetInt64();
+                    }
+                    
                     var recipientId = statusElement.GetProperty("recipient_id").GetString();
                     
                     _loggingService.LogInformation($"消息ID: {messageId}, 狀態: {status}, 收件人: {recipientId}");
@@ -1625,7 +1641,15 @@ namespace PurpleRice.Services.WebhookServices
                                 var error = errors[0];
                                 if (error.TryGetProperty("code", out var errorCode))
                                 {
-                                    recipient.ErrorCode = errorCode.GetInt32().ToString();
+                                    // 處理錯誤代碼，可能是字串或數字格式
+                                    if (errorCode.ValueKind == JsonValueKind.String)
+                                    {
+                                        recipient.ErrorCode = errorCode.GetString();
+                                    }
+                                    else
+                                    {
+                                        recipient.ErrorCode = errorCode.GetInt32().ToString();
+                                    }
                                 }
                                 if (error.TryGetProperty("title", out var errorTitle))
                                 {

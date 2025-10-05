@@ -161,6 +161,10 @@ const zhSC = {
     refresh: '刷新',
     pendingTasksList: '待处理事项列表',
     pageRange: '第 {start}-{end} 项，共 {total} 项',
+    itemsPerPage: '条/页',
+    jumpTo: '跳至',
+    page: '页',
+    confirm: '确定',
     loading: '加载中...',
     error: '错误',
     success: '成功'
@@ -2486,6 +2490,8 @@ const zhSC = {
     
     // 消息发送详情
     viewMessageSendStatus: '查看发送状态',
+    viewFormInstance: '查看表单实例',
+    viewDataSet: '查看数据集',
     messageSendDetails: '消息发送详情',
     messageSendStatusDetails: '消息发送详细状态',
     sendOverview: '发送概览',

@@ -475,138 +475,169 @@ const PendingTasksPage = () => {
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
-      <Content style={{ padding: '24px' }}>
-        {/* Page Title */}
-        <div style={{ marginBottom: 24 }}>
-          <Title level={2}>
-            <ClockCircleOutlined style={{ marginRight: 12, color: '#faad14' }} />
-            {t('pendingTasks.title')}
-          </Title>
-          <Text type="secondary">
-            {t('pendingTasks.description')}
-          </Text>
-        </div>
-
-        {/* Statistics Cards */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      <Content style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 32px)' }}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          gap: '12px',
+          flex: 1,
+          overflow: 'hidden'
+        }}>
+          {/* Statistics Cards */}
+          <div style={{ flexShrink: 0 }}>
+            <Row gutter={[12, 12]}>
           <Col xs={24} sm={12} md={6}>
-            <Card>
+            <Card size="small" bodyStyle={{ padding: '12px' }}>
               <Statistic
                 title={t('pendingTasks.totalPending')}
                 value={statistics.total}
                 prefix={<FileTextOutlined />}
-                valueStyle={{ color: '#1890ff' }}
+                valueStyle={{ color: '#1890ff', fontSize: '20px' }}
               />
             </Card>
           </Col>
           <Col xs={24} sm={12} md={6}>
-            <Card>
+            <Card size="small" bodyStyle={{ padding: '12px' }}>
               <Statistic
                 title={t('pendingTasks.pendingApproval')}
                 value={statistics.pending}
                 prefix={<ClockCircleOutlined />}
-                valueStyle={{ color: '#faad14' }}
+                valueStyle={{ color: '#faad14', fontSize: '20px' }}
               />
             </Card>
           </Col>
           <Col xs={24} sm={12} md={6}>
-            <Card>
+            <Card size="small" bodyStyle={{ padding: '12px' }}>
               <Statistic
                 title={t('pendingTasks.overdueItems')}
                 value={statistics.overdue}
                 prefix={<ExclamationCircleOutlined />}
-                valueStyle={{ color: '#ff4d4f' }}
+                valueStyle={{ color: '#ff4d4f', fontSize: '20px' }}
               />
             </Card>
           </Col>
           <Col xs={24} sm={12} md={6}>
-            <Card>
+            <Card size="small" bodyStyle={{ padding: '12px' }}>
               <Statistic
                 title={t('pendingTasks.urgentItems')}
                 value={statistics.urgent}
                 prefix={<ExclamationCircleOutlined />}
-                valueStyle={{ color: '#ff4d4f' }}
+                valueStyle={{ color: '#ff4d4f', fontSize: '20px' }}
               />
             </Card>
           </Col>
-        </Row>
-
-        {/* Filter and Search */}
-        <Card style={{ marginBottom: 24 }}>
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={12} md={8}>
-              <Search
-                placeholder={t('pendingTasks.searchPlaceholder')}
-                value={filters.searchText}
-                onChange={(e) => setFilters(prev => ({ ...prev, searchText: e.target.value }))}
-                onSearch={handleSearch}
-                style={{ width: '100%' }}
-              />
-            </Col>
-            
-            <Col xs={24} sm={12} md={4}>
-              <Select
-                placeholder={t('pendingTasks.priorityPlaceholder')}
-                value={filters.priority}
-                onChange={handlePriorityFilter}
-                style={{ width: '100%' }}
-              >
-                <Option value="all">{t('pendingTasks.all')}</Option>
-                <Option value="High">{t('pendingTasks.high')}</Option>
-                <Option value="Medium">{t('pendingTasks.medium')}</Option>
-                <Option value="Low">{t('pendingTasks.low')}</Option>
-              </Select>
-            </Col>
-            
-            <Col xs={24} sm={12} md={4}>
-              <Button 
-                icon={<ReloadOutlined />} 
-                onClick={loadPendingEforms}
-                loading={loading}
-              >
-                {t('pendingTasks.refresh')}
-              </Button>
-            </Col>
           </Row>
-        </Card>
-
-        {/* Pending Tasks List */}
-        <Card>
-          <div style={{ marginBottom: 16 }}>
-            <Space>
-              <Text strong>{t('pendingTasks.pendingTasksList')}</Text>
-              <Badge count={pendingEforms.length} showZero />
-            </Space>
           </div>
-          
-          <Table
-            components={components}
-            columns={mergedColumns}
-            dataSource={pendingEforms}
-            rowKey="id"
-            loading={loading}
-            onRow={(record) => ({
-              onClick: () => handleViewEform(record),
-              style: { cursor: 'pointer' }
-            })}
-            pagination={{
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) => 
-                t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
-            }}
-            scroll={{ x: 1000 }}
-            locale={{
-              emptyText: (
-                <Empty 
-                  description={t('pendingTasks.noPendingTasks')} 
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                />
-              )
-            }}
-          />
-        </Card>
 
+          {/* Filter and Search */}
+          <div style={{ flexShrink: 0 }}>
+            <Card size="small" bodyStyle={{ padding: '12px' }}>
+            <Row gutter={[8, 8]} align="middle" wrap={false} style={{ flexWrap: 'nowrap' }}>
+              <Col flex="auto">
+                <Search
+                  placeholder={t('pendingTasks.searchPlaceholder')}
+                  value={filters.searchText}
+                  onChange={(e) => setFilters(prev => ({ ...prev, searchText: e.target.value }))}
+                  onSearch={handleSearch}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+              
+              <Col flex="150px">
+                <Select
+                  placeholder={t('pendingTasks.priorityPlaceholder')}
+                  value={filters.priority}
+                  onChange={handlePriorityFilter}
+                  style={{ width: '100%' }}
+                >
+                  <Option value="all">{t('pendingTasks.all')}</Option>
+                  <Option value="High">{t('pendingTasks.high')}</Option>
+                  <Option value="Medium">{t('pendingTasks.medium')}</Option>
+                  <Option value="Low">{t('pendingTasks.low')}</Option>
+                </Select>
+              </Col>
+              
+              <Col flex="none">
+                <Button 
+                  icon={<ReloadOutlined />} 
+                  onClick={loadPendingEforms}
+                  loading={loading}
+                >
+                  {t('pendingTasks.refresh')}
+                </Button>
+              </Col>
+            </Row>
+            </Card>
+          </div>
+
+          {/* Pending Tasks List */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <Card 
+            size="small"
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+            bodyStyle={{
+              padding: '12px',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+          >
+            <div style={{ marginBottom: 12, flexShrink: 0 }}>
+              <Space>
+                <Text strong>{t('pendingTasks.pendingTasksList')}</Text>
+                <Badge count={pendingEforms.length} showZero />
+              </Space>
+            </div>
+            
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <Table
+                components={components}
+                columns={mergedColumns}
+                dataSource={pendingEforms}
+                rowKey="id"
+                loading={loading}
+                onRow={(record) => ({
+                  onClick: () => handleViewEform(record),
+                  style: { cursor: 'pointer' }
+                })}
+                pagination={{
+                  showSizeChanger: true,
+                  showQuickJumper: true,
+                  showTotal: (total, range) => 
+                    t('pendingTasks.pageRange', { start: range[0], end: range[1], total }),
+                  locale: {
+                    items_per_page: t('pendingTasks.itemsPerPage'),
+                    jump_to: t('pendingTasks.jumpTo'),
+                    jump_to_confirm: t('pendingTasks.confirm'),
+                    page: t('pendingTasks.page')
+                  }
+                }}
+                scroll={{ 
+                  x: 1000,
+                  y: 'calc(100vh - 380px)' // 減少表格高度，讓分頁組件有更多空間顯示
+                }}
+                sticky={{
+                  offsetHeader: 0
+                }}
+                locale={{
+                  emptyText: (
+                    <Empty 
+                      description={t('pendingTasks.noPendingTasks')} 
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    />
+                  )
+                }}
+              />
+            </div>
+          </Card>
+          </div>
+        </div>
 
         {/* Approval Confirmation Modal */}
         <Modal
