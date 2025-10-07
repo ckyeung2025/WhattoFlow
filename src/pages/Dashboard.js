@@ -33,6 +33,7 @@ import {
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import ReactECharts from 'echarts-for-react';
 import './Dashboard.css';
 
 const { Title, Text } = Typography;
@@ -80,6 +81,11 @@ const Dashboard = ({ onMenuSelect }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState({
+    messageTrend: { dates: [], totalSent: [], success: [], failed: [] },
+    topWorkflows: [],
+    formStatus: { pending: 0, approved: 0, rejected: 0 }
+  });
   const [stats, setStats] = useState({
     publishedWorkflows: 0,
     runningInstances: 0,
@@ -164,13 +170,35 @@ const Dashboard = ({ onMenuSelect }) => {
         templatesStatsRes,
         recentTemplatesRes,
         recentWorkflowsRes,
-        recentDataSetsRes
+        recentDataSetsRes,
+        pendingTasksStatsRes,
+        eformDefinitionsRes,
+        dataSetsListRes,
+        workflowDefinitionsListRes,
+        contactsStatsRes,
+        broadcastGroupsStatsRes,
+        hashtagsStatsRes,
+        companyUserStatsRes,
+        messageTrendRes,
+        topWorkflowsRes,
+        formStatusRes
       ] = await Promise.allSettled([
         axios.get('/api/workflowexecutions/monitor/statistics', { headers: authHeaders }),
         axios.get('/api/whatsapptemplates/statistics', { headers: authHeaders }),
         axios.get('/api/whatsapptemplates?page=1&pageSize=3&sortField=createdAt&sortOrder=desc', { headers: authHeaders }),
         axios.get('/api/workflowdefinitions?page=1&pageSize=3&sortField=createdAt&sortOrder=desc', { headers: authHeaders }),
-        axios.get('/api/datasets?page=1&pageSize=3&sortField=createdAt&sortOrder=desc', { headers: authHeaders })
+        axios.get('/api/datasets?page=1&pageSize=3&sortField=createdAt&sortOrder=desc', { headers: authHeaders }),
+        axios.get('/api/eforminstances/statistics/pending', { headers: authHeaders }),
+        axios.get('/api/eforms?page=1&pageSize=1000', { headers: authHeaders }),
+        axios.get('/api/datasets?page=1&pageSize=1000', { headers: authHeaders }),
+        axios.get('/api/workflowdefinitions?page=1&pageSize=1000', { headers: authHeaders }),
+        axios.get('/api/contactlist/statistics', { headers: authHeaders }),
+        axios.get('/api/contactlist/groups/statistics', { headers: authHeaders }),
+        axios.get('/api/contactlist/hashtags/statistics', { headers: authHeaders }),
+        axios.get('/api/companyuseradminpage/statistics', { headers: authHeaders }),
+        axios.get('/api/workflowmessagesend/statistics/daily-trend?days=7', { headers: authHeaders }),
+        axios.get('/api/workflowexecutions/top-workflows?limit=5', { headers: authHeaders }),
+        axios.get('/api/eforminstances/statistics/by-status', { headers: authHeaders })
       ]);
 
       // 調試信息：打印 API 響應
@@ -178,14 +206,25 @@ const Dashboard = ({ onMenuSelect }) => {
         instancesRes: instancesRes.status,
         templatesStatsRes: templatesStatsRes.status,
         recentTemplatesRes: recentTemplatesRes.status,
-        recentWorkflowsRes: recentWorkflowsRes.status
+        recentWorkflowsRes: recentWorkflowsRes.status,
+        pendingTasksStatsRes: pendingTasksStatsRes.status,
+        eformDefinitionsRes: eformDefinitionsRes.status,
+        dataSetsListRes: dataSetsListRes.status,
+        workflowDefinitionsListRes: workflowDefinitionsListRes.status,
+        contactsStatsRes: contactsStatsRes.status,
+        broadcastGroupsStatsRes: broadcastGroupsStatsRes.status,
+        hashtagsStatsRes: hashtagsStatsRes.status,
+        companyUserStatsRes: companyUserStatsRes.status
       });
 
       console.log('API 響應數據:', {
         instancesRes: instancesRes.status === 'fulfilled' ? instancesRes.value.data : instancesRes.reason,
         templatesStatsRes: templatesStatsRes.status === 'fulfilled' ? templatesStatsRes.value.data : templatesStatsRes.reason,
         recentTemplatesRes: recentTemplatesRes.status === 'fulfilled' ? recentTemplatesRes.value.data : recentTemplatesRes.reason,
-        recentWorkflowsRes: recentWorkflowsRes.status === 'fulfilled' ? recentWorkflowsRes.value.data : recentWorkflowsRes.reason
+        recentWorkflowsRes: recentWorkflowsRes.status === 'fulfilled' ? recentWorkflowsRes.value.data : recentWorkflowsRes.reason,
+        pendingTasksStatsRes: pendingTasksStatsRes.status === 'fulfilled' ? pendingTasksStatsRes.value.data : pendingTasksStatsRes.reason,
+        eformDefinitionsRes: eformDefinitionsRes.status === 'fulfilled' ? eformDefinitionsRes.value.data : eformDefinitionsRes.reason,
+        dataSetsListRes: dataSetsListRes.status === 'fulfilled' ? dataSetsListRes.value.data : dataSetsListRes.reason
       });
 
       // 處理工作流程統計數據
@@ -193,6 +232,173 @@ const Dashboard = ({ onMenuSelect }) => {
       
       // 處理 WhatsApp 模板統計數據
       const templateStats = templatesStatsRes.status === 'fulfilled' ? templatesStatsRes.value.data : {};
+      
+      // 處理待處理任務統計數據
+      const pendingTasksStats = pendingTasksStatsRes.status === 'fulfilled' ? pendingTasksStatsRes.value.data : {};
+      console.log('待處理任務統計:', pendingTasksStats);
+      
+      // 處理工作流程定義統計數據
+      const workflowDefinitionsData = workflowDefinitionsListRes.status === 'fulfilled' ? workflowDefinitionsListRes.value.data : {};
+      console.log('🔄 工作流程定義 API 響應:', workflowDefinitionsData);
+      
+      // 調試：輸出所有工作流程的狀態值
+      if (workflowDefinitionsData.data && workflowDefinitionsData.data.length > 0) {
+        console.log('🔄 第一個工作流程範例:', workflowDefinitionsData.data[0]);
+        console.log('🔄 所有工作流程的 status 值:', workflowDefinitionsData.data.map(w => w.status));
+      }
+      
+      // 判斷工作流程是否為自動觸發 - 與 PublishedAppsPage.js 保持一致
+      const isAutoTrigger = (workflow) => {
+        try {
+          if (!workflow.json) return false;
+          const workflowJson = typeof workflow.json === 'string' ? JSON.parse(workflow.json) : workflow.json;
+          
+          if (!workflowJson.nodes) return false;
+          
+          // 嘗試多種可能的 start 節點類型
+          const startNode = workflowJson.nodes.find(node => 
+            node.type === 'start' || 
+            node.type === 'Start' || 
+            node.type === 'startNode' ||
+            node.type === 'begin' ||
+            node.type === 'input' ||
+            node.id === 'start' ||
+            (node.data && node.data.type === 'start')
+          );
+          
+          if (startNode && startNode.data) {
+            const activationType = startNode.data.activationType || 
+                                 startNode.data.triggerType || 
+                                 startNode.data.trigger;
+            
+            // 自動觸發類型
+            if (activationType === 'webhook' || 
+                activationType === 'auto' || 
+                activationType === 'Auto' || 
+                activationType === '自動') {
+              return true;
+            }
+            
+            // 手動觸發類型
+            if (activationType === 'manual' || 
+                activationType === 'Manual' || 
+                activationType === '手動') {
+              return false;
+            }
+          } else if (workflowJson.nodes.length > 0) {
+            // 檢查第一個節點
+            const firstNode = workflowJson.nodes[0];
+            if (firstNode && firstNode.data) {
+              const activationType = firstNode.data.activationType || 
+                                   firstNode.data.triggerType || 
+                                   firstNode.data.trigger;
+              
+              if (activationType === 'webhook' || 
+                  activationType === 'auto' || 
+                  activationType === 'Auto' || 
+                  activationType === '自動') {
+                return true;
+              }
+              
+              if (activationType === 'manual' || 
+                  activationType === 'Manual' || 
+                  activationType === '手動') {
+                return false;
+              }
+            }
+          }
+          
+          // 默認為手動觸發
+          return false;
+        } catch (e) {
+          console.error('解析工作流程觸發類型失敗:', e);
+          return false;
+        }
+      };
+      
+      const enabledWorkflows = workflowDefinitionsData.data?.filter(w => w.status === 'Enabled') || [];
+      
+      const workflowDefinitionsStats = {
+        total: workflowDefinitionsData.total || 0,
+        published: enabledWorkflows.length,
+        manualTrigger: enabledWorkflows.filter(w => !isAutoTrigger(w)).length,
+        autoTrigger: enabledWorkflows.filter(w => isAutoTrigger(w)).length,
+        disabled: workflowDefinitionsData.data?.filter(w => w.status === 'Disabled').length || 0
+      };
+      console.log('🔄 工作流程定義統計:', workflowDefinitionsStats);
+      
+      // 調試：輸出前幾個工作流程的觸發類型
+      if (enabledWorkflows.length > 0) {
+        console.log('🔄 工作流程觸發類型判斷:', enabledWorkflows.slice(0, 3).map(w => ({
+          name: w.name,
+          isAuto: isAutoTrigger(w),
+          hasJson: !!w.json
+        })));
+      }
+      
+      // 處理表單定義統計數據
+      console.log('🔍 eformDefinitionsRes 狀態:', eformDefinitionsRes.status);
+      if (eformDefinitionsRes.status === 'rejected') {
+        console.error('❌ 表單 API 調用失敗:', eformDefinitionsRes.reason);
+      }
+      
+      const eformDefinitionsData = eformDefinitionsRes.status === 'fulfilled' ? eformDefinitionsRes.value.data : {};
+      console.log('📋 表單定義 API 響應:', eformDefinitionsData);
+      console.log('📋 表單 data 數組:', eformDefinitionsData.data);
+      console.log('📋 表單 total:', eformDefinitionsData.total);
+      
+      // 檢查第一個表單的 status 值
+      if (eformDefinitionsData.data && eformDefinitionsData.data.length > 0) {
+        console.log('📋 第一個表單範例:', eformDefinitionsData.data[0]);
+        console.log('📋 所有表單的 status 值:', eformDefinitionsData.data.map(f => f.status));
+      }
+      
+      const eformStats = {
+        total: eformDefinitionsData.total || 0,
+        active: eformDefinitionsData.data?.filter(f => f.status === 'A').length || 0,
+        inactive: eformDefinitionsData.data?.filter(f => f.status === 'I').length || 0,
+        recentItems: eformDefinitionsData.data?.slice(0, 2).map(f => ({ id: f.id, name: f.name })) || []
+      };
+      console.log('📊 表單統計:', eformStats);
+      
+      // 處理數據集統計數據
+      const dataSetsData = dataSetsListRes.status === 'fulfilled' ? dataSetsListRes.value.data : {};
+      console.log('📦 數據集 API 響應:', dataSetsData);
+      
+      // 數據集 API 返回格式：{success: true, data: [...], pagination: {totalCount: ...}}
+      const dataSetsTotal = dataSetsData.pagination?.totalCount || dataSetsData.data?.length || 0;
+      const dataSetsActive = dataSetsData.data?.filter(ds => ds.status === 'Active').length || 0;
+      const dataSetsError = dataSetsData.data?.filter(ds => ds.status === 'Error').length || 0;
+      console.log('📊 數據集統計:', { total: dataSetsTotal, active: dataSetsActive, error: dataSetsError });
+      
+      // 處理聯絡人統計數據
+      const contactsStats = contactsStatsRes.status === 'fulfilled' ? contactsStatsRes.value.data : {};
+      console.log('👥 聯絡人統計:', contactsStats);
+      
+      // 處理廣播群組統計數據
+      const broadcastGroupsStats = broadcastGroupsStatsRes.status === 'fulfilled' ? broadcastGroupsStatsRes.value.data : {};
+      console.log('📢 廣播群組統計:', broadcastGroupsStats);
+      
+      // 處理標籤統計數據
+      const hashtagsStats = hashtagsStatsRes.status === 'fulfilled' ? hashtagsStatsRes.value.data : {};
+      console.log('🏷️ 標籤統計:', hashtagsStats);
+      
+      // 處理公司用戶統計數據
+      const companyUserStats = companyUserStatsRes.status === 'fulfilled' ? companyUserStatsRes.value.data : {};
+      console.log('🏢 公司用戶統計:', companyUserStats);
+      
+      // 處理圖表數據
+      const messageTrend = messageTrendRes.status === 'fulfilled' ? messageTrendRes.value.data : { dates: [], totalSent: [], success: [], failed: [] };
+      const topWorkflows = topWorkflowsRes.status === 'fulfilled' ? topWorkflowsRes.value.data : [];
+      const formStatus = formStatusRes.status === 'fulfilled' ? formStatusRes.value.data : { pending: 0, approved: 0, rejected: 0 };
+      
+      setChartData({
+        messageTrend,
+        topWorkflows,
+        formStatus
+      });
+      
+      console.log('📊 圖表數據:', { messageTrend, topWorkflows, formStatus });
       
       // 處理最近模板數據
       let recentWhatsAppItems = [];
@@ -286,34 +492,28 @@ const Dashboard = ({ onMenuSelect }) => {
         setLoading(false);
         return;
       }
-      
-       // 處理表單相關數據（暫時使用模擬數據，等後端 API 完成）
-       const eformStats = {
-         active: 5,      // 模擬數據
-         inactive: 2,    // 模擬數據
-         recent: 3,      // 模擬數據
-         recentItems: [  // 模擬數據
-           { id: 'a4a76e58-6338-4a52-85b3-a4b2c3b7863b', name: '客戶註冊表單' },
-           { id: 'e515e3af-a076-4f4d-9a4e-81fff1c67141', name: '訂單確認表單' }
-         ]
-       };
 
       setStats({
-        // 工作流程相關
-        publishedWorkflows: workflowStats.total || 0,
+        // 工作流程定義相關（使用 workflowDefinitionsStats）
+        publishedWorkflows: workflowDefinitionsStats.published || 0, // 只顯示 Enabled 的數量
+        manualTriggerWorkflows: workflowDefinitionsStats.manualTrigger || 0,
+        autoTriggerWorkflows: workflowDefinitionsStats.autoTrigger || 0,
+        disabledWorkflows: workflowDefinitionsStats.disabled || 0,
+        
+        // 工作流程執行相關（使用 workflowStats）
         runningInstances: workflowStats.running || 0,
         completed: workflowStats.completed || 0,
         failed: workflowStats.failed || 0,
         successRate: workflowStats.successRate || 0,
         averageExecutionTime: workflowStats.averageExecutionTime || 0,
         
-        // 表單相關（模擬數據）
-        totalEforms: eformStats.active + eformStats.inactive,
+        // 表單相關（從 API 獲取真實數據）
+        totalEforms: eformStats.total,
         activeEforms: eformStats.active,
         inactiveEforms: eformStats.inactive,
-        recentEforms: eformStats.recent,
+        recentEforms: eformStats.recentItems.length,
         recentEformItems: eformStats.recentItems,
-        pendingApprovals: 3, // 模擬數據
+        pendingApprovals: pendingTasksStats.pending || 0,
         
         // WhatsApp 模板統計
         whatsappTemplates: templateStats.total || 0,
@@ -323,20 +523,24 @@ const Dashboard = ({ onMenuSelect }) => {
         // 工作流程統計
         recentWorkflowItems: recentWorkflowItems,
         
-        // 數據集統計
-        dataSets: 4, // 模擬數據
+        // 數據集統計（從 API 獲取真實數據）
+        dataSets: dataSetsTotal,
+        activeDataSets: dataSetsActive,
+        errorDataSets: dataSetsError,
         recentDataSetItems: recentDataSetItems,
         
-        // 管理工具統計
-        totalUsers: 15, // 模擬數據
-        broadcastGroups: 5, // 模擬數據
-        activeGroups: 4, // 模擬數據
-        totalMembers: 120, // 模擬數據
-        hashtags: 12, // 模擬數據
-        activeHashtags: 10, // 模擬數據
-        hashtagUsage: 45, // 模擬數據
-        adminUsers: 3, // 模擬數據
-        totalCompanies: 2 // 模擬數據
+        // 管理工具統計（從 API 獲取真實數據）
+        totalUsers: contactsStats.total || 0,
+        activeUsers: contactsStats.active || 0,
+        inactiveUsers: contactsStats.inactive || 0,
+        broadcastGroups: broadcastGroupsStats.totalGroups || 0,
+        activeGroups: broadcastGroupsStats.activeGroups || 0,
+        totalMembers: broadcastGroupsStats.totalMembers || 0,
+        hashtags: hashtagsStats.totalHashtags || 0,
+        activeHashtags: hashtagsStats.activeHashtags || 0,
+        hashtagUsage: hashtagsStats.hashtagUsage || 0,
+        adminUsers: companyUserStats.adminUsers || 0,
+        totalCompanies: companyUserStats.totalCompanies || 0
       });
     } catch (error) {
       console.error('載入儀表板數據失敗:', error);
@@ -651,7 +855,6 @@ const Dashboard = ({ onMenuSelect }) => {
 
   return (
     <div className="dashboard-container">
-
       {/* 主要功能區域 - 左右分佈 */}
       <div className="main-sections" style={{ paddingTop: '24px' }}>
         <Row gutter={[24, 32]}>
@@ -679,9 +882,8 @@ const Dashboard = ({ onMenuSelect }) => {
                     numberColor="positive"
                     onClick={() => handleNavigation('publishedApps')}
                     stats={{
-                      [t('dashboard.active')]: stats.publishedWorkflows,
-                      [t('dashboard.draft')]: 0,
-                      [t('dashboard.disabled')]: 0
+                      ['Manual Trigger']: stats.manualTriggerWorkflows || 0,
+                      ['Auto Trigger']: stats.autoTriggerWorkflows || 0
                     }}
                   />
         </Col>
@@ -727,7 +929,184 @@ const Dashboard = ({ onMenuSelect }) => {
 
           {/* Studio 工作室區域 - 右側 67% */}
           <Col xs={24} lg={16}>
-            <div className="section-container right-section">
+            {/* 數據分析圖表區域 - 獨立 Card */}
+            <Card
+              style={{
+                background: 'linear-gradient(135deg, #F9F7FC 0%, #FFF 100%)',
+                border: '2px solid #F0E7FF',
+                borderRadius: '24px',
+                boxShadow: '0 8px 32px rgba(114, 52, 207, 0.12)',
+                marginBottom: '24px'
+              }}
+              bodyStyle={{ padding: '32px' }}
+            >
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px', 
+                marginBottom: '24px',
+                paddingBottom: '16px',
+                borderBottom: '2px solid #F0E7FF'
+              }}>
+                <BarChartOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
+                <div>
+                  <Title level={3} style={{ margin: 0, fontSize: '22px', color: '#333', fontWeight: 'bold' }}>
+                    📊 {t('dashboard.dataAnalysis')}
+                  </Title>
+                  <Text style={{ color: 'rgba(0,0,0,0.6)', fontSize: '14px' }}>
+                    {t('dashboard.dataAnalysisDescription')}
+                  </Text>
+                </div>
+              </div>
+              
+              <Row gutter={[16, 16]}>
+                {/* 訊息趨勢圖 */}
+                <Col xs={24} sm={12} lg={8}>
+                  <Card
+                    size="small"
+                    style={{
+                      borderRadius: '12px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                      height: '240px'
+                    }}
+                    bodyStyle={{ padding: '16px', height: '100%' }}
+                  >
+                    <ReactECharts
+                      option={{
+                        title: { 
+                          text: t('dashboard.messageTrend'),
+                          left: 'center',
+                          top: 2,
+                          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                        },
+                        grid: { left: '10%', right: '10%', top: '30%', bottom: '15%', containLabel: false },
+                        xAxis: { 
+                          type: 'category', 
+                          data: chartData.messageTrend.dates.map(d => d.substring(5)),
+                          axisLabel: { fontSize: 10, rotate: 45 }
+                        },
+                        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+                        tooltip: { trigger: 'axis' },
+                        series: [{
+                          type: 'line',
+                          data: chartData.messageTrend.totalSent,
+                          smooth: true,
+                          lineStyle: { width: 2, color: '#7234CF' },
+                          areaStyle: { 
+                            color: {
+                              type: 'linear',
+                              x: 0, y: 0, x2: 0, y2: 1,
+                              colorStops: [
+                                { offset: 0, color: 'rgba(114, 52, 207, 0.3)' },
+                                { offset: 1, color: 'rgba(114, 52, 207, 0.05)' }
+                              ]
+                            }
+                          },
+                          itemStyle: { color: '#7234CF' }
+                        }]
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                      opts={{ renderer: 'svg' }}
+                    />
+                  </Card>
+                </Col>
+                
+                {/* 熱門流程圖 */}
+                <Col xs={24} sm={12} lg={8}>
+                  <Card
+                    size="small"
+                    style={{
+                      borderRadius: '12px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                      height: '240px'
+                    }}
+                    bodyStyle={{ padding: '16px', height: '100%' }}
+                  >
+                    <ReactECharts
+                      option={{
+                        title: { 
+                          text: t('dashboard.hotWorkflows'),
+                          left: 'center',
+                          top: 2,
+                          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                        },
+                        grid: { left: '15%', right: '10%', top: '30%', bottom: '5%', containLabel: true },
+                        xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+                        yAxis: { 
+                          type: 'category', 
+                          data: chartData.topWorkflows.slice(0, 3).map(w => w.workflowName.length > 10 ? w.workflowName.substring(0, 10) + '...' : w.workflowName).reverse(),
+                          axisLabel: { fontSize: 10 }
+                        },
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                        series: [{
+                          type: 'bar',
+                          data: chartData.topWorkflows.slice(0, 3).map(w => w.executionCount).reverse(),
+                          itemStyle: { color: '#7234CF', borderRadius: [0, 4, 4, 0] },
+                          label: { show: true, position: 'right', fontSize: 10 }
+                        }]
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                      opts={{ renderer: 'svg' }}
+                    />
+                  </Card>
+                </Col>
+                
+                {/* 表單狀態圖 */}
+                <Col xs={24} sm={12} lg={8}>
+                  <Card
+                    size="small"
+                    style={{
+                      borderRadius: '12px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                      height: '240px'
+                    }}
+                    bodyStyle={{ padding: '16px', height: '100%' }}
+                  >
+                    <ReactECharts
+                      option={{
+                        title: { 
+                          text: t('dashboard.formStatus'),
+                          left: 'center',
+                          top: 2,
+                          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                        },
+                        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                        legend: { 
+                          orient: 'horizontal', 
+                          bottom: 5, 
+                          itemGap: 15, 
+                          textStyle: { fontSize: 10 } 
+                        },
+                        series: [{
+                          type: 'pie',
+                          radius: ['35%', '60%'],
+                          center: ['50%', '52%'],
+                          data: [
+                            { value: chartData.formStatus.pending, name: t('dashboard.pending'), itemStyle: { color: '#faad14' } },
+                            { value: chartData.formStatus.approved, name: t('dashboard.approved'), itemStyle: { color: '#52c41a' } },
+                            { value: chartData.formStatus.rejected, name: t('dashboard.rejected'), itemStyle: { color: '#ff4d4f' } }
+                          ],
+                          label: { fontSize: 11, formatter: '{c}' }
+                        }]
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                      opts={{ renderer: 'svg' }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
+            </Card>
+            
+            {/* Studio 功能區域 - 獨立 Card */}
+            <Card
+              style={{
+                background: '#F9F7FC',
+                border: '1px solid #F9F7FC',
+                borderRadius: '24px',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.1)'
+              }}
+              bodyStyle={{ padding: '32px' }}
+            >
               <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <img 
                   src="/assets/wtf_robot.gif" 
@@ -848,9 +1227,8 @@ const Dashboard = ({ onMenuSelect }) => {
                     numberColor="positive"
                     onClick={() => handleNavigation('whatsappWorkflow')}
                     stats={{
-                      [t('dashboard.published')]: stats.publishedWorkflows,
-                      [t('dashboard.draft')]: stats.draftWorkflows || 0,
-                      [t('dashboard.test')]: stats.testWorkflows || 0
+                      ['Manual Trigger']: stats.manualTriggerWorkflows || 0,
+                      ['Auto Trigger']: stats.autoTriggerWorkflows || 0
                     }}
                     recentItems={stats.recentWorkflowItems || []}
                     onRecentClick={(item) => {
@@ -886,7 +1264,7 @@ const Dashboard = ({ onMenuSelect }) => {
                 
                 
       </Row>
-            </div>
+            </Card>
         </Col>
       </Row>
       </div>

@@ -27,23 +27,12 @@ namespace PurpleRice.Models
             ["sendwhatsapp"] = new WorkflowNodeTypeDefinition
             {
                 Type = "sendWhatsApp",
-                Label = "Send WhatsApp Message",
+                Label = "Send WhatsApp",
                 Category = "Communication",
-                Description = "發送自定義 WhatsApp 訊息",
+                Description = "發送 WhatsApp 訊息或模板",
                 IsImplemented = true,
                 HasExecution = true,
-                DefaultData = new { taskName = "Send WhatsApp Message", message = "", to = "" }
-            },
-            
-            ["sendwhatsapptemplate"] = new WorkflowNodeTypeDefinition
-            {
-                Type = "sendWhatsAppTemplate",
-                Label = "Send WhatsApp Template",
-                Category = "Communication",
-                Description = "發送預設的 WhatsApp 模板訊息",
-                IsImplemented = true,
-                HasExecution = true,
-                DefaultData = new { taskName = "Send WhatsApp Template", templateId = "", templateName = "", variables = new { } }
+                DefaultData = new { taskName = "Send WhatsApp", messageMode = "direct", message = "", to = "" }
             },
             
             ["waitreply"] = new WorkflowNodeTypeDefinition

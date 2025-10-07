@@ -590,6 +590,40 @@ namespace PurpleRice.Controllers
             }
         }
 
+        /// <summary>
+        /// 獲取熱門工作流程 Top N
+        /// </summary>
+        [HttpGet("top-workflows")]
+        public async Task<IActionResult> GetTopWorkflows([FromQuery] int limit = 5)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📊 獲取 Top {limit} 熱門工作流程");
+
+                var topWorkflows = await _db.WorkflowExecutions
+                    .GroupBy(e => new { e.WorkflowDefinitionId, e.WorkflowDefinition.Name })
+                    .Select(g => new
+                    {
+                        workflowId = g.Key.WorkflowDefinitionId,
+                        workflowName = g.Key.Name ?? "未命名工作流程",
+                        executionCount = g.Count(),
+                        successCount = g.Count(e => e.Status != null && e.Status.ToLower().Contains("complete")),
+                        failedCount = g.Count(e => e.Status != null && e.Status.ToLower().Contains("fail"))
+                    })
+                    .OrderByDescending(w => w.executionCount)
+                    .Take(limit)
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"✅ 成功獲取 {topWorkflows.Count} 個熱門工作流程");
+                return Ok(topWorkflows);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 獲取熱門工作流程失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取熱門工作流程失敗" });
+            }
+        }
+
         // GET: api/workflowexecutions/{id}/details
         [HttpGet("{id}/details")]
         public async Task<IActionResult> GetInstanceDetails(int id)

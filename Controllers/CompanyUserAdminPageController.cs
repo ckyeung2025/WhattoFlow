@@ -22,6 +22,51 @@ namespace PurpleRice.Controllers
             _loggingService = loggingServiceFactory("CompanyUserAdminPageController");
         }
 
+        /// <summary>
+        /// 獲取公司用戶統計數據
+        /// </summary>
+        [HttpGet("statistics")]
+        public async Task<IActionResult> GetStatistics()
+        {
+            try
+            {
+                _loggingService.LogInformation("📊 開始獲取公司用戶統計數據");
+
+                // 總用戶數
+                var totalUsers = await _context.Users.CountAsync();
+
+                // 總公司數
+                var totalCompanies = await _context.Companies.CountAsync();
+
+                // 管理員用戶數（IsOwner = true）
+                var adminUsers = await _context.Users
+                    .Where(u => u.IsOwner)
+                    .CountAsync();
+
+                // 活躍用戶數
+                var activeUsers = await _context.Users
+                    .Where(u => u.IsActive)
+                    .CountAsync();
+
+                var statistics = new
+                {
+                    totalUsers = totalUsers,
+                    activeUsers = activeUsers,
+                    adminUsers = adminUsers,
+                    totalCompanies = totalCompanies
+                };
+
+                _loggingService.LogInformation($"✅ 統計數據: 總用戶={totalUsers}, 活躍用戶={activeUsers}, 管理員={adminUsers}, 總公司={totalCompanies}");
+                
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 獲取統計數據失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
+
         [HttpGet("company/{companyId}")]
         public async Task<IActionResult> GetCompanyUsers(Guid companyId)
         {

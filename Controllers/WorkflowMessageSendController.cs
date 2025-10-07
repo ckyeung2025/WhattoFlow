@@ -158,6 +158,32 @@ namespace PurpleRice.Controllers
         }
 
         /// <summary>
+        /// 獲取訊息發送每日趨勢數據
+        /// </summary>
+        [HttpGet("statistics/daily-trend")]
+        public async Task<IActionResult> GetDailyTrend([FromQuery] int days = 7)
+        {
+            try
+            {
+                _logger.LogInformation($"📊 獲取過去 {days} 天的訊息發送趨勢");
+
+                var companyId = GetCurrentCompanyId();
+                var endDate = DateTime.UtcNow.Date;
+                var startDate = endDate.AddDays(-days + 1);
+
+                var trend = await _messageSendService.GetDailyTrendAsync(companyId, startDate, endDate);
+
+                _logger.LogInformation($"✅ 成功獲取 {days} 天趨勢數據");
+                return Ok(trend);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ 獲取每日趨勢數據失敗");
+                return StatusCode(500, new { error = "獲取趨勢數據失敗", details = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// 創建消息發送記錄（內部使用）
         /// </summary>
         [HttpPost("create")]

@@ -136,6 +136,9 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 
+// 初始化 WhatsApp API 配置
+PurpleRice.Services.WhatsAppApiConfig.Initialize(app.Configuration);
+
 app.MapControllers();
 
 app.Run(); 

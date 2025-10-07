@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using PurpleRice.Data;
 using PurpleRice.Models;
 using System;
@@ -17,15 +18,27 @@ namespace PurpleRice.Services
         private readonly LoggingService _loggingService;
         private readonly WorkflowMessageSendService _messageSendService;
         private readonly RecipientResolverService _recipientResolverService;
+        private readonly IConfiguration _configuration;
         
         public WhatsAppWorkflowService(
             Func<string, LoggingService> loggingServiceFactory,
             WorkflowMessageSendService messageSendService,
-            RecipientResolverService recipientResolverService)
+            RecipientResolverService recipientResolverService,
+            IConfiguration configuration)
         {
             _loggingService = loggingServiceFactory("WhatsAppService");
             _messageSendService = messageSendService;
             _recipientResolverService = recipientResolverService;
+            _configuration = configuration;
+        }
+
+        /// <summary>
+        /// 獲取 Meta API 版本
+        /// </summary>
+        /// <returns>API 版本字符串</returns>
+        private string GetApiVersion()
+        {
+            return WhatsAppApiConfig.GetApiVersion();
         }
 
         /// <summary>
@@ -89,38 +102,64 @@ namespace PurpleRice.Services
         /// <param name="dbContext">資料庫上下文</param>
         /// <param name="variables">模板變數（可選）</param>
         /// <returns></returns>
-        public async Task<string> SendWhatsAppTemplateMessageAsync(string to, string templateId, WorkflowExecution execution, PurpleRiceDbContext dbContext, Dictionary<string, string> variables = null)
+        public async Task<string> SendWhatsAppTemplateMessageAsync(
+            string to, 
+            string templateId, 
+            WorkflowExecution execution, 
+            PurpleRiceDbContext dbContext, 
+            Dictionary<string, string> variables = null,
+            bool isMetaTemplate = false,
+            string templateName = null,
+            string templateLanguage = null)  // 添加語言代碼參數
         {
             try
             {
-                _loggingService.LogInformation($"=== 使用內部模板發送 WhatsApp 消息開始 ===");
-                _loggingService.LogInformation($"收件人: {to}");
-                _loggingService.LogInformation($"內部模板 ID: {templateId}");
-                _loggingService.LogInformation($"執行 ID: {execution.Id}");
-                _loggingService.LogInformation($"模板變數: {JsonSerializer.Serialize(variables)}");
-
-                // 驗證必要參數
-                if (string.IsNullOrEmpty(templateId))
-                {
-                    throw new Exception("內部模板 ID 不能為空");
-                }
-
-                if (execution == null)
-                {
-                    throw new Exception("工作流程執行記錄不能為空");
-                }
-
                 // 獲取公司配置
                 var company = await GetCompanyConfigurationAsync(execution, dbContext);
                 
-                // 格式化電話號碼
-                var formattedTo = FormatPhoneNumber(to);
-                
-                _loggingService.LogInformation($"原始電話號碼: {to}");
-                _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
+                // 判斷使用內部模板還是 Meta 模板
+                if (isMetaTemplate)
+                {
+                    _loggingService.LogInformation($"=== 使用 Meta 官方模板發送消息 ===");
+                    _loggingService.LogInformation($"Meta 模板名稱: {templateName}");
+                    _loggingService.LogInformation($"Meta 模板語言: {templateLanguage ?? "未指定（將使用 zh_TW）"}");
+                    
+                    if (string.IsNullOrEmpty(templateName))
+                    {
+                        throw new Exception("Meta 模板名稱不能為空");
+                    }
+                    
+                    // 調用 Meta 模板發送方法
+                    return await SendMetaTemplateMessageAsync(to, templateName, variables, company, templateLanguage);
+                }
+                else
+                {
+                    // === 內部模板發送邏輯 ===
+                    _loggingService.LogInformation($"=== 使用內部模板發送 WhatsApp 消息開始 ===");
+                    _loggingService.LogInformation($"收件人: {to}");
+                    _loggingService.LogInformation($"內部模板 ID: {templateId}");
+                    _loggingService.LogInformation($"執行 ID: {execution.Id}");
+                    _loggingService.LogInformation($"模板變數: {JsonSerializer.Serialize(variables)}");
 
-                // 通過 ID 查詢內部模板
-                var internalTemplate = await dbContext.WhatsAppTemplates
+                    // 驗證必要參數
+                    if (string.IsNullOrEmpty(templateId))
+                    {
+                        throw new Exception("內部模板 ID 不能為空");
+                    }
+
+                    if (execution == null)
+                    {
+                        throw new Exception("工作流程執行記錄不能為空");
+                    }
+                    
+                    // 格式化電話號碼
+                    var formattedTo = FormatPhoneNumber(to);
+                    
+                    _loggingService.LogInformation($"原始電話號碼: {to}");
+                    _loggingService.LogInformation($"格式化後電話號碼: {formattedTo}");
+
+                    // 通過 ID 查詢內部模板
+                    var internalTemplate = await dbContext.WhatsAppTemplates
                     .FirstOrDefaultAsync(t => t.Id.ToString() == templateId && t.Status == "Active" && !t.IsDeleted);
 
                 if (internalTemplate == null)
@@ -165,10 +204,11 @@ namespace PurpleRice.Services
                 
                 // 返回一個臨時 ID（因為內部模板方法還沒有返回值）
                 return $"template_{Guid.NewGuid():N}";
+                }
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"使用內部模板發送 WhatsApp 消息失敗: {ex.Message}", ex);
+                _loggingService.LogError($"發送 WhatsApp 模板消息失敗: {ex.Message}", ex);
                 throw;
             }
         }
@@ -264,7 +304,7 @@ namespace PurpleRice.Services
         /// </summary>
         private async Task<string> SendWhatsAppTextMessageAsync(Company company, string to, string message)
         {
-            var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+            var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
             
             var payload = new
             {
@@ -368,7 +408,7 @@ namespace PurpleRice.Services
                     address = ReplaceVariables(address, variables);
                 }
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 
                 var payload = new
                 {
@@ -430,7 +470,7 @@ namespace PurpleRice.Services
                     caption = ReplaceVariables(caption, variables);
                 }
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 
                 // 根據媒體類型創建不同的 payload
                 object payload;
@@ -545,7 +585,7 @@ namespace PurpleRice.Services
                     email = ReplaceVariables(email, variables);
                 }
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 
                 var payload = new
                 {
@@ -640,7 +680,7 @@ namespace PurpleRice.Services
                     footer = ReplaceVariables(footer, variables);
                 }
                 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 
                 // 根據不同的 Interactive 類型構建不同的 payload
                 object payload;
@@ -820,6 +860,184 @@ namespace PurpleRice.Services
                     }
                 }
             };
+        }
+
+        /// <summary>
+        /// 發送 Meta 官方模板訊息
+        /// </summary>
+        private async Task<string> SendMetaTemplateMessageAsync(
+            string to, 
+            string templateName, 
+            Dictionary<string, string> variables,
+            Company company,
+            string languageCode = null)  // 添加語言代碼參數
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 發送 Meta 官方模板消息開始 ===");
+                _loggingService.LogInformation($"收件人: {to}");
+                _loggingService.LogInformation($"Meta 模板名稱: {templateName}");
+                _loggingService.LogInformation($"變數: {JsonSerializer.Serialize(variables)}");
+                _loggingService.LogInformation($"變數數量: {variables?.Count ?? 0}");
+                
+                // 檢查每個變數的詳細信息
+                if (variables != null)
+                {
+                    foreach (var kvp in variables)
+                    {
+                        _loggingService.LogInformation($"變數詳情: Key='{kvp.Key}', Value='{kvp.Value}', IsEmpty={string.IsNullOrEmpty(kvp.Value)}");
+                    }
+                }
+                
+                // 格式化電話號碼
+                var formattedTo = FormatPhoneNumber(to);
+                
+                // 構建 Meta API 的 template components
+                var components = new List<object>();
+                
+                if (variables != null && variables.Any())
+                {
+                    // Meta 模板的變數處理：支持命名參數和數字參數
+                    // 關鍵：Meta API 要求參數按照模板中出現的順序發送
+                    // 如果模板使用 {{1}}，參數必須按照 1, 2, 3... 的順序發送
+                    var parameters = new List<object>();
+                    
+                    // 檢查是否為數字參數（如 "1", "2", "3"）
+                    var numericKeys = variables.Keys.Where(k => int.TryParse(k, out _)).ToList();
+                    
+                    if (numericKeys.Any())
+                    {
+                        // 數字參數：按數字順序排序
+                        var sortedKeys = numericKeys.OrderBy(k => int.Parse(k)).ToList();
+                        _loggingService.LogInformation($"🔍 [DEBUG] 檢測到數字參數: {string.Join(", ", sortedKeys)}");
+                        
+                        foreach (var key in sortedKeys)
+                        {
+                            parameters.Add(new
+                            {
+                                type = "text",
+                                text = !string.IsNullOrEmpty(variables[key]) ? variables[key] : " "
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // 命名參數：Meta API 不支持命名參數
+                        // 建議用戶在 Meta 模板中使用數字參數 {{1}}, {{2}}, {{3}} 等
+                        var sortedKeys = variables.Keys.OrderBy(k => k).ToList();
+                        _loggingService.LogInformation($"🔍 [DEBUG] 檢測到命名參數: {string.Join(", ", sortedKeys)}");
+                        _loggingService.LogInformation($"🔍 [DEBUG] 注意：Meta API 不支持命名參數，請在 Meta 模板中使用數字參數 {{1}}, {{2}}, {{3}} 等");
+                        
+                        foreach (var key in sortedKeys)
+                        {
+                            parameters.Add(new
+                            {
+                                type = "text",
+                                text = !string.IsNullOrEmpty(variables[key]) ? variables[key] : " "
+                            });
+                        }
+                    }
+                    
+                    _loggingService.LogInformation($"🔍 [DEBUG] 參數處理詳情:");
+                    _loggingService.LogInformation($"🔍 [DEBUG] 原始變數鍵值對: {string.Join(", ", variables.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                    _loggingService.LogInformation($"🔍 [DEBUG] 處理後參數順序: {string.Join(", ", parameters.Select((p, i) => $"位置{i+1}={((dynamic)p).text}"))}");
+                    
+                    if (parameters.Any())
+                    {
+                        components.Add(new
+                        {
+                            type = "body",
+                            parameters = parameters
+                        });
+                    }
+                    
+                    _loggingService.LogInformation($"Meta 模板參數處理: 原始變數={JsonSerializer.Serialize(variables)}, 處理後參數={JsonSerializer.Serialize(parameters)}");
+                    _loggingService.LogInformation($"Components 結構: {JsonSerializer.Serialize(components)}");
+                }
+                
+                // 使用提供的語言代碼，如果沒有則默認為 zh_TW
+                var finalLanguageCode = languageCode ?? "zh_TW";
+                _loggingService.LogInformation($"使用語言代碼: {finalLanguageCode}");
+                
+                // 構建 Meta API 請求 - 嘗試使用最新版本 {GetApiVersion()}
+                var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
+                
+                // 根據是否有參數來構建不同的 payload
+                object payload;
+                if (components.Any())
+                {
+                    // 有參數時，包含 components
+                    payload = new
+                    {
+                        messaging_product = "whatsapp",
+                        to = formattedTo,
+                        type = "template",
+                        template = new
+                        {
+                            name = templateName,
+                            language = new
+                            {
+                                code = finalLanguageCode
+                            },
+                            components = components.ToArray()
+                        }
+                    };
+                }
+                else
+                {
+                    // 沒有參數時，不包含 components
+                    payload = new
+                    {
+                        messaging_product = "whatsapp",
+                        to = formattedTo,
+                        type = "template",
+                        template = new
+                        {
+                            name = templateName,
+                            language = new
+                            {
+                                code = finalLanguageCode
+                            }
+                        }
+                    };
+                }
+                
+                var jsonPayload = JsonSerializer.Serialize(payload);
+                _loggingService.LogInformation($"Meta Template API URL: {url}");
+                _loggingService.LogInformation($"Meta Template API Payload: {jsonPayload}");
+                _loggingService.LogInformation($"是否有參數: {components.Any()}, 參數數量: {components.Count}");
+                
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization = 
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                
+                var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                
+                _loggingService.LogInformation($"開始發送 Meta 模板消息...");
+                var response = await httpClient.PostAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"Meta API 響應狀態碼: {response.StatusCode}");
+                _loggingService.LogInformation($"Meta API 響應內容: {responseContent}");
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception($"Meta API 發送失敗: {response.StatusCode} - {responseContent}");
+                }
+                
+                // 解析響應獲取消息 ID
+                var responseJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                var whatsappMessageId = responseJson.GetProperty("messages")[0].GetProperty("id").GetString();
+                
+                _loggingService.LogInformation($"✅ Meta 模板消息發送成功，消息 ID: {whatsappMessageId}");
+                
+                return whatsappMessageId;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"發送 Meta 模板消息失敗: {ex.Message}", ex);
+                throw;
+            }
         }
 
         /// <summary>
@@ -1032,7 +1250,9 @@ namespace PurpleRice.Services
             WorkflowStepExecution stepExecution,
             string nodeId,
             string nodeType,
-            PurpleRiceDbContext dbContext)
+            PurpleRiceDbContext dbContext,
+            bool isMetaTemplate = false,
+            string templateLanguage = null)  // 添加語言代碼參數
         {
             try
             {
@@ -1040,6 +1260,7 @@ namespace PurpleRice.Services
                 _loggingService.LogInformation($"執行 ID: {execution.Id}");
                 _loggingService.LogInformation($"節點 ID: {nodeId}");
                 _loggingService.LogInformation($"節點類型: {nodeType}");
+                _loggingService.LogInformation($"模板類型: {(isMetaTemplate ? "Meta 官方模板" : "內部模板")}");
                 _loggingService.LogInformation($"模板 ID: {templateId}");
                 _loggingService.LogInformation($"模板名稱: {templateName}");
 
@@ -1048,17 +1269,31 @@ namespace PurpleRice.Services
                 var companyId = company.Id;
                 var createdBy = execution.CreatedBy ?? "system";
 
-                // 獲取模板內容
-                var template = await dbContext.WhatsAppTemplates
-                    .FirstOrDefaultAsync(t => t.Id == Guid.Parse(templateId) && t.CompanyId == companyId);
-
-                if (template == null)
+                // 根據模板類型獲取內容
+                string messageContent = "";
+                
+                if (!isMetaTemplate)
                 {
-                    throw new Exception($"找不到模板 ID: {templateId}");
-                }
+                    // 只有內部模板才需要查詢 WhatsAppTemplates 表
+                    var templateGuid = Guid.TryParse(templateId, out var guid) ? guid : Guid.Empty;
+                    
+                    var template = await dbContext.WhatsAppTemplates
+                        .FirstOrDefaultAsync(t => t.Id == templateGuid && t.CompanyId == companyId);
 
-                // 替換模板變數
-                var messageContent = ReplaceVariables(template.Content, variables);
+                    if (template == null)
+                    {
+                        throw new Exception($"找不到內部模板 ID: {templateId}");
+                    }
+
+                    // 替換模板變數
+                    messageContent = ReplaceVariables(template.Content, variables);
+                }
+                else
+                {
+                    // Meta 模板不需要從數據庫獲取內容
+                    // 使用模板名稱作為消息內容記錄
+                    messageContent = $"Meta Template: {templateName}";
+                }
 
                 // 創建消息發送記錄
                 var messageSendId = await _messageSendService.CreateMessageSendAsync(
@@ -1124,8 +1359,16 @@ namespace PurpleRice.Services
                         // 格式化電話號碼
                         var formattedTo = FormatPhoneNumber(recipient.PhoneNumber);
 
-                        // 發送 WhatsApp 模板消息
-                        var whatsappMessageId = await SendWhatsAppTemplateMessageAsync(formattedTo, templateId, execution, dbContext, variables);
+                        // 發送 WhatsApp 模板消息（支持內部模板和 Meta 模板）
+                        var whatsappMessageId = await SendWhatsAppTemplateMessageAsync(
+                            formattedTo, 
+                            templateId, 
+                            execution, 
+                            dbContext, 
+                            variables,
+                            isMetaTemplate,
+                            templateName,
+                            templateLanguage);
 
                         // 記錄成功（使用實際的 WhatsApp 訊息 ID）
                         whatsappMessageIds[recipient.Id] = whatsappMessageId;

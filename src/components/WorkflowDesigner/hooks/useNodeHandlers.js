@@ -3,14 +3,19 @@ import { message } from 'antd';
 import { useNodeData } from './useNodeData';
 
 // 節點處理函數管理 Hook
-export const useNodeHandlers = (nodeTypes, setNodes, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t) => {
+export const useNodeHandlers = (nodeTypes, setNodes, setEdges, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t) => {
   const { defaultNodeData } = useNodeData(isReady, t);
   
   // 刪除節點（Start 節點不可刪）
   const handleDeleteNode = useCallback((nodeId) => {
+    // 刪除節點
     setNodes(nds => nds.filter(n => n.id !== nodeId || n.data.type === 'start'));
+    
+    // 同時刪除所有連接到該節點的 edges
+    setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
+    
     setSelectedNode(null);
-  }, [setNodes, setSelectedNode]);
+  }, [setNodes, setEdges, setSelectedNode]);
 
   // 修改添加節點函數以支持位置參數
   const handleAddNode = useCallback((nodeType, position = null) => {
@@ -129,12 +134,15 @@ export const useNodeHandlers = (nodeTypes, setNodes, setSelectedNode, selectedNo
   }, [handleAddNode]);
 
   // 處理模板選擇
-  const handleSelectTemplate = useCallback((template) => {
+  const handleSelectTemplate = useCallback((template, isMetaTemplate = false) => {
     if (selectedNode) {
       handleNodeDataChange({
         templateId: template.id,
         templateName: template.name,
-        templateDescription: template.description
+        templateDescription: template.description,
+        isMetaTemplate: isMetaTemplate,
+        templateType: isMetaTemplate ? 'META' : 'INTERNAL',
+        templateLanguage: template.language || null  // 保存模板語言（Meta 模板必需）
       });
     }
   }, [selectedNode, handleNodeDataChange]);

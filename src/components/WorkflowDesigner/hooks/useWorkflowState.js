@@ -45,8 +45,7 @@ export const useWorkflowState = (isNodeSelected) => {
     if (!isReady) {
       return [
         { type: 'start', label: 'Start', icon: PlayCircleOutlined },
-        { type: 'sendWhatsApp', label: 'Send WhatsApp Message', icon: SendOutlined },
-        { type: 'sendWhatsAppTemplate', label: 'Send WhatsApp Template', icon: MessageOutlined },
+        { type: 'sendWhatsApp', label: 'Send WhatsApp', icon: SendOutlined },
         { type: 'waitReply', label: 'Wait for User Reply', icon: ClockCircleOutlined },
         { type: 'waitForQRCode', label: 'Wait for QR Code', icon: ClockCircleOutlined },
         { type: 'switch', label: 'Switch', icon: CheckCircleOutlined },
@@ -59,8 +58,7 @@ export const useWorkflowState = (isNodeSelected) => {
     
     return [
       { type: 'start', label: t('workflowDesigner.startNode'), icon: PlayCircleOutlined },
-      { type: 'sendWhatsApp', label: t('workflowDesigner.sendMessageNode'), icon: SendOutlined },
-      { type: 'sendWhatsAppTemplate', label: t('workflowDesigner.sendTemplateNode'), icon: MessageOutlined },
+      { type: 'sendWhatsApp', label: t('workflowDesigner.sendWhatsAppNode'), icon: SendOutlined },
       { type: 'waitReply', label: t('workflowDesigner.waitReplyNode'), icon: ClockCircleOutlined },
       { type: 'waitForQRCode', label: t('workflowDesigner.waitForQRCodeNode'), icon: ClockCircleOutlined },
       { type: 'switch', label: t('workflowDesigner.switchNode'), icon: CheckCircleOutlined },

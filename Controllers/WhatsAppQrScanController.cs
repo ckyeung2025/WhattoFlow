@@ -265,7 +265,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation($"WA_PhoneNo_ID: {company.WA_PhoneNo_ID}");
                 _loggingService.LogDebug($"API Key 長度: {company.WA_API_Key?.Length ?? 0}");
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 _loggingService.LogInformation($"API URL: {url}");
 
                 var messageText = "親愛的送貨員/客戶，系統未能在您傳送的訊息或照片中辨識到有效的送貨單資料。請您盡量在光線充足的環境下，將送貨單的 QR Code 清晰拍攝後再傳送，謝謝您的配合！\n\nDear delivery staff/customer, our system could not identify valid delivery note information from your message or photo. Please try to take a clear photo of the delivery note's QR code in a well-lit environment and resend it. Thank you for your cooperation!";
@@ -318,7 +318,7 @@ namespace PurpleRice.Controllers
                 return;
             }
 
-            var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+            var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
 
             var messageText = "親愛的送貨員，系統已成功找到對應的送貨單記錄。請您現在協助拍攝一張清楚的照片，以證明貨物已送達客戶收貨地址。\n- 請盡量讓照片中同時顯示所有貨物。\n- 建議額外拍攝一張較遠距離（zoom out）的照片，能清楚看到收貨地點的店面或門口位置。\n感謝您的配合！\n\nDear delivery staff, the system has successfully found the corresponding delivery note record. Please now take a clear photo as proof that the goods have been delivered to the customer's address.\n- Please ensure all goods are visible in the photo at the same time.\n- It is also recommended to take an additional zoomed-out photo showing the storefront or entrance of the delivery location.\nThank you for your cooperation!";
 
@@ -479,7 +479,7 @@ namespace PurpleRice.Controllers
 
                     using var httpClient = new HttpClient();
                     httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                    var metaResp = await httpClient.GetAsync($"https://graph.facebook.com/v19.0/{mediaId}");
+                    var metaResp = await httpClient.GetAsync($"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{mediaId}");
                     var metaJson = await metaResp.Content.ReadAsStringAsync();
                     dynamic metaObj = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonObject>(metaJson);
                     var mediaUrl = metaObj?["url"]?.ToString();

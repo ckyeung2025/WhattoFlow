@@ -25,6 +25,35 @@ namespace PurpleRice.Controllers
         #region 聯絡人管理
 
         /// <summary>
+        /// 獲取聯絡人統計數據
+        /// </summary>
+        [HttpGet("statistics")]
+        public async Task<IActionResult> GetStatistics()
+        {
+            try
+            {
+                _logger.LogInformation("📊 開始獲取聯絡人統計數據");
+                
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                {
+                    _logger.LogWarning("❌ 無法識別公司資訊");
+                    return Unauthorized("無法識別公司資訊");
+                }
+
+                var statistics = await _contactListService.GetStatisticsAsync(companyId);
+                
+                _logger.LogInformation($"✅ 成功獲取統計數據: {System.Text.Json.JsonSerializer.Serialize(statistics)}");
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ 獲取聯絡人統計數據失敗: {Message}", ex.Message);
+                return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
         /// 獲取聯絡人列表
         /// </summary>
         [HttpGet]
@@ -348,6 +377,35 @@ namespace PurpleRice.Controllers
         #region 廣播群組管理
 
         /// <summary>
+        /// 獲取廣播群組統計數據
+        /// </summary>
+        [HttpGet("groups/statistics")]
+        public async Task<IActionResult> GetBroadcastGroupsStatistics()
+        {
+            try
+            {
+                _logger.LogInformation("📊 開始獲取廣播群組統計數據");
+                
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                {
+                    _logger.LogWarning("❌ 無法識別公司資訊");
+                    return Unauthorized("無法識別公司資訊");
+                }
+
+                var statistics = await _contactListService.GetBroadcastGroupsStatisticsAsync(companyId);
+                
+                _logger.LogInformation($"✅ 成功獲取廣播群組統計數據");
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ 獲取廣播群組統計數據失敗: {Message}", ex.Message);
+                return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
         /// 獲取廣播群組列表
         /// </summary>
         [HttpGet("groups")]
@@ -530,6 +588,35 @@ namespace PurpleRice.Controllers
         #endregion
 
         #region 標籤管理
+
+        /// <summary>
+        /// 獲取標籤統計數據
+        /// </summary>
+        [HttpGet("hashtags/statistics")]
+        public async Task<IActionResult> GetHashtagsStatistics()
+        {
+            try
+            {
+                _logger.LogInformation("📊 開始獲取標籤統計數據");
+                
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                {
+                    _logger.LogWarning("❌ 無法識別公司資訊");
+                    return Unauthorized("無法識別公司資訊");
+                }
+
+                var statistics = await _contactListService.GetHashtagsStatisticsAsync(companyId);
+                
+                _logger.LogInformation($"✅ 成功獲取標籤統計數據");
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ 獲取標籤統計數據失敗: {Message}", ex.Message);
+                return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
 
         /// <summary>
         /// 獲取標籤列表

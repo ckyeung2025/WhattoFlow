@@ -216,7 +216,7 @@ namespace PurpleRice.Controllers
                 
                 var accessToken = company.WA_API_Key;
                 var phoneNumberId = company.WA_PhoneNo_ID;
-                var version = "v19.0"; // 使用與服務一致的版本
+                var version = "WhatsAppApiConfig.GetApiVersion()"; // 使用與服務一致的版本
 
                 _loggingService.LogInformation($"API Key 長度: {accessToken?.Length ?? 0}");
                 _loggingService.LogInformation($"Phone Number ID: {phoneNumberId}");
@@ -381,7 +381,7 @@ namespace PurpleRice.Controllers
                     return false;
                 }
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 _loggingService.LogInformation($"API URL: {url}");
                 
                 var requestBody = new

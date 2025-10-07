@@ -953,7 +953,7 @@ namespace PurpleRice.Services.WebhookServices
                     return;
                 }
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 var payload = new
                 {
                     messaging_product = "whatsapp",
@@ -1020,7 +1020,7 @@ namespace PurpleRice.Services.WebhookServices
                     return;
                 }
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 var payload = new
                 {
                     messaging_product = "whatsapp",
@@ -1088,7 +1088,7 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"消息內容: {message}");
                 _loggingService.LogInformation($"工作流程數量: {workflows.Count}");
 
-                var url = $"https://graph.facebook.com/v19.0/{company.WA_PhoneNo_ID}/messages";
+                var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
 
                 // 將工作流程分組到不同的區段中，每個區段最多 10 個選項
                 var sections = new List<object>();
@@ -1432,7 +1432,7 @@ namespace PurpleRice.Services.WebhookServices
                 httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
                 
                 // 獲取媒體 URL - 使用正確的 WhatsApp Business API 端點
-                var mediaUrl = $"https://graph.facebook.com/v19.0/{messageId}";
+                var mediaUrl = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{messageId}";
                 _loggingService.LogInformation($"嘗試獲取媒體 URL: {mediaUrl}");
                 
                 var response = await httpClient.GetAsync(mediaUrl);

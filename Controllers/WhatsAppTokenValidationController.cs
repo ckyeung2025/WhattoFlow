@@ -49,14 +49,14 @@ namespace PurpleRice.Controllers
                 var accessToken = company.WA_API_Key;
                 
                 // 1. 檢查 Token 基本信息
-                var debugUrl = $"https://graph.facebook.com/v21.0/debug_token?input_token={accessToken}&access_token={accessToken}";
+                var debugUrl = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/debug_token?input_token={accessToken}&access_token={accessToken}";
                 var debugResponse = await _httpClient.GetAsync(debugUrl);
                 var debugContent = await debugResponse.Content.ReadAsStringAsync();
                 
                 _loggingService.LogInformation($"Token Debug Response: {debugContent}");
 
                 // 2. 檢查權限範圍
-                var permissionsUrl = $"https://graph.facebook.com/v21.0/me/permissions?access_token={accessToken}";
+                var permissionsUrl = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/me/permissions?access_token={accessToken}";
                 var permissionsResponse = await _httpClient.GetAsync(permissionsUrl);
                 
                 if (!permissionsResponse.IsSuccessStatusCode)
@@ -159,7 +159,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 測試讀取模板列表
-                var url = $"https://graph.facebook.com/v21.0/{company.WA_Business_Account_ID}/message_templates";
+                var url = $"https://graph.facebook.com/{WhatsAppApiConfig.GetApiVersion()}/{company.WA_Business_Account_ID}/message_templates";
                 
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {company.WA_API_Key}");

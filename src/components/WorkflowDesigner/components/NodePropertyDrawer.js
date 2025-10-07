@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
-import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio } from 'antd';
-import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs } from 'antd';
+import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
 import RecipientSelector from './RecipientSelector';
 import DataSetQueryConditionModal from '../modals/DataSetQueryConditionModal';
 import DataSetQueryConditionEditModal from '../modals/DataSetQueryConditionEditModal';
 import DataSetFieldMappingModal from '../modals/DataSetFieldMappingModal';
+import MessageModeTabsComponent from './MessageModeTabsComponent';
 import { getAvailableOutputPaths } from '../utils';
 import { apiService } from '../services/apiService';
 
@@ -54,6 +55,12 @@ const NodePropertyDrawer = ({
   onDeleteCondition,
   onSelectPath,
 }) => {
+  // 獲取 DataSet Query 節點
+  const dataSetQueryNodes = nodes.filter(node => 
+    node.data?.type === 'dataSetQuery' && 
+    node.data?.operationType === 'SELECT'
+  );
+  
   // DataSet 相關狀態
   const [dataSets, setDataSets] = useState([]);
   const [dataSetColumns, setDataSetColumns] = useState([]);
@@ -641,9 +648,10 @@ const NodePropertyDrawer = ({
             />
           </Form.Item>
           
-          {/* 發送 WhatsApp 消息節點 */}
+          {/* 發送 WhatsApp 消息節點 - 合併模板和直接訊息功能 */}
           {selectedNode.data.type === 'sendWhatsApp' && (
             <>
+              {/* 收件人選擇（共用） */}
               <Form.Item label={t('workflow.to')}>
                 <div style={{ position: 'relative' }}>
                   <RecipientSelector
@@ -690,37 +698,20 @@ const NodePropertyDrawer = ({
                   </div>
                 </div>
               </Form.Item>
-              <Form.Item label={t('workflow.message')} name="message">
-                <Input.TextArea 
-                  rows={3} 
-                  placeholder={t('workflowDesigner.messageWithVariablesPlaceholder')}
-                />
-              </Form.Item>
-              {processVariables && processVariables.length > 0 && (
-                <Form.Item label={t('workflowDesigner.availableVariables')}>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-                    {t('workflowDesigner.variableSyntaxHelp')}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {processVariables.map(pv => (
-                      <Tag 
-                        key={pv.id} 
-                        style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const currentValue = form.getFieldValue('message') || '';
-                          const newValue = currentValue + `\${${pv.variableName}}`;
-                          form.setFieldValue('message', newValue);
-                          handleNodeDataChange({ message: newValue });
-                        }}
-                      >
-                        {pv.variableName} ({pv.dataType})
-                      </Tag>
-                    ))}
-                  </div>
-                </Form.Item>
-              )}
+              
+              {/* 訊息模式 Tab 切換（共用組件） */}
+              <MessageModeTabsComponent
+                selectedNode={selectedNode}
+                handleNodeDataChange={handleNodeDataChange}
+                setIsTemplateModalVisible={setIsTemplateModalVisible}
+                processVariables={processVariables}
+                form={form}
+                t={t}
+                messageLabel={t('workflow.message')}
+                messagePlaceholder={t('workflowDesigner.messageWithVariablesPlaceholder')}
+                messageRows={3}
+                showProcessVariables={true}
+              />
             </>
           )}
 
@@ -912,37 +903,19 @@ const NodePropertyDrawer = ({
                 </Form.Item>
               )}
               
-              <Form.Item label={t('workflowDesigner.promptMessage')} name="message">
-                <Input.TextArea 
-                  rows={3} 
-                  placeholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
-                />
-              </Form.Item>
-              {processVariables && processVariables.length > 0 && (
-                <Form.Item label={t('workflowDesigner.availableVariables')}>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-                    {t('workflowDesigner.variableSyntaxHelp')}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {processVariables.map(pv => (
-                      <Tag 
-                        key={pv.id} 
-                        style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const currentValue = form.getFieldValue('message') || '';
-                          const newValue = currentValue + `\${${pv.variableName}}`;
-                          form.setFieldValue('message', newValue);
-                          handleNodeDataChange({ message: newValue });
-                        }}
-                      >
-                        {pv.variableName} ({pv.dataType})
-                      </Tag>
-                    ))}
-                  </div>
-                </Form.Item>
-              )}
+              {/* 訊息模式 Tab 切換（共用組件） */}
+              <MessageModeTabsComponent
+                selectedNode={selectedNode}
+                handleNodeDataChange={handleNodeDataChange}
+                setIsTemplateModalVisible={setIsTemplateModalVisible}
+                processVariables={processVariables}
+                form={form}
+                t={t}
+                messageLabel={t('workflowDesigner.promptMessage')}
+                messagePlaceholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
+                messageRows={3}
+              />
+              
               <Form.Item label={t('workflowDesigner.validationConfig')}>
                 <Card size="small" title={t('workflowDesigner.validationSettings')} style={{ marginBottom: 16 }}>
                   <Form.Item label={t('workflowDesigner.enableValidation')} name={['validation', 'enabled']}>
@@ -1064,37 +1037,18 @@ const NodePropertyDrawer = ({
                 </Select>
               </Form.Item>
               
-              <Form.Item label={t('workflowDesigner.promptMessage')} name="message">
-                <Input.TextArea 
-                  rows={3} 
-                  placeholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
-                />
-              </Form.Item>
-              {processVariables && processVariables.length > 0 && (
-                <Form.Item label={t('workflowDesigner.availableVariables')}>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-                    {t('workflowDesigner.variableSyntaxHelp')}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {processVariables.map(pv => (
-                      <Tag 
-                        key={pv.id} 
-                        style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const currentValue = form.getFieldValue('message') || '';
-                          const newValue = currentValue + `\${${pv.variableName}}`;
-                          form.setFieldValue('message', newValue);
-                          handleNodeDataChange({ message: newValue });
-                        }}
-                      >
-                        {pv.variableName} ({pv.dataType})
-                      </Tag>
-                    ))}
-                  </div>
-                </Form.Item>
-              )}
+              {/* 訊息模式 Tab 切換（共用組件） */}
+              <MessageModeTabsComponent
+                selectedNode={selectedNode}
+                handleNodeDataChange={handleNodeDataChange}
+                setIsTemplateModalVisible={setIsTemplateModalVisible}
+                processVariables={processVariables}
+                form={form}
+                t={t}
+                messageLabel={t('workflowDesigner.promptMessage')}
+                messagePlaceholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
+                messageRows={3}
+              />
               
               <Form.Item label={t('workflowDesigner.timeout')} name="timeout">
                 <Input 
@@ -1654,48 +1608,63 @@ const NodePropertyDrawer = ({
 
               {/* 通知訊息配置 */}
               <Form.Item label={t('workflowDesigner.sendEForm.notificationMessage')}>
-                <div style={{ marginBottom: 8 }}>
-                  <Radio.Group
-                    value={selectedNode.data.useCustomMessage ? 'custom' : 'default'}
-                    onChange={(e) => {
-                      const useCustom = e.target.value === 'custom';
-                      handleNodeDataChange({ 
-                        useCustomMessage: useCustom,
-                        messageTemplate: useCustom ? (selectedNode.data.messageTemplate || t('workflowDesigner.sendEForm.defaultNotificationMessage')) : t('workflowDesigner.sendEForm.defaultNotificationMessage')
-                      });
-                    }}
-                  >
-                    <Radio value="default">{t('workflowDesigner.sendEForm.useDefaultMessage')}</Radio>
-                    <Radio value="custom">{t('workflowDesigner.sendEForm.customMessage')}</Radio>
-                  </Radio.Group>
-                </div>
-                
-                {selectedNode.data.useCustomMessage && (
-                  <>
-                    <Input.TextArea
-                      value={selectedNode.data.messageTemplate || ''}
-                      placeholder={t('workflowDesigner.sendEForm.notificationMessagePlaceholder')}
-                      rows={4}
-                      onChange={(e) => handleNodeDataChange({ messageTemplate: e.target.value })}
-                    />
-                    <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
-                      {t('workflowDesigner.sendEForm.notificationMessageHelp')}
-                    </div>
-                  </>
-                )}
-                
-                {!selectedNode.data.useCustomMessage && (
-                  <div style={{ 
-                    padding: '8px 12px', 
-                    backgroundColor: '#f5f5f5', 
-                    border: '1px solid #d9d9d9',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    color: '#666'
-                  }}>
-                    {t('workflowDesigner.sendEForm.defaultNotificationMessage')}
-                  </div>
-                )}
+                {/* 訊息模式 Tab 切換（共用組件） */}
+                <MessageModeTabsComponent
+                  selectedNode={selectedNode}
+                  handleNodeDataChange={handleNodeDataChange}
+                  setIsTemplateModalVisible={setIsTemplateModalVisible}
+                  processVariables={processVariables}
+                  form={form}
+                  t={t}
+                  showProcessVariables={false}
+                  directMessageContent={(
+                    // sendEForm 特殊的直接訊息內容（預設訊息 vs 自定義訊息）
+                    <>
+                      <div style={{ marginBottom: 8 }}>
+                        <Radio.Group
+                          value={selectedNode.data.useCustomMessage ? 'custom' : 'default'}
+                          onChange={(e) => {
+                            const useCustom = e.target.value === 'custom';
+                            handleNodeDataChange({ 
+                              useCustomMessage: useCustom,
+                              messageTemplate: useCustom ? (selectedNode.data.messageTemplate || t('workflowDesigner.sendEForm.defaultNotificationMessage')) : t('workflowDesigner.sendEForm.defaultNotificationMessage')
+                            });
+                          }}
+                        >
+                          <Radio value="default">{t('workflowDesigner.sendEForm.useDefaultMessage')}</Radio>
+                          <Radio value="custom">{t('workflowDesigner.sendEForm.customMessage')}</Radio>
+                        </Radio.Group>
+                      </div>
+                      
+                      {selectedNode.data.useCustomMessage && (
+                        <>
+                          <Input.TextArea
+                            value={selectedNode.data.messageTemplate || ''}
+                            placeholder={t('workflowDesigner.sendEForm.notificationMessagePlaceholder')}
+                            rows={4}
+                            onChange={(e) => handleNodeDataChange({ messageTemplate: e.target.value })}
+                          />
+                          <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                            {t('workflowDesigner.sendEForm.notificationMessageHelp')}
+                          </div>
+                        </>
+                      )}
+                      
+                      {!selectedNode.data.useCustomMessage && (
+                        <div style={{ 
+                          padding: '8px 12px', 
+                          backgroundColor: '#f5f5f5', 
+                          border: '1px solid #d9d9d9',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          color: '#666'
+                        }}>
+                          {t('workflowDesigner.sendEForm.defaultNotificationMessage')}
+                        </div>
+                      )}
+                    </>
+                  )}
+                />
               </Form.Item>
               
               <Form.Item label={t('workflowDesigner.approvalResultVariable')} name="approvalResultVariable">

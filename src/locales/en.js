@@ -110,7 +110,24 @@ const en = {
     admin: 'Admin',
     successRate: 'Success Rate',
     averageTime: 'Average Time',
-    minutes: 'min'
+    minutes: 'min',
+    // 數據分析相關
+    dataAnalysis: 'Data Analysis',
+    dataAnalysisDescription: 'Real-time system operation data overview',
+    messageTrend: 'Message Trend',
+    hotWorkflows: 'Hot Workflows',
+    formStatus: 'Form Status',
+    systemHealth: 'System Health',
+    messageSuccessRate: 'Message Success Rate',
+    workflowSuccessRate: 'Workflow Success Rate',
+    avgExecutionTime: 'Avg Execution Time',
+    pendingTasksCount: 'Pending Tasks',
+    seconds: 'sec',
+    past7Days: 'Past 7 Days',
+    executionCount: 'Execution Count',
+    pending: 'Pending',
+    approved: 'Approved',
+    rejected: 'Rejected'
   },
 
   // Pending Tasks Page
@@ -1407,6 +1424,19 @@ const en = {
     noTemplatesAvailable: 'No templates available, please create templates first',
     noUsersAvailable: 'No users available, please add users first',
     noEFormsAvailable: 'No e-Form templates available, please create forms first',
+    internalTemplate: 'Internal Templates',
+    
+    // Meta Template
+    metaTemplate: {
+      title: 'Meta Official Templates',
+      approved: 'Approved',
+      pending: 'Pending',
+      rejected: 'Rejected',
+    },
+    
+    // Message Mode
+    directMessage: 'Direct Message',
+    useTemplate: 'Use Template',
     
     // Other UI elements
     inDevelopment: 'In Development',

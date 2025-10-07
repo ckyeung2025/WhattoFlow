@@ -25,7 +25,7 @@ namespace PurpleRice.Services
         private readonly HttpClient _httpClient;
         private readonly PurpleRiceDbContext _context;
         private readonly LoggingService _loggingService;
-        private const string META_API_VERSION = "v21.0";
+        private static string GetMetaApiVersion() => WhatsAppApiConfig.GetApiVersion();
 
         public WhatsAppMetaTemplateService(
             IHttpClientFactory httpClientFactory,
@@ -58,7 +58,7 @@ namespace PurpleRice.Services
                 }
 
                 // 構建查詢 URL
-                var url = $"https://graph.facebook.com/{META_API_VERSION}/{company.WA_Business_Account_ID}/message_templates";
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates";
                 var queryParams = new List<string>();
 
                 if (!string.IsNullOrEmpty(name))
@@ -133,7 +133,7 @@ namespace PurpleRice.Services
                     throw new Exception("未找到公司配置");
                 }
 
-                var url = $"https://graph.facebook.com/{META_API_VERSION}/{company.WA_Business_Account_ID}/message_templates";
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates";
                 
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Authorization = 
@@ -194,7 +194,7 @@ namespace PurpleRice.Services
                     throw new Exception("未找到公司配置");
                 }
 
-                var url = $"https://graph.facebook.com/{META_API_VERSION}/{company.WA_Business_Account_ID}/message_templates?name={templateName}";
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates?name={templateName}";
                 
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Authorization = 
