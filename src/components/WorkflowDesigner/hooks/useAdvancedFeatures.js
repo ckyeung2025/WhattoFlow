@@ -201,13 +201,18 @@ export const useAdvancedFeatures = (nodes, setNodes, edges, setEdges, selectedNo
         });
         
         if (nodesToDelete.length > 0) {
+          // 刪除節點
           setNodes(nds => nds.filter(n => !nodesToDelete.includes(n.id)));
+          
+          // 同時刪除所有連接到這些節點的 edges
+          setEdges(eds => eds.filter(e => !nodesToDelete.includes(e.source) && !nodesToDelete.includes(e.target)));
+          
           setSelectedNodes([]);
           console.log('已刪除節點:', nodesToDelete.length);
         }
       }
     }
-  }, [selectedNodes, nodes, setNodes, copyNodes, pasteNodes]);
+  }, [selectedNodes, nodes, setNodes, setEdges, copyNodes, pasteNodes]);
 
   return {
     copyNodes,

@@ -7,7 +7,7 @@ export class ApiService {
     this.baseUrl = '/api';
   }
 
-  // 獲取模板列表
+  // 獲取模板列表（內部模板）
   async fetchTemplates() {
     try {
       const token = localStorage.getItem('token');
@@ -30,6 +30,34 @@ export class ApiService {
     } catch (error) {
       console.error('獲取模板列表錯誤:', error);
       return MOCK_DATA.templates;
+    }
+  }
+
+  // 獲取 Meta 模板列表
+  async fetchMetaTemplates() {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${this.baseUrl}/whatsappmetatemplates`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // 只返回已審核通過的 Meta 模板
+          return (result.data || []).filter(template => template.status === 'APPROVED');
+        } else {
+          throw new Error(result.message || 'Unknown error');
+        }
+      } else {
+        throw new Error(response.statusText);
+      }
+    } catch (error) {
+      console.error('獲取 Meta 模板列表錯誤:', error);
+      return [];
     }
   }
 

@@ -145,6 +145,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     workflowId,
     templates,
     setTemplates,
+    metaTemplates,
+    setMetaTemplates,
     isTemplateModalVisible,
     setIsTemplateModalVisible,
     selectedTemplate,
@@ -188,7 +190,7 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     handleSelectTemplate,
     handleSelectUser,
     handleSelectEForm,
-  } = useNodeHandlers(nodeTypes, setNodes, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t);
+  } = useNodeHandlers(nodeTypes, setNodes, setEdges, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t);
 
   // 使用邊處理 Hook
   const {
@@ -465,8 +467,9 @@ const WhatsAppWorkflowDesignerRefactored = () => {
         visible={isTemplateModalVisible}
         onCancel={() => setIsTemplateModalVisible(false)}
         templates={templates}
-        onSelectTemplate={(template) => {
-          handleSelectTemplate(template);
+        metaTemplates={metaTemplates}
+        onSelectTemplate={(template, isMetaTemplate) => {
+          handleSelectTemplate(template, isMetaTemplate);
           setIsTemplateModalVisible(false);
         }}
         t={t}

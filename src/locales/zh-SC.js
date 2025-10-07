@@ -106,7 +106,24 @@ const zhSC = {
     admin: '管理员',
     successRate: '成功率',
     averageTime: '平均时间',
-    minutes: '分'
+    minutes: '分',
+    // 数据分析相关
+    dataAnalysis: '数据分析',
+    dataAnalysisDescription: '系统运行数据即时概览',
+    messageTrend: '消息趋势',
+    hotWorkflows: '热门流程',
+    formStatus: '表单状态',
+    systemHealth: '系统健康',
+    messageSuccessRate: '消息成功率',
+    workflowSuccessRate: '流程成功率',
+    avgExecutionTime: '平均执行时间',
+    pendingTasksCount: '待处理任务',
+    seconds: '秒',
+    past7Days: '过去 7 天',
+    executionCount: '执行次数',
+    pending: '待处理',
+    approved: '已批准',
+    rejected: '已拒绝'
   },
 
   // 待处理事项页面
@@ -2080,6 +2097,19 @@ const zhSC = {
     noTemplatesAvailable: '暂无可用的模板，请先创建模板',
     noUsersAvailable: '暂无可用的用户，请先添加用户',
     noEFormsAvailable: '暂无可用的 e-Form 表单，请先创建表单',
+    internalTemplate: '内部模板',
+    
+    // Meta 模板相关
+    metaTemplate: {
+      title: 'Meta 官方模板',
+      approved: '已审核',
+      pending: '审核中',
+      rejected: '已拒绝',
+    },
+    
+    // 讯息模式
+    directMessage: '直接输入讯息',
+    useTemplate: '使用模板',
     
     // 其他界面元素
     inDevelopment: '开发中',

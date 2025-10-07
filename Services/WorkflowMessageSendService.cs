@@ -545,6 +545,72 @@ namespace PurpleRice.Services
                 AverageDurationSeconds = Math.Round(avgDuration, 2)
             };
         }
+
+        /// <summary>
+        /// 獲取每日訊息發送趨勢數據
+        /// </summary>
+        public async Task<object> GetDailyTrendAsync(Guid? companyId, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                _logger.LogInformation($"📊 獲取每日趨勢: {startDate:yyyy-MM-dd} 到 {endDate:yyyy-MM-dd}");
+
+                var query = _db.WorkflowMessageSends
+                    .Where(ms => ms.IsActive && ms.StartedAt >= startDate && ms.StartedAt <= endDate.AddDays(1));
+
+                if (companyId.HasValue)
+                {
+                    query = query.Where(ms => ms.CompanyId == companyId.Value);
+                }
+
+                // 按日期分組統計
+                var dailyStats = await query
+                    .GroupBy(ms => ms.StartedAt.Date)
+                    .Select(g => new
+                    {
+                        Date = g.Key,
+                        TotalSent = g.Sum(ms => ms.TotalRecipients),
+                        Success = g.Sum(ms => ms.SuccessCount),
+                        Failed = g.Sum(ms => ms.FailedCount)
+                    })
+                    .OrderBy(g => g.Date)
+                    .ToListAsync();
+
+                // 填充缺失的日期（確保每天都有數據）
+                var allDates = new List<DateTime>();
+                for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
+                {
+                    allDates.Add(date);
+                }
+
+                var result = allDates.Select(date =>
+                {
+                    var stat = dailyStats.FirstOrDefault(s => s.Date == date);
+                    return new
+                    {
+                        date = date.ToString("yyyy-MM-dd"),
+                        totalSent = stat?.TotalSent ?? 0,
+                        success = stat?.Success ?? 0,
+                        failed = stat?.Failed ?? 0
+                    };
+                }).ToList();
+
+                _logger.LogInformation($"✅ 成功獲取 {result.Count} 天的趨勢數據");
+
+                return new
+                {
+                    dates = result.Select(r => r.date).ToList(),
+                    totalSent = result.Select(r => r.totalSent).ToList(),
+                    success = result.Select(r => r.success).ToList(),
+                    failed = result.Select(r => r.failed).ToList()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ 獲取每日趨勢數據失敗");
+                throw;
+            }
+        }
     }
 
     /// <summary>

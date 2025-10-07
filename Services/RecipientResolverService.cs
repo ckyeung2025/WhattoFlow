@@ -233,8 +233,21 @@ namespace PurpleRice.Services
                 }
             }
 
-            _logger.LogInformation("=== 從詳細信息解析收件人完成，共 {Count} 個收件人 ===", recipients.Count);
-            return recipients;
+            _logger.LogInformation("=== 從詳細信息解析收件人完成，共 {Count} 個收件人（去重前）===", recipients.Count);
+            
+            // 🆕 根據電話號碼去重，保留第一個出現的收件人
+            var uniqueRecipients = recipients
+                .GroupBy(r => r.PhoneNumber)
+                .Select(g => g.First())
+                .ToList();
+            
+            if (uniqueRecipients.Count < recipients.Count)
+            {
+                _logger.LogInformation("⚠️ 去重: 移除了 {DuplicateCount} 個重複的電話號碼", recipients.Count - uniqueRecipients.Count);
+            }
+            
+            _logger.LogInformation("=== 去重後，最終 {Count} 個收件人 ===", uniqueRecipients.Count);
+            return uniqueRecipients;
         }
 
         /// <summary>

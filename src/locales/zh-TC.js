@@ -110,7 +110,24 @@ const zhTC = {
     admin: '管理員',
     successRate: '成功率',
     averageTime: '平均時間',
-    minutes: '分'
+    minutes: '分',
+    // 數據分析相關
+    dataAnalysis: '數據分析',
+    dataAnalysisDescription: '系統運行數據即時概覽',
+    messageTrend: '訊息趨勢',
+    hotWorkflows: '熱門流程',
+    formStatus: '表單狀態',
+    systemHealth: '系統健康',
+    messageSuccessRate: '訊息成功率',
+    workflowSuccessRate: '流程成功率',
+    avgExecutionTime: '平均執行時間',
+    pendingTasksCount: '待處理任務',
+    seconds: '秒',
+    past7Days: '過去 7 天',
+    executionCount: '執行次數',
+    pending: '待處理',
+    approved: '已批准',
+    rejected: '已拒絕'
   },
 
   // 待處理事項頁面
@@ -1173,6 +1190,20 @@ const zhTC = {
     templateVariableDescriptionPlaceholder: "描述",
     templateVariableRequired: "必填",
     templateAddVariable: "添加變數",
+    
+    // 模板變數配置相關
+    addTemplateVariable: "添加模板變數",
+    parameterName: "參數名稱",
+    variableSource: "變數來源",
+    processVariable: "流程變數",
+    datasetField: "數據集欄位",
+    selectVariable: "選擇變數",
+    availableVariables: "可用變數",
+    processVariables: "流程變數",
+    datasetFields: "數據集欄位",
+    metaTemplateVariableHint: "Meta 模板變數配置",
+    metaTemplateVariableDescription: "Meta 官方模板使用數字參數 (1, 2, 3...) 或命名參數。請根據模板定義配置對應的變數來源。",
+    metaParameterHint: "Meta 模板參數：使用數字 (1, 2, 3...) 或變數名 (customer_name, order_id)",
     templateFromMetaImport: "從 Meta 導入",
     templateBatchDelete: "批量刪除",
     templateWhatsAppMessageTemplateManagement: "WhatsApp 訊息模板管理",
@@ -1910,6 +1941,19 @@ const zhTC = {
     noTemplatesAvailable: '暫無可用的模板，請先創建模板',
     noUsersAvailable: '暫無可用的用戶，請先添加用戶',
     noEFormsAvailable: '暫無可用的 e-Form 表單，請先創建表單',
+    internalTemplate: '內部模板',
+    
+    // Meta 模板相關
+    metaTemplate: {
+      title: 'Meta 官方模板',
+      approved: '已審核',
+      pending: '審核中',
+      rejected: '已拒絕',
+    },
+    
+    // 訊息模式
+    directMessage: '直接輸入訊息',
+    useTemplate: '使用模板',
     
     // 其他界面元素
     inDevelopment: '開發中',

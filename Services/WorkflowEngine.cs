@@ -729,39 +729,112 @@ namespace PurpleRice.Services
             }
         }
 
-        // 執行 sendWhatsApp 節點
+        // 執行 sendWhatsApp 節點（合併直接訊息和模板功能）
         private async Task<bool> ExecuteSendWhatsApp(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
         {
             WriteLog($"=== 執行 sendWhatsApp 節點 ===");
             WriteLog($"收件人: {nodeData.To}");
-            WriteLog($"消息內容: {nodeData.Message}");
+            WriteLog($"訊息模式: {nodeData.MessageMode ?? "direct"}");
             WriteLog($"收件人詳情: {nodeData.RecipientDetails}");
             WriteLog($"🔍 [DEBUG] RecipientDetails 是否為 null: {nodeData.RecipientDetails == null}");
             WriteLog($"🔍 [DEBUG] RecipientDetails 類型: {nodeData.RecipientDetails?.GetType().Name ?? "null"}");
             
-            if (!string.IsNullOrEmpty(nodeData.Message))
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                WriteLog($"🔍 [DEBUG] 開始解析收件人");
+                // 使用 RecipientResolverService 解析收件人
+                var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    nodeData.To, 
+                    nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
+                    execution.Id,
+                    execution.WorkflowDefinition.CompanyId
+                );
                 
-                try
+                WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                
+                // 檢查訊息模式：'direct' 直接訊息或 'template' 使用模板
+                string messageMode = nodeData.MessageMode ?? "direct"; // 默認為直接訊息模式
+                
+                if (messageMode == "template")
                 {
+                    // === 模板模式 ===
+                    WriteLog($"📝 使用模板模式");
+                    WriteLog($"模板ID: {nodeData.TemplateId}");
+                    WriteLog($"模板名稱: {nodeData.TemplateName}");
+                    
+                    if (string.IsNullOrEmpty(nodeData.TemplateName))
+                    {
+                        WriteLog($"sendWhatsApp (模板模式) 缺少必要參數: templateName");
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameter: templateName" });
+                        return false;
+                    }
+                    
+                    WriteLog($"🔍 [DEBUG] 開始處理模板變數替換");
+                    // 優先使用新的模板變數配置，如果沒有則使用舊的 variables
+                    Dictionary<string, string> processedVariables;
+                    
+                    if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
+                    {
+                        WriteLog($"🔍 [DEBUG] 使用新的模板變數配置");
+                        processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                    }
+                    else
+                    {
+                        WriteLog($"🔍 [DEBUG] 使用舊的模板變數配置");
+                        processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                    }
+                    
+                    // 發送模板消息給所有解析到的收件人
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                        nodeData.To, // 使用原始收件人值
+                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
+                        nodeData.TemplateId,
+                        nodeData.TemplateName,
+                        processedVariables,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "sendWhatsApp", // 統一使用 sendWhatsApp
+                        db,
+                        nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                    );
+                    
+                    WriteLog($"🔍 [DEBUG] 模板消息發送記錄創建完成，ID: {messageSendId}");
+                    WriteLog($"🔍 [DEBUG] 模板消息發送完成，收件人數量: {resolvedRecipients.Count}");
+                    
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                        success = true, 
+                        message = "WhatsApp template messages sent successfully",
+                        recipientCount = resolvedRecipients.Count,
+                        templateName = nodeData.TemplateName,
+                        taskName = nodeData.TaskName,
+                        messageSendId = messageSendId
+                    });
+                    
+                    return true;
+                }
+                else
+                {
+                    // === 直接訊息模式 ===
+                    WriteLog($"💬 使用直接訊息模式");
+                    WriteLog($"消息內容: {nodeData.Message}");
+                    
+                    if (string.IsNullOrEmpty(nodeData.Message))
+                    {
+                        WriteLog($"sendWhatsApp (直接訊息模式) 缺少必要參數: message");
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameter: message" });
+                        return false;
+                    }
+                    
                     WriteLog($"🔍 [DEBUG] 開始處理變數替換");
                     // 替換訊息內容中的變數
                     var processedMessage = await _variableReplacementService.ReplaceVariablesAsync(nodeData.Message, execution.Id);
                     WriteLog($"🔍 [DEBUG] 原始訊息: {nodeData.Message}");
                     WriteLog($"🔍 [DEBUG] 處理後訊息: {processedMessage}");
-                    
-                    WriteLog($"🔍 [DEBUG] 開始解析收件人");
-                    // 使用 RecipientResolverService 解析收件人
-                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
-                        nodeData.To, 
-                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
-                        execution.Id,
-                        execution.WorkflowDefinition.CompanyId
-                    );
-                    
-                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
                     
                     // 發送消息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
@@ -776,7 +849,6 @@ namespace PurpleRice.Services
                     );
                     
                     WriteLog($"🔍 [DEBUG] 消息發送記錄創建完成，ID: {messageSendId}");
-                    
                     WriteLog($"🔍 [DEBUG] 消息發送完成，收件人數量: {resolvedRecipients.Count}");
                     
                     stepExec.OutputJson = JsonSerializer.Serialize(new { 
@@ -789,20 +861,14 @@ namespace PurpleRice.Services
                     
                     return true;
                 }
-                catch (Exception ex)
-                {
-                    WriteLog($"發送 WhatsApp 消息失敗: {ex.Message}");
-                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
-                        error = "Failed to send WhatsApp message",
-                        message = ex.Message
-                    });
-                    return false;
-                }
             }
-            else
+            catch (Exception ex)
             {
-                WriteLog($"sendWhatsApp 步驟缺少必要參數: message={nodeData.Message}, recipientDetails={nodeData.RecipientDetails}");
-                stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                WriteLog($"發送 WhatsApp 消息失敗: {ex.Message}");
+                stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                    error = "Failed to send WhatsApp message",
+                    message = ex.Message
+                });
                 return false;
             }
         }
@@ -824,16 +890,17 @@ namespace PurpleRice.Services
                 try
                 {
                     WriteLog($"🔍 [DEBUG] 開始處理模板變數替換");
-                    // 替換模板變數中的變數
-                    var processedVariables = new Dictionary<string, string>();
-                    if (nodeData.Variables != null)
+                    // 使用共用方法處理模板變數
+                    Dictionary<string, string> processedVariables;
+                    if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
                     {
-                        foreach (var kvp in nodeData.Variables)
-                        {
-                            var processedValue = await _variableReplacementService.ReplaceVariablesAsync(kvp.Value, execution.Id);
-                            processedVariables[kvp.Key] = processedValue;
-                            WriteLog($"🔍 [DEBUG] 模板變數 {kvp.Key}: {kvp.Value} -> {processedValue}");
-                        }
+                        WriteLog($"🔍 [DEBUG] 使用新的模板變數配置");
+                        processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                    }
+                    else
+                    {
+                        WriteLog($"🔍 [DEBUG] 使用舊的模板變數配置");
+                        processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
                     }
                     
                     WriteLog($"🔍 [DEBUG] 開始解析收件人");
@@ -858,7 +925,9 @@ namespace PurpleRice.Services
                         stepExec,
                         stepExec.Id.ToString(), // nodeId
                         "sendWhatsAppTemplate",
-                        db
+                        db,
+                        nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
                     );
                     
                     WriteLog($"🔍 [DEBUG] 模板消息發送記錄創建完成，ID: {messageSendId}");
@@ -918,8 +987,12 @@ namespace PurpleRice.Services
             await SaveExecution(execution);
             await SaveStepExecution(stepExec);
             
-            // 發送提示消息
-            if (!string.IsNullOrEmpty(nodeData.Message))
+            // 發送提示消息（支持直接訊息和模板）
+            string messageMode = nodeData.MessageMode ?? "direct";
+            bool shouldSendMessage = (messageMode == "direct" && !string.IsNullOrEmpty(nodeData.Message)) ||
+                                    (messageMode == "template" && !string.IsNullOrEmpty(nodeData.TemplateName));
+            
+            if (shouldSendMessage)
             {
                 using var scope = _serviceProvider.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
@@ -931,6 +1004,7 @@ namespace PurpleRice.Services
                     WriteLog($"🔍 [DEBUG] nodeData.SpecifiedUsers: '{nodeData.SpecifiedUsers}'");
                     WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
                     WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                    WriteLog($"🔍 [DEBUG] messageMode: {messageMode}");
                     
                     // 根據 replyType 決定收件人
                     string recipientValue;
@@ -972,21 +1046,61 @@ namespace PurpleRice.Services
                     
                     WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
                     
-                    // 發送等待提示訊息給所有解析到的收件人
-                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                        recipientValue,
-                        recipientDetailsJson,
-                        nodeData.Message,
-                        execution,
-                        stepExec,
-                        stepExec.Id.ToString(), // nodeId
-                        "waitReply",
-                        db
-                    );
-                    
-                    WriteLog($"🔍 [DEBUG] 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
-                    
-                    WriteLog($"🔍 [DEBUG] 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
+                    // 根據訊息模式發送
+                    if (messageMode == "template")
+                    {
+                        WriteLog($"📝 waitReply 使用模板模式");
+                        
+                        // 使用共用方法處理模板變數
+                        Dictionary<string, string> processedVariables;
+                        if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
+                        {
+                            WriteLog($"🔍 [DEBUG] waitReply 使用新的模板變數配置");
+                            processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                        }
+                        else
+                        {
+                            WriteLog($"🔍 [DEBUG] waitReply 使用舊的模板變數配置");
+                            processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                        }
+                        
+                        // 發送模板訊息
+                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                            recipientValue,
+                            recipientDetailsJson,
+                            nodeData.TemplateId,
+                            nodeData.TemplateName,
+                            processedVariables,
+                            execution,
+                            stepExec,
+                            stepExec.Id.ToString(),
+                            "waitReply",
+                            db,
+                            nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                            nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                        );
+                        
+                        WriteLog($"🔍 [DEBUG] 等待提示模板訊息發送完成，ID: {messageSendId}");
+                    }
+                    else
+                    {
+                        WriteLog($"💬 waitReply 使用直接訊息模式");
+                        
+                        // 發送直接訊息
+                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                            recipientValue,
+                            recipientDetailsJson,
+                            nodeData.Message,
+                            execution,
+                            stepExec,
+                            stepExec.Id.ToString(), // nodeId
+                            "waitReply",
+                            db
+                        );
+                        
+                        WriteLog($"🔍 [DEBUG] 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
+                        WriteLog($"🔍 [DEBUG] 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
+                    }
                 }
             }
             
@@ -1026,8 +1140,12 @@ namespace PurpleRice.Services
             await SaveExecution(execution);
             await SaveStepExecution(stepExec);
             
-            // 發送提示消息
-            if (!string.IsNullOrEmpty(nodeData.Message))
+            // 發送提示消息（支持直接訊息和模板）
+            string messageMode = nodeData.MessageMode ?? "direct";
+            bool shouldSendMessage = (messageMode == "direct" && !string.IsNullOrEmpty(nodeData.Message)) ||
+                                    (messageMode == "template" && !string.IsNullOrEmpty(nodeData.TemplateName));
+            
+            if (shouldSendMessage)
             {
                 using var scope = _serviceProvider.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
@@ -1038,6 +1156,7 @@ namespace PurpleRice.Services
                     WriteLog($"🔍 [DEBUG] 開始解析 waitForQRCode 收件人");
                     WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
                     WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                    WriteLog($"🔍 [DEBUG] messageMode: {messageMode}");
                     
                     // 根據 replyType 決定收件人
                     string recipientValue;
@@ -1078,21 +1197,61 @@ namespace PurpleRice.Services
                     
                     WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
                     
-                    // 發送 QR Code 等待提示訊息給所有解析到的收件人
-                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                        recipientValue,
-                        recipientDetailsJson,
-                        nodeData.Message,
-                        execution,
-                        stepExec,
-                        stepExec.Id.ToString(), // nodeId
-                        "waitQRCode",
-                        db
-                    );
-                    
-                    WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
-                    
-                    WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
+                    // 根據訊息模式發送
+                    if (messageMode == "template")
+                    {
+                        WriteLog($"📝 waitForQRCode 使用模板模式");
+                        
+                        // 使用共用方法處理模板變數
+                        Dictionary<string, string> processedVariables;
+                        if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
+                        {
+                            WriteLog($"🔍 [DEBUG] waitForQRCode 使用新的模板變數配置");
+                            processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                        }
+                        else
+                        {
+                            WriteLog($"🔍 [DEBUG] waitForQRCode 使用舊的模板變數配置");
+                            processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                        }
+                        
+                        // 發送模板訊息
+                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                            recipientValue,
+                            recipientDetailsJson,
+                            nodeData.TemplateId,
+                            nodeData.TemplateName,
+                            processedVariables,
+                            execution,
+                            stepExec,
+                            stepExec.Id.ToString(),
+                            "waitForQRCode",
+                            db,
+                            nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                            nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                        );
+                        
+                        WriteLog($"🔍 [DEBUG] QR Code 等待提示模板訊息發送完成，ID: {messageSendId}");
+                    }
+                    else
+                    {
+                        WriteLog($"💬 waitForQRCode 使用直接訊息模式");
+                        
+                        // 發送 QR Code 等待提示訊息給所有解析到的收件人
+                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                            recipientValue,
+                            recipientDetailsJson,
+                            nodeData.Message,
+                            execution,
+                            stepExec,
+                            stepExec.Id.ToString(), // nodeId
+                            "waitQRCode",
+                            db
+                        );
+                        
+                        WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
+                        WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
+                    }
                 }
             }
             
@@ -1717,32 +1876,90 @@ namespace PurpleRice.Services
                                 
                                 WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
                                 
-                                // 構建通知消息
-                                string message;
-                                if (nodeData.UseCustomMessage && !string.IsNullOrEmpty(nodeData.MessageTemplate))
+                                // 根據訊息模式發送通知
+                                string messageMode = nodeData.MessageMode ?? "direct";
+                                WriteLog($"🔍 [DEBUG] sendEForm messageMode: {messageMode}");
+                                
+                                Guid messageSendId = Guid.Empty;
+                                
+                                if (messageMode == "template")
                                 {
-                                    // 使用自定義消息模板，支持變量替換
-                                    message = nodeData.MessageTemplate
-                                        .Replace("{formName}", nodeData.FormName ?? "")
-                                        .Replace("{formUrl}", formUrl);
+                                    WriteLog($"📝 sendEForm 使用模板模式");
+                                    
+                                    if (string.IsNullOrEmpty(nodeData.TemplateName))
+                                    {
+                                        WriteLog($"⚠️ [WARNING] sendEForm 模板模式但未選擇模板，跳過發送通知");
+                                    }
+                                    else
+                                    {
+                                        // 使用共用方法處理模板變數
+                                        Dictionary<string, string> processedVariables;
+                                        if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
+                                        {
+                                            WriteLog($"🔍 [DEBUG] sendEForm 使用新的模板變數配置");
+                                            processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                                        }
+                                        else
+                                        {
+                                            WriteLog($"🔍 [DEBUG] sendEForm 使用舊的模板變數配置");
+                                            processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                                        }
+                                        
+                                        // 添加表單 URL 作為變數（sendEForm 特殊處理）
+                                        processedVariables["formUrl"] = formUrl;
+                                        processedVariables["formName"] = nodeData.FormName ?? "";
+                                        
+                                        // 發送模板訊息
+                                        messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                                            nodeData.To,
+                                            nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null,
+                                            nodeData.TemplateId,
+                                            nodeData.TemplateName,
+                                            processedVariables,
+                                            execution,
+                                            stepExec,
+                                            stepExec.Id.ToString(),
+                                            "sendEForm",
+                                            db,
+                                            nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                                            nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                                        );
+                                        
+                                        WriteLog($"🔍 [DEBUG] EForm 通知模板訊息發送完成，ID: {messageSendId}");
+                                    }
                                 }
                                 else
                                 {
-                                    // 使用預設消息
-                                    message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
+                                    WriteLog($"💬 sendEForm 使用直接訊息模式");
+                                    
+                                    // 構建通知消息
+                                    string message;
+                                    if (nodeData.UseCustomMessage && !string.IsNullOrEmpty(nodeData.MessageTemplate))
+                                    {
+                                        // 使用自定義消息模板，支持變量替換
+                                        message = nodeData.MessageTemplate
+                                            .Replace("{formName}", nodeData.FormName ?? "")
+                                            .Replace("{formUrl}", formUrl);
+                                    }
+                                    else
+                                    {
+                                        // 使用預設消息
+                                        message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
+                                    }
+                                    
+                                    messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                                        nodeData.To, // 使用原始收件人值
+                                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
+                                        message,
+                                        execution,
+                                        stepExec,
+                                        stepExec.Id.ToString(), // nodeId
+                                        "sendEForm",
+                                        db
+                                    );
+                                    
+                                    WriteLog($"🔍 [DEBUG] EForm 通知訊息發送記錄創建完成，ID: {messageSendId}");
                                 }
-                                var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                                    nodeData.To, // 使用原始收件人值
-                                    nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
-                                    message,
-                                    execution,
-                                    stepExec,
-                                    stepExec.Id.ToString(), // nodeId
-                                    "sendEForm",
-                                    db
-                                );
-                                
-                                WriteLog($"🔍 [DEBUG] EForm 通知訊息發送記錄創建完成，ID: {messageSendId}");
                                 
                                 WriteLog($"🔍 [DEBUG] EForm 通知發送完成，收件人數量: {resolvedRecipients.Count}");
 
@@ -1778,6 +1995,92 @@ namespace PurpleRice.Services
                              stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
                 return false;
             }
+        }
+
+        // 處理模板變數（共用方法）
+        /// <summary>
+        /// 處理模板變數（新版本 - 支持模板變數配置）
+        /// </summary>
+        private async Task<Dictionary<string, string>> ProcessTemplateVariablesAsync(
+            Dictionary<string, string> variables, 
+            int executionId)
+        {
+            var processedVariables = new Dictionary<string, string>();
+            
+            if (variables != null)
+            {
+                foreach (var kvp in variables)
+                {
+                    var processedValue = await _variableReplacementService.ReplaceVariablesAsync(kvp.Value, executionId);
+                    processedVariables[kvp.Key] = processedValue;
+                    WriteLog($"🔍 [DEBUG] 模板變數 {kvp.Key}: {kvp.Value} -> {processedValue}");
+                }
+            }
+            
+            return processedVariables;
+        }
+
+        /// <summary>
+        /// 處理新的模板變數配置（支持流程變數和數據集欄位）
+        /// </summary>
+        private async Task<Dictionary<string, string>> ProcessTemplateVariableConfigAsync(
+            List<object> templateVariables,
+            int executionId,
+            PurpleRiceDbContext dbContext)
+        {
+            var processedVariables = new Dictionary<string, string>();
+            
+            if (templateVariables != null && templateVariables.Any())
+            {
+                foreach (var templateVar in templateVariables)
+                {
+                    try
+                    {
+                        // 解析模板變數配置
+                        var varJson = JsonSerializer.Serialize(templateVar);
+                        var varElement = JsonSerializer.Deserialize<JsonElement>(varJson);
+                        
+                        var parameterName = varElement.GetProperty("parameterName").GetString();
+                        var processVariableId = varElement.GetProperty("processVariableId").GetString();
+                        
+                        if (string.IsNullOrEmpty(parameterName) || string.IsNullOrEmpty(processVariableId))
+                        {
+                            WriteLog($"⚠️ [WARNING] 跳過無效的模板變數配置: parameterName={parameterName}, processVariableId={processVariableId}");
+                            continue;
+                        }
+                        
+                        string variableValue = "";
+                        
+                        // 處理流程變數
+                        if (Guid.TryParse(processVariableId, out var processVarId))
+                        {
+                            var processVar = await dbContext.ProcessVariableDefinitions
+                                .FirstOrDefaultAsync(pv => pv.Id == processVarId);
+                            
+                            if (processVar != null)
+                            {
+                                variableValue = await _variableReplacementService.ReplaceVariablesAsync(
+                                    $"${{{processVar.VariableName}}}", executionId);
+                                WriteLog($"🔍 [DEBUG] 流程變數 {processVar.VariableName}: {variableValue}");
+                            }
+                            else
+                            {
+                                WriteLog($"⚠️ [WARNING] 找不到流程變數 ID: {processVariableId}");
+                            }
+                        }
+                        
+                        // 即使值為空也要添加參數，Meta API 需要知道參數的存在
+                        processedVariables[parameterName] = variableValue ?? "";
+                        WriteLog($"🔍 [DEBUG] 添加模板參數: {parameterName} = '{variableValue ?? ""}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog($"❌ [ERROR] 處理模板變數配置失敗: {ex.Message}");
+                    }
+                }
+            }
+            
+            return processedVariables;
         }
 
         // 執行 end 節點
@@ -2466,172 +2769,186 @@ namespace PurpleRice.Services
             return new Dictionary<string, object>();
         }
     }
-}
+} // class WorkflowEngine
+} // namespace PurpleRice.Services
 
-// 圖形結構模型
-public class WorkflowGraph
+namespace PurpleRice.Services
 {
-    public List<WorkflowNode> Nodes { get; set; } = new List<WorkflowNode>();
-    public List<WorkflowEdge> Edges { get; set; } = new List<WorkflowEdge>();
-}
-
-public class WorkflowNode
-{
-    public string Id { get; set; }
-    public string Type { get; set; }
-    public WorkflowNodeData Data { get; set; }
-    public WorkflowPosition Position { get; set; }
-}
-
-public class WorkflowNodeData
-{
-    public string Type { get; set; }
-    public string TaskName { get; set; }
+    // 圖形結構模型
+    public class WorkflowGraph
+    {
+        public List<WorkflowNode> Nodes { get; set; } = new List<WorkflowNode>();
+        public List<WorkflowEdge> Edges { get; set; } = new List<WorkflowEdge>();
+    }
     
-    [System.Text.Json.Serialization.JsonPropertyName("to")]
-    public string To { get; set; }
+    public class WorkflowNode
+    {
+        public string Id { get; set; }
+        public string Type { get; set; }
+        public WorkflowNodeData Data { get; set; }
+        public WorkflowPosition Position { get; set; }
+    }
     
-    [System.Text.Json.Serialization.JsonPropertyName("message")]
-    public string Message { get; set; }
+    public class WorkflowNodeData
+    {
+        public string Type { get; set; }
+        public string TaskName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("to")]
+        public string To { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public string Message { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("messageMode")]
+        public string MessageMode { get; set; } // "direct" 或 "template"
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateId")]
+        public string TemplateId { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateName")]
+        public string TemplateName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("isMetaTemplate")]
+        public bool IsMetaTemplate { get; set; } // 標記是否為 Meta 官方模板
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateLanguage")]
+        public string TemplateLanguage { get; set; } // Meta 模板的語言代碼（如 zh_TW, zh_HK, en_US）
+        
+        [System.Text.Json.Serialization.JsonPropertyName("variables")]
+        public Dictionary<string, string> Variables { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateVariables")]
+        public List<object> TemplateVariables { get; set; } // 新的模板變數配置
+        
+        [System.Text.Json.Serialization.JsonPropertyName("replyType")]
+        public string ReplyType { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("specifiedUsers")]
+        public string SpecifiedUsers { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("recipientDetails")]
+        public object RecipientDetails { get; set; }
+        
+        public WorkflowValidation Validation { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("sql")]
+        public string Sql { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("url")]
+        public string Url { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("formName")]
+        public string FormName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("formId")]
+        public string FormId { get; set; }
+        
+        // sendEForm 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("messageTemplate")]
+        public string MessageTemplate { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("useCustomMessage")]
+        public bool UseCustomMessage { get; set; }
+        
+        // sendEForm 節點運作模式
+        [System.Text.Json.Serialization.JsonPropertyName("sendEFormMode")]
+        public string SendEFormMode { get; set; } = "integrateWaitReply"; // 默認為整合等待用戶回覆模式
+        
+        [System.Text.Json.Serialization.JsonPropertyName("integratedDataSetQueryNodeId")]
+        public string IntegratedDataSetQueryNodeId { get; set; }
+        
+        // Switch 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("conditionGroups")]
+        public List<SwitchConditionGroup> ConditionGroups { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("defaultPath")]
+        public string DefaultPath { get; set; }
+        
+        // QR Code 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeVariable")]
+        public string QrCodeVariable { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("timeout")]
+        public int? Timeout { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessage")]
+        public string QrCodeSuccessMessage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessage")]
+        public string QrCodeErrorMessage { get; set; }
+        
+        // e-Form 節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]
+        public string ApprovalResultVariable { get; set; }
+        
+        // 通用 JSON 數據存儲
+        [System.Text.Json.Serialization.JsonPropertyName("json")]
+        public string Json { get; set; }
+        
+        // DataSet 查詢節點相關屬性
+        [System.Text.Json.Serialization.JsonPropertyName("dataSetId")]
+        public string DataSetId { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("operationType")]
+        public string OperationType { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("queryConditionGroups")]
+        public List<object> QueryConditionGroups { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("operationData")]
+        public Dictionary<string, object> OperationData { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("mappedFields")]
+        public List<object> MappedFields { get; set; }
+    }
     
-    [System.Text.Json.Serialization.JsonPropertyName("templateId")]
-    public string TemplateId { get; set; }
+    public class WorkflowPosition
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
     
-    [System.Text.Json.Serialization.JsonPropertyName("templateName")]
-    public string TemplateName { get; set; }
+    public class WorkflowEdge
+    {
+        public string Id { get; set; }
+        public string Source { get; set; }
+        public string Target { get; set; }
+        public string Type { get; set; }
+        
+        // 新增屬性以支持新的 workflow designer
+        [System.Text.Json.Serialization.JsonPropertyName("sourceHandle")]
+        public string SourceHandle { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("targetHandle")]
+        public string TargetHandle { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("markerEnd")]
+        public object MarkerEnd { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("data")]
+        public Dictionary<string, object> Data { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("style")]
+        public Dictionary<string, object> Style { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("animated")]
+        public bool? Animated { get; set; }
+    }
     
-    [System.Text.Json.Serialization.JsonPropertyName("variables")]
-    public Dictionary<string, string> Variables { get; set; }
+    public class WorkflowValidation
+    {
+        public bool Enabled { get; set; }
+        public string ValidatorType { get; set; }
+        public string Prompt { get; set; }
+        public string RetryMessage { get; set; }
+        public int MaxRetries { get; set; }
+    }
     
-    [System.Text.Json.Serialization.JsonPropertyName("replyType")]
-    public string ReplyType { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("specifiedUsers")]
-    public string SpecifiedUsers { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("recipientDetails")]
-    public object RecipientDetails { get; set; }
-    
-    public WorkflowValidation Validation { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("sql")]
-    public string Sql { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("url")]
-    public string Url { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("formName")]
-    public string FormName { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("formId")]
-    public string FormId { get; set; }
-    
-    // sendEForm 節點相關屬性
-    [System.Text.Json.Serialization.JsonPropertyName("messageTemplate")]
-    public string MessageTemplate { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("useCustomMessage")]
-    public bool UseCustomMessage { get; set; }
-    
-    // sendEForm 節點運作模式
-    [System.Text.Json.Serialization.JsonPropertyName("sendEFormMode")]
-    public string SendEFormMode { get; set; } = "integrateWaitReply"; // 默認為整合等待用戶回覆模式
-    
-    [System.Text.Json.Serialization.JsonPropertyName("integratedDataSetQueryNodeId")]
-    public string IntegratedDataSetQueryNodeId { get; set; }
-    
-    // Switch 節點相關屬性
-    [System.Text.Json.Serialization.JsonPropertyName("conditionGroups")]
-    public List<SwitchConditionGroup> ConditionGroups { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("defaultPath")]
-    public string DefaultPath { get; set; }
-    
-    // QR Code 節點相關屬性
-    [System.Text.Json.Serialization.JsonPropertyName("qrCodeVariable")]
-    public string QrCodeVariable { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("timeout")]
-    public int? Timeout { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessage")]
-    public string QrCodeSuccessMessage { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessage")]
-    public string QrCodeErrorMessage { get; set; }
-    
-    // e-Form 節點相關屬性
-    [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]
-    public string ApprovalResultVariable { get; set; }
-    
-    // 通用 JSON 數據存儲
-    [System.Text.Json.Serialization.JsonPropertyName("json")]
-    public string Json { get; set; }
-    
-    // DataSet 查詢節點相關屬性
-    [System.Text.Json.Serialization.JsonPropertyName("dataSetId")]
-    public string DataSetId { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("operationType")]
-    public string OperationType { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("queryConditionGroups")]
-    public List<object> QueryConditionGroups { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("operationData")]
-    public Dictionary<string, object> OperationData { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("mappedFields")]
-    public List<object> MappedFields { get; set; }
-}
-
-public class WorkflowPosition
-{
-    public double X { get; set; }
-    public double Y { get; set; }
-}
-
-public class WorkflowEdge
-{
-    public string Id { get; set; }
-    public string Source { get; set; }
-    public string Target { get; set; }
-    public string Type { get; set; }
-    
-    // 新增屬性以支持新的 workflow designer
-    [System.Text.Json.Serialization.JsonPropertyName("sourceHandle")]
-    public string SourceHandle { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("targetHandle")]
-    public string TargetHandle { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("markerEnd")]
-    public object MarkerEnd { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("data")]
-    public Dictionary<string, object> Data { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("style")]
-    public Dictionary<string, object> Style { get; set; }
-    
-    [System.Text.Json.Serialization.JsonPropertyName("animated")]
-    public bool? Animated { get; set; }
-}
-
-public class WorkflowValidation
-{
-    public bool Enabled { get; set; }
-    public string ValidatorType { get; set; }
-    public string Prompt { get; set; }
-    public string RetryMessage { get; set; }
-    public int MaxRetries { get; set; }
-}
-
-}
-
-// 工作流程執行結果模型
-public class WorkflowExecutionResult
-{
-    public string? Status { get; set; }
-    public object? OutputData { get; set; }
-} 
+    // 工作流程執行結果模型
+    public class WorkflowExecutionResult
+    {
+        public string? Status { get; set; }
+        public object? OutputData { get; set; }
+    }
+} // namespace PurpleRice.Services

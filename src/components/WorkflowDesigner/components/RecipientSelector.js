@@ -477,40 +477,35 @@ const RecipientSelector = ({
     console.log('⚙️ 選中的流程變量:', selectedProcessVariables);
     console.log('🚀 使用流程啟動人:', useInitiator);
     
+    // ✅ phoneNumbers 應該只用於向後兼容，用於顯示目的
+    // 實際收件人解析應該由後端根據 users, contacts 等詳細信息進行
     const phoneNumbers = [];
     
-    // 添加選中的用戶
+    // 🆕 只添加選中用戶的電話（僅用於向後兼容和顯示）
     selectedUsers.forEach(user => {
       if (user.phone && !phoneNumbers.includes(user.phone)) {
         phoneNumbers.push(user.phone);
       }
     });
     
-    // 添加選中的聯絡人
+    // 🆕 添加選中聯絡人的電話（僅用於向後兼容和顯示）
     selectedContacts.forEach(contact => {
       if (contact.whatsAppNumber && !phoneNumbers.includes(contact.whatsAppNumber)) {
         phoneNumbers.push(contact.whatsAppNumber);
       }
     });
-    
-    // ❌ 已刪除錯誤代碼：不應該將流程變量添加到 phoneNumbers 數組
-    // 流程變量應該只存在於 processVariables 數組中，由後端解析
-    // phoneNumbers 數組只應該包含靜態電話號碼
-    
-    // 注意：不要在這裡添加 ${initiator} 到 phoneNumbers
-    // 因為後端會根據 useInitiator 標誌來處理流程啟動人
-    // 如果同時添加 ${initiator} 到 phoneNumbers 和設置 useInitiator: true
-    // 會導致流程啟動人被重複添加
 
-    // 保存詳細的選擇信息，而不僅僅是電話號碼
+    // 保存詳細的選擇信息
+    // ⚠️ 重要：後端應該只處理以下詳細信息，不應該處理 phoneNumbers 陣列
+    // phoneNumbers 僅用於向後兼容和前端顯示
     const detailedValue = {
       users: selectedUsers,
       contacts: selectedContacts,
       groups: selectedGroups,
       hashtags: selectedHashtags,
-      processVariables: selectedProcessVariables, // 只存儲流程變量 ID，不存儲變量語法
+      processVariables: selectedProcessVariables,
       useInitiator: useInitiator,
-      phoneNumbers: phoneNumbers // 這裡只包含實際的靜態電話號碼
+      phoneNumbers: [] // 🆕 清空 phoneNumbers，避免重複處理
     };
     
     console.log('📤 發送詳細值:', detailedValue);

@@ -197,6 +197,9 @@ namespace PurpleRice.Controllers
             
             if (item == null) return NotFound();
             
+            // 清理無效的 edges
+            def.Json = CleanInvalidEdges(def.Json);
+            
             item.Name = def.Name;
             item.Description = def.Description;
             item.Json = def.Json;
@@ -207,6 +210,82 @@ namespace PurpleRice.Controllers
             item.CompanyId = companyId.Value;
             await _db.SaveChangesAsync();
             return Ok(item);
+        }
+        
+        // 清理流程定義中的無效 edges
+        private string CleanInvalidEdges(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return json;
+            
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                var root = document.RootElement;
+                
+                // 獲取所有節點 ID
+                var nodeIds = new HashSet<string>();
+                if (root.TryGetProperty("nodes", out var nodesElement))
+                {
+                    foreach (var node in nodesElement.EnumerateArray())
+                    {
+                        if (node.TryGetProperty("id", out var idElement))
+                        {
+                            nodeIds.Add(idElement.GetString() ?? "");
+                        }
+                    }
+                }
+                
+                // 過濾有效的 edges
+                var validEdges = new List<JsonElement>();
+                if (root.TryGetProperty("edges", out var edgesElement))
+                {
+                    foreach (var edge in edgesElement.EnumerateArray())
+                    {
+                        var hasValidSource = edge.TryGetProperty("source", out var sourceElement) && 
+                                           nodeIds.Contains(sourceElement.GetString() ?? "");
+                        var hasValidTarget = edge.TryGetProperty("target", out var targetElement) && 
+                                           nodeIds.Contains(targetElement.GetString() ?? "");
+                        
+                        if (hasValidSource && hasValidTarget)
+                        {
+                            validEdges.Add(edge);
+                        }
+                    }
+                }
+                
+                // 重新構建 JSON
+                var options = new JsonWriterOptions { Indented = false };
+                using var stream = new System.IO.MemoryStream();
+                using (var writer = new Utf8JsonWriter(stream, options))
+                {
+                    writer.WriteStartObject();
+                    
+                    // 寫入 nodes
+                    if (root.TryGetProperty("nodes", out var nodes))
+                    {
+                        writer.WritePropertyName("nodes");
+                        nodes.WriteTo(writer);
+                    }
+                    
+                    // 寫入清理後的 edges
+                    writer.WritePropertyName("edges");
+                    writer.WriteStartArray();
+                    foreach (var edge in validEdges)
+                    {
+                        edge.WriteTo(writer);
+                    }
+                    writer.WriteEndArray();
+                    
+                    writer.WriteEndObject();
+                }
+                
+                return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"清理無效 edges 時發生錯誤: {ex.Message}", ex);
+                return json; // 如果清理失敗，返回原始 JSON
+            }
         }
 
         // DELETE: api/workflowdefinitions/{id}

@@ -151,6 +151,47 @@ namespace PurpleRice.Controllers
             }
         }
 
+        // GET: api/eforminstances/statistics/by-status - 獲取按狀態分組的表單統計
+        [HttpGet("statistics/by-status")]
+        public async Task<IActionResult> GetStatisticsByStatus()
+        {
+            try
+            {
+                _loggingService.LogInformation("📊 獲取表單狀態分組統計數據");
+                
+                var pending = await _db.EFormInstances
+                    .Where(e => e.Status == "Pending")
+                    .CountAsync();
+
+                var approved = await _db.EFormInstances
+                    .Where(e => e.Status == "Approved")
+                    .CountAsync();
+
+                var rejected = await _db.EFormInstances
+                    .Where(e => e.Status == "Rejected")
+                    .CountAsync();
+
+                var total = pending + approved + rejected;
+
+                var statistics = new
+                {
+                    total = total,
+                    pending = pending,
+                    approved = approved,
+                    rejected = rejected
+                };
+
+                _loggingService.LogInformation($"✅ 狀態統計: 總計={total}, 待處理={pending}, 已批准={approved}, 已拒絕={rejected}");
+
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 獲取狀態統計時發生錯誤: {ex.Message}");
+                return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
+
         // GET: api/eforminstances/{id} - 獲取表單實例
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)

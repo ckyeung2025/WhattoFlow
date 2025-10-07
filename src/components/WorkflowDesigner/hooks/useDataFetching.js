@@ -23,6 +23,7 @@ export const useDataFetching = () => {
   
   // 模板相關
   const [templates, setTemplates] = useState([]);
+  const [metaTemplates, setMetaTemplates] = useState([]);
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   
@@ -56,6 +57,18 @@ export const useDataFetching = () => {
       setTemplates(templates);
     } catch (error) {
       handleApiError(error, MOCK_DATA.templates, setTemplates, '獲取模板列表錯誤');
+    }
+  }, []);
+
+  // 獲取 Meta 模板列表
+  const fetchMetaTemplates = useCallback(async () => {
+    try {
+      const metaTemplates = await apiService.fetchMetaTemplates();
+      console.log('📋 獲取 Meta 模板列表:', metaTemplates);
+      setMetaTemplates(metaTemplates);
+    } catch (error) {
+      console.error('獲取 Meta 模板列表錯誤:', error);
+      setMetaTemplates([]);
     }
   }, []);
 
@@ -222,6 +235,7 @@ export const useDataFetching = () => {
     setStatus('');
     await fetchNodeTypeDefinitions(nodeTypes);
     await fetchTemplates();
+    await fetchMetaTemplates();
     await fetchUsers();
     await fetchEForms();
     
@@ -229,7 +243,7 @@ export const useDataFetching = () => {
       await fetchProcessVariables();
       await loadWorkflow(setNodes, setEdges, nodeTypes, handleDeleteNode, onEdgeSwitch);
     }
-  }, [workflowId, fetchNodeTypeDefinitions, fetchTemplates, fetchUsers, fetchEForms, fetchProcessVariables, loadWorkflow]);
+  }, [workflowId, fetchNodeTypeDefinitions, fetchTemplates, fetchMetaTemplates, fetchUsers, fetchEForms, fetchProcessVariables, loadWorkflow]);
 
   return {
     // 工作流程基本信息
@@ -252,6 +266,8 @@ export const useDataFetching = () => {
     // 模板相關
     templates,
     setTemplates,
+    metaTemplates,
+    setMetaTemplates,
     isTemplateModalVisible,
     setIsTemplateModalVisible,
     selectedTemplate,
@@ -295,6 +311,7 @@ export const useDataFetching = () => {
     
     // 數據獲取函數
     fetchTemplates,
+    fetchMetaTemplates,
     fetchUsers,
     fetchEForms,
     fetchNodeTypeDefinitions,

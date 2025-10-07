@@ -20,6 +20,46 @@ namespace PurpleRice.Services
         #region 聯絡人管理
 
         /// <summary>
+        /// 獲取聯絡人統計數據
+        /// </summary>
+        public async Task<object> GetStatisticsAsync(Guid companyId)
+        {
+            try
+            {
+                _logger.LogInformation($"📊 開始獲取公司 {companyId} 的聯絡人統計數據");
+
+                // 總聯絡人數
+                var totalContacts = await _context.ContactLists
+                    .Where(c => c.CompanyId == companyId)
+                    .CountAsync();
+
+                // 活躍聯絡人數
+                var activeContacts = await _context.ContactLists
+                    .Where(c => c.CompanyId == companyId && c.IsActive)
+                    .CountAsync();
+
+                // 非活躍聯絡人數
+                var inactiveContacts = totalContacts - activeContacts;
+
+                var statistics = new
+                {
+                    total = totalContacts,
+                    active = activeContacts,
+                    inactive = inactiveContacts
+                };
+
+                _logger.LogInformation($"✅ 統計數據: 總計={totalContacts}, 活躍={activeContacts}, 非活躍={inactiveContacts}");
+                
+                return statistics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"❌ 獲取統計數據失敗: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 獲取聯絡人列表
         /// </summary>
         public async Task<(List<ContactListResponseDto> contacts, int totalCount)> GetContactsAsync(
@@ -249,6 +289,56 @@ namespace PurpleRice.Services
         #region 廣播群組管理
 
         /// <summary>
+        /// 獲取廣播群組統計數據
+        /// </summary>
+        public async Task<object> GetBroadcastGroupsStatisticsAsync(Guid companyId)
+        {
+            try
+            {
+                _logger.LogInformation($"📊 開始獲取公司 {companyId} 的廣播群組統計數據");
+
+                // 總群組數
+                var totalGroups = await _context.BroadcastGroups
+                    .Where(bg => bg.CompanyId == companyId)
+                    .CountAsync();
+
+                // 活躍群組數
+                var activeGroups = await _context.BroadcastGroups
+                    .Where(bg => bg.CompanyId == companyId && bg.IsActive)
+                    .CountAsync();
+
+                // 計算每個群組的成員數量並統計總成員數
+                var groupsWithMembers = await _context.BroadcastGroups
+                    .Where(bg => bg.CompanyId == companyId && bg.IsActive)
+                    .Select(bg => new
+                    {
+                        GroupId = bg.Id,
+                        MemberCount = _context.ContactLists
+                            .Count(c => c.BroadcastGroupId == bg.Id && c.IsActive)
+                    })
+                    .ToListAsync();
+
+                var totalMembers = groupsWithMembers.Sum(g => g.MemberCount);
+
+                var statistics = new
+                {
+                    totalGroups = totalGroups,
+                    activeGroups = activeGroups,
+                    totalMembers = totalMembers
+                };
+
+                _logger.LogInformation($"✅ 統計數據: 總群組={totalGroups}, 活躍群組={activeGroups}, 總成員={totalMembers}");
+                
+                return statistics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"❌ 獲取廣播群組統計數據失敗: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 獲取廣播群組列表
         /// </summary>
         public async Task<List<BroadcastGroup>> GetBroadcastGroupsAsync(Guid companyId)
@@ -333,6 +423,60 @@ namespace PurpleRice.Services
         #endregion
 
         #region 標籤管理
+
+        /// <summary>
+        /// 獲取標籤統計數據
+        /// </summary>
+        public async Task<object> GetHashtagsStatisticsAsync(Guid companyId)
+        {
+            try
+            {
+                _logger.LogInformation($"📊 開始獲取公司 {companyId} 的標籤統計數據");
+
+                // 總標籤數
+                var totalHashtags = await _context.ContactHashtags
+                    .Where(h => h.CompanyId == companyId)
+                    .CountAsync();
+
+                // 活躍標籤數
+                var activeHashtags = await _context.ContactHashtags
+                    .Where(h => h.CompanyId == companyId && h.IsActive)
+                    .CountAsync();
+
+                // 計算標籤使用次數（聯絡人中包含該標籤的數量）
+                var activeContacts = await _context.ContactLists
+                    .Where(c => c.CompanyId == companyId && c.IsActive)
+                    .ToListAsync();
+
+                // 統計所有標籤在聯絡人中的使用次數
+                var hashtagUsageCount = 0;
+                foreach (var contact in activeContacts)
+                {
+                    if (!string.IsNullOrEmpty(contact.Hashtags))
+                    {
+                        // 假設 Hashtags 是以逗號分隔的字符串
+                        var hashtagList = contact.Hashtags.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                        hashtagUsageCount += hashtagList.Length;
+                    }
+                }
+
+                var statistics = new
+                {
+                    totalHashtags = totalHashtags,
+                    activeHashtags = activeHashtags,
+                    hashtagUsage = hashtagUsageCount
+                };
+
+                _logger.LogInformation($"✅ 統計數據: 總標籤={totalHashtags}, 活躍標籤={activeHashtags}, 標籤使用次數={hashtagUsageCount}");
+                
+                return statistics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"❌ 獲取標籤統計數據失敗: {ex.Message}");
+                throw;
+            }
+        }
 
         /// <summary>
         /// 獲取標籤列表
