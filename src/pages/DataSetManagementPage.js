@@ -108,7 +108,7 @@ const DataSetManagementPage = () => {
           window.history.replaceState({}, '', newUrl);
         } else {
           console.warn('DataSetManagementPage: 未找到要編輯的數據集:', editId);
-          message.warning(`未找到 ID 為 ${editId} 的數據集`);
+          message.warning(t('dataSetManagement.datasetNotFound', { id: editId }));
         }
       }
     }
@@ -1315,9 +1315,9 @@ const DataSetManagementPage = () => {
                     console.log('數據源類型變更為:', value);
                   }}
                 >
-                  <Select.Option value="SQL">{t('dataSetManagement.sql')} 查詢</Select.Option>
-                  <Select.Option value="EXCEL">{t('dataSetManagement.excel')} 文件</Select.Option>
-                  <Select.Option value="GOOGLE_DOCS">{t('dataSetManagement.googleDocs')}</Select.Option>
+                  <Select.Option value="SQL">{t('dataSetManagement.sqlQuery')}</Select.Option>
+                  <Select.Option value="EXCEL">{t('dataSetManagement.excelFile')}</Select.Option>
+                  <Select.Option value="GOOGLE_DOCS">{t('dataSetManagement.googleDocsOption')}</Select.Option>
                 </Select>
               </Form.Item>
               
@@ -1364,7 +1364,7 @@ const DataSetManagementPage = () => {
                                     initialValue="purple_rice"
                                   >
                                     <Input 
-                                      value="WhatoFlow 數據庫" 
+                                      value={t('dataSetManagement.whatoFlowDatabase')} 
                                       disabled 
                                       style={{ backgroundColor: '#f5f5f5' }}
                                     />
@@ -2000,7 +2000,7 @@ const DataSetManagementPage = () => {
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px' }}>每頁顯示:</span>
+                <span style={{ fontSize: '14px' }}>{t('dataSetManagement.recordsPerPage')}</span>
                 <Select
                   value={recordsPagination.pageSize}
                   onChange={(size) => {
@@ -2030,7 +2030,7 @@ const DataSetManagementPage = () => {
                     }
                   }}
                 >
-                  上一頁
+                  {t('dataSetManagement.previousPage')}
                 </Button>
                 
                 <span style={{ fontSize: '14px', minWidth: '60px', textAlign: 'center' }}>
@@ -2048,7 +2048,7 @@ const DataSetManagementPage = () => {
                     }
                   }}
                 >
-                  下一頁
+                  {t('dataSetManagement.nextPage')}
                 </Button>
               </div>
             </div>

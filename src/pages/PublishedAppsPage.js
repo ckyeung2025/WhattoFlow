@@ -518,11 +518,17 @@ const PublishedAppsPage = () => {
           zIndex: 1
         }} />
         
-        <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            {/* 標題區域 */}
-            <div className="smart-button-header">
-              <div className="smart-button-left">
+        <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* 標題區域 - 固定高度 */}
+          <div style={{ 
+            height: '100px', 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            marginBottom: '8px'
+          }}>
+            <div className="smart-button-header" style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="smart-button-left" style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
                 <Avatar 
                   size={48} 
                   icon={<RocketOutlined />} 
@@ -532,19 +538,49 @@ const PublishedAppsPage = () => {
                     border: '2px solid #4CAF50',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease',
-                    marginRight: '12px'
+                    marginRight: '12px',
+                    flexShrink: 0
                   }}
                 />
-                <div className="smart-button-text">
-                  <Title level={4} style={{ color: '#000000', margin: 0, fontSize: '18px', fontWeight: '600' }}>
+                <div className="smart-button-text" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                  <Title 
+                    level={4} 
+                    style={{ 
+                      color: '#000000', 
+                      margin: 0, 
+                      fontSize: '18px', 
+                      fontWeight: '600',
+                      lineHeight: '1.3',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      wordBreak: 'break-word'
+                    }}
+                    title={workflow.name}
+                  >
                     {workflow.name}
                   </Title>
-                  <Text style={{ color: 'rgba(0,0,0,0.7)', fontSize: '14px', margin: 0 }}>
+                  <Text 
+                    style={{ 
+                      color: 'rgba(0,0,0,0.7)', 
+                      fontSize: '14px', 
+                      margin: '4px 0 0 0',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      lineHeight: '1.3'
+                    }}
+                    title={workflow.description || t('publishedApps.noDescription')}
+                  >
                     {workflow.description || t('publishedApps.noDescription')}
                   </Text>
                 </div>
               </div>
-              <div className="smart-button-count">
+              <div className="smart-button-count" style={{ flexShrink: 0, marginLeft: '12px', textAlign: 'right' }}>
                 <div style={{ 
                   fontSize: '24px', 
                   fontWeight: 'bold', 
@@ -564,12 +600,14 @@ const PublishedAppsPage = () => {
             </div>
           </div>
           
-          {/* 創建者信息和啟動狀態提示 - 同一行 */}
+          {/* 創建者信息和啟動狀態提示 - 向上移動 */}
           <div style={{ 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center',
-            padding: '8px 0'
+            padding: '8px 0',
+            marginTop: 'auto',
+            minHeight: '50px'
           }}>
             {/* 創建者信息 */}
             <div style={{
@@ -750,7 +788,7 @@ const PublishedAppsPage = () => {
           ) : (
             <Row gutter={[24, 24]}>
               {manualWorkflows.map((workflow, index) => (
-                <Col xs={24} sm={12} lg={8} xl={6} key={workflow.id}>
+                <Col xs={24} sm={12} lg={8} key={workflow.id}>
                   <AppCard workflow={workflow} index={index} />
                 </Col>
               ))}
@@ -788,7 +826,7 @@ const PublishedAppsPage = () => {
           ) : (
             <Row gutter={[24, 24]}>
               {autoWorkflows.map((workflow, index) => (
-                <Col xs={24} sm={12} lg={8} xl={6} key={workflow.id}>
+                <Col xs={24} sm={12} lg={8} key={workflow.id}>
                   <AppCard workflow={workflow} index={index} />
                 </Col>
               ))}

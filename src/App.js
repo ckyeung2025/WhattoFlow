@@ -27,6 +27,9 @@ import ContactEditPage from './pages/ContactEditPage';
 import ContactImportPage from './pages/ContactImportPage';
 import BroadcastGroupsPage from './pages/BroadcastGroupsPage';
 import HashtagsPage from './pages/HashtagsPage';
+import OnboardingTrigger from './components/OnboardingTrigger';
+import OnboardingManagementPage from './pages/OnboardingManagementPage';
+import OnboardingTest from './components/OnboardingTest';
 
 const { Content } = Layout;
 
@@ -49,6 +52,8 @@ const pathToMenuKey = {
   '/contacts/import': 'contactList',
   '/broadcast-groups': 'broadcastGroups',
   '/hashtags': 'hashtags',
+  '/onboarding': 'onboarding',
+  '/onboarding-test': 'onboarding-test',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -207,6 +212,12 @@ function AppContent() {
       case 'hashtags':
         navigate('/hashtags');
         break;
+      case 'onboarding':
+        navigate('/onboarding');
+        break;
+      case 'onboarding-test':
+        navigate('/onboarding-test');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -346,6 +357,8 @@ function AppContent() {
               <Route path="/contacts/import" element={<ContactImportPage />} />
               <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
               <Route path="/hashtags" element={<HashtagsPage />} />
+              <Route path="/onboarding" element={<OnboardingManagementPage />} />
+              <Route path="/onboarding-test" element={<OnboardingTest />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />
             </Routes>
           </Content>
@@ -356,6 +369,7 @@ function AppContent() {
           userInfo={userInfo}
           onUserInfoUpdate={setUserInfo}
         />
+        <OnboardingTrigger />
       </Layout>
     );
   }

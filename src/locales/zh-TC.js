@@ -1669,7 +1669,104 @@ const zhTC = {
       internalTemplates: "內部模板",
       metaOfficialTemplates: "Meta 官方模板",
       description: "管理 WhatsApp 訊息模板：內部模板用於快速迭代，Meta 官方模板用於正式營銷活動"
-    }
+    },
+    
+    // 缺少的翻譯鍵值
+    categorySelect: "選擇分類",
+    statusSelect: "選擇狀態",
+    confirmDelete: "確定刪除",
+    templateConfirmDeleteSelected: "確定要刪除選中的",
+    templateConfirmDeleteSelectedSuffix: "個模板嗎？此操作無法撤銷。",
+    addTitle: "新增模板",
+    nameRequired: "請輸入模板名稱",
+    namePlaceholder: "請輸入模板名稱",
+    descriptionPlaceholder: "請輸入模板描述（可選）",
+    categoryRequired: "請選擇分類",
+    categoryPlaceholder: "請選擇分類",
+    welcome: "歡迎",
+    order: "訂單",
+    marketing: "行銷",
+    support: "客服",
+    general: "一般",
+    typeRequired: "請選擇模板類型",
+    typePlaceholder: "請選擇模板類型",
+    media: "媒體",
+    pleaseEnterMessageContent: "請輸入訊息內容",
+    pleaseEnterMessageContentWithVariables: "請輸入訊息內容，可使用 {{變數名}} 格式插入變數",
+    statusRequired: "請選擇狀態",
+    statusPlaceholder: "請選擇狀態",
+    language: "語言",
+    languageRequired: "請選擇語言",
+    languagePlaceholder: "請選擇語言",
+    traditionalChinese: "繁體中文",
+    simplifiedChinese: "簡體中文",
+    english: "English",
+    searchAddress: "搜索地址",
+    enterAddressToSearch: "輸入地址或地名進行搜索",
+    selectThisLocation: "選擇此位置",
+    confirm: "確定",
+    cancel: "取消",
+    save: "保存",
+    
+    // 地圖相關翻譯
+    searchMapContainerInUse: "搜索地圖容器已被使用，正在清理...",
+    searchMapContainerCleanupWarning: "清理搜索地圖容器時出現警告:",
+    searchMap: "搜索地圖",
+    mainMap: "主地圖",
+    mapContainerInUse: "地圖容器已被使用，正在清理...",
+    mapContainerCleanupWarning: "清理地圖容器時出現警告:",
+    mapInitializing: "地圖正在初始化中，跳過重複初始化",
+    cannotGetCurrentLocation: "無法獲取當前位置，請手動選擇",
+    browserNotSupportGeolocation: "您的瀏覽器不支持地理定位",
+    unknownLocation: "未知位置",
+    reverseGeocodeFailed: "反向地理編碼失敗:",
+    addressSearchSuccess: "地址搜索成功",
+    noAddressFound: "未找到地址",
+    searchFailed: "搜索失敗，請稍後重試",
+    addressSearchFailed: "地址搜索失敗:",
+    getLocationFailed: "獲取位置失敗:",
+    saveTemplateError: "保存模板錯誤:",
+    
+    // 按鈕配置相關翻譯
+    buttonConfiguration: "按鈕配置",
+    maxButtonsLimit: "最多只能添加 3 個按鈕",
+    addButton: "添加按鈕",
+    maxThreeButtons: "最多 3 個按鈕",
+    buttonText: "按鈕文字 {index}",
+    pleaseEnterButtonText: "請輸入按鈕文字",
+    buttonType: "按鈕類型",
+    pleaseSelectButtonType: "請選擇按鈕類型",
+    quickReply: "快速回覆",
+    replyId: "回覆ID",
+    pleaseEnterReplyId: "請輸入回覆ID",
+    replyIdPlaceholder: "回覆ID（用於識別用戶選擇）",
+    
+    // 列表配置相關翻譯
+    listOptionsConfiguration: "列表選項配置",
+    listTitle: "列表標題",
+    pleaseEnterListTitle: "請輸入列表標題",
+    maxOptionsLimit: "最多只能添加 10 個選項",
+    addOption: "添加選項",
+    maxTenOptions: "最多 10 個選項",
+    optionId: "選項 {index} ID",
+    pleaseEnterOptionId: "請輸入選項ID",
+    optionTitle: "選項標題",
+    pleaseEnterOptionTitle: "請輸入選項標題",
+    optionDescription: "選項描述",
+    optionDescriptionOptional: "選項描述（可選）",
+    
+    // 產品配置相關翻譯
+    productConfiguration: "產品配置",
+    productId: "產品ID",
+    pleaseEnterProductId: "請輸入產品ID",
+    productCatalogId: "產品目錄ID",
+    pleaseEnterProductCatalogId: "請輸入產品目錄ID",
+    pleaseEnterFacebookProductCatalogId: "請輸入Facebook產品目錄ID",
+    productImageUrl: "產品圖片URL",
+    pleaseEnterProductImageUrl: "請輸入產品圖片URL",
+    
+    // 複製相關翻譯
+    copy: "複製"
   },
   
   // WhatsApp Workflow Designer
@@ -2784,6 +2881,11 @@ const zhTC = {
     excel: 'EXCEL',
     googleDocs: 'GOOGLE_DOCS',
     
+    // 數據源類型選項（完整文字）
+    sqlQuery: 'SQL 查詢',
+    excelFile: 'EXCEL 文件',
+    googleDocsOption: 'GOOGLE_DOCS',
+    
     // 操作按鈕
     viewRecords: '查看記錄',
     syncData: '同步數據',
@@ -2997,10 +3099,15 @@ const zhTC = {
     connectionTestSuccess: '連接測試成功！正在獲取欄位定義...',
     connectionTestFailed: '連接測試失敗',
     presetConnectionConfigured: '預設連接配置完成',
+    whatoFlowDatabase: 'WhatoFlow 數據庫',
     
     // 分頁
     pageRange: '第 {start}-{end} 條，共 {total} 條記錄',
-    recordPageSizeOptions: ['20', '50', '100', '200']
+    recordPageSizeOptions: ['20', '50', '100', '200'],
+    recordsPerPage: '每頁顯示:',
+    previousPage: '上一頁',
+    nextPage: '下一頁',
+    datasetNotFound: '未找到 ID 為 {id} 的數據集'
   }
 };
 
