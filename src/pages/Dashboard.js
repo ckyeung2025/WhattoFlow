@@ -951,7 +951,7 @@ const Dashboard = ({ onMenuSelect }) => {
                 <BarChartOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
                 <div>
                   <Title level={3} style={{ margin: 0, fontSize: '22px', color: '#333', fontWeight: 'bold' }}>
-                    📊 {t('dashboard.dataAnalysis')}
+                    {t('dashboard.dataAnalysis')}
                   </Title>
                   <Text style={{ color: 'rgba(0,0,0,0.6)', fontSize: '14px' }}>
                     {t('dashboard.dataAnalysisDescription')}
@@ -967,7 +967,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     style={{
                       borderRadius: '12px',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      height: '240px'
+                      height: '280px'
                     }}
                     bodyStyle={{ padding: '16px', height: '100%' }}
                   >
@@ -1018,7 +1018,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     style={{
                       borderRadius: '12px',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      height: '240px'
+                      height: '280px'
                     }}
                     bodyStyle={{ padding: '16px', height: '100%' }}
                   >
@@ -1058,7 +1058,7 @@ const Dashboard = ({ onMenuSelect }) => {
                     style={{
                       borderRadius: '12px',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      height: '240px'
+                      height: '280px'
                     }}
                     bodyStyle={{ padding: '16px', height: '100%' }}
                   >
@@ -1080,13 +1080,32 @@ const Dashboard = ({ onMenuSelect }) => {
                         series: [{
                           type: 'pie',
                           radius: ['35%', '60%'],
-                          center: ['50%', '52%'],
+                          center: ['50%', '45%'],
                           data: [
                             { value: chartData.formStatus.pending, name: t('dashboard.pending'), itemStyle: { color: '#faad14' } },
                             { value: chartData.formStatus.approved, name: t('dashboard.approved'), itemStyle: { color: '#52c41a' } },
                             { value: chartData.formStatus.rejected, name: t('dashboard.rejected'), itemStyle: { color: '#ff4d4f' } }
                           ],
-                          label: { fontSize: 11, formatter: '{c}' }
+                          label: { 
+                            fontSize: 12, 
+                            formatter: '{c}',
+                            position: 'outside',
+                            distance: 12,
+                            avoidLabelOverlap: true
+                          },
+                          labelLine: {
+                            show: true,
+                            length: 12,
+                            length2: 8,
+                            smooth: true
+                          },
+                          emphasis: {
+                            itemStyle: {
+                              shadowBlur: 10,
+                              shadowOffsetX: 0,
+                              shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                          }
                         }]
                       }}
                       style={{ height: '100%', width: '100%' }}
@@ -1283,7 +1302,7 @@ const Dashboard = ({ onMenuSelect }) => {
               </Text>
       
               <Row gutter={[16, 16]}>
-                <Col xs={24} sm={12} lg={6}>
+                <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.contactManagement')}
                     description={t('dashboard.contactManagementDescription')}
@@ -1302,7 +1321,7 @@ const Dashboard = ({ onMenuSelect }) => {
                   />
                 </Col>
                 
-                <Col xs={24} sm={12} lg={6}>
+                <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.broadcastGroups')}
                     description={t('dashboard.broadcastGroupsDescription')}
@@ -1321,7 +1340,7 @@ const Dashboard = ({ onMenuSelect }) => {
                   />
                 </Col>
                 
-                <Col xs={24} sm={12} lg={6}>
+                <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.hashtagManagement')}
                     description={t('dashboard.hashtagManagementDescription')}
@@ -1340,7 +1359,7 @@ const Dashboard = ({ onMenuSelect }) => {
                   />
                 </Col>
                 
-                <Col xs={24} sm={12} lg={6}>
+                <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.companyUserManagement')}
                     description={t('dashboard.companyUserManagementDescription')}

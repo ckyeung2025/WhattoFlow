@@ -1,0 +1,469 @@
+{
+  "onboarding": {
+    "welcome": {
+      "title": "Welcome to WhatoFlow!",
+      "subtitle": "Let's explore this powerful AI WhatsApp workflow management platform and learn how to create automated business processes",
+      "startTour": "Start Tour",
+      "skipTour": "Skip Tour",
+      "tourInfo": "Tour takes about 5-10 minutes, you can skip anytime"
+    },
+    "features": {
+      "workflow": {
+        "title": "AI Workflow & Form Management",
+        "subtitle": "Automated workflows and intelligent form generation",
+        "description": "Employee sends 'I need 3 days off' → AI automatically generates standard leave E-Form"
+      },
+      "customer": {
+        "title": "Customer Service",
+        "subtitle": "Real-time query response and problem resolution",
+        "description": "Bank chatbot replies to balance inquiry 'Send balance to view'"
+      },
+      "order": {
+        "title": "Order & Transaction Updates",
+        "subtitle": "Automatic confirmation and logistics tracking",
+        "description": "Amazon sends 'Your order has shipped, scan QR Code to check logistics progress'"
+      },
+      "appointment": {
+        "title": "Appointment & Reminder Management",
+        "subtitle": "Automatic scheduling and reminder notifications",
+        "description": "Beauty salon sends 'Your appointment: Tomorrow 3 PM' reminder, reducing no-show rate"
+      },
+      "promotion": {
+        "title": "Advertising & Marketing Promotion",
+        "subtitle": "Batch personalized messages and smart marketing",
+        "description": "Westside sends birthday offer 'John, Happy Birthday! Enjoy 20% discount'"
+      },
+      "survey": {
+        "title": "Survey & Feedback Collection",
+        "subtitle": "Questionnaire surveys and satisfaction analysis",
+        "description": "Restaurant sends 'Please rate your dining experience (1-5 points)', automatic result analysis"
+      },
+      "default": {
+        "title": "WhatoFlow Intelligent Platform",
+        "subtitle": "Enterprise-grade automation solutions",
+        "description": "Save 80% customer service labor costs, increase customer response speed by 300%"
+      }
+    },
+    "steps": {
+      "interactiveDemo": "Interactive Demo",
+      "watchDemo": "Watch actual operation demo",
+      "startDemo": "Start Demo",
+      "demoInProgress": "Demo in progress...",
+      "demoVideo": "Demo Video",
+      "demoVideoTitle": "Step {step} Demo Video",
+      "watchDemoVideo": "Watch complete operation demo video",
+      "preparingDemoVideo": "Preparing step {step} operation demo video",
+      "videoNote": "Video will show complete operation flow, more intuitive than text description",
+      "dashboard": {
+        "title": "Dashboard - System Control Center",
+        "description": "Learn about dashboard core function shortcuts and system status overview",
+        "alert": {
+          "message": "Dashboard Function Description",
+          "description": "Dashboard is the control center of WhatoFlow, providing quick access to core system functions and real-time status monitoring."
+        },
+        "cards": {
+          "analytics": "Data Analytics Area",
+          "modules": "Function Module Quick Access"
+        },
+        "miniDashboard": {
+          "application": {
+            "title": "Application",
+            "published": "Published",
+            "running": "Running",
+            "completed": "Completed"
+          },
+          "dataAnalysis": {
+            "title": "Data Analysis",
+            "trends": "Trends",
+            "popular": "Popular",
+            "status": "Status"
+          },
+          "studio": {
+            "title": "Studio",
+            "forms": "Forms",
+            "templates": "Templates",
+            "workflows": "Workflows",
+            "datasets": "Datasets"
+          },
+          "management": {
+            "title": "Management Tools",
+            "contacts": "Contacts",
+            "groups": "Groups",
+            "tags": "Tags",
+            "admin": "Admin"
+          }
+        },
+        "stats": {
+          "contacts": "Contact Statistics",
+          "workflows": "Workflow Status",
+          "total": "Total",
+          "new": "New",
+          "running": "Running",
+          "completed": "Completed"
+        },
+        "modules": {
+          "workflow": "Workflow Design",
+          "eform": "E-Form Management",
+          "dataset": "Dataset Management",
+          "template": "Message Template Management"
+        },
+        "demoSteps": [
+          { "title": "View Dashboard Statistics", "description": "System displays real-time statistics for each function module" },
+          { "title": "Click Smart Button", "description": "Click contact management button to view detailed data" },
+          { "title": "Enter Function Module", "description": "Enter corresponding function page directly from dashboard" }
+        ]
+      },
+      "messageTemplates": {
+        "title": "Message Template Management",
+        "description": "Learn how to manage internal templates and Meta official templates",
+        "alert": {
+          "message": "Template Type Description",
+          "description": "System supports two template types: internal templates (no approval required) and Meta official templates (approval required)."
+        },
+        "cards": {
+          "internal": "Internal Templates",
+          "meta": "Meta Official Templates"
+        },
+        "actions": {
+          "addInternal": "Add Internal Template",
+          "addMeta": "Add Meta Template"
+        },
+        "usage": "Used {count} times",
+        "internalTemplates": {
+          "welcome": "Welcome Message",
+          "orderConfirm": "Order Confirmation",
+          "payment": "Payment Notification"
+        },
+        "metaTemplates": {
+          "welcome_message": "Welcome Message",
+          "order_confirmation": "Order Confirmation",
+          "payment_reminder": "Payment Reminder"
+        },
+        "demoSteps": [
+          { "title": "Select Template Type", "description": "Choose internal template or Meta official template" },
+          { "title": "Fill Template Content", "description": "Enter template name and message content" },
+          { "title": "Set Variables", "description": "Configure dynamic variables like {{name}}, {{orderId}}" },
+          { "title": "Save Template", "description": "Save template and use immediately" }
+        ]
+      },
+      "contactManagement": {
+        "title": "Contact Management",
+        "description": "Learn how to manage contacts, broadcast groups and tags",
+        "alert": {
+          "message": "Contact Management Functions",
+          "description": "System provides complete contact management functions, including individual contacts, broadcast groups and tag classification."
+        },
+        "cards": {
+          "contacts": "Contact List",
+          "groups": "Broadcast Groups",
+          "tags": "Tag Management",
+          "stats": "Contact Statistics"
+        },
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "actions": {
+          "addContact": "Add Contact",
+          "addGroup": "Add Group",
+          "addTag": "Add Tag"
+        },
+        "stats": {
+          "totalContacts": "Total Contacts",
+          "activeContacts": "Active Contacts",
+          "groups": "Broadcast Groups",
+          "tags": "Tag Count"
+        },
+        "members": "members",
+        "contacts": "contacts",
+        "sampleContacts": {
+          "zhang": "Zhang Xiaoming",
+          "li": "Li Meihua",
+          "wang": "Wang Dawei",
+          "chen": "Chen Xiaofang"
+        },
+        "sampleGroups": {
+          "vip": "VIP Customer Group",
+          "general": "General Customer Group",
+          "potential": "Potential Customer Group"
+        },
+        "groupTypes": {
+          "vip": "VIP",
+          "general": "General",
+          "potential": "Potential"
+        },
+        "sampleTags": {
+          "highValue": "High-Value Customer",
+          "newCustomer": "New Customer",
+          "churnRisk": "Churn Risk",
+          "activeUser": "Active User"
+        },
+        "demoSteps": [
+          { "title": "View Contact List", "description": "Browse and manage all contact information" },
+          { "title": "Create Broadcast Group", "description": "Set up group and add members" },
+          { "title": "Manage Tags", "description": "Add tag classification for contacts" },
+          { "title": "View Statistics", "description": "Understand contact management overview" }
+        ]
+      },
+      "datasetManagement": {
+        "title": "Dataset Management",
+        "description": "Learn how to create and manage multiple data sources",
+        "alert": {
+          "message": "Data Source Types",
+          "description": "System supports three data source types: SQL database, Excel files and Google Docs."
+        },
+        "cards": {
+          "sql": "SQL Database",
+          "excel": "Excel Files",
+          "googleDocs": "Google Docs"
+        },
+        "features": {
+          "sql": {
+            "0": "Default Connection",
+            "1": "Custom Connection",
+            "2": "SQL Query", 
+            "3": "Parameterized Query"
+          },
+          "excel": {
+            "0": "File Upload",
+            "1": "Auto Field Detection",
+            "2": "Data Validation",
+            "3": "Scheduled Sync"
+          },
+          "googleDocs": {
+            "0": "Google Authentication",
+            "1": "Real-time Sync",
+            "2": "Collaborative Editing",
+            "3": "Version Control"
+          }
+        },
+        "actions": {
+          "configureSql": "Configure SQL Data Source",
+          "uploadExcel": "Upload Excel File",
+          "connectGoogleDocs": "Connect Google Docs"
+        },
+        "demoSteps": [
+          { "title": "Select Data Source", "description": "Choose SQL, Excel or Google Docs" },
+          { "title": "Configure Connection", "description": "Set data source connection parameters" },
+          { "title": "Test Connection", "description": "Test if data source connection is working" },
+          { "title": "Create Dataset", "description": "Successfully create dataset and sync data" }
+        ]
+      },
+      "formManagement": {
+        "title": "Form Management System",
+        "description": "Learn how to create and manage dynamic forms",
+        "alert": {
+          "message": "Form Creation Methods",
+          "description": "System supports three creation methods: AI intelligent generation, file upload conversion and drag-and-drop design."
+        },
+        "cards": {
+          "ai": "AI Intelligent Generation",
+          "upload": "File Upload Conversion",
+          "design": "Drag-and-Drop Designer"
+        },
+        "features": {
+          "ai": {
+            "0": "Natural Language Input",
+            "1": "Intelligent Field Inference",
+            "2": "Auto Style Design",
+            "3": "Responsive Layout"
+          },
+          "upload": {
+            "0": "Word Document Conversion",
+            "1": "Excel Table Conversion",
+            "2": "PDF File Processing",
+            "3": "Image Recognition"
+          },
+          "design": {
+            "0": "Drag Components",
+            "1": "Real-time Preview",
+            "2": "Responsive Design",
+            "3": "Custom Styles"
+          }
+        },
+        "actions": {
+          "generateForm": "AI Generate Form",
+          "uploadFile": "Upload File",
+          "designForm": "Design Form"
+        },
+        "demoSteps": [
+          { "title": "Choose Creation Method", "description": "Choose AI generation, file upload or drag-and-drop design" },
+          { "title": "AI Generate Form", "description": "Enter requirement description, AI automatically generates form" },
+          { "title": "Adjust Design", "description": "Manually adjust form style and layout" },
+          { "title": "Preview & Publish", "description": "Preview form effect and publish" }
+        ]
+      },
+      "workflowDesign": {
+        "title": "Workflow Design",
+        "description": "Learn how to design complex workflows",
+        "alert": {
+          "message": "Node Type Description",
+          "description": "Workflows consist of various nodes, each with specific functions and configuration options."
+        },
+        "cards": {
+          "basic": "Basic Nodes",
+          "advanced": "Advanced Nodes"
+        },
+        "nodes": {
+          "start": { "title": "Start Node", "description": "Starting point of workflow" },
+          "sendMessage": { "title": "Send Message Node", "description": "Send WhatsApp message" },
+          "waitReply": { "title": "Wait Reply Node", "description": "Wait for user reply message" },
+          "end": { "title": "End Node", "description": "Termination point of workflow" },
+          "condition": { "title": "Condition Branch Node", "description": "Execute different branches based on conditions" },
+          "dataQuery": { "title": "Data Query Node", "description": "Query and process data" },
+          "formProcess": { "title": "Form Process Node", "description": "Process form submission data" },
+          "custom": { "title": "Custom Node", "description": "Execute custom logic" }
+        },
+        "connection": {
+          "message": "Connection Flow Line Tips",
+          "description": "Drag from node output point to target node input point, green connection points indicate normal connection, red indicates error connection."
+        },
+        "demoSteps": [
+          { "title": "Add Start Node", "description": "Set workflow starting point" },
+          { "title": "Add Send Node", "description": "Configure WhatsApp message sending" },
+          { "title": "Add Wait Node", "description": "Set wait for user reply" },
+          { "title": "Add Condition Branch", "description": "Execute different branches based on reply content" },
+          { "title": "Connect Nodes", "description": "Drag connection lines to connect nodes" },
+          { "title": "Test & Publish", "description": "Test workflow and publish" }
+        ]
+      },
+      "systemOverview": {
+        "title": "System Overview",
+        "description": "Learn about WhattoFlow's core features and interface layout",
+        "subSteps": {
+          "welcome": "Welcome Interface",
+          "welcomeDesc": "Familiarize with the main feature modules",
+          "menu": "Navigation Menu",
+          "menuDesc": "Learn how to use the sidebar menu for navigation",
+          "cards": "Feature Cards",
+          "cardsDesc": "View statistics for each feature module"
+        }
+      },
+      "workflowCreation": {
+        "title": "Workflow Creation",
+        "description": "Learn how to create and design workflows",
+        "subSteps": {
+          "navigate": "Enter Workflow Page",
+          "navigateDesc": "Click 'Workflow Design' in the left sidebar menu",
+          "create": "Create New Workflow",
+          "createDesc": "Click 'Add Workflow' button to start creating",
+          "design": "Design Workflow",
+          "designDesc": "Drag nodes to canvas to create process logic",
+          "save": "Save Workflow",
+          "saveDesc": "Click save button to complete workflow creation"
+        }
+      },
+      "eformDesign": {
+        "title": "E-Form Design",
+        "description": "Learn how to design electronic forms",
+        "subSteps": {
+          "navigate": "Enter Form Page",
+          "navigateDesc": "Click 'E-Forms' in the left sidebar menu",
+          "create": "Create New Form",
+          "createDesc": "Click 'Add Form' button",
+          "design": "Design Form",
+          "designDesc": "Use form designer to add fields and styles",
+          "preview": "Preview Form",
+          "previewDesc": "Preview form effect and publish"
+        }
+      },
+      "datasetManagement": {
+        "title": "Dataset Management",
+        "description": "Learn how to create and manage multiple data sources",
+        "alert": {
+          "message": "Data Source Types",
+          "description": "System supports three data source types: SQL database, Excel files and Google Docs."
+        },
+        "cards": {
+          "sql": "SQL Database",
+          "excel": "Excel Files",
+          "googleDocs": "Google Docs"
+        },
+        "features": {
+          "sql": {
+            "0": "Default Connection",
+            "1": "Custom Connection",
+            "2": "SQL Query", 
+            "3": "Parameterized Query"
+          },
+          "excel": {
+            "0": "File Upload",
+            "1": "Auto Field Detection",
+            "2": "Data Validation",
+            "3": "Scheduled Sync"
+          },
+          "googleDocs": {
+            "0": "Google Authentication",
+            "1": "Real-time Sync",
+            "2": "Collaborative Editing",
+            "3": "Version Control"
+          }
+        },
+        "actions": {
+          "configureSql": "Configure SQL Data Source",
+          "uploadExcel": "Upload Excel File",
+          "connectGoogleDocs": "Connect Google Docs"
+        },
+        "demoSteps": [
+          { "title": "Select Data Source", "description": "Choose SQL, Excel or Google Docs" },
+          { "title": "Configure Connection", "description": "Set data source connection parameters" },
+          { "title": "Test Connection", "description": "Test if data source connection is working" },
+          { "title": "Create Dataset", "description": "Successfully create dataset and sync data" }
+        ]
+      },
+      "whatsappIntegration": {
+        "title": "WhatsApp Integration",
+        "description": "Learn how to set up WhatsApp business processes",
+        "subSteps": {
+          "navigate": "Enter Template Page",
+          "navigateDesc": "Click 'Message Templates' in the left sidebar menu",
+          "template": "Create Message Template",
+          "templateDesc": "Design WhatsApp message template",
+          "workflow": "Create Workflow",
+          "workflowDesc": "Set up workflow triggered by messages",
+          "test": "Test Send",
+          "testDesc": "Test message sending functionality"
+        }
+      }
+    },
+    "navigation": {
+      "previous": "Previous",
+      "next": "Next",
+      "nextStep": "Next Level",
+      "nextSubStep": "Continue",
+      "complete": "Complete Tour"
+    },
+    "achievements": {
+      "firstWorkflow": {
+        "title": "Workflow Beginner",
+        "description": "Created first workflow",
+        "points": 100
+      },
+      "formMaster": {
+        "title": "Form Master",
+        "description": "Designed first electronic form",
+        "points": 150
+      },
+      "dataWizard": {
+        "title": "Data Wizard",
+        "description": "Set up first dataset",
+        "points": 200
+      },
+      "whatsappExpert": {
+        "title": "WhatsApp Expert",
+        "description": "Completed WhatsApp integration setup",
+        "points": 250
+      },
+      "tourComplete": {
+        "title": "Tour Completer",
+        "description": "Completed all tour steps",
+        "points": 500
+      }
+    },
+    "celebration": {
+      "congratulations": "Congratulations! Achievement Unlocked!",
+      "achievementUnlocked": "Achievement Unlocked",
+      "pointsEarned": "Points Earned"
+    }
+  }
+}

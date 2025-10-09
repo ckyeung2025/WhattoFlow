@@ -16,7 +16,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const { Option } = Select;
 
-// ResizableTitle 元件
+// ResizableTitle component
 const ResizableTitle = (props) => {
   const { onResize, width, ...restProps } = props;
   if (!width) return <th {...restProps} />;
@@ -59,18 +59,18 @@ const InternalTemplatePanel = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [form] = Form.useForm();
 
-  // 新增狀態用於動態表單
+  // New states for dynamic forms
   const [templateType, setTemplateType] = useState('Text');
   const [interactiveType, setInteractiveType] = useState('button');
   const [mediaType, setMediaType] = useState('image');
   const [variables, setVariables] = useState([]);
   const [pendingTemplateData, setPendingTemplateData] = useState(null);
   
-  // 新增狀態用於管理按鈕和列表選項
+  // New states for managing buttons and list options
   const [buttons, setButtons] = useState([]);
   const [listOptions, setListOptions] = useState([]);
   
-  // 地圖相關狀態
+  // Map related states
   const [locationMap, setLocationMap] = useState(null);
   const [locationMarker, setLocationMarker] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -79,37 +79,37 @@ const InternalTemplatePanel = () => {
   const [searchMap, setSearchMap] = useState(null);
   const [isMapInitializing, setIsMapInitializing] = useState(false);
   
-  // 地圖容器引用
+  // Map container references
   const locationMapRef = useRef(null);
   const searchMapRef = useRef(null);
   
-  // Form 引用
+  // Form reference
   const formRef = useRef(null);
   
-  // 表格列寬調整相關狀態
+  // Table column width adjustment related states
   const [resizableColumns, setResizableColumns] = useState([]);
 
   const { t } = useLanguage();
 
-  // 在組件頂部添加調試信息
+  // Add debug information at component top
   useEffect(() => {
-    console.log('🔍 [InternalTemplatePanel] 組件初始化');
-    console.log('🔍 [InternalTemplatePanel] Token:', localStorage.getItem('token') ? '存在' : '不存在');
+    console.log('🔍 [InternalTemplatePanel] Component initialized');
+    console.log('🔍 [InternalTemplatePanel] Token:', localStorage.getItem('token') ? 'exists' : 'not exists');
     console.log('🔍 [InternalTemplatePanel] UserInfo:', localStorage.getItem('userInfo'));
     
     fetchTemplates();
     fetchCategories();
   }, [currentPage, pageSize, sortField, sortOrder, searchText, categoryFilter, statusFilter]);
 
-  // 處理 URL 參數中的 edit 參數
+  // Handle edit parameter in URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const editId = urlParams.get('edit');
     
     if (editId) {
-      console.log('🔍 [InternalTemplatePanel] 檢測到 edit 參數:', editId);
+      console.log('🔍 [InternalTemplatePanel] Detected edit parameter:', editId);
       
-      // 等待模板列表載入完成後再處理編輯
+      // Wait for template list to load before processing edit
       if (templates.length > 0) {
       const templateToEdit = templates.find(template => 
         template.id === editId || 
@@ -118,27 +118,27 @@ const InternalTemplatePanel = () => {
       );
       
       if (templateToEdit) {
-        console.log('🔍 [InternalTemplatePanel] 找到要編輯的模板:', templateToEdit);
+        console.log('🔍 [InternalTemplatePanel] Found template to edit:', templateToEdit);
         handleEditTemplate(templateToEdit);
         
-        // 清除 URL 參數，避免重複觸發
+        // Clear URL parameters to avoid duplicate triggers
         const newUrl = window.location.pathname;
         window.history.replaceState({}, '', newUrl);
         } else {
-          console.log('❌ [InternalTemplatePanel] 未找到要編輯的模板:', editId);
-          message.warning(`未找到 ID 為 ${editId} 的模板`);
+          console.log('❌ [InternalTemplatePanel] Template not found:', editId);
+          message.warning(t('whatsappTemplate.templateNotFound', { id: editId }));
         }
       }
     }
   }, [templates]);
 
-  // 獲取模板列表
+  // Get template list
   const fetchTemplates = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      console.log('🔍 [fetchTemplates] 開始獲取模板列表');
-      console.log('🔍 [fetchTemplates] Token:', token ? '存在' : '不存在');
+      console.log('🔍 [fetchTemplates] Starting to get template list');
+      console.log('🔍 [fetchTemplates] Token:', token ? 'exists' : 'not exists');
       
       const params = new URLSearchParams({
         page: currentPage,
@@ -150,7 +150,7 @@ const InternalTemplatePanel = () => {
         status: statusFilter
       });
 
-      console.log('🔍 [fetchTemplates] 請求參數:', params.toString());
+      console.log('🔍 [fetchTemplates] Request parameters:', params.toString());
 
       const response = await fetch(`/api/whatsapptemplates?${params}`, {
         headers: { 
@@ -159,29 +159,29 @@ const InternalTemplatePanel = () => {
         }
       });
       
-      console.log(' [fetchTemplates] 響應狀態:', response.status, response.statusText);
+      console.log('🔍 [fetchTemplates] Response status:', response.status, response.statusText);
       
       const result = await response.json();
-      console.log(' [fetchTemplates] 響應數據:', result);
+      console.log('🔍 [fetchTemplates] Response data:', result);
       
-      // 適配後端響應格式
+      // Adapt backend response format
       if (result.data !== undefined) {
-        console.log('🔍 [fetchTemplates] 設置模板數據:', result.data);
+        console.log('🔍 [fetchTemplates] Setting template data:', result.data);
         setTemplates(result.data);
         setTotal(result.total);
       } else {
-        console.error('❌ [fetchTemplates] 響應格式錯誤:', result);
+        console.error('❌ [fetchTemplates] Response format error:', result);
         message.error(t('whatsappTemplate.templateGetTemplateListFailed'));
       }
     } catch (error) {
-      console.error('❌ [fetchTemplates] 獲取模板列表錯誤:', error);
+      console.error('❌ [fetchTemplates] Get template list error:', error);
       message.error(t('whatsappTemplate.templateGetTemplateListFailed'));
     } finally {
       setLoading(false);
     }
   };
 
-  // 獲取分類列表
+  // Get category list
   const fetchCategories = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -196,52 +196,52 @@ const InternalTemplatePanel = () => {
         setCategories(result.data);
       }
     } catch (error) {
-      console.error('獲取分類列表錯誤:', error);
+      console.error(t('whatsappTemplate.getCategoriesError'), error);
     }
   };
 
-  // 地圖相關函數
+  // Map related functions
   const initializeLocationMap = useCallback(() => {
     // eslint-disable-next-line no-undef
     if (typeof L === 'undefined') {
-      console.warn('Leaflet 未載入，請檢查 CDN 連接');
+      console.warn(t('whatsappTemplate.leafletNotLoaded'));
       return;
     }
 
-    // 檢查地圖容器是否存在
+    // Check if map container exists
     const mapContainer = locationMapRef.current || document.getElementById('locationMap');
     if (!mapContainer) return;
 
-    // 如果地圖已經存在，先銷毀
+    // If map already exists, destroy it first
     if (locationMap) {
-      safeRemoveMap(locationMap, '主地圖');
+      safeRemoveMap(locationMap, t('whatsappTemplate.mainMap'));
       setLocationMap(null);
     }
 
-    // 檢查容器是否已經被使用，如果是則清理
+    // Check if container is already in use, clean if so
     if (mapContainer._leaflet_id) {
-      console.log('地圖容器已被使用，正在清理...');
+      console.log(t('whatsappTemplate.mapContainerInUse'));
       try {
         delete mapContainer._leaflet_id;
       } catch (error) {
-        console.warn('清理地圖容器時出現警告:', error);
+        console.warn(t('whatsappTemplate.mapContainerCleanupWarning'), error);
       }
     }
 
-    // 檢查是否正在初始化
+    // Check if initializing
     if (isMapInitializing) {
-      console.log('地圖正在初始化中，跳過重複初始化');
+      console.log(t('whatsappTemplate.mapInitializing'));
       return;
     }
 
-    // 標記正在初始化
+    // Mark as initializing
     setIsMapInitializing(true);
 
-    // 檢查是否已有經緯度值
+    // Check if coordinates already exist
     const existingLat = form.getFieldValue('latitude');
     const existingLng = form.getFieldValue('longitude');
     
-    let initialLat = 22.3193; // 香港默認位置
+    let initialLat = 22.3193; // Hong Kong default location
     let initialLng = 114.1694;
     let initialZoom = 10;
     
@@ -251,38 +251,38 @@ const InternalTemplatePanel = () => {
       initialZoom = 15;
     }
     
-    // 創建新地圖
+    // Create new map
     // eslint-disable-next-line no-undef
     const map = L.map('locationMap').setView([initialLat, initialLng], initialZoom);
 
-    // 添加 OpenStreetMap 瓦片
+    // Add OpenStreetMap tiles
     // eslint-disable-next-line no-undef
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // 如果已有經緯度值，創建標記
+    // If coordinates exist, create marker
     if (existingLat && existingLng && !isNaN(parseFloat(existingLat)) && !isNaN(parseFloat(existingLng))) {
       // eslint-disable-next-line no-undef
       const marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
       setLocationMarker(marker);
       
-      // 設置標記拖拽事件
+      // Set marker drag event
       marker.on('dragend', (e) => {
         const { lat: newLat, lng: newLng } = e.target.getLatLng();
         
-        // 更新表單值
+        // Update form values
         form.setFieldsValue({
           latitude: newLat.toFixed(6),
           longitude: newLng.toFixed(6),
         });
         
-        // 反向地理編碼獲取新地址
+        // Reverse geocode to get new address
         reverseGeocode(newLat, newLng);
       });
     }
 
-    // 設置地圖點擊事件
+    // Set map click event
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
       
@@ -292,42 +292,42 @@ const InternalTemplatePanel = () => {
         longitude: lng.toFixed(6)
       });
 
-      // 移除舊標記（如果存在）
+      // Remove old marker (if exists)
       if (locationMarker) {
         locationMarker.remove();
         setLocationMarker(null);
       }
       
-      // 創建新標記
+      // Create new marker
       // eslint-disable-next-line no-undef
       const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
       setLocationMarker(marker);
       
-      // 設置標記拖拽事件
+      // Set marker drag event
       marker.on('dragend', (e) => {
         const { lat: newLat, lng: newLng } = e.target.getLatLng();
         
-        // 更新表單值
+        // Update form values
         form.setFieldsValue({
           latitude: newLat.toFixed(6),
           longitude: newLng.toFixed(6),
         });
         
-        // 反向地理編碼獲取新地址
+        // Reverse geocode to get new address
         reverseGeocode(newLat, newLng);
       });
 
-      // 反向地理編碼獲取地址
+      // Reverse geocode to get address
       reverseGeocode(lat, lng);
     });
 
     setLocationMap(map);
     
-    // 移除初始化標記
+    // Remove initialization marker
     setIsMapInitializing(false);
   }, [form, locationMap, locationMarker]);
 
-  // 獲取當前位置
+  // Get current location
   const handleGetCurrentLocation = () => {
     setLocationLoading(true);
     
@@ -336,49 +336,49 @@ const InternalTemplatePanel = () => {
         (position) => {
           const { latitude, longitude } = position.coords;
           
-          // 更新表單值
+          // Update form values
           form.setFieldsValue({
             latitude: latitude.toFixed(6),
             longitude: longitude.toFixed(6)
           });
 
-          // 移動地圖到當前位置
+          // Move map to current location
           if (locationMap) {
             locationMap.setView([latitude, longitude], 15);
             
-            // 移除舊標記（如果存在）
+            // Remove old marker (if exists)
             if (locationMarker) {
               locationMarker.remove();
               setLocationMarker(null);
             }
             
-            // 創建新標記
+            // Create new marker
             // eslint-disable-next-line no-undef
             const marker = L.marker([latitude, longitude], { draggable: true }).addTo(locationMap);
             setLocationMarker(marker);
             
-            // 設置標記拖拽事件
+            // Set marker drag event
             marker.on('dragend', (e) => {
               const { lat: newLat, lng: newLng } = e.target.getLatLng();
               
-              // 更新表單值
+              // Update form values
               form.setFieldsValue({
                 latitude: newLat.toFixed(6),
                 longitude: newLng.toFixed(6),
               });
               
-              // 反向地理編碼獲取新地址
+              // Reverse geocode to get new address
               reverseGeocode(newLat, newLng);
             });
           }
 
-          // 反向地理編碼獲取地址
+          // Reverse geocode to get address
           reverseGeocode(latitude, longitude);
           setLocationLoading(false);
         },
         (error) => {
-          console.error('獲取位置失敗:', error);
-          message.error('無法獲取當前位置，請手動選擇');
+      console.error(t('whatsappTemplate.getLocationFailed'), error);
+          message.error(t('whatsappTemplate.cannotGetCurrentLocation'));
           setLocationLoading(false);
         },
         {
@@ -388,12 +388,12 @@ const InternalTemplatePanel = () => {
         }
       );
     } else {
-      message.error('您的瀏覽器不支持地理定位');
+      message.error(t('whatsappTemplate.browserNotSupportGeolocation'));
       setLocationLoading(false);
     }
   };
 
-  // 反向地理編碼
+  // Reverse geocoding
   const reverseGeocode = async (lat, lng) => {
     try {
       const response = await fetch(
@@ -402,25 +402,25 @@ const InternalTemplatePanel = () => {
       const data = await response.json();
       
       if (data.display_name) {
-        // 更新地址字段
+        // Update address field
         form.setFieldsValue({
           locationAddress: data.display_name
         });
         
-        // 如果沒有位置名稱，使用地名
+        // If no location name, use place name
         if (!form.getFieldValue('locationName')) {
-          const name = data.name || data.address?.city || data.address?.town || '未知位置';
+          const name = data.name || data.address?.city || data.address?.town || t('whatsappTemplate.unknownLocation');
           form.setFieldsValue({
             locationName: name
           });
         }
       }
     } catch (error) {
-      console.error('反向地理編碼失敗:', error);
+      console.error(t('whatsappTemplate.reverseGeocodeFailed'), error);
     }
   };
 
-  // 簡單的防抖函數
+  // Simple debounce function
   const debounce = (func, delay) => {
     let timeoutId;
     return (...args) => {
@@ -429,7 +429,7 @@ const InternalTemplatePanel = () => {
     };
   };
 
-  // 防抖搜索函數
+  // Debounced search function
   const debouncedSearch = useCallback(
     debounce(async (query) => {
       if (!query.trim()) return;
@@ -444,37 +444,37 @@ const InternalTemplatePanel = () => {
           const result = results[0];
           setSearchResult(result);
           
-          // 在主地圖上顯示搜索結果
+          // Display search results on main map
           if (locationMap) {
-            // 移動地圖到搜索結果位置
+            // Move map to search result location
             locationMap.setView([result.lat, result.lon], 15);
             
-            // 移除舊標記（如果存在）
+            // Remove old marker (if exists)
             if (locationMarker) {
               locationMarker.remove();
               setLocationMarker(null);
             }
             
-            // 創建新標記
+            // Create new marker
             // eslint-disable-next-line no-undef
             const marker = L.marker([result.lat, result.lon], { draggable: true }).addTo(locationMap);
             setLocationMarker(marker);
             
-            // 設置標記拖拽事件
+            // Set marker drag event
             marker.on('dragend', (e) => {
               const { lat: newLat, lng: newLng } = e.target.getLatLng();
               
-              // 更新表單值
+              // Update form values
               form.setFieldsValue({
                 latitude: newLat.toFixed(6),
                 longitude: newLng.toFixed(6),
               });
               
-              // 反向地理編碼獲取新地址
+              // Reverse geocode to get new address
               reverseGeocode(newLat, newLng);
             });
             
-            // 更新表單值
+            // Update form values
             form.setFieldsValue({
               latitude: parseFloat(result.lat).toFixed(6),
               longitude: parseFloat(result.lon).toFixed(6),
@@ -482,23 +482,23 @@ const InternalTemplatePanel = () => {
               locationAddress: result.display_name
             });
             
-            message.success('地址搜索成功！您可以拖拽標記到更精確的位置');
+            message.success(t('whatsappTemplate.addressSearchSuccess'));
           } else {
-            // 如果主地圖還沒初始化，初始化搜索地圖
+            // If main map not initialized, initialize search map
             initializeSearchMap(result.lat, result.lon);
           }
         } else {
-          message.warning('未找到相關地址');
+          message.warning(t('whatsappTemplate.noAddressFound'));
         }
       } catch (error) {
-        console.error('地址搜索失敗:', error);
-        message.error('搜索失敗，請稍後重試');
+      console.error(t('whatsappTemplate.addressSearchFailed'), error);
+        message.error(t('whatsappTemplate.searchFailed'));
       }
     }, 500),
     [locationMap, locationMarker, form]
   );
 
-  // 地址搜索處理函數
+  // Address search handler function
   const handleAddressSearch = (query) => {
     debouncedSearch(query);
   };
@@ -512,32 +512,32 @@ const InternalTemplatePanel = () => {
     const mapContainer = searchMapRef.current || document.getElementById('searchMap');
     if (!mapContainer) return;
     
-    // 檢查容器是否已經被使用，如果是則清理
+    // Check if container is already in use, clean if so
     if (mapContainer._leaflet_id) {
-      console.log('搜索地圖容器已被使用，正在清理...');
+      console.log(t('whatsappTemplate.searchMapContainerInUse'));
       try {
         delete mapContainer._leaflet_id;
       } catch (error) {
-        console.warn('清理搜索地圖容器時出現警告:', error);
+        console.warn(t('whatsappTemplate.searchMapContainerCleanupWarning'), error);
       }
     }
     
-    // 如果地圖已經存在，先銷毀
+    // If map already exists, destroy it first
     if (searchMap) {
-      safeRemoveMap(searchMap, '搜索地圖');
+      safeRemoveMap(searchMap, t('whatsappTemplate.searchMap'));
     }
     
-    // 創建新地圖
+    // Create new map
     // eslint-disable-next-line no-undef
     const map = L.map('searchMap').setView([lat, lon], 15);
     
-    // 添加 OpenStreetMap 瓦片
+    // Add OpenStreetMap tiles
     // eslint-disable-next-line no-undef
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
     
-    // 添加標記
+    // Add marker
     // eslint-disable-next-line no-undef
     L.marker([lat, lon]).addTo(map);
     
@@ -547,7 +547,7 @@ const InternalTemplatePanel = () => {
   const handleSelectSearchResult = () => {
     if (!searchResult) return;
     
-    // 更新主表單
+    // Update main form
     form.setFieldsValue({
       latitude: parseFloat(searchResult.lat).toFixed(6),
       longitude: parseFloat(searchResult.lon).toFixed(6),
@@ -555,45 +555,45 @@ const InternalTemplatePanel = () => {
       locationAddress: searchResult.display_name
     });
     
-    // 如果主地圖存在，移動到搜索結果位置
+    // If main map exists, move to search result location
     if (locationMap) {
       locationMap.setView([searchResult.lat, searchResult.lon], 15);
       
-      // 移除舊標記（如果存在）
+      // Remove old marker (if exists)
       if (locationMarker) {
         locationMarker.remove();
         setLocationMarker(null);
       }
       
-      // 創建新標記
+      // Create new marker
       // eslint-disable-next-line no-undef
       const marker = L.marker([searchResult.lat, searchResult.lon], { draggable: true }).addTo(locationMap);
       setLocationMarker(marker);
       
-      // 設置標記拖拽事件
+      // Set marker drag event
       marker.on('dragend', (e) => {
         const { lat: newLat, lng: newLng } = e.target.getLatLng();
         
-        // 更新表單值
+        // Update form values
         form.setFieldsValue({
           latitude: newLat.toFixed(6),
           longitude: newLng.toFixed(6),
         });
         
-        // 反向地理編碼獲取新地址
+        // Reverse geocode to get new address
         reverseGeocode(newLat, newLng);
       });
     }
     
-    // 關閉搜索 Modal
+    // Close search Modal
     setShowLocationSearch(false);
     setSearchResult(null);
   };
 
-  // 當模板類型變更時初始化地圖
+  // Initialize map when template type changes
   useEffect(() => {
     if (templateType === 'Location' && isTemplateModalVisible && !locationMap && !isMapInitializing) {
-      // 延遲初始化，確保 DOM 已渲染
+      // Delay initialization to ensure DOM is rendered
       const timer = setTimeout(() => {
         // 檢查地圖容器是否已經準備好
         if (locationMapRef.current || document.getElementById('locationMap')) {
@@ -627,28 +627,28 @@ const InternalTemplatePanel = () => {
         // 移動地圖到指定位置
         locationMap.setView([lat, lng], 15);
         
-        // 移除舊標記（如果存在）
+        // Remove old marker (if exists)
         if (locationMarker) {
           locationMarker.remove();
           setLocationMarker(null);
         }
         
-        // 創建新標記
+        // Create new marker
         // eslint-disable-next-line no-undef
         const marker = L.marker([lat, lng], { draggable: true }).addTo(locationMap);
         setLocationMarker(marker);
         
-        // 設置標記拖拽事件
+        // Set marker drag event
         marker.on('dragend', (e) => {
           const { lat: newLat, lng: newLng } = e.target.getLatLng();
           
-          // 更新表單值
+          // Update form values
           form.setFieldsValue({
             latitude: newLat.toFixed(6),
             longitude: newLng.toFixed(6),
           });
           
-          // 反向地理編碼獲取新地址
+          // Reverse geocode to get new address
           reverseGeocode(newLat, newLng);
         });
       }
@@ -660,7 +660,7 @@ const InternalTemplatePanel = () => {
     if (!isTemplateModalVisible) {
       // 清理地圖資源
       if (locationMap) {
-        safeRemoveMap(locationMap, '主地圖');
+        safeRemoveMap(locationMap, t('whatsappTemplate.mainMap'));
         setLocationMap(null);
       }
       if (locationMarker) {
@@ -670,7 +670,7 @@ const InternalTemplatePanel = () => {
       
       // 清理搜索地圖
       if (searchMap) {
-        safeRemoveMap(searchMap, '搜索地圖');
+        safeRemoveMap(searchMap, t('whatsappTemplate.searchMap'));
         setSearchMap(null);
       }
       setSearchResult(null);
@@ -703,8 +703,8 @@ const InternalTemplatePanel = () => {
   // 清理地圖資源
   useEffect(() => {
     return () => {
-      safeRemoveMap(locationMap, '主地圖');
-      safeRemoveMap(searchMap, '搜索地圖');
+      safeRemoveMap(locationMap, t('whatsappTemplate.mainMap'));
+      safeRemoveMap(searchMap, t('whatsappTemplate.searchMap'));
     };
   }, [locationMap, searchMap]);
 
@@ -954,7 +954,7 @@ const InternalTemplatePanel = () => {
     }));
   };
 
-  // 修改保存模板函數
+  // Modified save template function
   const handleSaveTemplate = async (values) => {
     try {
       const content = generateContent(values);
@@ -1040,7 +1040,7 @@ const InternalTemplatePanel = () => {
         }
       }
     } catch (error) {
-      console.error('保存模板錯誤:', error);
+      console.error(t('whatsappTemplate.saveTemplateError'), error);
       message.error(t('whatsappTemplate.templateSaveFailed'));
     }
   };
@@ -1062,7 +1062,7 @@ const InternalTemplatePanel = () => {
     
     // 重置地圖狀態，這樣新的地圖就能正確顯示已有的位置
     if (locationMap) {
-      safeRemoveMap(locationMap, '主地圖');
+      safeRemoveMap(locationMap, t('whatsappTemplate.mainMap'));
       setLocationMap(null);
     }
     if (locationMarker) {
@@ -1219,7 +1219,7 @@ const InternalTemplatePanel = () => {
     setIsTemplateModalVisible(true);
   };
 
-  // 處理複製模板 - 直接複製並保存
+  // Handle copy template - directly copy and save
   const handleCopyTemplate = async (template) => {
     try {
       // 顯示複製中提示
@@ -1244,7 +1244,7 @@ const InternalTemplatePanel = () => {
       
       // 準備複製的模板數據
       const templateData = {
-        name: `${template.name} (複製)`,
+        name: `${template.name} (${t('whatsappTemplate.copy')})`,
         description: template.description,
         category: template.category,
         templateType: template.templateType,
@@ -1569,7 +1569,7 @@ const InternalTemplatePanel = () => {
             {/* Button 類型的按鈕配置 */}
             {interactiveType === 'button' && (
               <>
-                <Divider orientation="left">按鈕配置</Divider>
+                <Divider orientation="left">{t('whatsappTemplate.buttonConfiguration')}</Divider>
                 <div style={{ marginBottom: 16 }}>
                   <Button 
                     type="dashed" 
@@ -1579,16 +1579,16 @@ const InternalTemplatePanel = () => {
                         setButtons(newButtons);
                         form.setFieldsValue({ buttons: newButtons });
                       } else {
-                        message.warning('最多只能添加 3 個按鈕');
+                        message.warning(t('whatsappTemplate.maxButtonsLimit'));
                       }
                     }}
                     icon={<PlusOutlined />}
                     disabled={buttons.length >= 3}
                   >
-                    添加按鈕
+                    {t('whatsappTemplate.addButton')}
                   </Button>
                   <span style={{ marginLeft: 8, fontSize: '12px', color: '#666' }}>
-                    最多 3 個按鈕
+                    {t('whatsappTemplate.maxThreeButtons')}
                   </span>
                 </div>
                 
@@ -1598,11 +1598,11 @@ const InternalTemplatePanel = () => {
                       <Col span={8}>
                         <Form.Item
                           name={['buttons', index, 'text']}
-                          label={`按鈕 ${index + 1} 文字`}
-                          rules={[{ required: true, message: '請輸入按鈕文字' }]}
+                          label={t('whatsappTemplate.buttonText', { index: index + 1 })}
+                          rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterButtonText') }]}
                         >
                           <Input 
-                            placeholder="請輸入按鈕文字"
+                            placeholder={t('whatsappTemplate.pleaseEnterButtonText')}
                             value={button.text}
                             onChange={(e) => {
                               const newButtons = [...buttons];
@@ -1616,11 +1616,11 @@ const InternalTemplatePanel = () => {
                       <Col span={8}>
                         <Form.Item
                           name={['buttons', index, 'type']}
-                          label="按鈕類型"
-                          rules={[{ required: true, message: '請選擇按鈕類型' }]}
+                          label={t('whatsappTemplate.buttonType')}
+                          rules={[{ required: true, message: t('whatsappTemplate.pleaseSelectButtonType') }]}
                         >
                           <Select 
-                            placeholder="請選擇按鈕類型"
+                            placeholder={t('whatsappTemplate.pleaseSelectButtonType')}
                             value={button.type}
                             onChange={(value) => {
                               const newButtons = [...buttons];
@@ -1629,18 +1629,18 @@ const InternalTemplatePanel = () => {
                               form.setFieldsValue({ buttons: newButtons });
                             }}
                           >
-                            <Option value="quick_reply">快速回覆</Option>
+                            <Option value="quick_reply">{t('whatsappTemplate.quickReply')}</Option>
                           </Select>
                         </Form.Item>
                       </Col>
                       <Col span={6}>
                         <Form.Item
                           name={['buttons', index, 'value']}
-                          label="回覆ID"
-                          rules={[{ required: true, message: '請輸入回覆ID' }]}
+                          label={t('whatsappTemplate.replyId')}
+                          rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterReplyId') }]}
                         >
                           <Input 
-                            placeholder="回覆ID（用於識別用戶選擇）"
+                            placeholder={t('whatsappTemplate.replyIdPlaceholder')}
                             value={button.value}
                             onChange={(e) => {
                               const newButtons = [...buttons];
@@ -1672,13 +1672,13 @@ const InternalTemplatePanel = () => {
             {/* List 類型的選項配置 */}
             {interactiveType === 'list' && (
               <>
-                <Divider orientation="left">列表選項配置</Divider>
+                <Divider orientation="left">{t('whatsappTemplate.listOptionsConfiguration')}</Divider>
                 <Form.Item
                   name="listTitle"
-                  label="列表標題"
-                  rules={[{ required: true, message: '請輸入列表標題' }]}
+                  label={t('whatsappTemplate.listTitle')}
+                  rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterListTitle') }]}
                 >
-                  <Input placeholder="請輸入列表標題" />
+                  <Input placeholder={t('whatsappTemplate.pleaseEnterListTitle')} />
                 </Form.Item>
                 
                 <div style={{ marginBottom: 16 }}>
@@ -1690,16 +1690,16 @@ const InternalTemplatePanel = () => {
                         setListOptions(newOptions);
                         form.setFieldsValue({ listOptions: newOptions });
                       } else {
-                        message.warning('最多只能添加 10 個選項');
+                        message.warning(t('whatsappTemplate.maxOptionsLimit'));
                       }
                     }}
                     icon={<PlusOutlined />}
                     disabled={listOptions.length >= 10}
                   >
-                    添加選項
+                    {t('whatsappTemplate.addOption')}
                   </Button>
                   <span style={{ marginLeft: 8, fontSize: '12px', color: '#666' }}>
-                    最多 10 個選項
+                    {t('whatsappTemplate.maxTenOptions')}
                   </span>
                 </div>
                 
@@ -1709,11 +1709,11 @@ const InternalTemplatePanel = () => {
                       <Col span={6}>
                         <Form.Item
                           name={['listOptions', index, 'id']}
-                          label={`選項 ${index + 1} ID`}
-                          rules={[{ required: true, message: '請輸入選項ID' }]}
+                          label={t('whatsappTemplate.optionId', { index: index + 1 })}
+                          rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterOptionId') }]}
                         >
                           <Input 
-                            placeholder="選項ID"
+                            placeholder={t('whatsappTemplate.optionId')}
                             value={option.id}
                             onChange={(e) => {
                               const newOptions = [...listOptions];
@@ -1727,11 +1727,11 @@ const InternalTemplatePanel = () => {
                       <Col span={8}>
                         <Form.Item
                           name={['listOptions', index, 'title']}
-                          label="選項標題"
-                          rules={[{ required: true, message: '請輸入選項標題' }]}
+                          label={t('whatsappTemplate.optionTitle')}
+                          rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterOptionTitle') }]}
                         >
                           <Input 
-                            placeholder="選項標題"
+                            placeholder={t('whatsappTemplate.optionTitle')}
                             value={option.title}
                             onChange={(e) => {
                               const newOptions = [...listOptions];
@@ -1745,10 +1745,10 @@ const InternalTemplatePanel = () => {
                       <Col span={8}>
                         <Form.Item
                           name={['listOptions', index, 'description']}
-                          label="選項描述"
+                          label={t('whatsappTemplate.optionDescription')}
                         >
                           <Input 
-                            placeholder="選項描述（可選）"
+                            placeholder={t('whatsappTemplate.optionDescriptionOptional')}
                             value={option.description}
                             onChange={(e) => {
                               const newOptions = [...listOptions];
@@ -1780,28 +1780,28 @@ const InternalTemplatePanel = () => {
             {/* Product 類型的產品配置 */}
             {interactiveType === 'product' && (
               <>
-                <Divider orientation="left">產品配置</Divider>
+                <Divider orientation="left">{t('whatsappTemplate.productConfiguration')}</Divider>
                 <Form.Item
                   name="productId"
-                  label="產品ID"
-                  rules={[{ required: true, message: '請輸入產品ID' }]}
+                  label={t('whatsappTemplate.productId')}
+                  rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterProductId') }]}
                 >
-                  <Input placeholder="請輸入產品ID" />
+                  <Input placeholder={t('whatsappTemplate.pleaseEnterProductId')} />
                 </Form.Item>
                 
                 <Form.Item
                   name="productCatalogId"
-                  label="產品目錄ID"
-                  rules={[{ required: true, message: '請輸入產品目錄ID' }]}
+                  label={t('whatsappTemplate.productCatalogId')}
+                  rules={[{ required: true, message: t('whatsappTemplate.pleaseEnterProductCatalogId') }]}
                 >
-                  <Input placeholder="請輸入Facebook產品目錄ID" />
+                  <Input placeholder={t('whatsappTemplate.pleaseEnterFacebookProductCatalogId')} />
                 </Form.Item>
                 
                 <Form.Item
                   name="productImageUrl"
-                  label="產品圖片URL"
+                  label={t('whatsappTemplate.productImageUrl')}
                 >
-                  <Input placeholder="請輸入產品圖片URL" />
+                  <Input placeholder={t('whatsappTemplate.pleaseEnterProductImageUrl')} />
                 </Form.Item>
               </>
             )}
@@ -2140,7 +2140,7 @@ const InternalTemplatePanel = () => {
           
           // 清理地圖資源
           if (locationMap) {
-            safeRemoveMap(locationMap, '主地圖');
+            safeRemoveMap(locationMap, t('whatsappTemplate.mainMap'));
             setLocationMap(null);
           }
           if (locationMarker) {

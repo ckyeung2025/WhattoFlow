@@ -9,6 +9,7 @@ using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Packaging;
 using PurpleRice.Services;
 using Microsoft.Data.SqlClient;
+using Google.Apis.Sheets.v4;
 
 namespace PurpleRice.Controllers
 {
@@ -20,13 +21,15 @@ namespace PurpleRice.Controllers
         private readonly ILogger<DataSetsController> _logger;
         private readonly IWebHostEnvironment _environment;
         private readonly LoggingService _loggingService;
+        private readonly IGoogleSheetsService _googleSheetsService;
 
-        public DataSetsController(PurpleRiceDbContext context, ILogger<DataSetsController> logger, IWebHostEnvironment environment, Func<string, LoggingService> loggingServiceFactory)
+        public DataSetsController(PurpleRiceDbContext context, ILogger<DataSetsController> logger, IWebHostEnvironment environment, Func<string, LoggingService> loggingServiceFactory, IGoogleSheetsService googleSheetsService)
         {
             _context = context;
             _logger = logger;
             _environment = environment;
             _loggingService = loggingServiceFactory("DataSetsController");
+            _googleSheetsService = googleSheetsService;
         }
 
         // GET: api/datasets
@@ -1842,9 +1845,213 @@ namespace PurpleRice.Controllers
 
         private async Task<SyncResult> SyncFromGoogleDocs(DataSet dataSet, DataSetDataSource dataSource)
         {
-            // 實現 Google Docs 數據同步邏輯
+            try
+            {
             _loggingService.LogInformation($"開始同步 Google Docs 數據，數據集ID: {dataSet.Id}");
-            return new SyncResult { Success = true, TotalRecords = 0 };
+                
+                if (string.IsNullOrEmpty(dataSource.GoogleDocsUrl))
+                {
+                    _loggingService.LogWarning($"Google Docs URL 為空，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Google Docs URL 不能為空" };
+                }
+
+                // 從 URL 中提取表格 ID
+                var spreadsheetId = GoogleSheetsService.ExtractSpreadsheetId(dataSource.GoogleDocsUrl);
+                if (string.IsNullOrEmpty(spreadsheetId))
+                {
+                    _loggingService.LogWarning($"無法從 URL 中提取表格 ID: {dataSource.GoogleDocsUrl}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "無效的 Google Sheets URL" };
+                }
+
+                _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+
+                // 測試連接
+                var connectionTest = await _googleSheetsService.TestConnectionAsync(spreadsheetId);
+                if (!connectionTest)
+                {
+                    _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "無法連接到 Google Sheets，請檢查 URL 是否正確且表格為公開訪問" };
+                }
+
+                // 獲取工作表名稱
+                var sheetName = dataSource.GoogleDocsSheetName ?? "Sheet1";
+                _loggingService.LogInformation($"使用工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
+
+                // 讀取數據
+                var sheetData = await _googleSheetsService.ReadSheetDataAsync(spreadsheetId, sheetName);
+                if (!sheetData.Any())
+                {
+                    _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有數據" };
+                }
+
+                // 處理標題行（第一行）
+                var headers = sheetData.FirstOrDefault() ?? new List<string>();
+                if (!headers.Any())
+                {
+                    _loggingService.LogWarning($"Google Sheets 沒有標題行，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有標題行" };
+                }
+
+                _loggingService.LogInformation($"Google Sheets 標題行: {string.Join(", ", headers)}, 數據集ID: {dataSet.Id}");
+
+                // 檢查並創建欄位定義
+                await EnsureGoogleSheetsColumnsExist(dataSet, headers);
+
+                // 處理數據行（從第二行開始）
+                var dataRows = sheetData.Skip(1).ToList();
+                var totalRecords = 0;
+
+                foreach (var row in dataRows)
+                {
+                    if (await ProcessGoogleSheetsRow(dataSet, row, headers))
+                    {
+                        totalRecords++;
+                    }
+                }
+
+                _loggingService.LogInformation($"Google Sheets 數據同步完成，共處理 {totalRecords} 條記錄，數據集ID: {dataSet.Id}");
+
+                return new SyncResult { Success = true, TotalRecords = totalRecords };
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("Google Sheets 數據同步失敗", ex);
+                return new SyncResult { Success = false, ErrorMessage = $"Google Sheets 數據同步失敗: {ex.Message}" };
+            }
+        }
+
+        private async Task EnsureGoogleSheetsColumnsExist(DataSet dataSet, List<string> headers)
+        {
+            try
+            {
+                _loggingService.LogInformation($"檢查 Google Sheets 欄位定義，數據集ID: {dataSet.Id}");
+
+                var existingColumns = await _context.DataSetColumns
+                    .Where(c => c.DataSetId == dataSet.Id)
+                    .ToListAsync();
+
+                var existingColumnNames = existingColumns.Select(c => c.ColumnName).ToHashSet();
+
+                foreach (var header in headers)
+                {
+                    if (string.IsNullOrWhiteSpace(header) || existingColumnNames.Contains(header))
+                        continue;
+
+                    var column = new DataSetColumn
+                    {
+                        Id = Guid.NewGuid(),
+                        DataSetId = dataSet.Id,
+                        ColumnName = header,
+                        DisplayName = header,
+                        DataType = InferDataType(header),
+                        MaxLength = 255,
+                        IsRequired = false,
+                        IsPrimaryKey = IsPrimaryKeyColumn(header),
+                        IsSearchable = true,
+                        IsSortable = true,
+                        IsIndexed = false,
+                        DefaultValue = null,
+                        SortOrder = existingColumns.Count + headers.IndexOf(header)
+                    };
+
+                    _context.DataSetColumns.Add(column);
+                    existingColumns.Add(column);
+                }
+
+                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"Google Sheets 欄位定義更新完成，數據集ID: {dataSet.Id}");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"更新 Google Sheets 欄位定義失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        private async Task<bool> ProcessGoogleSheetsRow(DataSet dataSet, List<string> row, List<string> headers)
+        {
+            try
+            {
+                // 確保行數據與標題數量匹配
+                while (row.Count < headers.Count)
+                {
+                    row.Add(string.Empty);
+                }
+
+                // 檢查是否為空行
+                if (row.All(cell => string.IsNullOrWhiteSpace(cell)))
+                {
+                    return false;
+                }
+
+                // 創建記錄
+                var record = new DataSetRecord
+                {
+                    Id = Guid.NewGuid(),
+                    DataSetId = dataSet.Id,
+                    Status = "Active"
+                };
+
+                _context.DataSetRecords.Add(record);
+
+                // 創建記錄值
+                for (int i = 0; i < headers.Count && i < row.Count; i++)
+                {
+                    var header = headers[i];
+                    var value = row[i] ?? string.Empty;
+
+                    if (string.IsNullOrWhiteSpace(header))
+                        continue;
+
+                    var column = await _context.DataSetColumns
+                        .FirstOrDefaultAsync(c => c.DataSetId == dataSet.Id && c.ColumnName == header);
+
+                    if (column == null)
+                        continue;
+
+                    var recordValue = new DataSetRecordValue
+                    {
+                        Id = Guid.NewGuid(),
+                        RecordId = record.Id,
+                        ColumnName = column.ColumnName,
+                        StringValue = column.DataType == "string" ? value : null,
+                        NumericValue = column.DataType == "decimal" || column.DataType == "int" ? 
+                            (decimal.TryParse(value, out var num) ? num : null) : null,
+                        DateValue = column.DataType == "datetime" ? 
+                            (DateTime.TryParse(value, out var date) ? date : null) : null,
+                        BooleanValue = column.DataType == "boolean" ? 
+                            (bool.TryParse(value, out var boolVal) ? boolVal : 
+                             value.ToLower() == "yes" || value.ToLower() == "true" || value == "1") : null
+                    };
+
+                    _context.DataSetRecordValues.Add(recordValue);
+                }
+
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"處理 Google Sheets 行數據失敗: {ex.Message}", ex);
+                return false;
+            }
+        }
+
+        private bool IsPrimaryKeyColumn(string columnName)
+        {
+            if (string.IsNullOrEmpty(columnName))
+                return false;
+
+            var lowerName = columnName.ToLower();
+
+            // 常見主鍵欄位名稱
+            var primaryKeyPatterns = new[]
+            {
+                "id", "within_code", "pk_", "_id", "key", "code", "no", "number", "ref", "seq"
+            };
+
+            return primaryKeyPatterns.Any(pattern => lowerName.Contains(pattern));
         }
 
         private string InferDataType(string value)

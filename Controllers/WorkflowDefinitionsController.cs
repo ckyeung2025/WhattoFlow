@@ -303,9 +303,82 @@ namespace PurpleRice.Controllers
                 .FirstOrDefaultAsync();
             
             if (item == null) return NotFound();
-            _db.WorkflowDefinitions.Remove(item);
-            await _db.SaveChangesAsync();
-            return NoContent();
+            
+            try
+            {
+                // 1. 獲取所有相關的 WorkflowExecutions
+                var executionIds = await _db.WorkflowExecutions
+                    .Where(x => x.WorkflowDefinitionId == id)
+                    .Select(x => x.Id)
+                    .ToListAsync();
+
+                if (executionIds.Any())
+                {
+                    // 2. 刪除 WorkflowDataSetQueryRecords
+                    var queryResultIds = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (queryResultIds.Any())
+                    {
+                        var queryRecords = await _db.WorkflowDataSetQueryRecords
+                            .Where(x => queryResultIds.Contains(x.QueryResultId))
+                            .ToListAsync();
+                        _db.WorkflowDataSetQueryRecords.RemoveRange(queryRecords);
+                    }
+
+                    // 3. 刪除 WorkflowDataSetQueryResults
+                    var queryResults = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.WorkflowDataSetQueryResults.RemoveRange(queryResults);
+
+                    // 4. 刪除 WorkflowMessageRecipients
+                    var messageSendIds = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (messageSendIds.Any())
+                    {
+                        var messageRecipients = await _db.WorkflowMessageRecipients
+                            .Where(x => messageSendIds.Contains(x.MessageSendId))
+                            .ToListAsync();
+                        _db.WorkflowMessageRecipients.RemoveRange(messageRecipients);
+                    }
+
+                    // 5. 刪除 WorkflowMessageSends
+                    var messageSends = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.WorkflowMessageSends.RemoveRange(messageSends);
+
+                    // 6. 刪除 WorkflowStepExecutions
+                    var stepExecutions = await _db.WorkflowStepExecutions
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.WorkflowStepExecutions.RemoveRange(stepExecutions);
+
+                    // 7. 刪除 WorkflowExecutions
+                    var executions = await _db.WorkflowExecutions
+                        .Where(x => x.WorkflowDefinitionId == id)
+                        .ToListAsync();
+                    _db.WorkflowExecutions.RemoveRange(executions);
+                }
+
+                // 8. 最後刪除 WorkflowDefinition
+                _db.WorkflowDefinitions.Remove(item);
+                await _db.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功刪除流程 {item.Name} (ID: {id}) 及其所有相關記錄");
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"刪除流程失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "刪除流程失敗", details = ex.Message });
+            }
         }
 
         // POST: api/workflowdefinitions/{id}/copy
@@ -363,10 +436,81 @@ namespace PurpleRice.Controllers
                 return NotFound(new { error = "未找到要刪除的流程" });
             }
 
-            _db.WorkflowDefinitions.RemoveRange(workflowsToDelete);
-            await _db.SaveChangesAsync();
+            try
+            {
+                // 1. 獲取所有相關的 WorkflowExecutions
+                var executionIds = await _db.WorkflowExecutions
+                    .Where(x => request.Ids.Contains(x.WorkflowDefinitionId))
+                    .Select(x => x.Id)
+                    .ToListAsync();
 
-            return Ok(new { success = true, deletedCount = workflowsToDelete.Count });
+                if (executionIds.Any())
+                {
+                    // 2. 刪除 WorkflowDataSetQueryRecords
+                    var queryResultIds = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (queryResultIds.Any())
+                    {
+                        var queryRecords = await _db.WorkflowDataSetQueryRecords
+                            .Where(x => queryResultIds.Contains(x.QueryResultId))
+                            .ToListAsync();
+                        _db.WorkflowDataSetQueryRecords.RemoveRange(queryRecords);
+                    }
+
+                    // 3. 刪除 WorkflowDataSetQueryResults
+                    var queryResults = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.WorkflowDataSetQueryResults.RemoveRange(queryResults);
+
+                    // 4. 刪除 WorkflowMessageRecipients
+                    var messageSendIds = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (messageSendIds.Any())
+                    {
+                        var messageRecipients = await _db.WorkflowMessageRecipients
+                            .Where(x => messageSendIds.Contains(x.MessageSendId))
+                            .ToListAsync();
+                        _db.WorkflowMessageRecipients.RemoveRange(messageRecipients);
+                    }
+
+                    // 5. 刪除 WorkflowMessageSends
+                    var messageSends = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.WorkflowMessageSends.RemoveRange(messageSends);
+
+                    // 6. 刪除 WorkflowStepExecutions
+                    var stepExecutions = await _db.WorkflowStepExecutions
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.WorkflowStepExecutions.RemoveRange(stepExecutions);
+
+                    // 7. 刪除 WorkflowExecutions
+                    var executions = await _db.WorkflowExecutions
+                        .Where(x => request.Ids.Contains(x.WorkflowDefinitionId))
+                        .ToListAsync();
+                    _db.WorkflowExecutions.RemoveRange(executions);
+                }
+
+                // 8. 最後刪除 WorkflowDefinitions
+                _db.WorkflowDefinitions.RemoveRange(workflowsToDelete);
+                await _db.SaveChangesAsync();
+
+                _loggingService.LogInformation($"成功批量刪除 {workflowsToDelete.Count} 個流程及其所有相關記錄");
+                return Ok(new { success = true, deletedCount = workflowsToDelete.Count });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"批量刪除流程失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "批量刪除流程失敗", details = ex.Message });
+            }
         }
 
         // POST: api/workflowdefinitions/batch-status

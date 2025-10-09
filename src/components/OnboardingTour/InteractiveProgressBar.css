@@ -1,0 +1,102 @@
+.interactive-progress-container {
+  width: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.progress-track {
+  position: relative;
+  height: 6px;
+  background-color: rgba(114, 52, 207, 0.1);
+  border-radius: 3px;
+  margin: 0 40px;
+}
+
+.track-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #52c41a 0%, #faad14 50%, #7234CF 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease-in-out;
+}
+
+.step-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #f0f0f0;
+  color: #999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  pointer-events: auto;
+}
+
+.step-marker.completed {
+  background-color: #52c41a;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(82, 196, 26, 0.3);
+}
+
+.step-marker.current {
+  background-color: #faad14;
+  color: #fff;
+  animation: pulse 2s infinite;
+  box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.3);
+}
+
+.step-marker.upcoming {
+  background-color: #f0f0f0;
+  color: #999;
+  border: 2px solid #d9d9d9;
+}
+
+.step-marker:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.step-icon {
+  font-size: 12px;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(250, 173, 20, 0.1);
+  }
+  100% {
+    box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.3);
+  }
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .interactive-progress-container {
+    padding: 15px;
+  }
+  
+  .progress-track {
+    margin: 0 30px;
+    height: 4px;
+  }
+  
+  .step-marker {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .step-icon {
+    font-size: 10px;
+  }
+}

@@ -2,11 +2,13 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import zhTC from '../locales/zh-TC';
 import zhSC from '../locales/zh-SC';
 import en from '../locales/en';
+import onboardingZhTC from '../locales/onboarding-zh-TC';
+import onboardingEn from '../locales/onboarding-en';
 
 const locales = {
-  'zh-TC': zhTC,
-  'zh-SC': zhSC,
-  'en': en
+  'zh-TC': { ...zhTC, ...onboardingZhTC },
+  'zh-SC': { ...zhSC, ...onboardingZhTC }, // 使用繁體中文作為簡體中文的回退
+  'en': { ...en, ...onboardingEn }
 };
 
 const LanguageContext = createContext();
