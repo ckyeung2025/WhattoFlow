@@ -118,7 +118,7 @@
         "description": "Learn how to manage internal templates and Meta official templates",
         "alert": {
           "message": "Template Type Description",
-          "description": "System supports two template types: internal templates (no approval required) and Meta official templates (approval required)."
+          "description": "System supports two template types: internal templates (no approval required) and Meta official templates (approval required). WhatsApp enforces a 24-hour customer service window restriction. To send messages outside this window, you must use templates that have been reviewed and approved by Meta, ensuring compliance and messaging permissions."
         },
         "cards": {
           "internal": "Internal Templates",
@@ -151,7 +151,7 @@
         "description": "Learn how to manage contacts, broadcast groups and tags",
         "alert": {
           "message": "Contact Management Functions",
-          "description": "System provides complete contact management functions, including individual contacts, broadcast groups and tag classification."
+          "description": "System provides complete contact management functions, including individual contacts, broadcast groups and tag classification. Through precise customer segmentation and tag management, you can easily conduct targeted promotional campaigns and achieve personalized interactions based on customer behavior and preferences, improving customer engagement and conversion rates."
         },
         "cards": {
           "contacts": "Contact List",
@@ -209,8 +209,8 @@
         "title": "Dataset Management",
         "description": "Learn how to create and manage multiple data sources",
         "alert": {
-          "message": "Data Source Types",
-          "description": "System supports three data source types: SQL database, Excel files and Google Docs."
+          "message": "Data Source Types & Usage",
+          "description": "System supports three data source types: SQL database, Excel files and Google Docs. Datasets enable real-time lookup and verification of customer information, order status, inventory levels, and more within WhatsApp workflows. Seamlessly integrate data from ERP, CRM and other third-party systems to power automated, data-driven conversational flows."
         },
         "cards": {
           "sql": "SQL Database",
@@ -254,7 +254,7 @@
         "description": "Learn how to create and manage dynamic forms",
         "alert": {
           "message": "Form Creation Methods",
-          "description": "System supports three creation methods: AI intelligent generation, file upload conversion and drag-and-drop design."
+          "description": "System supports three creation methods: AI intelligent generation, file upload conversion and drag-and-drop design. eForms support natural language input, seamlessly integrate with dataset sources, facilitate WhatsApp as the primary interface without learning curve, and easily integrate with ERP, CRM, HRM and other enterprise systems."
         },
         "cards": {
           "ai": "AI Intelligent Generation",
@@ -371,8 +371,8 @@
         "title": "Dataset Management",
         "description": "Learn how to create and manage multiple data sources",
         "alert": {
-          "message": "Data Source Types",
-          "description": "System supports three data source types: SQL database, Excel files and Google Docs."
+          "message": "Data Source Types & Usage",
+          "description": "System supports three data source types: SQL database, Excel files and Google Docs. Datasets enable real-time lookup and verification of customer information, order status, inventory levels, and more within WhatsApp workflows. Seamlessly integrate data from ERP, CRM and other third-party systems to power automated, data-driven conversational flows."
         },
         "cards": {
           "sql": "SQL Database",

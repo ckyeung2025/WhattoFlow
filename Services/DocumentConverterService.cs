@@ -118,6 +118,7 @@ namespace PurpleRice.Services
 
                 var htmlContent = await File.ReadAllTextAsync(outputPath, Encoding.UTF8);
                 
+                
                 // 後處理 HTML
                 htmlContent = PostProcessHtml(htmlContent, outputDir);
 
@@ -344,6 +345,7 @@ namespace PurpleRice.Services
             if (string.IsNullOrEmpty(html))
                 return html;
 
+
             // 修復圖片路徑，添加正確的目錄前綴
             var imgPattern = @"<img[^>]*src=[""']([^""']*_html_[^""']*\.(?:png|gif|jpg|jpeg))[""'][^>]*>";
             var matches = System.Text.RegularExpressions.Regex.Matches(html, imgPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -352,6 +354,7 @@ namespace PurpleRice.Services
             {
                 var originalSrc = match.Groups[1].Value;
                 
+                
                 // 構建正確的圖片路徑
                 string newSrc;
                 if (!string.IsNullOrEmpty(outputDir))
@@ -359,13 +362,42 @@ namespace PurpleRice.Services
                     // 如果有輸出目錄，需要包含 e-form ID 目錄
                     var relativePath = Path.GetFileName(originalSrc);
                     var eFormId = Path.GetFileName(outputDir); // 獲取 e-form ID
-                    newSrc = $"/Documents/{eFormId}/{relativePath}";
+                    
+                    // 如果 eFormId 已經是 "Documents"，則不需要重複添加
+                    if (eFormId == "Documents")
+                    {
+                        newSrc = $"/Uploads/FormsFiles/Documents/{relativePath}";
+                    }
+                    else
+                    {
+                        newSrc = $"/Uploads/FormsFiles/Documents/{eFormId}/{relativePath}";
+                    }
                 }
                 else
                 {
-                    // 否則使用默認路徑
-                    newSrc = $"/Documents/{originalSrc}";
+                    // 清理原始路徑，移除重複的 Documents 目錄
+                    string cleanSrc = originalSrc;
+                    
+                    // 如果路徑以 Documents/Documents/ 開頭，移除重複的 Documents
+                    if (cleanSrc.StartsWith("Documents/Documents/"))
+                    {
+                        cleanSrc = cleanSrc.Substring("Documents/".Length); // 移除第一個 Documents/
+                    }
+                    else if (cleanSrc.StartsWith("Documents/"))
+                    {
+                        // 如果只包含一個 Documents/，保持不變
+                        cleanSrc = cleanSrc;
+                    }
+                    else
+                    {
+                        // 如果沒有 Documents/，添加它
+                        cleanSrc = $"Documents/{cleanSrc}";
+                    }
+                    
+                    // 構建最終的完整路徑
+                    newSrc = $"/Uploads/FormsFiles/{cleanSrc}";
                 }
+
 
                 // 替換 HTML 中的圖片路徑
                 html = html.Replace($"src=\"{originalSrc}\"", $"src=\"{newSrc}\"");

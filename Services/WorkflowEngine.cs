@@ -967,15 +967,82 @@ namespace PurpleRice.Services
         {
             WriteLog($"=== 執行 waitReply 節點 ===");
             
+            // ✅ 修復：先解析收件人，然後設置正確的 WaitingForUser
+            string actualWaitingUser = userId ?? "85296366318"; // 默認值
+            
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
+            if (company != null)
+            {
+                WriteLog($"🔍 [DEBUG] 開始解析 waitReply 收件人");
+                WriteLog($"🔍 [DEBUG] nodeData.SpecifiedUsers: '{nodeData.SpecifiedUsers}'");
+                WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
+                WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                
+                // 根據 replyType 決定收件人
+                string recipientValue;
+                string recipientDetailsJson;
+                
+                // ✅ 修復：只根據 replyType 判斷，不檢查 specifiedUsers 是否為空
+                if (nodeData.ReplyType == "initiator")
+                {
+                    // 使用流程啟動人
+                    recipientValue = "${initiator}";
+                    recipientDetailsJson = JsonSerializer.Serialize(new 
+                    { 
+                        users = new List<object>(),
+                        contacts = new List<object>(),
+                        groups = new List<object>(),
+                        hashtags = new List<object>(),
+                        processVariables = new List<string>(),
+                        useInitiator = true,
+                        phoneNumbers = new List<string>()
+                    });
+                    WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
+                    actualWaitingUser = userId ?? "85296366318"; // 使用流程啟動人
+                }
+                else
+                {
+                    // ✅ 使用 recipientDetails（即使 specifiedUsers 為空）
+                    recipientValue = nodeData.SpecifiedUsers ?? "";
+                    recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
+                    WriteLog($"🔍 [DEBUG] 使用 recipientDetails 配置（replyType={nodeData.ReplyType}）");
+                    WriteLog($"🔍 [DEBUG] recipientDetailsJson: {recipientDetailsJson}");
+                }
+                
+                // 使用 RecipientResolverService 解析收件人
+                var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    recipientValue,
+                    recipientDetailsJson, 
+                    execution.Id,
+                    execution.WorkflowDefinition.CompanyId
+                );
+                
+                WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                
+                // ✅ 修復：如果解析到收件人，使用第一個收件人作為 WaitingForUser
+                if (resolvedRecipients.Count > 0)
+                {
+                    actualWaitingUser = resolvedRecipients.First().PhoneNumber;
+                    WriteLog($"🔍 [DEBUG] 設置 WaitingForUser 為解析到的收件人: {actualWaitingUser}");
+                }
+                else
+                {
+                    WriteLog($"⚠️ [WARNING] 沒有解析到收件人，使用默認值: {actualWaitingUser}");
+                }
+            }
+            
             // 設置等待狀態
             execution.Status = "Waiting";
             execution.IsWaiting = true;
             execution.WaitingSince = DateTime.Now;
-            execution.WaitingForUser = userId ?? "85296366318";
-                        execution.LastUserActivity = DateTime.Now;
+            execution.WaitingForUser = actualWaitingUser; // ✅ 使用解析到的收件人
+            execution.LastUserActivity = DateTime.Now;
             execution.CurrentStep = stepExec.StepIndex;
                         
-                        stepExec.Status = "Waiting";
+            stepExec.Status = "Waiting";
             stepExec.IsWaiting = true;
             stepExec.OutputJson = JsonSerializer.Serialize(new { 
                 message = "Waiting for user reply",
@@ -992,115 +1059,87 @@ namespace PurpleRice.Services
             bool shouldSendMessage = (messageMode == "direct" && !string.IsNullOrEmpty(nodeData.Message)) ||
                                     (messageMode == "template" && !string.IsNullOrEmpty(nodeData.TemplateName));
             
-            if (shouldSendMessage)
+            if (shouldSendMessage && company != null)
             {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                WriteLog($"🔍 [DEBUG] messageMode: {messageMode}");
                 
-                var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
-                if (company != null)
+                // 獲取收件人信息（已經在前面解析過了）
+                string recipientValue;
+                string recipientDetailsJson;
+                
+                if (nodeData.ReplyType == "initiator")
                 {
-                    WriteLog($"🔍 [DEBUG] 開始解析 waitReply 收件人");
-                    WriteLog($"🔍 [DEBUG] nodeData.SpecifiedUsers: '{nodeData.SpecifiedUsers}'");
-                    WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
-                    WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
-                    WriteLog($"🔍 [DEBUG] messageMode: {messageMode}");
+                    recipientValue = "${initiator}";
+                    recipientDetailsJson = JsonSerializer.Serialize(new 
+                    { 
+                        users = new List<object>(),
+                        contacts = new List<object>(),
+                        groups = new List<object>(),
+                        hashtags = new List<object>(),
+                        processVariables = new List<string>(),
+                        useInitiator = true,
+                        phoneNumbers = new List<string>()
+                    });
+                }
+                else
+                {
+                    recipientValue = nodeData.SpecifiedUsers ?? "";
+                    recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
+                }
+                
+                // 根據訊息模式發送
+                if (messageMode == "template")
+                {
+                    WriteLog($"📝 waitReply 使用模板模式");
                     
-                    // 根據 replyType 決定收件人
-                    string recipientValue;
-                    string recipientDetailsJson;
-                    
-                    // ✅ 修復：只根據 replyType 判斷，不檢查 specifiedUsers 是否為空
-                    if (nodeData.ReplyType == "initiator")
+                    // 使用共用方法處理模板變數
+                    Dictionary<string, string> processedVariables;
+                    if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
                     {
-                        // 使用流程啟動人
-                        recipientValue = "${initiator}";
-                        recipientDetailsJson = JsonSerializer.Serialize(new 
-                        { 
-                            users = new List<object>(),
-                            contacts = new List<object>(),
-                            groups = new List<object>(),
-                            hashtags = new List<object>(),
-                            processVariables = new List<string>(),
-                            useInitiator = true,
-                            phoneNumbers = new List<string>()
-                        });
-                        WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
+                        WriteLog($"🔍 [DEBUG] waitReply 使用新的模板變數配置");
+                        processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
                     }
                     else
                     {
-                        // ✅ 使用 recipientDetails（即使 specifiedUsers 為空）
-                        recipientValue = nodeData.SpecifiedUsers ?? "";
-                        recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
-                        WriteLog($"🔍 [DEBUG] 使用 recipientDetails 配置（replyType={nodeData.ReplyType}）");
-                        WriteLog($"🔍 [DEBUG] recipientDetailsJson: {recipientDetailsJson}");
+                        WriteLog($"🔍 [DEBUG] waitReply 使用舊的模板變數配置");
+                        processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
                     }
                     
-                    // 使用 RecipientResolverService 解析收件人
-                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    // 發送模板訊息
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                         recipientValue,
-                        recipientDetailsJson, 
-                        execution.Id,
-                        execution.WorkflowDefinition.CompanyId
+                        recipientDetailsJson,
+                        nodeData.TemplateId,
+                        nodeData.TemplateName,
+                        processedVariables,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(),
+                        "waitReply",
+                        db,
+                        nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
                     );
                     
-                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    WriteLog($"🔍 [DEBUG] 等待提示模板訊息發送完成，ID: {messageSendId}");
+                }
+                else
+                {
+                    WriteLog($"💬 waitReply 使用直接訊息模式");
                     
-                    // 根據訊息模式發送
-                    if (messageMode == "template")
-                    {
-                        WriteLog($"📝 waitReply 使用模板模式");
-                        
-                        // 使用共用方法處理模板變數
-                        Dictionary<string, string> processedVariables;
-                        if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
-                        {
-                            WriteLog($"🔍 [DEBUG] waitReply 使用新的模板變數配置");
-                            processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
-                        }
-                        else
-                        {
-                            WriteLog($"🔍 [DEBUG] waitReply 使用舊的模板變數配置");
-                            processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
-                        }
-                        
-                        // 發送模板訊息
-                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
-                            recipientValue,
-                            recipientDetailsJson,
-                            nodeData.TemplateId,
-                            nodeData.TemplateName,
-                            processedVariables,
-                            execution,
-                            stepExec,
-                            stepExec.Id.ToString(),
-                            "waitReply",
-                            db,
-                            nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                            nodeData.TemplateLanguage  // 傳遞模板語言代碼
-                        );
-                        
-                        WriteLog($"🔍 [DEBUG] 等待提示模板訊息發送完成，ID: {messageSendId}");
-                    }
-                    else
-                    {
-                        WriteLog($"💬 waitReply 使用直接訊息模式");
-                        
-                        // 發送直接訊息
-                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                            recipientValue,
-                            recipientDetailsJson,
-                            nodeData.Message,
-                            execution,
-                            stepExec,
-                            stepExec.Id.ToString(), // nodeId
-                            "waitReply",
-                            db
-                        );
-                        
-                        WriteLog($"🔍 [DEBUG] 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
-                        WriteLog($"🔍 [DEBUG] 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
-                    }
+                    // 發送直接訊息
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                        recipientValue,
+                        recipientDetailsJson,
+                        nodeData.Message,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "waitReply",
+                        db
+                    );
+                    
+                    WriteLog($"🔍 [DEBUG] 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
                 }
             }
             
@@ -1118,11 +1157,76 @@ namespace PurpleRice.Services
             WriteLog($"錯誤訊息: {nodeData.QrCodeErrorMessage}");
             WriteLog($"超時時間: {nodeData.Timeout} 秒");
             
+            // ✅ 修復：先解析收件人，然後設置正確的 WaitingForUser
+            string actualWaitingUser = userId ?? "85296366318"; // 默認值
+            
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
+            if (company != null)
+            {
+                WriteLog($"🔍 [DEBUG] 開始解析 waitForQRCode 收件人");
+                WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
+                WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                
+                // 根據 replyType 決定收件人
+                string recipientValue;
+                string recipientDetailsJson;
+                
+                // ✅ 修復：只根據 replyType 判斷
+                if (nodeData.ReplyType == "initiator")
+                {
+                    // 使用流程啟動人
+                    recipientValue = "${initiator}";
+                    recipientDetailsJson = JsonSerializer.Serialize(new 
+                    { 
+                        users = new List<object>(),
+                        contacts = new List<object>(),
+                        groups = new List<object>(),
+                        hashtags = new List<object>(),
+                        processVariables = new List<string>(),
+                        useInitiator = true,
+                        phoneNumbers = new List<string>()
+                    });
+                    WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
+                    actualWaitingUser = userId ?? "85296366318"; // 使用流程啟動人
+                }
+                else
+                {
+                    // ✅ 使用 recipientDetails
+                    recipientValue = nodeData.SpecifiedUsers ?? "";
+                    recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
+                    WriteLog($"🔍 [DEBUG] 使用 recipientDetails 配置（replyType={nodeData.ReplyType}）");
+                }
+                
+                // 使用 RecipientResolverService 解析收件人
+                var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    recipientValue,
+                    recipientDetailsJson, 
+                    execution.Id,
+                    execution.WorkflowDefinition.CompanyId
+                );
+                
+                WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                
+                // ✅ 修復：如果解析到收件人，使用第一個收件人作為 WaitingForUser
+                if (resolvedRecipients.Count > 0)
+                {
+                    actualWaitingUser = resolvedRecipients.First().PhoneNumber;
+                    WriteLog($"🔍 [DEBUG] 設置 WaitingForUser 為解析到的收件人: {actualWaitingUser}");
+                }
+                else
+                {
+                    WriteLog($"⚠️ [WARNING] 沒有解析到收件人，使用默認值: {actualWaitingUser}");
+                }
+            }
+            
             // 設置等待狀態
             execution.Status = "WaitingForQRCode";
             execution.IsWaiting = true;
             execution.WaitingSince = DateTime.Now;
-            execution.WaitingForUser = userId ?? "85296366318";
+            execution.WaitingForUser = actualWaitingUser; // ✅ 使用解析到的收件人
             execution.LastUserActivity = DateTime.Now;
             execution.CurrentStep = stepExec.StepIndex;
             
@@ -1145,113 +1249,87 @@ namespace PurpleRice.Services
             bool shouldSendMessage = (messageMode == "direct" && !string.IsNullOrEmpty(nodeData.Message)) ||
                                     (messageMode == "template" && !string.IsNullOrEmpty(nodeData.TemplateName));
             
-            if (shouldSendMessage)
+            if (shouldSendMessage && company != null)
             {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                WriteLog($"🔍 [DEBUG] messageMode: {messageMode}");
                 
-                var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
-                if (company != null)
+                // 獲取收件人信息（已經在前面解析過了）
+                string recipientValue;
+                string recipientDetailsJson;
+                
+                if (nodeData.ReplyType == "initiator")
                 {
-                    WriteLog($"🔍 [DEBUG] 開始解析 waitForQRCode 收件人");
-                    WriteLog($"🔍 [DEBUG] nodeData.ReplyType: '{nodeData.ReplyType}'");
-                    WriteLog($"🔍 [DEBUG] nodeData.RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
-                    WriteLog($"🔍 [DEBUG] messageMode: {messageMode}");
+                    recipientValue = "${initiator}";
+                    recipientDetailsJson = JsonSerializer.Serialize(new 
+                    { 
+                        users = new List<object>(),
+                        contacts = new List<object>(),
+                        groups = new List<object>(),
+                        hashtags = new List<object>(),
+                        processVariables = new List<string>(),
+                        useInitiator = true,
+                        phoneNumbers = new List<string>()
+                    });
+                }
+                else
+                {
+                    recipientValue = nodeData.SpecifiedUsers ?? "";
+                    recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
+                }
+                
+                // 根據訊息模式發送
+                if (messageMode == "template")
+                {
+                    WriteLog($"📝 waitForQRCode 使用模板模式");
                     
-                    // 根據 replyType 決定收件人
-                    string recipientValue;
-                    string recipientDetailsJson;
-                    
-                    // ✅ 修復：只根據 replyType 判斷
-                    if (nodeData.ReplyType == "initiator")
+                    // 使用共用方法處理模板變數
+                    Dictionary<string, string> processedVariables;
+                    if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
                     {
-                        // 使用流程啟動人
-                        recipientValue = "${initiator}";
-                        recipientDetailsJson = JsonSerializer.Serialize(new 
-                        { 
-                            users = new List<object>(),
-                            contacts = new List<object>(),
-                            groups = new List<object>(),
-                            hashtags = new List<object>(),
-                            processVariables = new List<string>(),
-                            useInitiator = true,
-                            phoneNumbers = new List<string>()
-                        });
-                        WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
+                        WriteLog($"🔍 [DEBUG] waitForQRCode 使用新的模板變數配置");
+                        processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
                     }
                     else
                     {
-                        // ✅ 使用 recipientDetails
-                        recipientValue = nodeData.SpecifiedUsers ?? "";
-                        recipientDetailsJson = nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null;
-                        WriteLog($"🔍 [DEBUG] 使用 recipientDetails 配置（replyType={nodeData.ReplyType}）");
+                        WriteLog($"🔍 [DEBUG] waitForQRCode 使用舊的模板變數配置");
+                        processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
                     }
                     
-                    // 使用 RecipientResolverService 解析收件人
-                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                    // 發送模板訊息
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                         recipientValue,
-                        recipientDetailsJson, 
-                        execution.Id,
-                        execution.WorkflowDefinition.CompanyId
+                        recipientDetailsJson,
+                        nodeData.TemplateId,
+                        nodeData.TemplateName,
+                        processedVariables,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(),
+                        "waitForQRCode",
+                        db,
+                        nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
+                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
                     );
                     
-                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    WriteLog($"🔍 [DEBUG] QR Code 等待提示模板訊息發送完成，ID: {messageSendId}");
+                }
+                else
+                {
+                    WriteLog($"💬 waitForQRCode 使用直接訊息模式");
                     
-                    // 根據訊息模式發送
-                    if (messageMode == "template")
-                    {
-                        WriteLog($"📝 waitForQRCode 使用模板模式");
-                        
-                        // 使用共用方法處理模板變數
-                        Dictionary<string, string> processedVariables;
-                        if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
-                        {
-                            WriteLog($"🔍 [DEBUG] waitForQRCode 使用新的模板變數配置");
-                            processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
-                        }
-                        else
-                        {
-                            WriteLog($"🔍 [DEBUG] waitForQRCode 使用舊的模板變數配置");
-                            processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
-                        }
-                        
-                        // 發送模板訊息
-                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
-                            recipientValue,
-                            recipientDetailsJson,
-                            nodeData.TemplateId,
-                            nodeData.TemplateName,
-                            processedVariables,
-                            execution,
-                            stepExec,
-                            stepExec.Id.ToString(),
-                            "waitForQRCode",
-                            db,
-                            nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                            nodeData.TemplateLanguage  // 傳遞模板語言代碼
-                        );
-                        
-                        WriteLog($"🔍 [DEBUG] QR Code 等待提示模板訊息發送完成，ID: {messageSendId}");
-                    }
-                    else
-                    {
-                        WriteLog($"💬 waitForQRCode 使用直接訊息模式");
-                        
-                        // 發送 QR Code 等待提示訊息給所有解析到的收件人
-                        var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                            recipientValue,
-                            recipientDetailsJson,
-                            nodeData.Message,
-                            execution,
-                            stepExec,
-                            stepExec.Id.ToString(), // nodeId
-                            "waitQRCode",
-                            db
-                        );
-                        
-                        WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
-                        WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送完成，收件人數量: {resolvedRecipients.Count}");
-                    }
+                    // 發送 QR Code 等待提示訊息給所有解析到的收件人
+                    var messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                        recipientValue,
+                        recipientDetailsJson,
+                        nodeData.Message,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(), // nodeId
+                        "waitQRCode",
+                        db
+                    );
+                    
+                    WriteLog($"🔍 [DEBUG] QR Code 等待提示訊息發送記錄創建完成，ID: {messageSendId}");
                 }
             }
             

@@ -12,10 +12,10 @@ export const VIDEO_URLS = {
   2: 'https://www.youtube.com/embed/3OGkTmkz-Is',
   
   // 步驟 3: 數據集管理演示
-  3: '', // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
+  3: 'https://www.youtube.com/embed/mhJnxhRBGK4', // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
   
   // 步驟 4: 表單管理演示
-  4: '', // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
+  4: 'https://www.youtube.com/embed/4yr6y_NhpF4', // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
   
   // 步驟 5: 工作流程設計演示
   5: ''  // 例如: 'https://www.youtube.com/embed/VIDEO_ID'

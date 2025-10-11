@@ -1,27 +1,29 @@
 import React from 'react';
 import { Input, Button } from 'antd';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const CheckboxEditor = ({ formData, onFormChange }) => {
+  const { t } = useLanguage();
   return (
     <div>
-      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>編輯複選框</h3>
+      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>{t('eformDesigner.editCheckbox')}</h3>
       
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>欄位名稱:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.fieldName')}:</label>
         <Input
           value={formData.name || ''}
           onChange={(e) => onFormChange('name', e.target.value)}
-          placeholder="請輸入欄位名稱"
+          placeholder={t('eformDesigner.pleaseEnterFieldName')}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>選項列表:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.optionList')}:</label>
         <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '4px', padding: '8px' }}>
           {(formData.options || []).map((option, index) => (
             <div key={index} style={{ display: 'flex', marginBottom: '8px', gap: '8px', alignItems: 'center' }}>
               <Input
-                placeholder="選項值"
+                placeholder={t('eformDesigner.optionValue')}
                 value={option.value}
                 onChange={(e) => {
                   const newOptions = [...(formData.options || [])];
@@ -31,7 +33,7 @@ const CheckboxEditor = ({ formData, onFormChange }) => {
                 style={{ flex: 1 }}
               />
               <Input
-                placeholder="選項文字"
+                placeholder={t('eformDesigner.optionText')}
                 value={option.text}
                 onChange={(e) => {
                   const newOptions = [...(formData.options || [])];
@@ -48,7 +50,7 @@ const CheckboxEditor = ({ formData, onFormChange }) => {
                   onFormChange('options', newOptions);
                 }}
               >
-                刪除
+{t('eformDesigner.delete')}
               </Button>
             </div>
           ))}
@@ -60,7 +62,7 @@ const CheckboxEditor = ({ formData, onFormChange }) => {
             }}
             style={{ width: '100%' }}
           >
-            + 添加選項
+{t('eformDesigner.addOption')}
           </Button>
         </div>
       </div>
@@ -73,7 +75,7 @@ const CheckboxEditor = ({ formData, onFormChange }) => {
             onChange={(e) => onFormChange('required', e.target.checked)}
             style={{ marginRight: '8px' }}
           />
-          <span style={{ fontWeight: 'bold' }}>必填欄位</span>
+          <span style={{ fontWeight: 'bold' }}>{t('eformDesigner.requiredField')}</span>
         </label>
       </div>
 
@@ -85,7 +87,7 @@ const CheckboxEditor = ({ formData, onFormChange }) => {
             onChange={(e) => onFormChange('disabled', e.target.checked)}
             style={{ marginRight: '8px' }}
           />
-          <span style={{ fontWeight: 'bold' }}>禁用</span>
+          <span style={{ fontWeight: 'bold' }}>{t('eformDesigner.disabled')}</span>
         </label>
       </div>
     </div>

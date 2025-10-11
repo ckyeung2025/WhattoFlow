@@ -1,61 +1,63 @@
 import React from 'react';
 import { Input } from 'antd';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const ButtonEditor = ({ formData, onFormChange }) => {
+  const { t } = useLanguage();
   return (
     <div>
-      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>編輯按鈕</h3>
+      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>{t('eformDesigner.editButton')}</h3>
       
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>按鈕文字:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.buttonText')}:</label>
         <Input
           value={formData.text || ''}
           onChange={(e) => onFormChange('text', e.target.value)}
-          placeholder="請輸入按鈕文字"
+          placeholder={t('eformDesigner.pleaseEnterButtonText')}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>按鈕類型:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.buttonType')}:</label>
         <select
           value={formData.type || 'button'}
           onChange={(e) => onFormChange('type', e.target.value)}
           style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
         >
-          <option value="button">一般按鈕</option>
-          <option value="submit">提交按鈕</option>
-          <option value="reset">重置按鈕</option>
+          <option value="button">{t('eformDesigner.normalButton')}</option>
+          <option value="submit">{t('eformDesigner.submitButton')}</option>
+          <option value="reset">{t('eformDesigner.resetButton')}</option>
         </select>
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>按鈕樣式:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.buttonStyle')}:</label>
         <select
           value={formData.style || 'primary'}
           onChange={(e) => onFormChange('style', e.target.value)}
           style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
         >
-          <option value="primary">主要按鈕</option>
-          <option value="secondary">次要按鈕</option>
-          <option value="success">成功按鈕</option>
-          <option value="danger">危險按鈕</option>
-          <option value="warning">警告按鈕</option>
-          <option value="info">信息按鈕</option>
-          <option value="light">淺色按鈕</option>
-          <option value="dark">深色按鈕</option>
+          <option value="primary">{t('eformDesigner.primaryButton')}</option>
+          <option value="secondary">{t('eformDesigner.secondaryButton')}</option>
+          <option value="success">{t('eformDesigner.successButton')}</option>
+          <option value="danger">{t('eformDesigner.dangerButton')}</option>
+          <option value="warning">{t('eformDesigner.warningButton')}</option>
+          <option value="info">{t('eformDesigner.infoButton')}</option>
+          <option value="light">{t('eformDesigner.lightButton')}</option>
+          <option value="dark">{t('eformDesigner.darkButton')}</option>
         </select>
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>按鈕大小:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.buttonSize')}:</label>
         <select
           value={formData.size || 'medium'}
           onChange={(e) => onFormChange('size', e.target.value)}
           style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
         >
-          <option value="small">小</option>
-          <option value="medium">中</option>
-          <option value="large">大</option>
+          <option value="small">{t('eformDesigner.small')}</option>
+          <option value="medium">{t('eformDesigner.medium')}</option>
+          <option value="large">{t('eformDesigner.large')}</option>
         </select>
       </div>
 
@@ -67,7 +69,7 @@ const ButtonEditor = ({ formData, onFormChange }) => {
             onChange={(e) => onFormChange('disabled', e.target.checked)}
             style={{ marginRight: '8px' }}
           />
-          <span style={{ fontWeight: 'bold' }}>禁用</span>
+          <span style={{ fontWeight: 'bold' }}>{t('eformDesigner.disabled')}</span>
         </label>
       </div>
     </div>

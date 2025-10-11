@@ -711,10 +711,10 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
               backgroundColor: '#fafafa'
             }}>
               <h3 style={{ margin: 0, fontSize: '16px', color: '#333' }}>
-                編輯組件: {selectedComponent?.get('tagName')?.toUpperCase() || '未知'}
+{t('eformDesigner.editComponent')}: {selectedComponent?.get('tagName')?.toUpperCase() || t('eformDesigner.unknown')}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#666' }}>
-                組件 ID: {selectedComponent?.getId() || 'N/A'}
+{t('eformDesigner.componentId')}: {selectedComponent?.getId() || 'N/A'}
               </p>
             </div>
 
@@ -756,6 +756,7 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
 // 組件編輯器組件
 const ComponentEditor = ({ component, grapesEditor, onClose }) => {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
@@ -1478,14 +1479,14 @@ const ComponentEditor = ({ component, grapesEditor, onClose }) => {
         borderTop: '1px solid #e8e8e8' 
       }}>
         <Button onClick={onClose}>
-          取消
+          {t('eformDesigner.cancel')}
         </Button>
         <Button 
           type="primary" 
           onClick={handleSave}
           loading={isLoading}
         >
-          保存
+          {t('eformDesigner.save')}
         </Button>
       </div>
     </div>
