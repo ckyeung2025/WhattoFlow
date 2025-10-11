@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Input, Button, Alert, Spin, Switch, message } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const { TextArea } = Input;
 
@@ -12,6 +13,7 @@ const EFormDesignerAI = ({
   isGenerating,
   setIsGenerating 
 }) => {
+  const { t } = useLanguage();
   const [aiPrompt, setAiPrompt] = useState('');
   const [includeCurrentHtml, setIncludeCurrentHtml] = useState(() => {
     const initialContent = htmlContent || '';
@@ -20,7 +22,7 @@ const EFormDesignerAI = ({
 
   const handleAiGenerateForm = async () => {
     if (!aiPrompt.trim()) {
-      message.warning('請輸入您的需求描述');
+      message.warning(t('eformDesigner.pleaseEnterYourRequirements'));
       return;
     }
 
@@ -54,19 +56,19 @@ const EFormDesignerAI = ({
       const result = await response.json();
 
       if (result.success) {
-        message.success('✅ AI 已成功生成表單！');
-        onSuccess(result.htmlContent, result.formName || 'AI 生成的表單');
+        message.success(`✅ ${t('eformDesigner.aiFormGeneratedSuccess')}`);
+        onSuccess(result.htmlContent, result.formName || t('eformDesigner.aiGeneratedForm'));
         setAiPrompt('');
         onClose();
       } else {
-        message.error('❌ 生成失敗: ' + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eformDesigner.generationFailed')}${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ AI 生成錯誤:', error);
       if (error.name === 'AbortError') {
-        message.error('❌ 請求超時，AI 生成需要較長時間，請稍後再試或檢查網絡連接');
+        message.error(`❌ ${t('eformDesigner.requestTimeoutAiGeneration')}`);
       } else {
-        message.error('❌ 生成失敗: ' + error.message);
+        message.error(`❌ ${t('eformDesigner.generationFailed')}${error.message}`);
       }
     } finally {
       setIsGenerating(false);
@@ -78,14 +80,14 @@ const EFormDesignerAI = ({
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <RobotOutlined style={{ color: '#1890ff' }} />
-          AI 生成表單
+          {t('eformDesigner.aiGenerateForm')}
         </div>
       }
       open={visible}
       onCancel={onClose}
       footer={[
         <Button key="cancel" onClick={onClose}>
-          取消
+          {t('eformDesigner.cancel')}
         </Button>,
         <Button
           key="generate"
@@ -94,15 +96,15 @@ const EFormDesignerAI = ({
           loading={isGenerating}
           disabled={!aiPrompt.trim()}
         >
-          {isGenerating ? '生成中...' : '生成表單'}
+          {isGenerating ? t('eformDesigner.generating') : t('eformDesigner.generateForm')}
         </Button>
       ]}
       width={600}
     >
       <div style={{ padding: '20px 0' }}>
         <Alert
-          message="🤖 AI 智能生成"
-          description="描述您需要的表單類型和要求，AI 將為您生成相應的 HTML 表單。適合用於審批流程、申請表單等。"
+          message={`🤖 ${t('eformDesigner.aiSmartGeneration')}`}
+          description={t('eformDesigner.describeTheFormTypeAndRequirements')}
           type="info"
           showIcon
           style={{ marginBottom: '20px' }}
@@ -110,12 +112,12 @@ const EFormDesignerAI = ({
         
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-            需求描述：
+            {t('eformDesigner.requirementsDescription')}
           </label>
           <TextArea
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
-            placeholder="例如：我需要一個請假申請表單，包含員工信息、請假類型、開始日期、結束日期、請假原因等欄位..."
+            placeholder={t('eformDesigner.placeholderExample')}
             rows={6}
             style={{ fontSize: '14px' }}
           />
@@ -124,7 +126,7 @@ const EFormDesignerAI = ({
         {htmlContent.trim() && (
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-              包含當前 HTML：
+              {t('eformDesigner.includeCurrentHtml')}：
             </label>
             <Switch
               checked={includeCurrentHtml}
@@ -132,11 +134,11 @@ const EFormDesignerAI = ({
               style={{ marginBottom: '16px' }}
             />
             <Alert
-              message={includeCurrentHtml ? "✅ 將基於當前內容修改" : "🔄 將生成全新表單"}
+              message={includeCurrentHtml ? `✅ ${t('eformDesigner.willModifyBasedOnCurrentContent')}` : `🔄 ${t('eformDesigner.willGenerateNewForm')}`}
               description={
                 includeCurrentHtml 
-                  ? `AI 將基於您當前的表單內容進行修改和優化。當前內容長度：${htmlContent.length} 字符`
-                  : "AI 將根據您的描述生成全新的表單，不會使用當前編輯器中的內容"
+                  ? t('eformDesigner.aiWillModifyAndOptimizeBasedOnYourCurrentFormContent').replace('{length}', htmlContent.length)
+                  : t('eformDesigner.aiWillGenerateANewFormBasedOnYourDescription')
               }
               type={includeCurrentHtml ? "success" : "info"}
               showIcon
@@ -149,7 +151,7 @@ const EFormDesignerAI = ({
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <Spin size="large" />
             <div style={{ marginTop: '8px', color: '#666' }}>
-              AI 正在生成表單，請稍候...
+              {t('eformDesigner.aiGeneratingForm')}
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Upload, Alert, Spin, message } from 'antd';
 import { FileWordOutlined, FileExcelOutlined, FilePdfOutlined, FileImageOutlined } from '@ant-design/icons';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const EFormDesignerUpload = ({ 
   visible, 
@@ -10,6 +11,7 @@ const EFormDesignerUpload = ({
   isUploading,
   setIsUploading 
 }) => {
+  const { t } = useLanguage();
   
   const handleWordUpload = async (file) => {
     setIsUploading(true);
@@ -30,18 +32,18 @@ const EFormDesignerUpload = ({
       const result = await response.json();
 
       if (result.success) {
-        message.success('✅ Word 文件已成功轉換！');
-        onSuccess(result.htmlContent, result.formName || '從 Word 創建的表單');
+        message.success(`✅ ${t('eformDesigner.wordUploadSuccess')}`);
+        onSuccess(result.htmlContent, result.formName || t('eformDesigner.formCreatedFromWord'));
         onClose();
       } else {
-        message.error('❌ 轉換失敗: ' + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
-        message.error('❌ 請求超時，Word 文件轉換需要較長時間，請稍後再試或檢查網絡連接');
+        message.error(`❌ ${t('eformDesigner.requestTimeoutWordFileConversion')}`);
       } else {
-        message.error('❌ 上傳失敗: ' + error.message);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
       }
     } finally {
       setIsUploading(false);
@@ -67,18 +69,18 @@ const EFormDesignerUpload = ({
       const result = await response.json();
 
       if (result.success) {
-        message.success('✅ Excel 文件已成功轉換！');
-        onSuccess(result.htmlContent, result.formName || '從 Excel 創建的表單');
+        message.success(`✅ ${t('eformDesigner.excelUploadSuccess')}`);
+        onSuccess(result.htmlContent, result.formName || t('eformDesigner.formCreatedFromExcel'));
         onClose();
       } else {
-        message.error('❌ 轉換失敗: ' + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
-        message.error('❌ 請求超時，Excel 文件轉換需要較長時間，請稍後再試或檢查網絡連接');
+        message.error(`❌ ${t('eformDesigner.requestTimeoutExcelFileConversion')}`);
       } else {
-        message.error('❌ 上傳失敗: ' + error.message);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
       }
     } finally {
       setIsUploading(false);
@@ -104,18 +106,18 @@ const EFormDesignerUpload = ({
       const result = await response.json();
 
       if (result.success) {
-        message.success('✅ PDF 文件已成功轉換！');
-        onSuccess(result.htmlContent, result.formName || '從 PDF 創建的表單');
+        message.success(`✅ ${t('eformDesigner.pdfUploadSuccess')}`);
+        onSuccess(result.htmlContent, result.formName || t('eformDesigner.formCreatedFromPdf'));
         onClose();
       } else {
-        message.error('❌ 轉換失敗: ' + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
-        message.error('❌ 請求超時，PDF 文件轉換需要較長時間，請稍後再試或檢查網絡連接');
+        message.error(`❌ ${t('eformDesigner.requestTimeoutPdfFileConversion')}`);
       } else {
-        message.error('❌ 上傳失敗: ' + error.message);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
       }
     } finally {
       setIsUploading(false);
@@ -141,21 +143,21 @@ const EFormDesignerUpload = ({
       const result = await response.json();
 
       if (result.success) {
-        message.success('✅ 圖片已成功上傳！');
+        message.success(`✅ ${t('eformDesigner.imageUploadSuccess')}`);
         // 使用 filePath 構建圖片 URL，因為後端返回的是 filePath
         const imageUrl = `/Uploads/FormsFiles/${result.fileName}`;
         const imageHtml = `<img src="${imageUrl}" alt="${file.name}" style="max-width: 100%; height: auto;" />`;
         onSuccess(imageHtml, null, true); // 第三個參數表示是圖片插入
         onClose();
       } else {
-        message.error('❌ 上傳失敗: ' + (result.error || '未知錯誤'));
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
-        message.error('❌ 請求超時，圖片上傳需要較長時間，請稍後再試或檢查網絡連接');
+        message.error(`❌ ${t('eformDesigner.requestTimeoutImageUpload')}`);
       } else {
-        message.error('❌ 上傳失敗: ' + error.message);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
       }
     } finally {
       setIsUploading(false);
@@ -166,43 +168,51 @@ const EFormDesignerUpload = ({
     switch (uploadType) {
       case 'word':
         return {
-          title: '從 Word 文件創建表單',
+          title: t('eformDesigner.createFormFromWordFile'),
           icon: <FileWordOutlined style={{ color: '#1890ff' }} />,
           accept: '.doc,.docx',
-          description: '上傳 Word 文件 (.doc, .docx)，系統會自動轉換為 HTML 格式並載入到編輯器中。支持文字、表格、圖片等內容。',
+          description: t('eformDesigner.uploadWordFileDescription'),
           alertType: 'info',
           uploadHandler: handleWordUpload,
-          fileTypes: '.doc 和 .docx 格式，文件大小不超過 50MB'
+          fileTypes: t('eformDesigner.supportsDocAndDocxFormats'),
+          dragText: t('eformDesigner.clickOrDragWordFileHere'),
+          processingText: t('eformDesigner.processingWordFile')
         };
       case 'excel':
         return {
-          title: '從 Excel 文件創建表單',
+          title: t('eformDesigner.createFormFromExcelFile'),
           icon: <FileExcelOutlined style={{ color: '#52c41a' }} />,
           accept: '.xls,.xlsx',
-          description: '上傳 Excel 文件 (.xls, .xlsx)，系統會自動轉換為 HTML 格式並載入到編輯器中。支持表格、圖表等內容。',
+          description: t('eformDesigner.uploadExcelFileDescription'),
           alertType: 'success',
           uploadHandler: handleExcelUpload,
-          fileTypes: '.xls 和 .xlsx 格式，文件大小不超過 50MB'
+          fileTypes: t('eformDesigner.supportsXlsAndXlsxFormats'),
+          dragText: t('eformDesigner.clickOrDragExcelFileHere'),
+          processingText: t('eformDesigner.processingExcelFile')
         };
       case 'pdf':
         return {
-          title: '從 PDF 文件創建表單',
+          title: t('eformDesigner.createFormFromPdfFile'),
           icon: <FilePdfOutlined style={{ color: '#ff4d4f' }} />,
           accept: '.pdf',
-          description: '上傳 PDF 文件 (.pdf)，系統會自動轉換為 HTML 格式並載入到編輯器中。支持文字、圖片等內容。',
+          description: t('eformDesigner.uploadPdfFileDescription'),
           alertType: 'warning',
           uploadHandler: handlePdfUpload,
-          fileTypes: '.pdf 格式，文件大小不超過 50MB'
+          fileTypes: t('eformDesigner.supportsPdfFormat'),
+          dragText: t('eformDesigner.clickOrDragPdfFileHere'),
+          processingText: t('eformDesigner.processingPdfFile')
         };
       case 'image':
         return {
-          title: '上傳圖片',
+          title: t('eformDesigner.imageUpload'),
           icon: <FileImageOutlined style={{ color: '#722ed1' }} />,
           accept: '.jpg,.jpeg,.png,.gif,.bmp,.webp',
-          description: '上傳圖片文件，系統會自動將圖片插入到編輯器中。支持 JPG、PNG、GIF 等格式。',
+          description: t('eformDesigner.uploadImageDescription'),
           alertType: 'info',
           uploadHandler: handleImageUpload,
-          fileTypes: 'JPG、PNG、GIF、BMP、WebP 格式，文件大小不超過 10MB'
+          fileTypes: t('eformDesigner.supportsJpgPngGifBmpWebpFormats'),
+          dragText: t('eformDesigner.clickOrDragImageHere'),
+          processingText: t('eformDesigner.uploadingImage')
         };
       default:
         return null;
@@ -249,10 +259,10 @@ const EFormDesignerUpload = ({
               style: { fontSize: '48px', marginBottom: '16px' } 
             })}
             <div style={{ fontSize: '16px', marginBottom: '8px' }}>
-              {isUploading ? '正在處理...' : '點擊或拖拽文件到此處'}
+              {isUploading ? config.processingText : config.dragText}
             </div>
             <div style={{ fontSize: '14px', color: '#666' }}>
-              支持 {config.fileTypes}
+              {config.fileTypes}
             </div>
           </div>
         </Upload.Dragger>
@@ -261,7 +271,7 @@ const EFormDesignerUpload = ({
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <Spin size="large" />
             <div style={{ marginTop: '8px', color: '#666' }}>
-              正在處理文件，請稍候...
+              {config.processingText}
             </div>
           </div>
         )}

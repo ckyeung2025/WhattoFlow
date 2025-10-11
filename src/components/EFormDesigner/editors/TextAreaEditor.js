@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Input } from 'antd';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const { TextArea } = Input;
 
 const TextAreaEditor = ({ formData, onFormChange }) => {
+  const { t } = useLanguage();
   // 使用內部狀態來管理表單數據
   const [localFormData, setLocalFormData] = useState({});
   const textareaRef = useRef(null);
@@ -68,40 +70,40 @@ const TextAreaEditor = ({ formData, onFormChange }) => {
 
   return (
     <div>
-      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>編輯文字區域</h3>
+      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>{t('eformDesigner.editTextArea')}</h3>
       
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>佔位符文字:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.placeholderText')}:</label>
         <Input
           value={localFormData.placeholder || ''}
           onChange={(e) => handleFormChange('placeholder', e.target.value)}
-          placeholder="請輸入佔位符文字"
+          placeholder={t('eformDesigner.pleaseEnterPlaceholderText')}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>欄位名稱:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.fieldName')}:</label>
         <Input
           value={localFormData.name || ''}
           onChange={(e) => handleFormChange('name', e.target.value)}
-          placeholder="請輸入欄位名稱"
+          placeholder={t('eformDesigner.pleaseEnterFieldName')}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>預設值:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.defaultValue')}:</label>
         <TextArea
           ref={textareaRef}
           value={currentValue}
           onChange={handleTextAreaChange}
-          placeholder="請輸入預設值"
+          placeholder={t('eformDesigner.pleaseEnterDefaultValue')}
           rows={4}
           onBlur={handleTextAreaBlur}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>行數:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.rows')}:</label>
         <Input
           type="number"
           value={localFormData.rows || 4}
@@ -112,7 +114,7 @@ const TextAreaEditor = ({ formData, onFormChange }) => {
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>列數:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.columns')}:</label>
         <Input
           type="number"
           value={localFormData.cols || 50}
@@ -130,7 +132,7 @@ const TextAreaEditor = ({ formData, onFormChange }) => {
             onChange={(e) => handleFormChange('required', e.target.checked)}
             style={{ marginRight: '8px' }}
           />
-          <span style={{ fontWeight: 'bold' }}>必填欄位</span>
+          <span style={{ fontWeight: 'bold' }}>{t('eformDesigner.requiredField')}</span>
         </label>
       </div>
     </div>

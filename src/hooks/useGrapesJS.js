@@ -998,7 +998,7 @@ const addCustomBlocks = (editor) => {
   blockManager.add('textarea', {
     label: t.textarea || 'Textarea',
     category: t.forms || 'Forms',
-    content: '<textarea placeholder="請輸入您的訊息" rows="4" cols="50"></textarea>',
+    content: `<textarea placeholder="${resources.eformDesigner?.pleaseEnterYourMessage || '請輸入您的訊息'}" rows="4" cols="50"></textarea>`,
     media: '<svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>'
   });
   
@@ -1006,21 +1006,21 @@ const addCustomBlocks = (editor) => {
   blockManager.add('select', {
     label: t.select || 'Select',
     category: t.forms || 'Forms',
-    content: '<select><option value="">請選擇...</option><option value="option1">選項 1</option><option value="option2">選項 2</option><option value="option3">選項 3</option></select>',
+    content: `<select><option value="">${resources.eformDesigner?.pleaseSelect || '請選擇...'}</option><option value="option1">${resources.eformDesigner?.option1 || '選項 1'}</option><option value="option2">${resources.eformDesigner?.option2 || '選項 2'}</option><option value="option3">${resources.eformDesigner?.option3 || '選項 3'}</option></select>`,
     media: '<svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'
   });
   
   blockManager.add('radio', {
     label: t.radio || 'Radio',
     category: t.forms || 'Forms',
-    content: '<div><label><input type="radio" name="radio1" value="option1" /> 選項 1</label><br/><label><input type="radio" name="radio1" value="option2" /> 選項 2</label><br/><label><input type="radio" name="radio1" value="option3" /> 選項 3</label></div>',
+    content: `<div><label><input type="radio" name="radio1" value="option1" /> ${resources.eformDesigner?.option1 || '選項 1'}</label><br/><label><input type="radio" name="radio1" value="option2" /> ${resources.eformDesigner?.option2 || '選項 2'}</label><br/><label><input type="radio" name="radio1" value="option3" /> ${resources.eformDesigner?.option3 || '選項 3'}</label></div>`,
     media: '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
   });
   
   blockManager.add('checkbox', {
     label: t.checkbox || 'Checkbox',
     category: t.forms || 'Forms',
-    content: '<div><label><input type="checkbox" value="check1" /> 選項 1</label><br/><label><input type="checkbox" value="check2" /> 選項 2</label><br/><label><input type="checkbox" value="check3" /> 選項 3</label></div>',
+    content: `<div><label><input type="checkbox" value="check1" /> ${resources.eformDesigner?.option1 || '選項 1'}</label><br/><label><input type="checkbox" value="check2" /> ${resources.eformDesigner?.option2 || '選項 2'}</label><br/><label><input type="checkbox" value="check3" /> ${resources.eformDesigner?.option3 || '選項 3'}</label></div>`,
     media: '<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
   });
   
@@ -1034,21 +1034,21 @@ const addCustomBlocks = (editor) => {
   blockManager.add('email', {
     label: t.email || 'Email',
     category: t.forms || 'Forms',
-    content: '<input type="email" placeholder="請輸入電子郵件" />',
+    content: `<input type="email" placeholder="${resources.eformDesigner?.pleaseEnterEmail || '請輸入電子郵件'}" />`,
     media: '<svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>'
   });
   
   blockManager.add('password', {
     label: t.password || 'Password',
     category: t.forms || 'Forms',
-    content: '<input type="password" placeholder="請輸入密碼" />',
+    content: `<input type="password" placeholder="${resources.eformDesigner?.pleaseEnterPassword || '請輸入密碼'}" />`,
     media: '<svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>'
   });
   
   blockManager.add('number', {
     label: t.number || 'Number',
     category: t.forms || 'Forms',
-    content: '<input type="number" placeholder="請輸入數字" />',
+    content: `<input type="number" placeholder="${resources.eformDesigner?.pleaseEnterNumber || '請輸入數字'}" />`,
     media: '<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>'
   });
   
@@ -1069,28 +1069,28 @@ const addCustomBlocks = (editor) => {
   blockManager.add('url', {
     label: t.url || 'URL',
     category: t.forms || 'Forms',
-    content: '<input type="url" placeholder="請輸入網址" />',
+    content: `<input type="url" placeholder="${resources.eformDesigner?.pleaseEnterUrl || '請輸入網址'}" />`,
     media: '<svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1s1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
   });
   
   blockManager.add('tel', {
     label: t.tel || 'Phone',
     category: t.forms || 'Forms',
-    content: '<input type="tel" placeholder="請輸入電話號碼" />',
+    content: `<input type="tel" placeholder="${resources.eformDesigner?.pleaseEnterPhoneNumber || '請輸入電話號碼'}" />`,
     media: '<svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>'
   });
   
   blockManager.add('label', {
     label: t.label || 'Label',
     category: t.forms || 'Forms',
-    content: '<label for="input1">標籤文字</label>',
+    content: `<label for="input1">${resources.eformDesigner?.labelText || '標籤文字'}</label>`,
     media: '<svg viewBox="0 0 24 24"><path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16z"/></svg>'
   });
   
   blockManager.add('fieldset', {
     label: t.fieldset || 'Fieldset',
     category: t.forms || 'Forms',
-    content: '<fieldset><legend>群組標題</legend><input type="text" placeholder="群組內輸入框" /></fieldset>',
+    content: `<fieldset><legend>${resources.eformDesigner?.groupTitle || '群組標題'}</legend><input type="text" placeholder="${resources.eformDesigner?.groupInputField || '群組內輸入框'}" /></fieldset>`,
     media: '<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>'
   });
   
@@ -1101,6 +1101,25 @@ const addCustomBlocks = (editor) => {
 
 const addEditFunctionality = (editor) => {
   console.log('🔧 開始添加編輯功能...');
+  
+  // 獲取語言資源
+  const userLanguage = localStorage.getItem('language') || 'zh-TC';
+  let resources;
+  
+  // 根據語言設置獲取對應的翻譯
+  switch (userLanguage) {
+    case 'zh-SC':
+      resources = require('../locales/zh-SC.js').default;
+      break;
+    case 'zh-TC':
+      resources = require('../locales/zh-TC.js').default;
+      break;
+    case 'en':
+      resources = require('../locales/en.js').default;
+      break;
+    default:
+      resources = require('../locales/zh-TC.js').default;
+  }
   
   // 初始化表單數據函數 - 保留用於右側面板
   const initializeFormData = (component) => {
@@ -1406,7 +1425,7 @@ const addEditFunctionality = (editor) => {
         label: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
         </svg>`,
-        title: '編輯組件',
+        title: resources.eformDesigner?.editComponent || '編輯組件',
         // 使用白色圖標，與其他工具欄按鈕保持一致
         style: {
           color: '#ffffff', // 改為白色圖標

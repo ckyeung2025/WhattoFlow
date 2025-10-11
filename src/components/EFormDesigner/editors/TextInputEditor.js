@@ -1,7 +1,9 @@
 import React from 'react';
 import { Input, Select, Space } from 'antd';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const TextInputEditor = ({ formData, onFormChange }) => {
+  const { t } = useLanguage();
   // 日期格式選項
   const dateFormatOptions = [
     { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2025-12-01)' },
@@ -42,32 +44,32 @@ const TextInputEditor = ({ formData, onFormChange }) => {
 
   return (
     <div>
-      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>編輯文字輸入框</h3>
+      <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>{t('eformDesigner.editTextInput')}</h3>
       
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>佔位符文字:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.placeholderText')}:</label>
         <Input
           value={formData.placeholder || ''}
           onChange={(e) => onFormChange('placeholder', e.target.value)}
-          placeholder="請輸入佔位符文字"
+          placeholder={t('eformDesigner.pleaseEnterPlaceholderText')}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>欄位名稱:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.fieldName')}:</label>
         <Input
           value={formData.name || ''}
           onChange={(e) => onFormChange('name', e.target.value)}
-          placeholder="請輸入欄位名稱"
+          placeholder={t('eformDesigner.pleaseEnterFieldName')}
         />
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>預設值:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.defaultValue')}:</label>
         <Input
           value={formData.value || ''}
           onChange={(e) => onFormChange('value', e.target.value)}
-          placeholder={isDateType ? "請輸入預設日期" : "請輸入預設值"}
+          placeholder={isDateType ? t('eformDesigner.pleaseEnterDefaultDate') : t('eformDesigner.pleaseEnterDefaultValue')}
         />
         {isDateType && formData.dateFormat && (
           <div style={{ 
@@ -76,7 +78,7 @@ const TextInputEditor = ({ formData, onFormChange }) => {
             color: '#666',
             fontStyle: 'italic'
           }}>
-            格式預覽: {getDatePreview(formData.dateFormat)}
+            {t('eformDesigner.formatPreview', { preview: getDatePreview(formData.dateFormat) })}
           </div>
         )}
         {isDateType && (
@@ -85,18 +87,19 @@ const TextInputEditor = ({ formData, onFormChange }) => {
             fontSize: '11px', 
             color: '#999'
           }}>
-            請根據選擇的日期格式輸入預設值，例如: {formData.dateFormat === 'YYYY-MM-DD' ? '2025-12-01' : 
+            {t('eformDesigner.pleaseEnterDefaultValueAccordingToDateFormat', { example: formData.dateFormat === 'YYYY-MM-DD' ? '2025-12-01' : 
               formData.dateFormat === 'MM/DD/YYYY' ? '12/01/2025' :
               formData.dateFormat === 'DD/MM/YYYY' ? '01/12/2025' :
               formData.dateFormat === 'YYYY/MM/DD' ? '2025/12/01' :
               formData.dateFormat === 'MM-DD-YYYY' ? '12-01-2025' :
-              formData.dateFormat === 'DD-MM-YYYY' ? '01-12-2025' : '2025-12-01'}
+              formData.dateFormat === 'DD-MM-YYYY' ? '01-12-2025' : '2025-12-01'
+            })}
           </div>
         )}
       </div>
 
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>輸入類型:</label>
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.inputType')}:</label>
         <Select
           value={formData.type || 'text'}
           onChange={(value) => {
@@ -111,15 +114,15 @@ const TextInputEditor = ({ formData, onFormChange }) => {
           }}
           style={{ width: '100%' }}
           options={[
-            { value: 'text', label: '文字' },
-            { value: 'email', label: '電子郵件' },
-            { value: 'password', label: '密碼' },
-            { value: 'number', label: '數字' },
-            { value: 'tel', label: '電話' },
-            { value: 'url', label: '網址' },
-            { value: 'date', label: '日期' },
-            { value: 'time', label: '時間' },
-            { value: 'file', label: '檔案' }
+            { value: 'text', label: t('eformDesigner.text') },
+            { value: 'email', label: t('eformDesigner.email') },
+            { value: 'password', label: t('eformDesigner.password') },
+            { value: 'number', label: t('eformDesigner.number') },
+            { value: 'tel', label: t('eformDesigner.phone') },
+            { value: 'url', label: t('eformDesigner.url') },
+            { value: 'date', label: t('eformDesigner.date') },
+            { value: 'time', label: t('eformDesigner.time') },
+            { value: 'file', label: t('eformDesigner.file') }
           ]}
         />
       </div>
@@ -127,14 +130,14 @@ const TextInputEditor = ({ formData, onFormChange }) => {
       {/* 日期格式設置 - 僅在日期類型時顯示 */}
       {isDateType && (
         <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>日期格式:</label>
+          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t('eformDesigner.dateFormat')}:</label>
           <div style={{ 
             marginBottom: '8px', 
             fontSize: '12px', 
             color: '#666',
             fontStyle: 'italic'
           }}>
-            選擇日期在表單中顯示的格式，這將影響用戶看到的日期樣式
+            {t('eformDesigner.dateFormatDescription')}
           </div>
           <Select
             value={formData.dateFormat || 'YYYY-MM-DD'}
@@ -155,14 +158,14 @@ const TextInputEditor = ({ formData, onFormChange }) => {
             color: '#1890ff',
             fontWeight: '500'
           }}>
-            選擇的格式: {formData.dateFormat || 'YYYY-MM-DD'}
+            {t('eformDesigner.selectedFormat', { format: formData.dateFormat || 'YYYY-MM-DD' })}
           </div>
           <div style={{ 
             marginTop: '5px', 
             fontSize: '11px', 
             color: '#999'
           }}>
-            提示: 格式設置會影響 WYSIWYG 編輯器中的顯示效果
+            {t('eformDesigner.tip')}
           </div>
         </div>
       )}
@@ -175,7 +178,7 @@ const TextInputEditor = ({ formData, onFormChange }) => {
             onChange={(e) => onFormChange('required', e.target.checked)}
             style={{ marginRight: '8px' }}
           />
-          <span style={{ fontWeight: 'bold' }}>必填欄位</span>
+          <span style={{ fontWeight: 'bold' }}>{t('eformDesigner.requiredField')}</span>
         </label>
       </div>
 
@@ -187,7 +190,7 @@ const TextInputEditor = ({ formData, onFormChange }) => {
             onChange={(e) => onFormChange('disabled', e.target.checked)}
             style={{ marginRight: '8px' }}
           />
-          <span style={{ fontWeight: 'bold' }}>禁用</span>
+          <span style={{ fontWeight: 'bold' }}>{t('eformDesigner.disabled')}</span>
         </label>
       </div>
     </div>

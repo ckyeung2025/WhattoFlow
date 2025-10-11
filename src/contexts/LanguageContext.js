@@ -3,11 +3,12 @@ import zhTC from '../locales/zh-TC';
 import zhSC from '../locales/zh-SC';
 import en from '../locales/en';
 import onboardingZhTC from '../locales/onboarding-zh-TC';
+import onboardingZhSC from '../locales/onboarding-zh-SC';
 import onboardingEn from '../locales/onboarding-en';
 
 const locales = {
   'zh-TC': { ...zhTC, ...onboardingZhTC },
-  'zh-SC': { ...zhSC, ...onboardingZhTC }, // 使用繁體中文作為簡體中文的回退
+  'zh-SC': { ...zhSC, ...onboardingZhSC },
   'en': { ...en, ...onboardingEn }
 };
 
