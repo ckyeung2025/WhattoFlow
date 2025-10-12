@@ -86,12 +86,12 @@ const TemplateVariableConfigComponent = ({
 
   return (
     <div>
-      <Title level={5}>{t('whatsappTemplate.templateVariables') || '變數設定'}</Title>
+      <Title level={5}>{t('whatsappTemplate.templateVariables')}</Title>
       
       {isMetaTemplate && (
         <Alert
-          message={t('whatsappTemplate.metaTemplateVariableHint') || 'Meta 模板變數配置'}
-          description={t('whatsappTemplate.metaTemplateVariableDescription') || 'Meta 官方模板使用數字參數 (1, 2, 3...) 或命名參數。請根據模板定義配置對應的變數來源。'}
+          message={t('whatsappTemplate.metaTemplateVariableHint')}
+          description={t('whatsappTemplate.metaTemplateVariableDescription')}
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
@@ -105,7 +105,7 @@ const TemplateVariableConfigComponent = ({
           style={{ width: '100%' }}
           icon={<PlusOutlined />}
         >
-          {t('whatsappTemplate.addTemplateVariable') || '添加模板變數'}
+          {t('whatsappTemplate.addTemplateVariable')}
         </Button>
       </div>
 
@@ -116,7 +116,7 @@ const TemplateVariableConfigComponent = ({
               <Space direction="vertical" style={{ width: '100%' }}>
                 {/* 參數名稱 */}
                 <div>
-                  <Text strong>{t('whatsappTemplate.parameterName') || '參數名稱'}:</Text>
+                  <Text strong>{t('whatsappTemplate.parameterName')}:</Text>
                   <Input
                     placeholder={isMetaTemplate ? "1, 2, 3..." : "customer_name, order_id"}
                     value={variable.parameterName}
@@ -125,7 +125,7 @@ const TemplateVariableConfigComponent = ({
                   />
                   {isMetaTemplate && (
                     <Text type="secondary" style={{ fontSize: '12px' }}>
-                      {t('whatsappTemplate.metaParameterHint') || 'Meta 模板參數：使用數字 (1, 2, 3...) 或變數名 (customer_name, order_id)'}
+                      {t('whatsappTemplate.metaParameterHint')}
                     </Text>
                   )}
                 </div>
@@ -134,12 +134,12 @@ const TemplateVariableConfigComponent = ({
 
                 {/* 流程變數選擇 */}
                 <div>
-                  <Text strong>{t('whatsappTemplate.processVariable') || '流程變數'}:</Text>
+                  <Text strong>{t('whatsappTemplate.processVariable')}:</Text>
                   <Space style={{ width: '100%', marginTop: 4 }}>
                         <Select
                           value={variable.processVariableId}
                           onChange={(value) => updateTemplateVariable(index, 'processVariableId', value)}
-                          placeholder={t('whatsappTemplate.selectVariable') || '選擇變數'}
+                          placeholder={t('whatsappTemplate.selectVariable')}
                           style={{ flex: 1, minWidth: '200px' }}
                         >
                       {getProcessVariableOptions()}
@@ -158,7 +158,7 @@ const TemplateVariableConfigComponent = ({
                 {variable.processVariableName && (
                   <div>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
-                      已選擇: {variable.processVariableName}
+                      {t('whatsappTemplate.selectedVariable', { variableName: variable.processVariableName })}
                     </Text>
                   </div>
                 )}

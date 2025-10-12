@@ -304,6 +304,126 @@ const en = {
     pageRange: '{start}-{end} of {total} items'
   },
   
+  // Recipient Selector
+  recipientSelector: {
+    title: 'Select Recipients',
+    placeholder: 'Select recipients',
+    clearAll: 'Clear All',
+    confirmSelection: 'Confirm Selection',
+    clear: 'Clear',
+    
+    // Tabs
+    users: 'Users',
+    contacts: 'Contacts',
+    processVariables: 'Process Variables',
+    initiators: 'Process Initiator',
+    
+    // Search placeholders
+    searchUsers: 'Search users...',
+    searchContacts: 'Search contacts...',
+    
+    // Selected recipients display
+    selectedRecipients: 'Selected Recipients',
+    usersCount: '{count} users',
+    contactsCount: '{count} contacts',
+    groupsCount: '{count} groups',
+    hashtagsCount: '{count} tags',
+    variablesCount: '{count} variables',
+    processInitiator: 'Process Initiator',
+    
+    // Users tab
+    usersTab: {
+      title: 'Users',
+      noUsersFound: 'No users found',
+      userPhone: 'Phone: {phone}',
+      userEmail: 'Email: {email}'
+    },
+    
+    // Contacts tab
+    contactsTab: {
+      title: 'Contacts',
+      broadcastGroups: 'Broadcast Groups',
+      noGroupsData: 'No broadcast group data available',
+      hashtags: 'Tags',
+      noHashtagsData: 'No tags data available',
+      contactList: 'Contact List',
+      totalContacts: 'Total {count} contacts',
+      noContactsFound: 'No contacts found',
+      whatsAppNumber: 'WhatsApp: {number}',
+      email: 'Email: {email}',
+      pageRange: 'Page {start}-{end} of {total} items'
+    },
+    
+    // Process Variables tab
+    processVariablesTab: {
+      title: 'Process Variables',
+      description: 'Select process variables, the system will automatically replace with actual values during execution (recommended to select variables containing phone numbers)',
+      noVariablesFound: 'No process variables found',
+      value: 'Value: {value}',
+      dataType: 'Type: {type}',
+      instructions: {
+        title: 'Instructions',
+        items: [
+          'Display all types of process variables',
+          'Recommend selecting variables containing phone numbers',
+          'Selected variables will be saved in ${variableName} format',
+          'System will automatically replace with actual values during workflow execution',
+          'Suitable for integrating external systems (such as ERP)'
+        ]
+      }
+    },
+    
+    // Process Initiator tab
+    initiatorsTab: {
+      title: 'Process Initiator',
+      useInitiator: 'Use Process Initiator',
+      description: 'When checked, the system will automatically use the user who initiated this workflow instance as the recipient during execution',
+      instructions: {
+        title: 'Instructions',
+        items: [
+          'This option will be automatically replaced with the actual process initiator during workflow execution',
+          'Suitable for scenarios that need to send messages to or wait for replies from the workflow initiator',
+          'System will automatically obtain initiator information from the InitiatedBy field in the workflow_executions table'
+        ]
+      }
+    },
+    
+    // Tags and labels
+    tagLabels: {
+      user: 'User',
+      contact: 'Contact',
+      group: 'Group',
+      hashtag: 'Tag',
+      variable: 'Variable',
+      initiator: 'Process Initiator'
+    },
+    
+    // Fallback texts
+    fallbackTexts: {
+      unknownGroup: 'Unknown Group',
+      unknownTag: 'Unknown Tag',
+      unknownVariable: 'Unknown Variable',
+      autoReplace: 'Auto-replace at runtime',
+      noBroadcastGroupsData: 'No broadcast group data available',
+      noTagsData: 'No tags data available',
+      contactList: 'Contact List',
+      broadcastGroups: 'Broadcast Groups',
+      tags: 'Tags',
+      processVariables: 'Process Variables',
+      selectProcessVariables: 'Select process variables, the system will automatically replace with actual values during execution (recommended to select variables containing phone numbers)',
+      recommendSelectPhoneVariables: 'Recommend selecting variables containing phone numbers',
+      saveInFormat: 'Selected variables will be saved in ${variableName} format',
+      autoReplaceAtRuntime: 'System will automatically replace with actual values during workflow execution',
+      suitableForERP: 'Suitable for integrating external systems (such as ERP)',
+      autoReplaceWithInitiator: 'This option will be automatically replaced with the actual process initiator during workflow execution',
+      suitableForInitiator: 'Suitable for scenarios that need to send messages to or wait for replies from the workflow initiator',
+      autoGetFromWorkflow: 'System will automatically obtain initiator information from the InitiatedBy field in the workflow_executions table',
+      instructions: 'Instructions',
+      displayAllVariables: 'Display all types of process variables'
+    }
+  },
+
+  
   // Language switching
   language: {
     zhTC: '繁體中文',
@@ -1448,7 +1568,18 @@ const en = {
     pleaseEnterLongitude: "Please enter longitude",
     pleaseEnterLocationName: "Please enter location name",
     pleaseEnterCompleteAddress: "Please enter complete address",
-    locationName: "Location Name"
+    locationName: "Location Name",
+    
+    // Template Variable Configuration
+    templateVariables: 'Template Variables',
+    metaTemplateVariableHint: 'Meta Template Variable Configuration',
+    metaTemplateVariableDescription: 'Meta official templates use numeric parameters (1, 2, 3...) or named parameters. Please configure the corresponding variable source according to the template definition.',
+    addTemplateVariable: 'Add Template Variable',
+    parameterName: 'Parameter Name',
+    metaParameterHint: 'Meta template parameters: Use numbers (1, 2, 3...) or variable names (customer_name, order_id)',
+    processVariable: 'Process Variable',
+    selectVariable: 'Select Variable',
+    selectedVariable: 'Selected: {variableName}'
   },
   
       // WhatsApp Workflow Designer
@@ -1970,7 +2101,16 @@ const en = {
     clickToSelectDefaultPath: 'Click to select default path',
     
     // QR Code node translation keys
-    qrCodeErrorMessage: 'QR Code Error Message'
+    qrCodeErrorMessage: 'QR Code Error Message',
+    
+    // Alignment functions
+    alignNodes: 'Align Nodes',
+    alignLeft: 'Left Align',
+    alignCenter: 'Center Align',
+    alignRight: 'Right Align',
+    alignTop: 'Top Align',
+    alignMiddle: 'Vertical Center',
+    alignBottom: 'Bottom Align'
   },
   
   // Workflow Monitor
