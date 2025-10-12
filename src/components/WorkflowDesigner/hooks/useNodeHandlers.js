@@ -53,6 +53,8 @@ export const useNodeHandlers = (nodeTypes, setNodes, setEdges, setSelectedNode, 
         type: nodeType,
         icon: nodeTypeConfig.icon,
         label: nodeTypeConfig.label,
+        width: 160,  // 設置默認寬度
+        height: 60,  // 設置默認高度
         onDelete: handleDeleteNode
       }
     };

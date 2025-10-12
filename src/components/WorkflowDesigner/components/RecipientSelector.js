@@ -22,12 +22,11 @@ const RecipientSelector = ({
   recipientDetails, // 新增：詳細的選擇信息
   compact = false, // 新增：簡潔模式
   workflowDefinitionId, // 新增：工作流定義ID
-  t 
 }) => {
   console.log('🚀 RecipientSelector 組件已渲染');
   console.log('🚀 接收到的 props:', { value, recipientDetails, allowMultiple });
   
-  const { t: translate } = useLanguage();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('users');
   const [loading, setLoading] = useState(false);
   
@@ -783,7 +782,7 @@ const RecipientSelector = ({
               }
             }}
           >
-            Select Recipients
+{t('recipientSelector.title')}
           </div>
         </div>
       </div>
@@ -797,9 +796,9 @@ const RecipientSelector = ({
         selectedHashtags.length > 0 || selectedProcessVariables.length > 0 || useInitiator) && (
         <Card size="small" style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text strong>已選擇的收件人</Text>
+            <Text strong>{t('recipientSelector.selectedRecipients')}</Text>
             <Button type="text" size="small" icon={<ClearOutlined />} onClick={handleClearAll}>
-              清除全部
+              {t('recipientSelector.clearAll')}
             </Button>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -817,7 +816,7 @@ const RecipientSelector = ({
               const group = broadcastGroups.find(g => g.id === groupId);
               return group ? (
                 <Tag key={`group-${groupId}`} color="orange" closable onClose={() => setSelectedGroups(prev => prev.filter(id => id !== groupId))}>
-                  群組: {group.name}
+                  {t('recipientSelector.tagLabels.group')}: {group.name}
                 </Tag>
               ) : null;
             })}
@@ -825,7 +824,7 @@ const RecipientSelector = ({
               const hashtag = hashtags.find(h => h.id === hashtagId);
               return hashtag ? (
                 <Tag key={`hashtag-${hashtagId}`} color="purple" closable onClose={() => setSelectedHashtags(prev => prev.filter(id => id !== hashtagId))}>
-                  標籤: {hashtag.name}
+                  {t('recipientSelector.tagLabels.hashtag')}: {hashtag.name}
                 </Tag>
               ) : null;
             })}
@@ -833,13 +832,13 @@ const RecipientSelector = ({
               const pv = processVariables.find(p => p.id === pvId);
               return pv ? (
                 <Tag key={`pv-${pvId}`} color="cyan" closable onClose={() => setSelectedProcessVariables(prev => prev.filter(id => id !== pvId))}>
-                  變量: {pv.name} ({pv.value})
+                  {t('recipientSelector.tagLabels.variable')}: {pv.name} ({pv.value})
                 </Tag>
               ) : null;
             })}
             {useInitiator && (
               <Tag key="initiator" color="red" closable onClose={() => setUseInitiator(false)}>
-                <PlayCircleOutlined /> 流程啟動人
+                <PlayCircleOutlined /> {t('recipientSelector.tagLabels.initiator')}
               </Tag>
             )}
           </div>
@@ -849,10 +848,10 @@ const RecipientSelector = ({
       {/* 標籤頁 */}
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
         {/* Users Tab */}
-        <TabPane tab={<><UserOutlined /> 用戶</>} key="users">
+        <TabPane tab={<><UserOutlined /> {t('recipientSelector.users')}</>} key="users">
           <div style={{ marginBottom: 16 }}>
             <Input
-              placeholder="搜尋用戶..."
+              placeholder={t('recipientSelector.searchUsers')}
               prefix={<SearchOutlined />}
               value={userSearchText}
               onChange={(e) => setUserSearchText(e.target.value)}
@@ -888,16 +887,16 @@ const RecipientSelector = ({
                   </div>
                 </List.Item>
               )}
-              locale={{ emptyText: '沒有找到用戶' }}
+              locale={{ emptyText: t('recipientSelector.usersTab.noUsersFound') }}
             />
           </Spin>
         </TabPane>
 
         {/* Contact List Tab */}
-        <TabPane tab={<><ContactsOutlined /> 聯絡人</>} key="contacts">
+        <TabPane tab={<><ContactsOutlined /> {t('recipientSelector.contacts')}</>} key="contacts">
           {/* 廣播群組選擇 */}
           <div style={{ marginBottom: 16 }}>
-            <Text strong>廣播群組:</Text>
+            <Text strong>{t('recipientSelector.contactsTab.broadcastGroups')}:</Text>
             <div style={{ marginTop: 8 }}>
               {broadcastGroups.length > 0 ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -939,7 +938,7 @@ const RecipientSelector = ({
                   borderRadius: '6px',
                   fontSize: '12px'
                 }}>
-                  暫無廣播群組數據
+                  {t('recipientSelector.contactsTab.noGroupsData')}
                 </div>
               )}
             </div>
@@ -947,7 +946,7 @@ const RecipientSelector = ({
 
           {/* 標籤選擇 */}
           <div style={{ marginBottom: 16 }}>
-            <Text strong>標籤:</Text>
+            <Text strong>{t('recipientSelector.contactsTab.hashtags')}:</Text>
             <div style={{ marginTop: 8 }}>
               {hashtags.length > 0 ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -989,7 +988,7 @@ const RecipientSelector = ({
                   borderRadius: '6px',
                   fontSize: '12px'
                 }}>
-                  暫無標籤數據
+                  {t('recipientSelector.contactsTab.noHashtagsData')}
                 </div>
               )}
             </div>
@@ -999,16 +998,16 @@ const RecipientSelector = ({
 
           {/* 聯絡人列表 */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text strong>聯絡人列表:</Text>
+            <Text strong>{t('recipientSelector.contactsTab.contactList')}:</Text>
             <Text type="secondary" style={{ fontSize: '12px' }}>
-              共 {contactTotalCount} 個聯絡人
+              {t('recipientSelector.contactsTab.totalContacts', { count: contactTotalCount })}
             </Text>
           </div>
           
           {/* 搜尋聯絡人 */}
           <div style={{ marginBottom: 16 }}>
             <Input
-              placeholder="搜尋聯絡人..."
+              placeholder={t('recipientSelector.searchContacts')}
               prefix={<SearchOutlined />}
               value={contactSearchText}
               onChange={(e) => {
@@ -1049,7 +1048,7 @@ const RecipientSelector = ({
                   </div>
                 </List.Item>
               )}
-              locale={{ emptyText: '沒有找到聯絡人' }}
+              locale={{ emptyText: t('recipientSelector.contactsTab.noContactsFound') }}
             />
             
             {/* 分頁組件 */}
@@ -1063,7 +1062,7 @@ const RecipientSelector = ({
                   showSizeChanger={false}
                   showQuickJumper={true}
                   showTotal={(total, range) => 
-                    `第 ${range[0]}-${range[1]} 項，共 ${total} 項`
+                    t('recipientSelector.contactsTab.pageRange', { start: range[0], end: range[1], total })
                   }
                   size="small"
                 />
@@ -1073,11 +1072,11 @@ const RecipientSelector = ({
         </TabPane>
 
         {/* Process Variables Tab */}
-        <TabPane tab={<><ContactsOutlined /> 流程變量</>} key="processVariables">
+        <TabPane tab={<><ContactsOutlined /> {t('recipientSelector.processVariables')}</>} key="processVariables">
           <div style={{ marginBottom: 16 }}>
-            <Text strong>流程變量:</Text>
+            <Text strong>{t('recipientSelector.processVariablesTab.title')}:</Text>
             <div style={{ color: '#666', fontSize: '12px', marginTop: 4 }}>
-              選擇流程變量，系統會在執行時自動替換為實際值（建議選擇包含電話號碼的變量）
+              {t('recipientSelector.processVariablesTab.description')}
             </div>
           </div>
           
@@ -1113,7 +1112,7 @@ const RecipientSelector = ({
                   </div>
                 </List.Item>
               )}
-              locale={{ emptyText: '沒有找到流程變量' }}
+              locale={{ emptyText: t('recipientSelector.processVariablesTab.noVariablesFound') }}
             />
           </Spin>
           
@@ -1125,19 +1124,19 @@ const RecipientSelector = ({
             fontSize: '12px',
             color: '#666'
           }}>
-            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>說明：</div>
+            <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{t('recipientSelector.processVariablesTab.instructions.title')}：</div>
             <ul style={{ margin: 0, paddingLeft: '16px' }}>
-              <li>顯示所有類型的流程變量</li>
-              <li>建議選擇包含電話號碼的變量</li>
-              <li>選擇後會以 $&#123;變量名&#125; 格式保存</li>
-              <li>系統會在流程執行時自動替換為實際值</li>
-              <li>適用於整合外部系統（如 ERP）的場景</li>
+              <li>{t('recipientSelector.processVariablesTab.instructions.items.0')}</li>
+              <li>{t('recipientSelector.processVariablesTab.instructions.items.1')}</li>
+              <li>{t('recipientSelector.processVariablesTab.instructions.items.2')}</li>
+              <li>{t('recipientSelector.processVariablesTab.instructions.items.3')}</li>
+              <li>{t('recipientSelector.processVariablesTab.instructions.items.4')}</li>
             </ul>
           </div>
         </TabPane>
 
         {/* Workflow Initiator Tab */}
-        <TabPane tab={<><PlayCircleOutlined /> 流程啟動人</>} key="initiators">
+        <TabPane tab={<><PlayCircleOutlined /> {t('recipientSelector.initiators')}</>} key="initiators">
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
               <Checkbox
@@ -1146,9 +1145,9 @@ const RecipientSelector = ({
                 style={{ marginRight: 12 }}
               />
               <div>
-                <div style={{ fontWeight: 'bold', fontSize: '16px' }}>使用流程啟動人</div>
+                <div style={{ fontWeight: 'bold', fontSize: '16px' }}>{t('recipientSelector.initiatorsTab.useInitiator')}</div>
                 <div style={{ color: '#666', fontSize: '12px', marginTop: 4 }}>
-                  勾選後，系統會在流程執行時自動使用啟動該流程實例的用戶作為收件人
+                  {t('recipientSelector.initiatorsTab.description')}
                 </div>
               </div>
             </div>
@@ -1160,11 +1159,11 @@ const RecipientSelector = ({
               fontSize: '12px',
               color: '#666'
             }}>
-              <div style={{ fontWeight: 'bold', marginBottom: 8 }}>說明：</div>
+              <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{t('recipientSelector.initiatorsTab.instructions.title')}：</div>
               <ul style={{ margin: 0, paddingLeft: '16px' }}>
-                <li>此選項會在流程執行時自動替換為實際的流程啟動人</li>
-                <li>適用於需要向啟動流程的用戶發送消息或等待其回覆的場景</li>
-                <li>系統會自動從 workflow_executions 表的 InitiatedBy 字段獲取啟動人信息</li>
+                <li>{t('recipientSelector.initiatorsTab.instructions.items.0')}</li>
+                <li>{t('recipientSelector.initiatorsTab.instructions.items.1')}</li>
+                <li>{t('recipientSelector.initiatorsTab.instructions.items.2')}</li>
               </ul>
             </div>
           </Card>
@@ -1174,9 +1173,9 @@ const RecipientSelector = ({
       {/* 確認按鈕 */}
       <div style={{ marginTop: 16, textAlign: 'right' }}>
         <Space>
-          <Button onClick={handleClearAll}>清除</Button>
+          <Button onClick={handleClearAll}>{t('recipientSelector.clear')}</Button>
           <Button type="primary" onClick={updateRecipientValue}>
-            確認選擇
+            {t('recipientSelector.confirmSelection')}
           </Button>
         </Space>
       </div>
