@@ -300,7 +300,7 @@ namespace PurpleRice.Services
                         recipients.Add(new ResolvedRecipient
                         {
                             PhoneNumber = CleanPhoneNumber(phone), // ✅ 清理電話號碼
-                            RecipientType = "Unknown",
+                            RecipientType = "PhoneNumber",  // 修改為 PhoneNumber 而不是 Unknown
                             RecipientName = phone, // 保留原始格式作為顯示名稱
                             CompanyId = companyId
                         });
@@ -323,7 +323,7 @@ namespace PurpleRice.Services
                     recipients.Add(new ResolvedRecipient
                     {
                         PhoneNumber = CleanPhoneNumber(recipientValue), // ✅ 清理電話號碼
-                        RecipientType = "Unknown",
+                        RecipientType = "PhoneNumber",  // 修改為 PhoneNumber 而不是 Unknown
                         RecipientName = recipientValue, // 保留原始格式作為顯示名稱
                         CompanyId = companyId
                     });

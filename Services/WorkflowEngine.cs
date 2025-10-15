@@ -9,6 +9,7 @@ using PurpleRice.Services.WebhookServices;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using System.Web;
 
 namespace PurpleRice.Services
 {
@@ -25,9 +26,10 @@ namespace PurpleRice.Services
         private readonly IVariableReplacementService _variableReplacementService;
         private readonly PurpleRiceDbContext _context;
         private readonly RecipientResolverService _recipientResolverService;
+        private readonly IEFormTokenService _eFormTokenService;
 
         public WorkflowEngine(IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, 
-            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService, DataSetQueryService dataSetQueryService, IVariableReplacementService variableReplacementService, PurpleRiceDbContext context, RecipientResolverService recipientResolverService)
+            Func<string, LoggingService> loggingServiceFactory, IConfiguration configuration, EFormService eFormService, ISwitchConditionService switchConditionService, UserSessionService userSessionService, DataSetQueryService dataSetQueryService, IVariableReplacementService variableReplacementService, PurpleRiceDbContext context, RecipientResolverService recipientResolverService, IEFormTokenService eFormTokenService)
         {
             _serviceProvider = serviceProvider;
             _whatsAppWorkflowService = whatsAppWorkflowService;
@@ -40,6 +42,7 @@ namespace PurpleRice.Services
             _variableReplacementService = variableReplacementService;
             _context = context;
             _recipientResolverService = recipientResolverService;
+            _eFormTokenService = eFormTokenService;
         }
 
         private void WriteLog(string message)
@@ -1717,360 +1720,351 @@ namespace PurpleRice.Services
                         return false;
                                 }
 
-                    // 根據模式處理表單填充
-                                string filledHtmlCode = eFormDefinition.HtmlCode;
-                                string userMessage = null;
+                    // 先解析收件人（所有模式都需要）
+                    WriteLog($"🔍 [DEBUG] 開始解析收件人");
+                    var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                        nodeData.To, 
+                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
+                        execution.Id,
+                        execution.WorkflowDefinition.CompanyId
+                    );
+                    
+                    WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    
+                    var sendEFormMode = nodeData.SendEFormMode ?? "integrateWaitReply"; // 默認為整合等待用戶回覆模式
+                    
+                    if (sendEFormMode == "manualFill")
+                    {
+                        // === Manual Fill 模式：為每個收件人創建獨立的表單實例 ===
+                        WriteLog($"🔍 [DEBUG] Manual Fill 模式，為每個收件人創建獨立表單");
+                        
+                        var parentInstanceId = Guid.NewGuid(); // 用於關聯同一批次的表單
+                        var instanceIds = new List<Guid>();
+                        
+                        // 為每個收件人創建獨立的表單實例
+                        foreach (var recipient in resolvedRecipients)
+                        {
+                            // 先創建實例 ID
+                            var instanceId = Guid.NewGuid();
+                            
+                            // 使用實際的實例 ID 生成安全 Token
+                            var accessToken = _eFormTokenService.GenerateAccessToken(instanceId, recipient.PhoneNumber);
+                            
+                            // 創建獨立的表單實例
+                            var eFormInstance = new EFormInstance
+                            {
+                                Id = instanceId,
+                                EFormDefinitionId = eFormDefinition.Id,
+                                WorkflowExecutionId = execution.Id,
+                                WorkflowStepExecutionId = execution.CurrentStep ?? 0,
+                                CompanyId = company.Id,
+                                InstanceName = $"{nodeData.FormName}_{recipient.RecipientName ?? recipient.PhoneNumber}_{DateTime.Now:yyyyMMddHHmmss}",
+                                OriginalHtmlCode = eFormDefinition.HtmlCode,
+                                FilledHtmlCode = null,  // Manual Fill 不預填
+                                UserMessage = null,
+                                Status = "Pending",
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow,
                                 
-                                var sendEFormMode = nodeData.SendEFormMode ?? "integrateWaitReply"; // 默認為整合等待用戶回覆模式
-                                
-                                switch (sendEFormMode)
+                                // 新增字段
+                                FillType = "Manual",
+                                RecipientWhatsAppNo = recipient.PhoneNumber,
+                                RecipientName = recipient.RecipientName,
+                                ParentInstanceId = parentInstanceId,
+                                AccessToken = accessToken,
+                                TokenExpiresAt = DateTime.UtcNow.AddDays(30)  // 30天有效期
+                            };
+                            
+                            // 生成帶安全 Token 的表單 URL（需要 URL 編碼 Token）
+                            var encodedToken = System.Web.HttpUtility.UrlEncode(accessToken);
+                            var formUrl = $"/eform-instance/{eFormInstance.Id}?token={encodedToken}";
+                            eFormInstance.FormUrl = formUrl;
+                            
+                            // 保存到數據庫
+                            db.EFormInstances.Add(eFormInstance);
+                            instanceIds.Add(eFormInstance.Id);
+                            
+                            WriteLog($"🔍 [DEBUG] 為收件人 {recipient.PhoneNumber} 創建表單實例: {eFormInstance.Id}");
+                        }
+                        
+                        await db.SaveChangesAsync();
+                        WriteLog($"🔍 [DEBUG] 已創建 {instanceIds.Count} 個表單實例");
+                        
+                        // 發送通知給每個收件人（每個人都收到自己的專屬 URL）
+                        await SendFormNotificationsToRecipients(resolvedRecipients, instanceIds, nodeData, execution, stepExec, db);
+                        
+                        // 設置為等待表單審批狀態
+                        execution.Status = "WaitingForFormApproval";
+                        stepExec.Status = "Waiting";
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                            success = true, 
+                            message = "Manual Fill forms sent successfully, waiting for submissions",
+                            instanceCount = instanceIds.Count,
+                            parentInstanceId = parentInstanceId,
+                            waitingSince = DateTime.Now 
+                        });
+                        
+                        await SaveExecution(execution);
+                        await SaveStepExecution(stepExec);
+                        
+                        WriteLog($"Manual Fill 表單節點設置為等待表單提交狀態");
+                        return false; // 返回 false 表示暫停執行
+                    }
+                    else
+                    {
+                        // === AI Fill / Data Fill 模式：單一表單實例 ===
+                        string filledHtmlCode = eFormDefinition.HtmlCode;
+                        string userMessage = null;
+                        
+                        switch (sendEFormMode)
+                        {
+                            case "integrateWaitReply":
+                                // 整合等待用戶回覆節點 (AI 自然語言填表)
+                                var userMessages = await db.MessageValidations
+                                    .Where(m => m.WorkflowExecutionId == execution.Id && m.IsValid)
+                                    .OrderBy(m => m.CreatedAt)
+                                    .ToListAsync();
+
+                                if (userMessages.Any())
                                 {
-                                    case "integrateWaitReply":
-                                        // 整合等待用戶回覆節點 (AI 自然語言填表)
-                                        var userMessages = await db.MessageValidations
-                                            .Where(m => m.WorkflowExecutionId == execution.Id && m.IsValid)
-                                            .OrderBy(m => m.CreatedAt)
-                                            .ToListAsync();
-
-                                        if (userMessages.Any())
+                                    var latestMessage = userMessages.Last();
+                                    userMessage = latestMessage.UserMessage;
+                                    filledHtmlCode = await _eFormService.FillFormWithAIAsync(eFormDefinition.HtmlCode, latestMessage.UserMessage);
+                                }
+                                WriteLog($"🔍 [DEBUG] 整合等待用戶回覆模式，用戶回覆數量: {userMessages.Count}");
+                                break;
+                                
+                            case "integrateDataSetQuery":
+                                // 整合 DataSet Query 節點 (結構化數據填表)
+                                if (!string.IsNullOrEmpty(nodeData.IntegratedDataSetQueryNodeId))
+                                {
+                                    WriteLog($"🔍 [DEBUG] 查找指定的 DataSet Query 節點: {nodeData.IntegratedDataSetQueryNodeId}");
+                                    
+                                    // 先查看所有 DataSet Query 執行記錄
+                                    var allDataSetSteps = await db.WorkflowStepExecutions
+                                        .Where(s => s.WorkflowExecutionId == execution.Id && 
+                                                   s.StepType == "dataSetQuery")
+                                        .OrderByDescending(s => s.StartedAt)
+                                        .ToListAsync();
+                                    
+                                    WriteLog($"🔍 [DEBUG] 找到 {allDataSetSteps.Count} 個 DataSet Query 執行記錄");
+                                    
+                                    foreach (var step in allDataSetSteps)
+                                    {
+                                        WriteLog($"🔍 [DEBUG] 檢查步驟 {step.Id}，InputJson 長度: {step.InputJson?.Length ?? 0}");
+                                        WriteLog($"🔍 [DEBUG] 步驟 {step.Id} 的 InputJson 內容: {step.InputJson?.Substring(0, Math.Min(200, step.InputJson?.Length ?? 0))}...");
+                                            
+                                        try
                                         {
-                                            var latestMessage = userMessages.Last();
-                                            userMessage = latestMessage.UserMessage;
-                                            filledHtmlCode = await _eFormService.FillFormWithAIAsync(eFormDefinition.HtmlCode, latestMessage.UserMessage);
+                                            var inputJson = JsonSerializer.Deserialize<JsonElement>(step.InputJson);
+                                            
+                                            string foundId = null;
+                                            if (inputJson.TryGetProperty("Id", out var idElement))
+                                            {
+                                                foundId = idElement.GetString();
+                                            }
+                                            else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
+                                            {
+                                                foundId = nodeIdElement.GetString();
+                                            }
+                                            else if (inputJson.TryGetProperty("id", out var idLowerElement))
+                                            {
+                                                foundId = idLowerElement.GetString();
+                                            }
+                                            
+                                            WriteLog($"🔍 [DEBUG] 步驟 {step.Id} 找到的 ID: '{foundId}', 目標 ID: '{nodeData.IntegratedDataSetQueryNodeId}'");
                                         }
-                                        WriteLog($"🔍 [DEBUG] 整合等待用戶回覆模式，用戶回覆數量: {userMessages.Count}");
-                                        break;
-                                        
-                                    case "integrateDataSetQuery":
-                                        // 整合 DataSet Query 節點 (結構化數據填表)
-                                        if (!string.IsNullOrEmpty(nodeData.IntegratedDataSetQueryNodeId))
+                                        catch (Exception ex)
                                         {
-                                            WriteLog($"🔍 [DEBUG] 查找指定的 DataSet Query 節點: {nodeData.IntegratedDataSetQueryNodeId}");
-                                            
-                                            // 先查看所有 DataSet Query 執行記錄
-                                            var allDataSetSteps = await db.WorkflowStepExecutions
-                                                .Where(s => s.WorkflowExecutionId == execution.Id && 
-                                                           s.StepType == "dataSetQuery")
-                                                .OrderByDescending(s => s.StartedAt)
-                                                .ToListAsync();
-                                            
-                                            WriteLog($"🔍 [DEBUG] 找到 {allDataSetSteps.Count} 個 DataSet Query 執行記錄");
-                                            
-                                            foreach (var step in allDataSetSteps)
+                                            WriteLog($"🔍 [DEBUG] 解析步驟 {step.Id} 的 InputJson 時出錯: {ex.Message}");
+                                        }
+                                    }
+                                    
+                                    // 查找指定 DataSet Query 節點的執行記錄
+                                    // 使用精確匹配，避免部分字符串匹配
+                                    var targetStepExecution = allDataSetSteps
+                                        .Where(s => {
+                                            try
                                             {
-                                                WriteLog($"🔍 [DEBUG] 檢查步驟 {step.Id}，InputJson 長度: {step.InputJson?.Length ?? 0}");
-                                                WriteLog($"🔍 [DEBUG] 步驟 {step.Id} 的 InputJson 內容: {step.InputJson?.Substring(0, Math.Min(200, step.InputJson?.Length ?? 0))}...");
+                                                var inputJson = JsonSerializer.Deserialize<JsonElement>(s.InputJson);
                                                 
-                                                try
+                                                string foundId = null;
+                                                if (inputJson.TryGetProperty("Id", out var idElement))
                                                 {
-                                                    var inputJson = JsonSerializer.Deserialize<JsonElement>(step.InputJson);
-                                                    
-                                                    string foundId = null;
-                                                    if (inputJson.TryGetProperty("Id", out var idElement))
-                                                    {
-                                                        foundId = idElement.GetString();
-                                                    }
-                                                    else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
-                                                    {
-                                                        foundId = nodeIdElement.GetString();
-                                                    }
-                                                    else if (inputJson.TryGetProperty("id", out var idLowerElement))
-                                                    {
-                                                        foundId = idLowerElement.GetString();
-                                                    }
-                                                    
-                                                    WriteLog($"🔍 [DEBUG] 步驟 {step.Id} 找到的 ID: '{foundId}', 目標 ID: '{nodeData.IntegratedDataSetQueryNodeId}'");
+                                                    foundId = idElement.GetString();
                                                 }
-                                                catch (Exception ex)
+                                                else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
                                                 {
-                                                    WriteLog($"🔍 [DEBUG] 解析步驟 {step.Id} 的 InputJson 時出錯: {ex.Message}");
+                                                    foundId = nodeIdElement.GetString();
+                                                }
+                                                
+                                                return foundId == nodeData.IntegratedDataSetQueryNodeId;
+                                            }
+                                            catch
+                                            {
+                                                return false;
+                                            }
+                                        })
+                                        .FirstOrDefault();
+                                    
+                                    // 如果還是找不到，嘗試更精確的查找方式
+                                    if (targetStepExecution == null)
+                                    {
+                                        WriteLog($"🔍 [DEBUG] 使用原始查找方式找不到，嘗試更精確的查找");
+                                        
+                                        // 使用精確的 ID 匹配
+                                        foreach (var step in allDataSetSteps)
+                                        {
+                                            try
+                                            {
+                                                var inputJson = JsonSerializer.Deserialize<JsonElement>(step.InputJson);
+                                                
+                                                string foundId = null;
+                                                if (inputJson.TryGetProperty("Id", out var idElement))
+                                                {
+                                                    foundId = idElement.GetString();
+                                                }
+                                                else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
+                                                {
+                                                    foundId = nodeIdElement.GetString();
+                                                }
+                                                else if (inputJson.TryGetProperty("id", out var idLowerElement))
+                                                {
+                                                    foundId = idLowerElement.GetString();
+                                                }
+                                                
+                                                WriteLog($"🔍 [DEBUG] 精確匹配檢查 - 步驟 {step.Id} 找到的 ID: '{foundId}', 目標 ID: '{nodeData.IntegratedDataSetQueryNodeId}'");
+                                                
+                                                if (foundId == nodeData.IntegratedDataSetQueryNodeId)
+                                                {
+                                                    targetStepExecution = step;
+                                                    WriteLog($"🔍 [DEBUG] 通過精確匹配找到 DataSet Query 節點: {step.Id}");
+                                                    break;
                                                 }
                                             }
-                                            
-                                            // 查找指定 DataSet Query 節點的執行記錄
-                                            // 使用精確匹配，避免部分字符串匹配
-                                            var targetStepExecution = allDataSetSteps
-                                                .Where(s => {
-                                                    try
-                                                    {
-                                                        var inputJson = JsonSerializer.Deserialize<JsonElement>(s.InputJson);
-                                                        
-                                                        string foundId = null;
-                                                        if (inputJson.TryGetProperty("Id", out var idElement))
-                                                        {
-                                                            foundId = idElement.GetString();
-                                                        }
-                                                        else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
-                                                        {
-                                                            foundId = nodeIdElement.GetString();
-                                                        }
-                                                        
-                                                        return foundId == nodeData.IntegratedDataSetQueryNodeId;
-                                                    }
-                                                    catch
-                                                    {
-                                                        return false;
-                                                    }
-                                                })
-                                                .FirstOrDefault();
-                                            
-                                            // 如果還是找不到，嘗試更精確的查找方式
-                                            if (targetStepExecution == null)
+                                            catch (Exception ex)
                                             {
-                                                WriteLog($"🔍 [DEBUG] 使用原始查找方式找不到，嘗試更精確的查找");
-                                                
-                                                // 使用精確的 ID 匹配
-                                                foreach (var step in allDataSetSteps)
-                                                {
-                                                    try
-                                                    {
-                                                        var inputJson = JsonSerializer.Deserialize<JsonElement>(step.InputJson);
-                                                        
-                                                        string foundId = null;
-                                                        if (inputJson.TryGetProperty("Id", out var idElement))
-                                                        {
-                                                            foundId = idElement.GetString();
-                                                        }
-                                                        else if (inputJson.TryGetProperty("NodeId", out var nodeIdElement))
-                                                        {
-                                                            foundId = nodeIdElement.GetString();
-                                                        }
-                                                        else if (inputJson.TryGetProperty("id", out var idLowerElement))
-                                                        {
-                                                            foundId = idLowerElement.GetString();
-                                                        }
-                                                        
-                                                        WriteLog($"🔍 [DEBUG] 精確匹配檢查 - 步驟 {step.Id} 找到的 ID: '{foundId}', 目標 ID: '{nodeData.IntegratedDataSetQueryNodeId}'");
-                                                        
-                                                        if (foundId == nodeData.IntegratedDataSetQueryNodeId)
-                                                        {
-                                                            targetStepExecution = step;
-                                                            WriteLog($"🔍 [DEBUG] 通過精確匹配找到 DataSet Query 節點: {step.Id}");
-                                                            break;
-                                                        }
-                                                    }
-                                                    catch (Exception ex)
-                                                    {
-                                                        WriteLog($"🔍 [DEBUG] 解析步驟 {step.Id} 的 InputJson 時出錯: {ex.Message}");
-                                                    }
-                                                }
-                                                
-                                                if (targetStepExecution == null)
-                                                {
-                                                    WriteLog($"⚠️ [WARNING] 無法找到指定的 DataSet Query 節點執行記錄，不應回退到其他查詢");
-                                                }
+                                                WriteLog($"🔍 [DEBUG] 解析步驟 {step.Id} 的 InputJson 時出錯: {ex.Message}");
                                             }
+                                        }
+                                        
+                                        if (targetStepExecution == null)
+                                        {
+                                            WriteLog($"⚠️ [WARNING] 無法找到指定的 DataSet Query 節點執行記錄，不應回退到其他查詢");
+                                        }
+                                    }
 
-                                            if (targetStepExecution != null)
+                                    if (targetStepExecution != null)
+                                    {
+                                        WriteLog($"🔍 [DEBUG] 找到 DataSet Query 節點執行記錄: {targetStepExecution.Id}");
+                                        
+                                        WriteLog($"🔍 [DEBUG] 查找查詢結果 - WorkflowExecutionId: {execution.Id}, StepExecutionId: {targetStepExecution.Id}");
+                                        
+                                        var queryResults = await db.WorkflowDataSetQueryResults
+                                            .Where(r => r.WorkflowExecutionId == execution.Id && r.StepExecutionId == targetStepExecution.Id)
+                                            .OrderByDescending(r => r.ExecutedAt)
+                                            .FirstOrDefaultAsync();
+
+                                        WriteLog($"🔍 [DEBUG] 查詢結果記錄: {(queryResults != null ? $"ID={queryResults.Id}, DataSetId={queryResults.DataSetId}, StepExecutionId={queryResults.StepExecutionId}" : "null")}");
+
+                                        if (queryResults != null && !string.IsNullOrEmpty(queryResults.QueryResult))
+                                        {
+                                            WriteLog($"🔍 [DEBUG] 找到查詢結果，記錄數量: {queryResults.TotalRecords}");
+                                            WriteLog($"🔍 [DEBUG] 查詢結果內容: {queryResults.QueryResult}");
+                                            
+                                            // 解析查詢結果並填充表單
+                                            var originalHtmlLength = eFormDefinition.HtmlCode?.Length ?? 0;
+                                            filledHtmlCode = await FillFormWithDataSetQueryResults(eFormDefinition.HtmlCode, queryResults.QueryResult);
+                                            var filledHtmlLength = filledHtmlCode?.Length ?? 0;
+                                            
+                                            WriteLog($"🔍 [DEBUG] 表單填充完成 - 原始長度: {originalHtmlLength}, 填充後長度: {filledHtmlLength}");
+                                            WriteLog($"🔍 [DEBUG] 填充後 HTML 是否與原始相同: {filledHtmlCode == eFormDefinition.HtmlCode}");
+                                            
+                                            if (filledHtmlCode == eFormDefinition.HtmlCode)
                                             {
-                                                WriteLog($"🔍 [DEBUG] 找到 DataSet Query 節點執行記錄: {targetStepExecution.Id}");
-                                                
-                                                WriteLog($"🔍 [DEBUG] 查找查詢結果 - WorkflowExecutionId: {execution.Id}, StepExecutionId: {targetStepExecution.Id}");
-                                                
-                                                var queryResults = await db.WorkflowDataSetQueryResults
-                                                    .Where(r => r.WorkflowExecutionId == execution.Id && r.StepExecutionId == targetStepExecution.Id)
-                                                    .OrderByDescending(r => r.ExecutedAt)
-                                                    .FirstOrDefaultAsync();
-
-                                                WriteLog($"🔍 [DEBUG] 查詢結果記錄: {(queryResults != null ? $"ID={queryResults.Id}, DataSetId={queryResults.DataSetId}, StepExecutionId={queryResults.StepExecutionId}" : "null")}");
-
-                                                if (queryResults != null && !string.IsNullOrEmpty(queryResults.QueryResult))
-                                                {
-                                                    WriteLog($"🔍 [DEBUG] 找到查詢結果，記錄數量: {queryResults.TotalRecords}");
-                                                    WriteLog($"🔍 [DEBUG] 查詢結果內容: {queryResults.QueryResult}");
-                                                    
-                                                    // 解析查詢結果並填充表單
-                                                    var originalHtmlLength = eFormDefinition.HtmlCode?.Length ?? 0;
-                                                    filledHtmlCode = await FillFormWithDataSetQueryResults(eFormDefinition.HtmlCode, queryResults.QueryResult);
-                                                    var filledHtmlLength = filledHtmlCode?.Length ?? 0;
-                                                    
-                                                    WriteLog($"🔍 [DEBUG] 表單填充完成 - 原始長度: {originalHtmlLength}, 填充後長度: {filledHtmlLength}");
-                                                    WriteLog($"🔍 [DEBUG] 填充後 HTML 是否與原始相同: {filledHtmlCode == eFormDefinition.HtmlCode}");
-                                                    
-                                                    if (filledHtmlCode == eFormDefinition.HtmlCode)
-                                                    {
-                                                        WriteLog($"⚠️ [WARNING] 表單填充可能失敗，HTML 沒有變化");
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    WriteLog($"⚠️ [WARNING] 找不到 DataSet Query 結果，使用空白表單");
-                                                }
-                                            }
-                                            else
-                                            {
-                                                WriteLog($"⚠️ [WARNING] 找不到指定的 DataSet Query 節點執行記錄 (NodeId: {nodeData.IntegratedDataSetQueryNodeId})，使用空白表單");
+                                                WriteLog($"⚠️ [WARNING] 表單填充可能失敗，HTML 沒有變化");
                                             }
                                         }
                                         else
                                         {
-                                            WriteLog($"⚠️ [WARNING] 未指定 DataSet Query 節點 ID，使用空白表單");
+                                            WriteLog($"⚠️ [WARNING] 找不到 DataSet Query 結果，使用空白表單");
                                         }
-                                        break;
-                                        
-                                    case "manualFill":
-                                        // 手動填表 (獨立運行)
-                                        WriteLog($"🔍 [DEBUG] 手動填表模式，發送空白表單");
-                                        break;
-                                        
-                                    default:
-                                        WriteLog($"⚠️ [WARNING] 未知的表單填充模式: {sendEFormMode}，使用默認模式");
-                                        break;
-                                }
-
-                                // 創建表單實例
-                                var eFormInstance = new EFormInstance
-                                {
-                                    Id = Guid.NewGuid(),
-                                    EFormDefinitionId = eFormDefinition.Id,
-                                    WorkflowExecutionId = execution.Id,
-                                    WorkflowStepExecutionId = execution.CurrentStep ?? 0,
-                                    CompanyId = company.Id,
-                                    InstanceName = $"{nodeData.FormName}_{execution.Id}_{DateTime.Now:yyyyMMddHHmmss}",
-                                    OriginalHtmlCode = eFormDefinition.HtmlCode,
-                                    FilledHtmlCode = filledHtmlCode,
-                                    UserMessage = userMessage,
-                                    Status = "Pending",
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                };
-
-                                // 生成表單 URL
-                                var formUrl = $"/eform-instance/{eFormInstance.Id}";
-                                eFormInstance.FormUrl = formUrl;
-
-                                // 保存到數據庫
-                                db.EFormInstances.Add(eFormInstance);
-                                await db.SaveChangesAsync();
-
-                                WriteLog($"🔍 [DEBUG] 開始解析收件人");
-                                // 使用 RecipientResolverService 解析收件人
-                                var resolvedRecipients = await _recipientResolverService.ResolveRecipientsAsync(
-                                    nodeData.To, 
-                                    nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, 
-                                    execution.Id,
-                                    execution.WorkflowDefinition.CompanyId
-                                );
-                                
-                                WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
-                                
-                                // 根據訊息模式發送通知
-                                string messageMode = nodeData.MessageMode ?? "direct";
-                                WriteLog($"🔍 [DEBUG] sendEForm messageMode: {messageMode}");
-                                
-                                Guid messageSendId = Guid.Empty;
-                                
-                                if (messageMode == "template")
-                                {
-                                    WriteLog($"📝 sendEForm 使用模板模式");
-                                    
-                                    if (string.IsNullOrEmpty(nodeData.TemplateName))
-                                    {
-                                        WriteLog($"⚠️ [WARNING] sendEForm 模板模式但未選擇模板，跳過發送通知");
                                     }
                                     else
                                     {
-                                        // 使用共用方法處理模板變數
-                                        Dictionary<string, string> processedVariables;
-                                        if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
-                                        {
-                                            WriteLog($"🔍 [DEBUG] sendEForm 使用新的模板變數配置");
-                                            processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
-                                        }
-                                        else
-                                        {
-                                            WriteLog($"🔍 [DEBUG] sendEForm 使用舊的模板變數配置");
-                                            processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
-                                        }
-                                        
-                                        // 添加表單 URL 作為變數（sendEForm 特殊處理）
-                                        processedVariables["formUrl"] = formUrl;
-                                        processedVariables["formName"] = nodeData.FormName ?? "";
-                                        
-                                        // 發送模板訊息
-                                        messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
-                                            nodeData.To,
-                                            nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null,
-                                            nodeData.TemplateId,
-                                            nodeData.TemplateName,
-                                            processedVariables,
-                                            execution,
-                                            stepExec,
-                                            stepExec.Id.ToString(),
-                                            "sendEForm",
-                                            db,
-                                            nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                                            nodeData.TemplateLanguage  // 傳遞模板語言代碼
-                                        );
-                                        
-                                        WriteLog($"🔍 [DEBUG] EForm 通知模板訊息發送完成，ID: {messageSendId}");
+                                        WriteLog($"⚠️ [WARNING] 找不到指定的 DataSet Query 節點執行記錄 (NodeId: {nodeData.IntegratedDataSetQueryNodeId})，使用空白表單");
                                     }
                                 }
                                 else
                                 {
-                                    WriteLog($"💬 sendEForm 使用直接訊息模式");
-                                    
-                                    // 構建通知消息
-                                    string message;
-                                    if (nodeData.UseCustomMessage && !string.IsNullOrEmpty(nodeData.MessageTemplate))
-                                    {
-                                        // 使用自定義消息模板，支持變量替換
-                                        message = nodeData.MessageTemplate
-                                            .Replace("{formName}", nodeData.FormName ?? "")
-                                            .Replace("{formUrl}", formUrl);
-                                    }
-                                    else
-                                    {
-                                        // 使用預設消息
-                                        message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{formUrl}";
-                                    }
-                                    
-                                    messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
-                                        nodeData.To, // 使用原始收件人值
-                                        nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null, // 使用原始收件人詳細信息
-                                        message,
-                                        execution,
-                                        stepExec,
-                                        stepExec.Id.ToString(), // nodeId
-                                        "sendEForm",
-                                        db
-                                    );
-                                    
-                                    WriteLog($"🔍 [DEBUG] EForm 通知訊息發送記錄創建完成，ID: {messageSendId}");
+                                    WriteLog($"⚠️ [WARNING] 未指定 DataSet Query 節點 ID，使用空白表單");
                                 }
+                                break;
                                 
-                                WriteLog($"🔍 [DEBUG] EForm 通知發送完成，收件人數量: {resolvedRecipients.Count}");
+                            default:
+                                WriteLog($"⚠️ [WARNING] 未知的表單填充模式: {sendEFormMode}，使用默認模式");
+                                break;
+                        }
 
-                                // 設置為等待表單審批狀態
-                                execution.Status = "WaitingForFormApproval";
-                                 stepExec.Status = "Waiting";
-                                 stepExec.OutputJson = JsonSerializer.Serialize(new { 
-                                     success = true, 
-                                     message = "EForm sent successfully, waiting for approval",
-                                     formInstanceId = eFormInstance.Id,
-                                     recipientCount = resolvedRecipients.Count,
-                                     messageSendId = messageSendId,
-                                     waitingSince = DateTime.Now 
-                                 });
-                                 
-                                 // 保存狀態
-                    await SaveExecution(execution);
-                    await SaveStepExecution(stepExec);
-                    
-                    WriteLog($"eForm 節點設置為等待表單審批狀態");
-                    return false; // 返回 false 表示暫停執行
-                             }
-                             catch (Exception ex)
-                             {
-                                 WriteLog($"eForm 處理失敗: {ex.Message}");
-                                 stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                        // 創建單一表單實例
+                        var eFormInstance = new EFormInstance
+                        {
+                            Id = Guid.NewGuid(),
+                            EFormDefinitionId = eFormDefinition.Id,
+                            WorkflowExecutionId = execution.Id,
+                            WorkflowStepExecutionId = execution.CurrentStep ?? 0,
+                            CompanyId = company.Id,
+                            InstanceName = $"{nodeData.FormName}_{execution.Id}_{DateTime.Now:yyyyMMddHHmmss}",
+                            OriginalHtmlCode = eFormDefinition.HtmlCode,
+                            FilledHtmlCode = filledHtmlCode,
+                            UserMessage = userMessage,
+                            Status = "Pending",
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow,
+                            FillType = sendEFormMode == "integrateWaitReply" ? "AI" : "Data"
+                        };
+
+                        // 生成表單 URL
+                        var formUrl = $"/eform-instance/{eFormInstance.Id}";
+                        eFormInstance.FormUrl = formUrl;
+
+                        // 保存到數據庫
+                        db.EFormInstances.Add(eFormInstance);
+                        await db.SaveChangesAsync();
+                        
+                        // 為 AI Fill / Data Fill 模式發送通知
+                        await SendFormNotificationsForSingleInstance(eFormInstance, resolvedRecipients, nodeData, execution, stepExec, db);
+                        
+                        // 設置為等待表單審批狀態
+                        execution.Status = "WaitingForFormApproval";
+                        stepExec.Status = "Waiting";
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                            success = true, 
+                            message = "EForm sent successfully, waiting for approval",
+                            formInstanceId = eFormInstance.Id,
+                            recipientCount = resolvedRecipients.Count,
+                            waitingSince = DateTime.Now 
+                        });
+                        
+                        // 保存狀態
+                        await SaveExecution(execution);
+                        await SaveStepExecution(stepExec);
+                        
+                        WriteLog($"eForm 節點設置為等待表單審批狀態");
+                        return false; // 返回 false 表示暫停執行
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"eForm 處理失敗: {ex.Message}");
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
                     return false;
-                             }
-                         }
-                         else
-                         {
-                             WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, recipientDetails={nodeData.RecipientDetails}");
-                             stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                }
+            }
+            else
+            {
+                WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, recipientDetails={nodeData.RecipientDetails}");
+                stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
                 return false;
             }
         }
@@ -2846,6 +2840,211 @@ namespace PurpleRice.Services
             WriteLog($"獲取流程變量失敗: {ex.Message}");
             return new Dictionary<string, object>();
         }
+    }
+
+    // 輔助方法：為 Manual Fill 模式發送通知
+    private async Task SendFormNotificationsToRecipients(
+        List<ResolvedRecipient> resolvedRecipients, 
+        List<Guid> instanceIds, 
+        WorkflowNodeData nodeData, 
+        WorkflowExecution execution, 
+        WorkflowStepExecution stepExec, 
+        PurpleRiceDbContext db)
+    {
+        WriteLog($"🔍 [DEBUG] 開始為 {resolvedRecipients.Count} 個收件人發送表單通知");
+        
+        // 獲取所有表單實例
+        var instances = await db.EFormInstances
+            .Where(i => instanceIds.Contains(i.Id))
+            .ToListAsync();
+        
+        // 根據訊息模式發送通知
+        string messageMode = nodeData.MessageMode ?? "direct";
+        WriteLog($"🔍 [DEBUG] sendEForm messageMode: {messageMode}");
+        
+        Guid messageSendId = Guid.Empty;
+        
+        if (messageMode == "template")
+        {
+            WriteLog($"📝 Manual Fill 使用模板模式");
+            
+            if (!string.IsNullOrEmpty(nodeData.TemplateName))
+            {
+                // 使用共用方法處理模板變數
+                Dictionary<string, string> processedVariables;
+                if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
+                {
+                    processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                }
+                else
+                {
+                    processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                }
+                
+                // 為每個收件人發送個性化的模板消息
+                foreach (var recipient in resolvedRecipients)
+                {
+                    var instance = instances.FirstOrDefault(i => i.RecipientWhatsAppNo == recipient.PhoneNumber);
+                    if (instance != null)
+                    {
+                        // 添加個性化的表單 URL
+                        processedVariables["formUrl"] = instance.FormUrl;
+                        processedVariables["formName"] = nodeData.FormName ?? "";
+                        processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
+                        
+                        // 發送模板訊息
+                        messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                            recipient.PhoneNumber,
+                            null, // Manual Fill 不需要複雜的收件人配置
+                            nodeData.TemplateId,
+                            nodeData.TemplateName,
+                            processedVariables,
+                            execution,
+                            stepExec,
+                            stepExec.Id.ToString(),
+                            "sendEForm",
+                            db,
+                            nodeData.IsMetaTemplate,
+                            nodeData.TemplateLanguage
+                        );
+                        
+                        WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 發送表單通知，ID: {messageSendId}");
+                    }
+                }
+            }
+        }
+        else
+        {
+            WriteLog($"💬 Manual Fill 使用直接訊息模式");
+            
+            // 為每個收件人發送個性化的直接消息
+            foreach (var recipient in resolvedRecipients)
+            {
+                var instance = instances.FirstOrDefault(i => i.RecipientWhatsAppNo == recipient.PhoneNumber);
+                if (instance != null)
+                {
+                    // 構建個性化通知消息
+                    string message;
+                    if (nodeData.UseCustomMessage && !string.IsNullOrEmpty(nodeData.MessageTemplate))
+                    {
+                        message = nodeData.MessageTemplate
+                            .Replace("{formName}", nodeData.FormName ?? "")
+                            .Replace("{formUrl}", instance.FormUrl)
+                            .Replace("{recipientName}", recipient.RecipientName ?? recipient.PhoneNumber);
+                    }
+                    else
+                    {
+                        message = $"您好 {recipient.RecipientName ?? recipient.PhoneNumber}，您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{instance.FormUrl}";
+                    }
+                    
+                    messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                        recipient.PhoneNumber,
+                        null,
+                        message,
+                        execution,
+                        stepExec,
+                        stepExec.Id.ToString(),
+                        "sendEForm",
+                        db
+                    );
+                    
+                    WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 發送表單通知，ID: {messageSendId}");
+                }
+            }
+        }
+        
+        WriteLog($"🔍 [DEBUG] Manual Fill 表單通知發送完成");
+    }
+
+    // 輔助方法：為單一表單實例發送通知
+    private async Task SendFormNotificationsForSingleInstance(
+        EFormInstance eFormInstance,
+        List<ResolvedRecipient> resolvedRecipients,
+        WorkflowNodeData nodeData, 
+        WorkflowExecution execution, 
+        WorkflowStepExecution stepExec, 
+        PurpleRiceDbContext db)
+    {
+        WriteLog($"🔍 [DEBUG] 為單一表單實例發送通知");
+        
+        // 根據訊息模式發送通知
+        string messageMode = nodeData.MessageMode ?? "direct";
+        WriteLog($"🔍 [DEBUG] sendEForm messageMode: {messageMode}");
+        
+        Guid messageSendId = Guid.Empty;
+        
+        if (messageMode == "template")
+        {
+            WriteLog($"📝 sendEForm 使用模板模式");
+            
+            if (!string.IsNullOrEmpty(nodeData.TemplateName))
+            {
+                // 使用共用方法處理模板變數
+                Dictionary<string, string> processedVariables;
+                if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
+                {
+                    processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                }
+                else
+                {
+                    processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                }
+                
+                // 添加表單 URL 作為變數
+                processedVariables["formUrl"] = eFormInstance.FormUrl;
+                processedVariables["formName"] = nodeData.FormName ?? "";
+                
+                // 發送模板訊息
+                messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                    nodeData.To,
+                    nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null,
+                    nodeData.TemplateId,
+                    nodeData.TemplateName,
+                    processedVariables,
+                    execution,
+                    stepExec,
+                    stepExec.Id.ToString(),
+                    "sendEForm",
+                    db,
+                    nodeData.IsMetaTemplate,
+                    nodeData.TemplateLanguage
+                );
+                
+                WriteLog($"🔍 [DEBUG] EForm 通知模板訊息發送完成，ID: {messageSendId}");
+            }
+        }
+        else
+        {
+            WriteLog($"💬 sendEForm 使用直接訊息模式");
+            
+            // 構建通知消息
+            string message;
+            if (nodeData.UseCustomMessage && !string.IsNullOrEmpty(nodeData.MessageTemplate))
+            {
+                message = nodeData.MessageTemplate
+                    .Replace("{formName}", nodeData.FormName ?? "")
+                    .Replace("{formUrl}", eFormInstance.FormUrl);
+            }
+            else
+            {
+                message = $"您的{nodeData.FormName}已準備就緒，請點擊以下鏈接填寫：\n\n{eFormInstance.FormUrl}";
+            }
+            
+            messageSendId = await _whatsAppWorkflowService.SendWhatsAppMessageWithTrackingAsync(
+                nodeData.To,
+                nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : null,
+                message,
+                execution,
+                stepExec,
+                stepExec.Id.ToString(),
+                "sendEForm",
+                db
+            );
+            
+            WriteLog($"🔍 [DEBUG] EForm 通知訊息發送記錄創建完成，ID: {messageSendId}");
+        }
+        
+        WriteLog($"🔍 [DEBUG] EForm 通知發送完成，收件人數量: {resolvedRecipients.Count}");
     }
 } // class WorkflowEngine
 } // namespace PurpleRice.Services

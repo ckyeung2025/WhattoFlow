@@ -166,7 +166,7 @@ const MetaTemplatePanel = () => {
       // 如果有變數，添加示例
       if (bodyVariables.length > 0) {
         bodyComponent.example = {
-          body_text: bodyVariables.map(v => v.example || t('whatsappTemplate.metaTemplate.exampleValue').replace('{index}', v.index))
+          body_text: [bodyVariables.map(v => v.example || t('whatsappTemplate.metaTemplate.exampleValue').replace('{index}', v.index))]
         };
       }
       
@@ -318,6 +318,14 @@ const MetaTemplatePanel = () => {
 
   // 預覽模板
   const handlePreviewTemplate = (template) => {
+    console.log('🔍 [DEBUG] 預覽模板數據:', {
+      name: template.name,
+      status: template.status,
+      rejected_reason: template.rejected_reason,
+      quality_rating: template.quality_rating,
+      created_time: template.created_time,
+      updated_time: template.updated_time
+    });
     setPreviewTemplate(template);
     setIsPreviewModalVisible(true);
   };
@@ -328,13 +336,15 @@ const MetaTemplatePanel = () => {
     if (matches) {
       const variables = matches.map(match => {
         const index = parseInt(match.replace(/\{\{|\}\}/g, ''));
-        return { index, example: '' };
+        // 保留現有的示例數據，如果沒有則為空
+        const existingVariable = bodyVariables.find(v => v.index === index);
+        return { index, example: existingVariable?.example || '' };
       });
       setBodyVariables(variables);
     } else {
       setBodyVariables([]);
     }
-  }, []);
+  }, [bodyVariables]);
 
   // 防抖函數
   const debounce = useCallback((func, delay) => {
@@ -886,6 +896,7 @@ const MetaTemplatePanel = () => {
               onClick={() => handlePreviewTemplate(record)}
             />
           </Tooltip>
+          
           <Popconfirm
             title={t('whatsappTemplate.metaTemplate.deleteConfirmTitle')}
             description={t('whatsappTemplate.metaTemplate.deleteConfirmDescription')}
@@ -1317,7 +1328,7 @@ const MetaTemplatePanel = () => {
             {t('whatsappTemplate.metaTemplate.cancel')}
           </Button>
         ]}
-        width={600}
+        width={700}
       >
         {previewTemplate && (
           <div>
@@ -1325,7 +1336,79 @@ const MetaTemplatePanel = () => {
               <p><strong>{t('whatsappTemplate.metaTemplate.name')}</strong>{previewTemplate.name}</p>
               <p><strong>{t('whatsappTemplate.metaTemplate.category')}</strong><Tag>{previewTemplate.category}</Tag></p>
               <p><strong>{t('whatsappTemplate.metaTemplate.language')}</strong><Tag>{previewTemplate.language}</Tag></p>
-              <p><strong>{t('whatsappTemplate.metaTemplate.status')}</strong><Tag color={previewTemplate.status === 'APPROVED' ? 'green' : 'orange'}>{previewTemplate.status}</Tag></p>
+              <p><strong>{t('whatsappTemplate.metaTemplate.status')}</strong>
+                <Tag color={previewTemplate.status === 'APPROVED' ? 'green' : previewTemplate.status === 'REJECTED' ? 'red' : 'orange'}>
+                  {previewTemplate.status}
+                </Tag>
+              </p>
+              
+              {/* 顯示拒絕原因 */}
+              {previewTemplate.status === 'REJECTED' && (
+                <div style={{ marginTop: 12 }}>
+                  <p><strong style={{ color: '#ff4d4f' }}>❌ {t('whatsappTemplate.metaTemplate.rejectionReason')}</strong></p>
+                  
+                  {previewTemplate.rejected_reason ? (
+                    <div style={{ 
+                      padding: 12, 
+                      background: '#fff2f0', 
+                      border: '1px solid #ffccc7',
+                      borderRadius: 6,
+                      color: '#ff4d4f'
+                    }}>
+                      {previewTemplate.rejected_reason}
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      padding: 12, 
+                      background: '#fff2f0', 
+                      border: '1px solid #ffccc7',
+                      borderRadius: 6,
+                      color: '#ff4d4f'
+                    }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <strong>{t('whatsappTemplate.metaTemplate.apiNoRejectionReason')}</strong>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        {t('whatsappTemplate.metaTemplate.apiLimitationNote')}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
+                    💡 <strong>{t('whatsappTemplate.metaTemplate.suggestion')}</strong>{t('whatsappTemplate.metaTemplate.suggestionText')}
+                    
+                    <div style={{ marginTop: 8, padding: 8, background: '#f6f6f6', borderRadius: 4 }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{t('whatsappTemplate.metaTemplate.commonRejectionReasons')}</div>
+                      <div>• <strong>{t('whatsappTemplate.metaTemplate.floatingParameters')}</strong>{t('whatsappTemplate.metaTemplate.floatingParametersDesc')}</div>
+                      <div>• <strong>{t('whatsappTemplate.metaTemplate.marketingContent')}</strong>{t('whatsappTemplate.metaTemplate.marketingContentDesc')}</div>
+                      <div>• <strong>{t('whatsappTemplate.metaTemplate.policyViolation')}</strong>{t('whatsappTemplate.metaTemplate.policyViolationDesc')}</div>
+                      <div>• <strong>{t('whatsappTemplate.metaTemplate.wrongCategory')}</strong>{t('whatsappTemplate.metaTemplate.wrongCategoryDesc')}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* 顯示質量評級 */}
+              {previewTemplate.quality_rating && (
+                <p style={{ marginTop: 8 }}>
+                  <strong>質量評級：</strong>
+                  <Tag color={previewTemplate.quality_rating === 'HIGH' ? 'green' : previewTemplate.quality_rating === 'MEDIUM' ? 'orange' : 'red'}>
+                    {previewTemplate.quality_rating}
+                  </Tag>
+                </p>
+              )}
+              
+              {/* 顯示創建/更新時間 */}
+              {previewTemplate.created_time && (
+                <p style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
+                  <strong>創建時間：</strong>{new Date(previewTemplate.created_time).toLocaleString('zh-TW')}
+                </p>
+              )}
+              {previewTemplate.updated_time && (
+                <p style={{ fontSize: '12px', color: '#999' }}>
+                  <strong>更新時間：</strong>{new Date(previewTemplate.updated_time).toLocaleString('zh-TW')}
+                </p>
+              )}
             </Card>
 
             <Card title={t('whatsappTemplate.metaTemplate.templateContent')} size="small">
@@ -1336,7 +1419,9 @@ const MetaTemplatePanel = () => {
                     padding: 8, 
                     background: '#f5f5f5', 
                     borderRadius: 4,
-                    marginTop: 4
+                    marginTop: 4,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
                   }}>
                     {component.text || JSON.stringify(component, null, 2)}
                   </div>

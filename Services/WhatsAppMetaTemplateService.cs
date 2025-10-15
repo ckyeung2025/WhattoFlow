@@ -61,6 +61,9 @@ namespace PurpleRice.Services
                 var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates";
                 var queryParams = new List<string>();
 
+                // 添加 fields 參數以獲取完整信息（包括拒絕原因）
+                queryParams.Add("fields=name,status,category,id,language,components,rejected_reason,quality_rating,created_time,updated_time");
+
                 if (!string.IsNullOrEmpty(name))
                 {
                     queryParams.Add($"name={Uri.EscapeDataString(name)}");
@@ -106,6 +109,20 @@ namespace PurpleRice.Services
                 });
 
                 _loggingService.LogInformation($"✅ 成功獲取 {result?.Data?.Count ?? 0} 個 Meta 模板");
+                
+                // 調試：檢查被拒絕的模板
+                if (result?.Data != null)
+                {
+                    var rejectedTemplates = result.Data.Where(t => t.Status == "REJECTED").ToList();
+                    if (rejectedTemplates.Any())
+                    {
+                        _loggingService.LogInformation($"🔍 發現 {rejectedTemplates.Count} 個被拒絕的模板:");
+                        foreach (var template in rejectedTemplates)
+                        {
+                            _loggingService.LogInformation($"  - 模板: {template.Name}, 拒絕原因: {template.RejectedReason ?? "未提供"}, 質量評級: {template.QualityRating ?? "未提供"}");
+                        }
+                    }
+                }
 
                 return result;
             }
@@ -260,6 +277,19 @@ namespace PurpleRice.Services
         public string Id { get; set; }
         public string Language { get; set; }
         public List<MetaComponent> Components { get; set; }
+        
+        // 新增：拒絕原因相關字段
+        [System.Text.Json.Serialization.JsonPropertyName("rejected_reason")]
+        public string? RejectedReason { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("quality_rating")]
+        public string? QualityRating { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("created_time")]
+        public DateTime? CreatedTime { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("updated_time")]
+        public DateTime? UpdatedTime { get; set; }
     }
 
     public class MetaComponent
@@ -348,10 +378,10 @@ namespace PurpleRice.Services
     public class MetaExampleRequest
     {
         [System.Text.Json.Serialization.JsonPropertyName("header_text")]
-        public List<string>? HeaderText { get; set; }
+        public List<List<string>>? HeaderText { get; set; }  // 修改為嵌套數組
         
         [System.Text.Json.Serialization.JsonPropertyName("body_text")]
-        public List<string>? BodyText { get; set; }
+        public List<List<string>>? BodyText { get; set; }  // 修改為嵌套數組
     }
 
     public class MetaTemplateCreateResponse

@@ -165,7 +165,11 @@ function AppContent() {
   const [password, setPassword] = useState('');
   const [showPreferences, setShowPreferences] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedMenuKey, setSelectedMenuKey] = useState('dashboard');
+
+  // 檢查是否是表單實例頁面（允許匿名訪問）
+  const isEFormInstancePage = location.pathname.startsWith('/eform-instance/');
 
   const handleMenuSelect = (key) => {
     setSelectedMenuKey(key);
@@ -232,6 +236,20 @@ function AppContent() {
     }
   }, []);
 
+  // 處理登入後的重定向
+  useEffect(() => {
+    // 如果用戶剛登入且當前在根路徑，檢查是否有重定向目標
+    if (isLoggedIn && location.pathname === '/') {
+      const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectPath) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectPath);
+      } else {
+        navigate('/dashboard');
+      }
+    }
+  }, [isLoggedIn, location.pathname, navigate]);
+
   const onFinish = async (values) => {
     setLoading(true);
     try {
@@ -247,6 +265,21 @@ function AppContent() {
         // 先設置基本的登入狀態
         setIsLoggedIn(true);
         localStorage.setItem('token', data.token);
+        
+        // 檢查是否有重定向目標
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+        console.log('登入成功，檢查重定向目標:', redirectPath);
+        if (redirectPath) {
+          sessionStorage.removeItem('redirectAfterLogin');
+          console.log('準備重定向到:', redirectPath);
+          // 使用 setTimeout 確保狀態更新完成後再重定向
+          setTimeout(() => {
+            console.log('執行重定向到:', redirectPath);
+            navigate(redirectPath);
+          }, 100);
+        } else {
+          console.log('沒有重定向目標，將導航到默認頁面');
+        }
         
         // 使用 token 調用 /api/auth/me 獲取完整的用戶信息
         try {
@@ -320,8 +353,19 @@ function AppContent() {
     setIsLoggedIn(false);
     setUserInfo(null);
     localStorage.removeItem('userInfo');
+    localStorage.removeItem('token'); // 清除 token
+    sessionStorage.clear(); // 清除所有 sessionStorage 數據
     message.success(t('login.logoutSuccess'));
   };
+
+  // 如果是表單實例頁面，允許匿名訪問（不需要登入）
+  if (isEFormInstancePage) {
+    return (
+      <Routes>
+        <Route path="/eform-instance/:id" element={<EFormInstancePage />} />
+      </Routes>
+    );
+  }
 
   if (isLoggedIn) {
     return (
