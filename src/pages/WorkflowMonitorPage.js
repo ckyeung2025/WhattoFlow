@@ -152,6 +152,12 @@ const WorkflowMonitorPage = () => {
   
   // 表格列寬調整相關狀態
   const [resizableColumns, setResizableColumns] = useState([]);
+  
+  // 內嵌表單相關狀態
+  const [selectedFormInstanceId, setSelectedFormInstanceId] = useState(null);
+  const [embedFormVisible, setEmbedFormVisible] = useState(false);
+  const [embeddedFormInstance, setEmbeddedFormInstance] = useState(null);
+  const [loadingEmbeddedForm, setLoadingEmbeddedForm] = useState(false);
 
   // 載入真實數據
   useEffect(() => {
@@ -167,6 +173,13 @@ const WorkflowMonitorPage = () => {
       return () => clearInterval(interval);
     }
   }, [autoRefresh, refreshInterval]);
+
+  // 載入內嵌表單數據
+  useEffect(() => {
+    if (embedFormVisible && selectedFormInstanceId) {
+      loadEmbeddedFormInstance();
+    }
+  }, [embedFormVisible, selectedFormInstanceId]);
 
   // 當篩選條件改變時，重新載入數據
   useEffect(() => {
@@ -345,6 +358,13 @@ const WorkflowMonitorPage = () => {
     setSelectedInstanceId(null);
   };
 
+  // 處理內嵌表單 Modal 關閉
+  const handleCloseEmbeddedForm = () => {
+    setEmbedFormVisible(false);
+    setSelectedFormInstanceId(null);
+    setEmbeddedFormInstance(null);
+  };
+
   const getStatusTag = (status) => {
     const statusConfig = {
       running: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: t('workflowMonitor.statusRunning') },
@@ -441,6 +461,56 @@ const WorkflowMonitorPage = () => {
       setMessageSendDetailModalVisible(true);
     } catch (error) {
       message.error(t('workflowMonitor.loadMessageSendStatusFailed') + ': ' + error.message);
+    }
+  };
+
+  // 載入內嵌表單實例
+  const loadEmbeddedFormInstance = async () => {
+    try {
+      setLoadingEmbeddedForm(true);
+      console.log(t('workflowMonitor.loadingEmbeddedFormInstance'), selectedFormInstanceId);
+      
+      const response = await fetch(`/api/eforminstances/${selectedFormInstanceId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(t('workflowMonitor.loadFormInstanceFailed'));
+      }
+      
+      const data = await response.json();
+      console.log(t('workflowMonitor.loadedEmbeddedFormInstance'), data);
+      setEmbeddedFormInstance(data);
+    } catch (error) {
+      console.error(t('workflowMonitor.loadEmbeddedFormInstanceFailed'), error);
+      message.error(t('workflowMonitor.loadFormInstanceFailed') + ': ' + error.message);
+      setEmbeddedFormInstance(null);
+    } finally {
+      setLoadingEmbeddedForm(false);
+    }
+  };
+
+  // 表單狀態顏色映射
+  const getEformStatusColor = (status) => {
+    switch (status) {
+      case 'Pending': return 'orange';
+      case 'Approved': return 'green';
+      case 'Rejected': return 'red';
+      case 'Submitted': return 'blue';
+      default: return 'default';
+    }
+  };
+
+  // 表單狀態文字映射
+  const getEformStatusText = (status) => {
+    switch (status) {
+      case 'Pending': return t('workflowMonitor.eformStatusPending');
+      case 'Approved': return t('workflowMonitor.eformStatusApproved');
+      case 'Rejected': return t('workflowMonitor.eformStatusRejected');
+      case 'Submitted': return t('workflowMonitor.eformStatusSubmitted');
+      default: return status;
     }
   };
 
@@ -928,6 +998,10 @@ const WorkflowMonitorPage = () => {
                 setDataSetQueryResult(data);
                 setDataSetQueryModalVisible(true);
               }}
+              onViewFormInstance={(formInstanceId) => {
+                setSelectedFormInstanceId(formInstanceId);
+                setEmbedFormVisible(true);
+              }}
             />
           )}
           
@@ -938,7 +1012,7 @@ const WorkflowMonitorPage = () => {
             onCancel={() => setDataSetQueryModalVisible(false)}
             footer={[
               <Button key="close" onClick={() => setDataSetQueryModalVisible(false)}>
-                關閉
+                {t('workflowMonitor.close')}
               </Button>
             ]}
             width={1200}
@@ -1051,13 +1125,236 @@ const WorkflowMonitorPage = () => {
             />
           )}
         </Modal>
+
+        {/* 內嵌表單 Modal */}
+        <Modal
+          title={embeddedFormInstance ? `${t('workflowMonitor.formInstance')}: ${embeddedFormInstance.formName || t('workflowMonitor.unnamedForm')}` : t('workflowMonitor.formInstance')}
+          open={embedFormVisible}
+          onCancel={handleCloseEmbeddedForm}
+          afterClose={handleCloseEmbeddedForm}
+          footer={[
+            <Button key="close" onClick={handleCloseEmbeddedForm}>
+              {t('workflowMonitor.close')}
+            </Button>,
+            <Button 
+              key="openInNewTab" 
+              type="primary"
+              onClick={() => {
+                window.open(`/eform-instance/${selectedFormInstanceId}`, '_blank');
+              }}
+            >
+              {t('workflowMonitor.openInNewTab')}
+            </Button>
+          ]}
+          width="90%"
+          style={{ top: 20 }}
+          zIndex={1050}
+          destroyOnClose={true}
+          maskClosable={false}
+          className="embedded-form-modal"
+        >
+          {loadingEmbeddedForm ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingFormInstance')}</p>
+            </div>
+          ) : embeddedFormInstance ? (
+            <div className="embedded-form-container" style={{ 
+              padding: '24px',
+              minHeight: '400px'
+            }}>
+              {/* 使用與 EFormInstancePage 相同的左右布局 */}
+              <div className="grid-container" style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+                gap: '24px',
+                alignItems: 'start',
+                maxWidth: '100%'
+              }}>
+                {/* 左側：表單基本信息 */}
+                <Card 
+                  title={t('workflowMonitor.formBasicInfo')} 
+                  style={{ 
+                    height: 'fit-content',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    borderRadius: '12px',
+                    border: 'none',
+                    order: 1
+                  }}
+                  headStyle={{
+                    backgroundColor: '#fafafa',
+                    borderBottom: '1px solid #e8e8e8',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    padding: '16px 20px',
+                    borderRadius: '12px 12px 0 0'
+                  }}
+                  bodyStyle={{
+                    padding: '20px'
+                  }}
+                >
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '16px' 
+                  }}>
+                    <div>
+                      <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.formName')}</strong>
+                      <div style={{ 
+                        marginTop: '4px', 
+                        fontSize: '16px', 
+                        fontWeight: '500',
+                        color: '#262626'
+                      }}>
+                        {embeddedFormInstance.formName || t('workflowMonitor.unnamedForm')}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.instanceName')}</strong>
+                      <div style={{ 
+                        marginTop: '4px', 
+                        fontSize: '14px',
+                        color: '#666',
+                        wordBreak: 'break-all'
+                      }}>
+                        {embeddedFormInstance.instanceName || '-'}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.status')}</strong>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tag color={getEformStatusColor(embeddedFormInstance.status)} style={{ 
+                          fontSize: '12px',
+                          padding: '2px 8px'
+                        }}>
+                          {getEformStatusText(embeddedFormInstance.status)}
+                        </Tag>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.createdAt')}</strong>
+                      <div style={{ 
+                        marginTop: '4px', 
+                        fontSize: '14px',
+                        color: '#666'
+                      }}>
+                        {new Date(embeddedFormInstance.createdAt).toLocaleString('zh-TW')}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.fillType')}</strong>
+                      <div style={{ marginTop: '4px' }}>
+                        {embeddedFormInstance.fillType && (
+                          <Tag color={embeddedFormInstance.fillType === 'Manual' ? 'blue' : embeddedFormInstance.fillType === 'AI' ? 'green' : 'orange'} style={{ 
+                            fontSize: '12px',
+                            padding: '2px 8px'
+                          }}>
+                            {embeddedFormInstance.fillType}
+                          </Tag>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.approvalBy')}</strong>
+                      <div style={{ 
+                        marginTop: '4px', 
+                        fontSize: '14px',
+                        color: '#666'
+                      }}>
+                        {embeddedFormInstance.approvalBy || '-'}
+                      </div>
+                    </div>
+                    
+                    {embeddedFormInstance.userMessage && (
+                      <div>
+                        <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.userInput')}</strong>
+                        <div style={{ 
+                          marginTop: '4px',
+                          padding: '12px',
+                          background: '#f6ffed',
+                          border: '1px solid #b7eb8f',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          color: '#262626'
+                        }}>
+                          {embeddedFormInstance.userMessage}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {embeddedFormInstance.approvalNote && (
+                      <div>
+                        <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.approvalNote')}</strong>
+                        <div style={{ 
+                          marginTop: '4px',
+                          padding: '12px',
+                          background: '#fff7e6',
+                          border: '1px solid #ffd591',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          color: '#262626'
+                        }}>
+                          {embeddedFormInstance.approvalNote}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                {/* 右側：表單內容 */}
+                <Card 
+                  title={t('workflowMonitor.formContent')} 
+                  style={{ 
+                    height: 'fit-content',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    borderRadius: '12px',
+                    border: 'none',
+                    order: 2
+                  }}
+                  headStyle={{
+                    backgroundColor: '#fafafa',
+                    borderBottom: '1px solid #e8e8e8',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    padding: '16px 20px',
+                    borderRadius: '12px 12px 0 0'
+                  }}
+                  bodyStyle={{
+                    padding: '20px'
+                  }}
+                >
+                  <div 
+                    style={{
+                      border: '1px solid #e8e8e8',
+                      borderRadius: '8px',
+                      padding: '20px',
+                      backgroundColor: '#fafafa',
+                      minHeight: '300px',
+                      overflow: 'auto',
+                      fontSize: '14px',
+                      lineHeight: '1.6'
+                    }}
+                    dangerouslySetInnerHTML={{ __html: embeddedFormInstance.htmlCode }}
+                  />
+                </Card>
+              </div>
+            </div>
+          ) : (
+            <Empty description={t('workflowMonitor.cannotLoadFormInstance')} />
+          )}
+        </Modal>
       </Content>
     </Layout>
   );
 };
 
 // 實例詳情組件
-const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail, onViewDataSetQuery }) => {
+const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail, onViewDataSetQuery, onViewFormInstance }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('history');
   const [eformInstances, setEformInstances] = useState([]);
@@ -2090,8 +2387,10 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                 size="small" 
                                 icon={<FileTextOutlined />}
                                 onClick={() => {
-                                  // 在新標籤頁中打開表單實例詳情
-                                  window.open(`/eform-instance/${outputData.formInstanceId}`, '_blank');
+                                  // 調用父組件傳入的函數來顯示內嵌表單
+                                  if (onViewFormInstance) {
+                                    onViewFormInstance(outputData.formInstanceId);
+                                  }
                                 }}
                               >
                                 {t('workflowMonitor.viewFormInstance')}
@@ -2607,6 +2906,11 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                         <Tag color={getEformStatusColor(eform.status)}>
                           {getEformStatusText(eform.status)}
                         </Tag>
+                        {eform.fillType && (
+                          <Tag color={eform.fillType === 'Manual' ? 'blue' : eform.fillType === 'AI' ? 'green' : 'orange'}>
+                            {eform.fillType}
+                          </Tag>
+                        )}
                       </div>
                       
                       <div style={{ 
@@ -2708,20 +3012,24 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                     </div>
                     
                     <div style={{ flexShrink: 0 }}>
-                      <Button 
-                        type="primary" 
-                        size="small"
-                        onClick={() => {
-                          // 在新標籤頁中打開表單詳情
-                          window.open(`/eform-instance/${eform.id}`, '_blank');
-                        }}
-                        style={{ 
-                          backgroundColor: '#1890ff',
-                          borderColor: '#1890ff'
-                        }}
-                      >
-                        {t('workflowMonitor.viewDetails')}
-                      </Button>
+                      <Space>
+                        <Button 
+                          type="primary" 
+                          size="small"
+                          onClick={() => {
+                            // 調用父組件傳入的函數來顯示內嵌表單
+                            if (onViewFormInstance) {
+                              onViewFormInstance(eform.id);
+                            }
+                          }}
+                          style={{ 
+                            backgroundColor: '#1890ff',
+                            borderColor: '#1890ff'
+                          }}
+                        >
+                          {t('workflowMonitor.viewEmbedded')}
+                        </Button>
+                      </Space>
                     </div>
                   </div>
                 </Card>

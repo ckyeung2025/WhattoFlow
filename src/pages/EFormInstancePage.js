@@ -20,22 +20,88 @@ const EFormInstancePage = () => {
 
   const { t } = useLanguage();
 
-  // 檢查用戶是否已登入
+  // 檢查訪問權限（支持 Token 驗證）
   useEffect(() => {
     console.log('EFormInstancePage useEffect 被調用，id:', id);
-    const token = localStorage.getItem('token');
-    const userInfo = localStorage.getItem('userInfo');
     
-    console.log('Token 存在:', !!token);
-    console.log('UserInfo 存在:', !!userInfo);
-    
-    if (!token || !userInfo) {
-      message.error(t('eformInstance.loginRequired'));
-      navigate('/');
-      return;
-    }
-    
-    fetchInstance();
+    const initializePage = async () => {
+      // 從 URL 參數中獲取 Token
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      
+      console.log('URL Token:', urlToken);
+      
+      // 檢查是否有 URL Token（Manual Fill 模式）
+      if (urlToken) {
+        validateTokenAndFetchInstance(urlToken);
+      } else {
+        // 傳統登入模式
+        const token = localStorage.getItem('token');
+        const userInfo = localStorage.getItem('userInfo');
+        
+        console.log('Token 存在:', !!token);
+        console.log('UserInfo 存在:', !!userInfo);
+        
+        if (!token) {
+          // 保存當前 URL 以便登入後重定向
+          // 使用 useParams 獲取的 id 來構建 URL，避免 window.location 被 navigate 改變
+          const redirectUrl = `/eform-instance/${id}`;
+          console.log('沒有 token，保存重定向 URL:', redirectUrl);
+          sessionStorage.setItem('redirectAfterLogin', redirectUrl);
+          message.error(t('eformInstance.loginRequired'));
+          navigate('/');
+          return;
+        }
+
+        // 如果有 token 但沒有 userInfo，嘗試重新獲取用戶信息
+        if (!userInfo) {
+          console.log('Token 存在但 UserInfo 不存在，嘗試重新獲取用戶信息');
+          try {
+            const meResponse = await fetch('/api/auth/me', {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (meResponse.ok) {
+              const userData = await meResponse.json();
+              const fullUserInfo = {
+                user_id: userData.user_id,
+                account: userData.account,
+                name: userData.name,
+                email: userData.email,
+                phone: userData.phone,
+                language: userData.language,
+                timezone: userData.timezone,
+                avatar_url: userData.avatar_url,
+                company_id: userData.company_id
+              };
+              
+              localStorage.setItem('userInfo', JSON.stringify(fullUserInfo));
+              console.log('成功重新獲取用戶信息');
+            } else {
+              // 如果獲取用戶信息失敗，說明 token 無效，需要重新登入
+              localStorage.removeItem('token');
+              sessionStorage.setItem('redirectAfterLogin', window.location.pathname + window.location.search);
+              message.error(t('eformInstance.loginRequired'));
+              navigate('/');
+              return;
+            }
+          } catch (error) {
+            console.error('重新獲取用戶信息失敗:', error);
+            localStorage.removeItem('token');
+            sessionStorage.setItem('redirectAfterLogin', window.location.pathname + window.location.search);
+            message.error(t('eformInstance.loginRequired'));
+            navigate('/');
+            return;
+          }
+        }
+        
+        fetchInstance();
+      }
+    };
+
+    initializePage();
     
     // 隱藏側邊欄
     const sider = document.querySelector('.ant-layout-sider');
@@ -59,6 +125,48 @@ const EFormInstancePage = () => {
       }
     };
   }, [id, navigate, t]);
+
+  // Token 驗證並獲取實例信息
+  const validateTokenAndFetchInstance = async (urlToken) => {
+    try {
+      setLoading(true);
+      console.log('validateTokenAndFetchInstance 被調用，token:', urlToken);
+      
+      // 使用新的匿名端點獲取表單實例信息
+      const instanceResponse = await fetch(`/api/eforminstances/${id}/public?token=${encodeURIComponent(urlToken)}`);
+      
+      if (instanceResponse.status === 401) {
+        message.error('無效的訪問令牌或令牌已過期');
+        return;
+      }
+      
+      if (instanceResponse.status === 403) {
+        message.error('您無權訪問此表單');
+        return;
+      }
+      
+      if (!instanceResponse.ok) {
+        const errorData = await instanceResponse.json();
+        throw new Error(errorData.error || '獲取表單實例失敗');
+      }
+      
+      const instanceData = await instanceResponse.json();
+      console.log('獲取到的實例數據:', instanceData);
+      
+      // 設置實例數據和 Token
+      setInstance({
+        ...instanceData,
+        urlToken: urlToken,
+        isManualFill: instanceData.fillType === 'Manual'
+      });
+      
+    } catch (error) {
+      console.error('Token 驗證錯誤:', error);
+      message.error('訪問失敗: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchInstance = async () => {
     try {
@@ -236,11 +344,117 @@ const EFormInstancePage = () => {
     }
   };
 
+  // 提交表單（Manual Fill 模式）
+  const handleSubmitForm = async () => {
+    try {
+      console.log('handleSubmitForm 被調用');
+      
+      if (!instance?.urlToken) {
+        message.error('缺少訪問令牌');
+        return;
+      }
+
+      // 從 DOM 中獲取填寫後的表單內容
+      const formContainer = document.querySelector('.form-content-inner');
+      if (!formContainer) {
+        console.error('找不到表單容器 .form-content-inner');
+        message.error('無法獲取表單內容');
+        return;
+      }
+
+      // 克隆容器以避免修改原始 DOM
+      const clonedContainer = formContainer.cloneNode(true);
+      
+      // 獲取所有表單元素並將用戶輸入的值寫入 value 屬性
+      const inputs = clonedContainer.querySelectorAll('input[type="text"], input[type="tel"], input[type="email"], input[type="number"], input[type="date"], input[type="time"]');
+      inputs.forEach(input => {
+        if (input.value) {
+          input.setAttribute('value', input.value);
+          console.log(`設置 input ${input.name || input.id} value:`, input.value);
+        }
+      });
+      
+      // 處理 textarea
+      const textareas = clonedContainer.querySelectorAll('textarea');
+      textareas.forEach(textarea => {
+        if (textarea.value) {
+          textarea.textContent = textarea.value;
+          console.log(`設置 textarea ${textarea.name || textarea.id} value:`, textarea.value);
+        }
+      });
+      
+      // 處理 select
+      const selects = clonedContainer.querySelectorAll('select');
+      selects.forEach(select => {
+        const selectedOption = select.options[select.selectedIndex];
+        if (selectedOption) {
+          // 移除所有 selected 屬性
+          Array.from(select.options).forEach(opt => opt.removeAttribute('selected'));
+          // 設置當前選中的 option
+          selectedOption.setAttribute('selected', 'selected');
+          console.log(`設置 select ${select.name || select.id} selected:`, selectedOption.value);
+        }
+      });
+      
+      // 處理 checkbox 和 radio
+      const checkboxes = clonedContainer.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+      checkboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+          checkbox.setAttribute('checked', 'checked');
+          console.log(`設置 ${checkbox.type} ${checkbox.name || checkbox.id} checked`);
+        } else {
+          checkbox.removeAttribute('checked');
+        }
+      });
+      
+      // 獲取處理後的 HTML
+      const filledHtmlCode = clonedContainer.innerHTML;
+      
+      console.log('提交表單，FilledHtmlCode 長度:', filledHtmlCode.length);
+      console.log('FilledHtmlCode 前 500 字符:', filledHtmlCode.substring(0, 500));
+      
+      const response = await fetch(`/api/eforminstances/${id}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          token: instance.urlToken,
+          filledHtmlCode: filledHtmlCode
+        })
+      });
+
+      console.log('提交響應狀態:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        console.error('提交失敗，錯誤:', errorData);
+        throw new Error(errorData.error || `提交失敗: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('提交成功，結果:', result);
+      message.success('表單提交成功！');
+      
+      // 更新實例狀態
+      setInstance(prev => ({
+        ...prev,
+        status: 'Submitted',
+        filledHtmlCode: filledHtmlCode
+      }));
+      
+    } catch (error) {
+      console.error('提交表單錯誤:', error);
+      message.error('提交失敗: ' + error.message);
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'Pending': return 'orange';
       case 'Approved': return 'green';
       case 'Rejected': return 'red';
+      case 'Submitted': return 'blue';
       default: return 'default';
     }
   };
@@ -250,6 +464,7 @@ const EFormInstancePage = () => {
       case 'Pending': return t('eformInstance.pendingApproval');
       case 'Approved': return t('eformInstance.approved');
       case 'Rejected': return t('eformInstance.rejected');
+      case 'Submitted': return '已提交';
       default: return status;
     }
   };
@@ -353,43 +568,73 @@ const EFormInstancePage = () => {
               </Tag>
             </div>
             
-            {console.log('當前實例狀態:', instance.status, '是否顯示按鈕:', instance.status === 'Pending')}
-            {instance.status === 'Pending' && (
+            {console.log('當前實例狀態:', instance.status, '是否為 Manual Fill:', instance.isManualFill)}
+            {console.log('按鈕條件檢查:', (instance.status === 'Pending') || (instance.isManualFill && instance.status === 'Submitted'))}
+            {((instance.status === 'Pending') || (instance.isManualFill && instance.status === 'Submitted')) && (
               <Space className="approval-buttons" size="large" style={{ flexShrink: 0 }}>
-                <Button
-                  type="primary"
-                  icon={<CheckCircleOutlined />}
-                  onClick={() => {
-                    console.log('批准按鈕被點擊');
-                    setApprovalModalVisible(true);
-                  }}
-                  style={{ 
-                    backgroundColor: '#52c41a', 
-                    borderColor: '#52c41a',
-                    height: '48px',
-                    padding: '0 32px',
-                    fontSize: '16px',
-                    fontWeight: '500'
-                  }}
-                >
-                  {t('eformInstance.approve')}
-                </Button>
-                <Button
-                  danger
-                  icon={<CloseCircleOutlined />}
-                  onClick={() => {
-                    console.log('拒絕按鈕被點擊');
-                    setRejectModalVisible(true);
-                  }}
-                  style={{
-                    height: '48px',
-                    padding: '0 32px',
-                    fontSize: '16px',
-                    fontWeight: '500'
-                  }}
-                >
-                  {t('eformInstance.reject')}
-                </Button>
+                {console.log('進入 Space，isManualFill:', instance.isManualFill)}
+                {instance.isManualFill ? (
+                  // Manual Fill 模式：顯示提交按鈕
+                  <>
+                    {console.log('渲染 Manual Fill 提交按鈕')}
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => {
+                        console.log('提交按鈕被點擊！');
+                        handleSubmitForm();
+                      }}
+                      style={{ 
+                        backgroundColor: instance.status === 'Submitted' ? '#52c41a' : '#1890ff', 
+                        borderColor: instance.status === 'Submitted' ? '#52c41a' : '#1890ff',
+                        height: '48px',
+                        padding: '0 32px',
+                        fontSize: '16px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      {instance.status === 'Submitted' ? '重新提交' : '提交表單'}
+                    </Button>
+                  </>
+                ) : (
+                  // 傳統模式：顯示批准和拒絕按鈕
+                  <>
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => {
+                        console.log('批准按鈕被點擊');
+                        setApprovalModalVisible(true);
+                      }}
+                      style={{ 
+                        backgroundColor: '#52c41a', 
+                        borderColor: '#52c41a',
+                        height: '48px',
+                        padding: '0 32px',
+                        fontSize: '16px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      {t('eformInstance.approve')}
+                    </Button>
+                    <Button
+                      danger
+                      icon={<CloseCircleOutlined />}
+                      onClick={() => {
+                        console.log('拒絕按鈕被點擊');
+                        setRejectModalVisible(true);
+                      }}
+                      style={{
+                        height: '48px',
+                        padding: '0 32px',
+                        fontSize: '16px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      {t('eformInstance.reject')}
+                    </Button>
+                  </>
+                )}
               </Space>
             )}
           </div>
