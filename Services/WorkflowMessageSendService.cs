@@ -369,7 +369,9 @@ namespace PurpleRice.Services
                         ISNULL(status, 'Pending') as status,
                         started_at, completed_at, error_message,
                         company_id, ISNULL(created_by, 'system') as created_by, 
-                        created_at, updated_at, is_active
+                        created_at, updated_at, is_active,
+                        ISNULL(send_reason, 'normal') as send_reason,
+                        related_step_execution_id
                     FROM workflow_message_sends 
                     WHERE id = @messageSendId AND is_active = 1";
                 
@@ -408,7 +410,9 @@ namespace PurpleRice.Services
                     CreatedBy = reader.GetString("created_by"),
                     CreatedAt = reader.GetDateTime("created_at"),
                     UpdatedAt = reader.GetDateTime("updated_at"),
-                    IsActive = reader.GetBoolean("is_active")
+                    IsActive = reader.GetBoolean("is_active"),
+                    SendReason = reader.GetString("send_reason"),
+                    RelatedStepExecutionId = reader.IsDBNull("related_step_execution_id") ? null : reader.GetInt32("related_step_execution_id")
                 };
                 
                 reader.Close();

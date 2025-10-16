@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PurpleRice.Models
 {
@@ -27,6 +28,14 @@ namespace PurpleRice.Models
         
         // 記錄工作流啟動者（Meta Webhook 用戶電話號碼或手動啟動者）
         public string? InitiatedBy { get; set; }
+        
+        // Overdue 逾期監控相關屬性
+        [Column("overdue_notified")]
+        public bool OverdueNotified { get; set; }         // 是否已發送逾期通知
+        [Column("overdue_notified_at")]
+        public DateTime? OverdueNotifiedAt { get; set; }  // 逾期通知發送時間
+        [Column("overdue_threshold_minutes")]
+        public int? OverdueThresholdMinutes { get; set; } // 逾期閾值（分鐘）
         
         // 計算執行時間（分鐘）
         public double? Duration

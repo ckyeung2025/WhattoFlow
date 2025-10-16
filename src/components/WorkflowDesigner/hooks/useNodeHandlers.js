@@ -136,18 +136,36 @@ export const useNodeHandlers = (nodeTypes, setNodes, setEdges, setSelectedNode, 
   }, [handleAddNode]);
 
   // 處理模板選擇
-  const handleSelectTemplate = useCallback((template, isMetaTemplate = false) => {
+  const handleSelectTemplate = useCallback((template, isMetaTemplate = false, source = null) => {
+    console.log('🎯 handleSelectTemplate:', { template: template.name, isMetaTemplate, templateId: template.id, source });
+    
     if (selectedNode) {
-      handleNodeDataChange({
-        templateId: template.id,
-        templateName: template.name,
-        templateDescription: template.description,
-        isMetaTemplate: isMetaTemplate,
-        templateType: isMetaTemplate ? 'META' : 'INTERNAL',
-        templateLanguage: template.language || null  // 保存模板語言（Meta 模板必需）
-      });
+      if (source) {
+        // 如果有 source，表示這是來自 Time Validator 或 Overdue 的模板選擇
+        // 返回處理結果給 NodePropertyDrawer
+        return {
+          type: source,
+          config: {
+            useTemplate: true,
+            templateId: template.id,
+            templateName: template.name,
+            isMetaTemplate: isMetaTemplate
+          }
+        };
+      } else {
+        // 一般的模板選擇
+        handleNodeDataChange({
+          templateId: template.id,
+          templateName: template.name,
+          templateDescription: template.description,
+          isMetaTemplate: isMetaTemplate,
+          templateType: isMetaTemplate ? 'META' : 'INTERNAL',
+          templateLanguage: template.language || null  // 保存模板語言（Meta 模板必需）
+        });
+      }
     }
   }, [selectedNode, handleNodeDataChange]);
+
 
   // 處理用戶選擇
   const handleSelectUser = useCallback((user) => {

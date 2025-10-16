@@ -619,6 +619,46 @@ namespace PurpleRice.Services
                 Data = nodeData
             };
             
+            // 處理 Validation 配置的欄位名稱轉換
+            string validationConfigJson = null;
+            if (nodeData?.Validation != null)
+            {
+                var validation = nodeData.Validation;
+                
+                // 處理 RetryMessageConfig 的 IsMetaTemplate 邏輯
+                var retryMessageConfig = validation.RetryMessageConfig;
+                if (retryMessageConfig != null && !string.IsNullOrEmpty(retryMessageConfig.TemplateId))
+                {
+                    // 判斷是否為 Meta 模板：如果 TemplateId 是純數字，則可能是 Meta 模板
+                    retryMessageConfig.IsMetaTemplate = TemplateHelper.IsMetaTemplateId(retryMessageConfig.TemplateId);
+                }
+                
+                // 處理 EscalationConfig 的 IsMetaTemplate 邏輯
+                var escalationConfig = validation.EscalationConfig;
+                if (escalationConfig != null && !string.IsNullOrEmpty(escalationConfig.TemplateId))
+                {
+                    // 判斷是否為 Meta 模板：如果 TemplateId 是純數字，則可能是 Meta 模板
+                    escalationConfig.IsMetaTemplate = TemplateHelper.IsMetaTemplateId(escalationConfig.TemplateId);
+                }
+                
+                // 創建標準化的 ValidationConfig 對象
+                var standardValidationConfig = new ValidationConfig
+                {
+                    Enabled = validation.Enabled,
+                    ValidatorType = validation.ValidatorType,
+                    RetryIntervalDays = validation.RetryIntervalDays,
+                    RetryIntervalHours = validation.RetryIntervalHours,
+                    RetryIntervalMinutes = validation.RetryIntervalMinutes ?? 
+                        (int.TryParse(validation.RetryInterval, out var retryInterval) ? retryInterval : 10), // 預設 10 分鐘
+                    RetryLimit = validation.RetryLimitValue ?? 
+                        (int.TryParse(validation.RetryLimitFromUI, out var retryLimit) ? retryLimit : 5), // 預設 5 次重試
+                    RetryMessageConfig = retryMessageConfig,
+                    EscalationConfig = escalationConfig
+                };
+                
+                validationConfigJson = JsonSerializer.Serialize(standardValidationConfig);
+            }
+            
             var stepExec = new WorkflowStepExecution
             {
                 WorkflowExecutionId = execution.Id,
@@ -627,6 +667,7 @@ namespace PurpleRice.Services
                 TaskName = nodeData?.TaskName, // 保存用戶自定義的任務名稱
                 Status = "Running",
                 InputJson = JsonSerializer.Serialize(inputData),
+                ValidationConfig = validationConfigJson, // 保存標準化的 Validation 配置
                 StartedAt = DateTime.Now
             };
 
@@ -3220,6 +3261,24 @@ namespace PurpleRice.Services
         public string Prompt { get; set; }
         public string RetryMessage { get; set; }
         public int MaxRetries { get; set; }
+        
+        // Time Validator 相關屬性
+        public int? RetryIntervalDays { get; set; }
+        public int? RetryIntervalHours { get; set; }
+        public int? RetryIntervalMinutes { get; set; }
+        public RetryMessageConfig RetryMessageConfig { get; set; }
+        public EscalationConfig EscalationConfig { get; set; }
+        
+        // JSON 屬性映射（處理 UI 中的欄位名稱）
+        [System.Text.Json.Serialization.JsonPropertyName("retryInterval")]
+        public string RetryInterval { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("retryLimit")]
+        public string RetryLimitFromUI { get; set; }
+        
+        // 重命名標準屬性以避免衝突
+        [System.Text.Json.Serialization.JsonPropertyName("retryLimitValue")]
+        public int? RetryLimitValue { get; set; }
     }
     
     // 工作流程執行結果模型
@@ -3227,5 +3286,24 @@ namespace PurpleRice.Services
     {
         public string? Status { get; set; }
         public object? OutputData { get; set; }
+    }
+    
+    // 輔助方法：判斷模板 ID 是否為 Meta 模板
+    public static class TemplateHelper
+    {
+        /// <summary>
+        /// 判斷模板 ID 是否為 Meta 模板
+        /// </summary>
+        /// <param name="templateId">模板 ID</param>
+        /// <returns>如果是 Meta 模板返回 true，否則返回 false</returns>
+        public static bool IsMetaTemplateId(string templateId)
+        {
+            if (string.IsNullOrEmpty(templateId))
+                return false;
+
+            // Meta 模板 ID 通常是純數字（如 1059722526095407）
+            // 內部模板 ID 通常是 GUID 格式
+            return long.TryParse(templateId, out _);
+        }
     }
 } // namespace PurpleRice.Services

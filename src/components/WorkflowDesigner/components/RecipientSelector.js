@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Tabs, Card, Button, Space, Tag, Checkbox, List, Avatar, Typography, Divider, Spin, Input, Pagination, Tooltip } from 'antd';
 import { 
   UserOutlined, 
@@ -10,7 +10,7 @@ import {
 import { contactApi, broadcastGroupApi, hashtagApi } from '../../../services/contactApi';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
-const { TabPane } = Tabs;
+// const { TabPane } = Tabs; // 已棄用，改用 items 屬性
 const { Text } = Typography;
 
 // 簡化的收件人選擇器組件
@@ -54,15 +54,30 @@ const RecipientSelector = ({
   const [processVariables, setProcessVariables] = useState([]);
   const [selectedProcessVariables, setSelectedProcessVariables] = useState([]);
 
-  // 解析初始值
+  // 解析初始值 - 使用 useRef 來避免無限循環
+  const isInitialized = useRef(false);
+  const lastValue = useRef(value);
+  const lastRecipientDetails = useRef(recipientDetails);
+
   useEffect(() => {
+    // 檢查是否真的有變化，避免不必要的重新渲染
+    const valueChanged = lastValue.current !== value;
+    const detailsChanged = lastRecipientDetails.current !== recipientDetails;
+    
+    if (!valueChanged && !detailsChanged && isInitialized.current) {
+      return;
+    }
+
     console.log('🔍 ===== 解析初始值 useEffect 觸發 =====');
     console.log('🔍 解析初始值:', value);
     console.log('🔍 詳細選擇信息:', recipientDetails);
-    console.log('🔍 當前用戶數據:', users);
-    console.log('🔍 當前聯絡人數據:', contacts);
-    console.log('🔍 當前廣播群組數據:', broadcastGroups);
-    console.log('🔍 當前標籤數據:', hashtags);
+    console.log('🔍 值是否變化:', valueChanged);
+    console.log('🔍 詳細信息是否變化:', detailsChanged);
+    
+    // 更新 ref 值
+    lastValue.current = value;
+    lastRecipientDetails.current = recipientDetails;
+    isInitialized.current = true;
     
     // 優先使用詳細的選擇信息
     if (recipientDetails) {
@@ -183,7 +198,7 @@ const RecipientSelector = ({
       setSelectedProcessVariables([]);
       setUseInitiator(false);
     }
-  }, [value, recipientDetails]);
+  }, [value, recipientDetails, users, contacts, broadcastGroups, hashtags]);
 
   // 當用戶或聯絡人數據載入完成後，重新解析已選擇的項目
   useEffect(() => {
@@ -846,19 +861,25 @@ const RecipientSelector = ({
       )}
 
       {/* 標籤頁 */}
-      <Tabs activeKey={activeTab} onChange={setActiveTab}>
-        {/* Users Tab */}
-        <TabPane tab={<><UserOutlined /> {t('recipientSelector.users')}</>} key="users">
-          <div style={{ marginBottom: 16 }}>
-            <Input
-              placeholder={t('recipientSelector.searchUsers')}
-              prefix={<SearchOutlined />}
-              value={userSearchText}
-              onChange={(e) => setUserSearchText(e.target.value)}
-            />
-          </div>
-          
-          <Spin spinning={loading}>
+      <Tabs 
+        activeKey={activeTab} 
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'users',
+            label: <><UserOutlined /> {t('recipientSelector.users')}</>,
+            children: (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <Input
+                    placeholder={t('recipientSelector.searchUsers')}
+                    prefix={<SearchOutlined />}
+                    value={userSearchText}
+                    onChange={(e) => setUserSearchText(e.target.value)}
+                  />
+                </div>
+                
+                <Spin spinning={loading}>
             <List
               dataSource={filteredUsers}
               renderItem={user => (
@@ -888,14 +909,19 @@ const RecipientSelector = ({
                 </List.Item>
               )}
               locale={{ emptyText: t('recipientSelector.usersTab.noUsersFound') }}
-            />
-          </Spin>
-        </TabPane>
+                />
+              </Spin>
+              </>
+            )
+          },
 
-        {/* Contact List Tab */}
-        <TabPane tab={<><ContactsOutlined /> {t('recipientSelector.contacts')}</>} key="contacts">
-          {/* 廣播群組選擇 */}
-          <div style={{ marginBottom: 16 }}>
+          {
+            key: 'contacts',
+            label: <><ContactsOutlined /> {t('recipientSelector.contacts')}</>,
+            children: (
+              <>
+                {/* 廣播群組選擇 */}
+                <div style={{ marginBottom: 16 }}>
             <Text strong>{t('recipientSelector.contactsTab.broadcastGroups')}:</Text>
             <div style={{ marginTop: 8 }}>
               {broadcastGroups.length > 0 ? (
@@ -1069,11 +1095,16 @@ const RecipientSelector = ({
               </div>
             )}
           </Spin>
-        </TabPane>
+              </>
+            )
+          },
 
-        {/* Process Variables Tab */}
-        <TabPane tab={<><ContactsOutlined /> {t('recipientSelector.processVariables')}</>} key="processVariables">
-          <div style={{ marginBottom: 16 }}>
+          {
+            key: 'processVariables',
+            label: <><ContactsOutlined /> {t('recipientSelector.processVariables')}</>,
+            children: (
+              <>
+                <div style={{ marginBottom: 16 }}>
             <Text strong>{t('recipientSelector.processVariablesTab.title')}:</Text>
             <div style={{ color: '#666', fontSize: '12px', marginTop: 4 }}>
               {t('recipientSelector.processVariablesTab.description')}
@@ -1133,11 +1164,16 @@ const RecipientSelector = ({
               <li>{t('recipientSelector.processVariablesTab.instructions.items.4')}</li>
             </ul>
           </div>
-        </TabPane>
+              </>
+            )
+          },
 
-        {/* Workflow Initiator Tab */}
-        <TabPane tab={<><PlayCircleOutlined /> {t('recipientSelector.initiators')}</>} key="initiators">
-          <Card>
+          {
+            key: 'initiators',
+            label: <><PlayCircleOutlined /> {t('recipientSelector.initiators')}</>,
+            children: (
+              <>
+                <Card>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
               <Checkbox
                 checked={useInitiator}
@@ -1167,8 +1203,11 @@ const RecipientSelector = ({
               </ul>
             </div>
           </Card>
-        </TabPane>
-      </Tabs>
+              </>
+            )
+          }
+        ]}
+      />
 
       {/* 確認按鈕 */}
       <div style={{ marginTop: 16, textAlign: 'right' }}>
@@ -1183,4 +1222,4 @@ const RecipientSelector = ({
   );
 };
 
-export default RecipientSelector;
+export default React.memo(RecipientSelector);

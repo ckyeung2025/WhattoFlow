@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs, Form, Input, Tag, Card, Button } from 'antd';
 import { MessageOutlined, FileTextOutlined, FormOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import TemplateVariableConfigComponent from './TemplateVariableConfigComponent';
+import TemplateVariableConfig from './TemplateVariableConfig';
 
 /**
  * 統一的訊息模式 Tab 組件
@@ -97,10 +97,12 @@ const MessageModeTabsComponent = ({
       
       {/* 模板變數編輯 */}
       {selectedNode.data.templateId && (
-        <TemplateVariableConfigComponent
-          selectedNode={selectedNode}
-          handleNodeDataChange={handleNodeDataChange}
+        <TemplateVariableConfig
+          templateId={selectedNode.data.templateId}
+          isMetaTemplate={selectedNode.data.isMetaTemplate}
           processVariables={processVariables}
+          value={selectedNode.data.templateVariables || []}
+          onChange={(templateVariables) => handleNodeDataChange({ templateVariables })}
           t={t}
         />
       )}

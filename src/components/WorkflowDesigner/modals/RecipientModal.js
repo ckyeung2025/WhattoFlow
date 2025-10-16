@@ -33,7 +33,8 @@ const RecipientModal = ({
       onCancel={onCancel}
       footer={null}
       width={600}
-      destroyOnClose
+      zIndex={1050}
+      destroyOnHidden
     >
       <RecipientSelector
         value={value}
@@ -48,4 +49,4 @@ const RecipientModal = ({
   );
 };
 
-export default RecipientModal;
+export default React.memo(RecipientModal);

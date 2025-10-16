@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
 using PurpleRice.Services;
+using System.IO;
 
 namespace PurpleRice.Controllers
 {
@@ -91,13 +92,9 @@ namespace PurpleRice.Controllers
                     return NotFound();
                 }
 
-                existingUser.CompanyId = user.CompanyId;
-                existingUser.Account = user.Account;
+                // 只更新允許修改的字段
                 existingUser.Email = user.Email;
-                existingUser.GoogleId = user.GoogleId;
-                existingUser.PasswordHash = user.PasswordHash;
                 existingUser.IsActive = user.IsActive;
-                existingUser.IsOwner = user.IsOwner;
                 existingUser.AvatarUrl = user.AvatarUrl;
                 existingUser.Timezone = user.Timezone;
                 existingUser.Name = user.Name;
@@ -142,6 +139,7 @@ namespace PurpleRice.Controllers
                 return StatusCode(500, new { error = "更新用戶狀態失敗" });
             }
         }
+
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)

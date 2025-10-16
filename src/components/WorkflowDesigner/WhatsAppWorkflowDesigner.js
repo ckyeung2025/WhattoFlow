@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Form } from 'antd';
 
@@ -96,6 +96,23 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     handleKeyDown: originalHandleKeyDown,
   } = useAdvancedFeatures(nodes, setNodes, edges, setEdges, selectedNodes, setSelectedNodes);
 
+  // Time Validator 模板選擇相關狀態
+  const [templateModalSource, setTemplateModalSource] = useState(null);
+
+  // 處理 Time Validator 模板選擇
+  const handleTimeValidatorTemplateSelect = useCallback((template, isMetaTemplate) => {
+    console.log('🎯 WhatsAppWorkflowDesigner 處理 Time Validator 模板選擇:', { template: template.name, isMetaTemplate, source: templateModalSource });
+    
+    // 這裡需要通知 NodePropertyDrawer 來處理模板選擇
+    // 我們通過自定義事件來實現
+    const event = new CustomEvent('timeValidatorTemplateSelected', {
+      detail: { template, isMetaTemplate, source: templateModalSource }
+    });
+    window.dispatchEvent(event);
+    
+    // 重置 templateModalSource
+    setTemplateModalSource(null);
+  }, [templateModalSource]);
 
   // 包裝鍵盤事件處理
   const handleKeyDown = useCallback((event) => {
@@ -187,9 +204,9 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     onDragStart,
     onDragOver,
     onDrop,
-    handleSelectTemplate,
-    handleSelectUser,
-    handleSelectEForm,
+        handleSelectTemplate,
+        handleSelectUser,
+        handleSelectEForm,
   } = useNodeHandlers(nodeTypes, setNodes, setEdges, setSelectedNode, selectedNode, handleNodeDataChange, isReady, t);
 
   // 使用邊處理 Hook
@@ -396,6 +413,8 @@ const WhatsAppWorkflowDesignerRefactored = () => {
           edges={edges}
           workflowId={workflowId}
           t={t}
+          templates={templates}
+          metaTemplates={metaTemplates}
           isTemplateModalVisible={isTemplateModalVisible}
           setIsTemplateModalVisible={setIsTemplateModalVisible}
           isUserModalVisible={isUserModalVisible}
@@ -459,6 +478,10 @@ const WhatsAppWorkflowDesignerRefactored = () => {
             setEditingConditionGroup({ ...editingConditionGroup, conditions: newConditions });
           }}
           onSelectPath={() => {}}
+          // 新增：Time Validator 模板選擇相關
+          templateModalSource={templateModalSource}
+          setTemplateModalSource={setTemplateModalSource}
+          handleTimeValidatorTemplateSelect={handleTimeValidatorTemplateSelect}
         />
       </div>
 
@@ -469,8 +492,17 @@ const WhatsAppWorkflowDesignerRefactored = () => {
         templates={templates}
         metaTemplates={metaTemplates}
         onSelectTemplate={(template, isMetaTemplate) => {
-          handleSelectTemplate(template, isMetaTemplate);
-          setIsTemplateModalVisible(false);
+          // 檢查是否有 templateModalSource（來自 Time Validator 或 Overdue）
+          if (templateModalSource) {
+            console.log('🎯 主要 TemplateModal 處理 Time Validator 模板選擇:', { template: template.name, isMetaTemplate, source: templateModalSource });
+            // 調用 NodePropertyDrawer 的處理函數
+            handleTimeValidatorTemplateSelect(template, isMetaTemplate);
+            setIsTemplateModalVisible(false);
+          } else {
+            // 一般的模板選擇
+            handleSelectTemplate(template, isMetaTemplate);
+            setIsTemplateModalVisible(false);
+          }
         }}
         t={t}
       />

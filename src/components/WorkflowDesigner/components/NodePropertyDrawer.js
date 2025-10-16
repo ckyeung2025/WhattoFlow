@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs } from 'antd';
-import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined, BellOutlined, FullscreenOutlined, FullscreenExitOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
 import RecipientSelector from './RecipientSelector';
@@ -8,6 +8,10 @@ import DataSetQueryConditionModal from '../modals/DataSetQueryConditionModal';
 import DataSetQueryConditionEditModal from '../modals/DataSetQueryConditionEditModal';
 import DataSetFieldMappingModal from '../modals/DataSetFieldMappingModal';
 import MessageModeTabsComponent from './MessageModeTabsComponent';
+import RetryMessageModal from '../modals/RetryMessageModal';
+import EscalationConfigModal from '../modals/EscalationConfigModal';
+import OverdueEscalationModal from '../modals/OverdueEscalationModal';
+import TemplateModal from '../modals/TemplateModal';
 import { getAvailableOutputPaths } from '../utils';
 import { apiService } from '../services/apiService';
 
@@ -23,6 +27,8 @@ const NodePropertyDrawer = ({
   edges,
   workflowId,
   t,
+  templates,
+  metaTemplates,
   // 模態框狀態
   isTemplateModalVisible,
   setIsTemplateModalVisible,
@@ -54,6 +60,10 @@ const NodePropertyDrawer = ({
   onAddCondition,
   onDeleteCondition,
   onSelectPath,
+  // 新增：Time Validator 模板選擇相關
+  templateModalSource,
+  setTemplateModalSource,
+  handleTimeValidatorTemplateSelect,
 }) => {
   // 獲取 DataSet Query 節點
   const dataSetQueryNodes = nodes.filter(node => 
@@ -93,6 +103,62 @@ const NodePropertyDrawer = ({
   const [queryPreviewData, setQueryPreviewData] = useState([]);
   const [showQueryPreview, setShowQueryPreview] = useState(false);
   const [queryPreviewModalVisible, setQueryPreviewModalVisible] = useState(false);
+
+  // Time Validator 相關狀態（Wait for Reply 節點）
+  const [retryMessageModalVisible, setRetryMessageModalVisible] = useState(false);
+  const [escalationConfigModalVisible, setEscalationConfigModalVisible] = useState(false);
+  const [tempRetryMessageConfig, setTempRetryMessageConfig] = useState(null);
+  const [tempEscalationConfig, setTempEscalationConfig] = useState(null);
+  const [timeValidatorRecipientModalVisible, setTimeValidatorRecipientModalVisible] = useState(false); // Time Validator 專用的 Recipient Modal
+  
+  // Overdue Settings 相關狀態（Start 節點）
+  const [overdueEscalationModalVisible, setOverdueEscalationModalVisible] = useState(false);
+  const [tempOverdueEscalationConfig, setTempOverdueEscalationConfig] = useState(null);
+  
+  // Drawer 全屏狀態
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // 監聽 Time Validator 模板選擇事件
+  useEffect(() => {
+    const handleTimeValidatorTemplateSelected = (event) => {
+      const { template, isMetaTemplate, source } = event.detail;
+      console.log('🎯 NodePropertyDrawer 收到 Time Validator 模板選擇事件:', { template: template.name, isMetaTemplate, source });
+      
+      // 根據來源保存到對應的臨時配置
+      if (source === 'retryMessage') {
+        setTempRetryMessageConfig(prev => ({
+          ...(prev || selectedNode?.data?.validation?.retryMessageConfig || {}),
+          useTemplate: true,
+          templateId: template.id,
+          templateName: template.name,
+          isMetaTemplate: isMetaTemplate
+        }));
+      } else if (source === 'escalation') {
+        setTempEscalationConfig(prev => ({
+          ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
+          useTemplate: true,
+          templateId: template.id,
+          templateName: template.name,
+          isMetaTemplate: isMetaTemplate
+        }));
+      } else if (source === 'overdue') {
+        setTempOverdueEscalationConfig(prev => ({
+          ...(prev || selectedNode?.data?.overdueConfig?.escalationConfig || {}),
+          useTemplate: true,
+          templateId: template.id,
+          templateName: template.name,
+          isMetaTemplate: isMetaTemplate
+        }));
+      }
+    };
+
+    window.addEventListener('timeValidatorTemplateSelected', handleTimeValidatorTemplateSelected);
+    
+    return () => {
+      window.removeEventListener('timeValidatorTemplateSelected', handleTimeValidatorTemplateSelected);
+    };
+  }, []); // 移除 selectedNode 依賴，避免不必要的重新註冊
+
 
   // 生成 WHERE 子句的函數
   const generateWhereClause = (conditionGroups) => {
@@ -333,7 +399,7 @@ const NodePropertyDrawer = ({
   useEffect(() => {
     console.log('🔍 NodePropertyDrawer - workflowId:', workflowId, 'type:', typeof workflowId);
     console.log('🔍 NodePropertyDrawer - selectedNode:', selectedNode?.id);
-    if (selectedNode && form) {
+    if (selectedNode && form && form.resetFields) {
       // 重置表單並設置新的初始值
       form.resetFields();
       form.setFieldsValue({
@@ -353,7 +419,6 @@ const NodePropertyDrawer = ({
         qrCodeErrorMessage: selectedNode.data.qrCodeErrorMessage || t('workflowDesigner.dataSet.qrCodeErrorMessage'),
         approvalResultVariable: selectedNode.data.approvalResultVariable || '',
         activationType: selectedNode.data.activationType || 'manual',
-        webhookToken: selectedNode.data.webhookToken || '',
         scheduledTable: selectedNode.data.scheduledTable || '',
         scheduledQuery: selectedNode.data.scheduledQuery || '',
         scheduledInterval: selectedNode.data.scheduledInterval || 300,
@@ -612,23 +677,64 @@ const NodePropertyDrawer = ({
     // 只更新非 taskName 字段，taskName 使用 onBlur 事件處理
     const { taskName, ...otherValues } = changedValues;
     if (Object.keys(otherValues).length > 0) {
+      // 特殊處理 validation 對象，確保嵌套更新時保持其他屬性
+      if (otherValues.validation && selectedNode?.data?.validation) {
+        otherValues.validation = {
+          ...selectedNode.data.validation,
+          ...otherValues.validation
+        };
+      }
+      
       // 使用 setTimeout 來避免在輸入過程中觸發重新渲染
       setTimeout(() => {
         handleNodeDataChange(otherValues);
       }, 0);
     }
-  }, [handleNodeDataChange]);
+  }, [handleNodeDataChange, selectedNode]);
 
   if (!selectedNode) return null;
 
   return (
     <Drawer
-      title={selectedNode ? t(`workflowDesigner.${selectedNode.data.type}Node`) : ''}
+      title={
+        selectedNode ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginRight: 40 }}>
+            <span>{t(`workflowDesigner.${selectedNode.data.type}Node`)}</span>
+            <Button
+              type="text"
+              icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFullscreen(!isFullscreen);
+              }}
+              style={{ 
+                marginLeft: 8,
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title={isFullscreen ? t('workflowDesigner.exitFullscreen') : t('workflowDesigner.enterFullscreen')}
+            />
+          </div>
+        ) : ''
+      }
       placement="right"
       open={drawerOpen}
-      onClose={() => setDrawerOpen(false)}
-      width={340}
+      onClose={() => {
+        setDrawerOpen(false);
+        setIsFullscreen(false); // 關閉時重置全屏狀態
+      }}
+      width={isFullscreen ? '100%' : 340}
+      style={{
+        transition: 'width 0.3s ease'
+      }}
     >
+      <div style={{
+        maxWidth: isFullscreen ? '1200px' : '100%',
+        margin: isFullscreen ? '0 auto' : '0',
+        padding: isFullscreen ? '20px 40px' : '0'
+      }}>
       {selectedNode && selectedNode.data.type !== 'start' && (
         <Form
           form={form}
@@ -917,34 +1023,175 @@ const NodePropertyDrawer = ({
               />
               
               <Form.Item label={t('workflowDesigner.validationConfig')}>
-                <Card size="small" title={t('workflowDesigner.validationSettings')} style={{ marginBottom: 16 }}>
-                  <Form.Item label={t('workflowDesigner.enableValidation')} name={['validation', 'enabled']}>
-                    <Select
-                      options={[
-                        { value: true, label: t('workflowDesigner.yes') },
-                        { value: false, label: t('workflowDesigner.no') }
-                      ]}
-                    />
-                  </Form.Item>
+                <Card 
+                  size="small" 
+                  title={t('workflowDesigner.validationSettings')} 
+                  style={{ marginBottom: 16 }}
+                >
+                  <div style={{
+                    display: isFullscreen ? 'grid' : 'block',
+                    gridTemplateColumns: isFullscreen ? '1fr 1fr' : '1fr',
+                    gap: isFullscreen ? '16px' : '0'
+                  }}>
+                    <Form.Item label={t('workflowDesigner.enableValidation')} name={['validation', 'enabled']}>
+                      <Select
+                        options={[
+                          { value: true, label: t('workflowDesigner.yes') },
+                          { value: false, label: t('workflowDesigner.no') }
+                        ]}
+                      />
+                    </Form.Item>
                   <Form.Item label={t('workflowDesigner.validatorType')} name={['validation', 'validatorType']}>
                     <Select
                       options={[
                         { value: 'default', label: t('workflowDesigner.defaultValidator') },
+                        { value: 'time', label: t('workflowDesigner.timeValidatorLabel') },
                         { value: 'custom', label: t('workflowDesigner.customValidator') },
                         { value: 'openai', label: t('workflowDesigner.openaiValidation') },
                         { value: 'xai', label: t('workflowDesigner.xaiValidation') }
                       ]}
                     />
                   </Form.Item>
-                  <Form.Item label={t('workflowDesigner.promptText')} name={['validation', 'prompt']}>
-                    <Input placeholder={t('workflowDesigner.dateFormatExample')} />
-                  </Form.Item>
-                  <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
-                    <Input placeholder={t('workflowDesigner.formatExample')} />
-                  </Form.Item>
-                  <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
-                    <Input type="number" min="1" max="10" />
-                  </Form.Item>
+                  </div>
+                  
+                  {/* Time Validator 配置 */}
+                  {selectedNode.data.validation?.validatorType === 'time' && (
+                    <>
+                      {/* Retry Interval - 天/時/分 */}
+                      <Form.Item label={t('workflowDesigner.timeValidator.retryInterval')}>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
+                          gap: isFullscreen ? '12px' : '8px'
+                        }}>
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            placeholder="0"
+                            value={selectedNode.data.validation?.retryIntervalDays || 0}
+                            onChange={(e) => {
+                              const newValidation = {
+                                ...(selectedNode.data.validation || {}),
+                                retryIntervalDays: parseInt(e.target.value) || 0
+                              };
+                              handleNodeDataChange({ validation: newValidation });
+                            }}
+                            addonAfter={t('workflowDesigner.days')}
+                          />
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            max="23"
+                            placeholder="0"
+                            value={selectedNode.data.validation?.retryIntervalHours || 0}
+                            onChange={(e) => {
+                              const newValidation = {
+                                ...(selectedNode.data.validation || {}),
+                                retryIntervalHours: parseInt(e.target.value) || 0
+                              };
+                              handleNodeDataChange({ validation: newValidation });
+                            }}
+                            addonAfter={t('workflowDesigner.hours')}
+                          />
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            max="59"
+                            placeholder="30"
+                            value={selectedNode.data.validation?.retryIntervalMinutes || 0}
+                            onChange={(e) => {
+                              const newValidation = {
+                                ...(selectedNode.data.validation || {}),
+                                retryIntervalMinutes: parseInt(e.target.value) || 0
+                              };
+                              handleNodeDataChange({ validation: newValidation });
+                            }}
+                            addonAfter={t('workflowDesigner.minutes')}
+                          />
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
+                          💡 {t('workflowDesigner.timeValidator.retryIntervalHelp')}
+                        </div>
+                      </Form.Item>
+                      
+                      {/* Retry Limit */}
+                      <Form.Item label={t('workflowDesigner.timeValidator.retryLimit')} name={['validation', 'retryLimit']}>
+                        <Input type="number" min="0" max="10" placeholder="3" />
+                      </Form.Item>
+                      
+                      <div style={{
+                        display: isFullscreen ? 'grid' : 'block',
+                        gridTemplateColumns: isFullscreen ? '1fr 1fr' : '1fr',
+                        gap: isFullscreen ? '16px' : '0'
+                      }}>
+                        {/* Retry Message 設置按鈕 */}
+                        <Form.Item label={t('workflowDesigner.timeValidator.retryMessage')}>
+                          <Button 
+                            type="dashed" 
+                            icon={<MessageOutlined />}
+                            onClick={() => setRetryMessageModalVisible(true)}
+                            style={{ width: '100%' }}
+                          >
+                            {t('workflowDesigner.timeValidator.configureRetryMessage')}
+                          </Button>
+                          
+                          {/* 顯示已配置的摘要 */}
+                          {selectedNode.data.validation?.retryMessageConfig && (
+                            <div style={{ marginTop: 8, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
+                              <div style={{ fontSize: 12, color: '#666' }}>
+                                {selectedNode.data.validation.retryMessageConfig.useTemplate 
+                                  ? `📄 Template: ${selectedNode.data.validation.retryMessageConfig.templateName}`
+                                  : `✉️ Direct Message: ${selectedNode.data.validation.retryMessageConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
+                                }
+                              </div>
+                            </div>
+                          )}
+                        </Form.Item>
+                        
+                        {/* Escalation 設置按鈕 */}
+                        <Form.Item label={t('workflowDesigner.timeValidator.escalation')}>
+                          <Button 
+                            type="dashed" 
+                            icon={<BellOutlined />}
+                            onClick={() => setEscalationConfigModalVisible(true)}
+                            style={{ width: '100%' }}
+                          >
+                            {t('workflowDesigner.timeValidator.configureEscalation')}
+                          </Button>
+                          
+                          {/* 顯示已配置的升級對象摘要 */}
+                          {selectedNode.data.validation?.escalationConfig && (
+                            <div style={{ marginTop: 8, padding: 8, backgroundColor: '#fff7e6', borderRadius: 4, border: '1px solid #ffd666' }}>
+                              <div style={{ fontSize: 12, color: '#d48806' }}>
+                                📢 Recipients: {selectedNode.data.validation.escalationConfig.recipients || 'Not set'}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#d48806', marginTop: 4 }}>
+                                {selectedNode.data.validation.escalationConfig.useTemplate 
+                                  ? `📄 Template: ${selectedNode.data.validation.escalationConfig.templateName}`
+                                  : `✉️ Message: ${selectedNode.data.validation.escalationConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
+                                }
+                              </div>
+                            </div>
+                          )}
+                        </Form.Item>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* 其他 Validator 的配置 */}
+                  {selectedNode.data.validation?.validatorType !== 'time' && (
+                    <>
+                      <Form.Item label={t('workflowDesigner.promptText')} name={['validation', 'prompt']}>
+                        <Input placeholder={t('workflowDesigner.dateFormatExample')} />
+                      </Form.Item>
+                      <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
+                        <Input placeholder={t('workflowDesigner.formatExample')} />
+                      </Form.Item>
+                      <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
+                        <Input type="number" min="1" max="10" />
+                      </Form.Item>
+                    </>
+                  )}
                 </Card>
               </Form.Item>
               <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
@@ -1874,15 +2121,15 @@ const NodePropertyDrawer = ({
             
             {selectedNode.data.activationType === 'webhook' && (
               <>
-                <Form.Item label={t('workflowDesigner.webhookToken')} name="webhookToken">
-                  <Input placeholder={t('workflowDesigner.webhookTokenPlaceholder')} />
-                </Form.Item>
                 <Card size="small" title={t('workflowDesigner.webhookInfo')} style={{ marginTop: 16 }}>
                   <p style={{ fontSize: '12px', margin: '4px 0' }}>
                     {t('workflowDesigner.webhookDescription1')}
                   </p>
                   <p style={{ fontSize: '12px', margin: '4px 0' }}>
                     {t('workflowDesigner.webhookDescription2')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                    💡 {t('workflowDesigner.webhookDescription3')}
                   </p>
                 </Card>
               </>
@@ -1913,9 +2160,132 @@ const NodePropertyDrawer = ({
                 </Card>
               </>
             )}
+            
+            {/* Overdue Settings - 流程逾期設置 */}
+            <h4 style={{ marginTop: 24 }}>{t('workflowDesigner.overdueConfig')}</h4>
+            <Card size="small" title={t('workflowDesigner.overdueSettings')} style={{ marginBottom: 16 }}>
+              {/* Enable Overdue Monitoring */}
+              <Form.Item label={t('workflowDesigner.overdue.enabled')} name={['overdueConfig', 'enabled']}>
+                <Select
+                  options={[
+                    { value: true, label: t('workflowDesigner.yes') },
+                    { value: false, label: t('workflowDesigner.no') }
+                  ]}
+                />
+              </Form.Item>
+              
+              {selectedNode.data.overdueConfig?.enabled && (
+                <>
+                  {/* Overdue Duration - 天/時/分 */}
+                  <Form.Item label={t('workflowDesigner.overdue.duration')}>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
+                      gap: isFullscreen ? '12px' : '8px'
+                    }}>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        placeholder="7"
+                        value={selectedNode.data.overdueConfig?.days || 0}
+                        onChange={(e) => {
+                          const newConfig = {
+                            ...(selectedNode.data.overdueConfig || {}),
+                            days: parseInt(e.target.value) || 0
+                          };
+                          handleNodeDataChange({ overdueConfig: newConfig });
+                        }}
+                        addonAfter={t('workflowDesigner.days')}
+                      />
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        max="23"
+                        placeholder="8"
+                        value={selectedNode.data.overdueConfig?.hours || 0}
+                        onChange={(e) => {
+                          const newConfig = {
+                            ...(selectedNode.data.overdueConfig || {}),
+                            hours: parseInt(e.target.value) || 0
+                          };
+                          handleNodeDataChange({ overdueConfig: newConfig });
+                        }}
+                        addonAfter={t('workflowDesigner.hours')}
+                      />
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        max="59"
+                        placeholder="0"
+                        value={selectedNode.data.overdueConfig?.minutes || 0}
+                        onChange={(e) => {
+                          const newConfig = {
+                            ...(selectedNode.data.overdueConfig || {}),
+                            minutes: parseInt(e.target.value) || 0
+                          };
+                          handleNodeDataChange({ overdueConfig: newConfig });
+                        }}
+                        addonAfter={t('workflowDesigner.minutes')}
+                      />
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
+                      💡 {t('workflowDesigner.overdue.durationHelp')}
+                    </div>
+                  </Form.Item>
+                  
+                  {/* Escalation 設置按鈕 */}
+                  <Form.Item label={t('workflowDesigner.overdue.escalation')}>
+                    <Button 
+                      type="dashed" 
+                      icon={<ClockCircleOutlined />}
+                      onClick={() => setOverdueEscalationModalVisible(true)}
+                      style={{ width: '100%' }}
+                    >
+                      {t('workflowDesigner.overdue.configureEscalation')}
+                    </Button>
+                    
+                    {/* 顯示已配置的摘要 */}
+                    {selectedNode.data.overdueConfig?.escalationConfig && (
+                      <div style={{ marginTop: 8, padding: 8, backgroundColor: '#fff7e6', borderRadius: 4, border: '1px solid #ffd666' }}>
+                        <div style={{ fontSize: 12, color: '#d48806' }}>
+                          📢 Recipients: {selectedNode.data.overdueConfig.escalationConfig.recipients || 'Not set'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#d48806', marginTop: 4 }}>
+                          {selectedNode.data.overdueConfig.escalationConfig.useTemplate 
+                            ? `📄 Template: ${selectedNode.data.overdueConfig.escalationConfig.templateName}`
+                            : `✉️ Message: ${selectedNode.data.overdueConfig.escalationConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
+                          }
+                        </div>
+                      </div>
+                    )}
+                  </Form.Item>
+                  
+                  {/* Overdue 說明 */}
+                  <div style={{ 
+                    padding: '8px 12px', 
+                    backgroundColor: '#f0f8ff', 
+                    border: '1px solid #1890ff',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: '#666',
+                    marginTop: 8
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
+                      ⏰ {t('workflowDesigner.overdue.howItWorks')}
+                    </div>
+                    <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                      <li>{t('workflowDesigner.overdue.description1')}</li>
+                      <li>{t('workflowDesigner.overdue.description2')}</li>
+                      <li>{t('workflowDesigner.overdue.description3')}</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </Card>
           </Form>
         </div>
       )}
+      </div>
 
       {/* 收件人選擇模態框 */}
       <RecipientModal
@@ -2292,6 +2662,135 @@ const NodePropertyDrawer = ({
           {t('workflowDesigner.dataSet.totalRecords', { count: queryPreviewData.length })}
         </div>
       </Modal>
+
+      {/* Retry Message 設置模態框 */}
+      <RetryMessageModal
+        visible={retryMessageModalVisible}
+        onCancel={() => {
+          setRetryMessageModalVisible(false);
+          setTempRetryMessageConfig(null);
+        }}
+        onSave={(config) => {
+          // 保存配置到 validation.retryMessageConfig
+          const newValidation = {
+            ...(selectedNode.data.validation || {}),
+            retryMessageConfig: config
+          };
+          handleNodeDataChange({ validation: newValidation });
+          setRetryMessageModalVisible(false);
+          setTempRetryMessageConfig(null);
+          message.success(t('workflowDesigner.timeValidator.retryMessageSaved'));
+        }}
+        initialConfig={tempRetryMessageConfig || selectedNode?.data?.validation?.retryMessageConfig}
+        onOpenTemplateModal={() => {
+          setTemplateModalSource('retryMessage');
+          setIsTemplateModalVisible(true);
+        }}
+        processVariables={processVariables}
+        t={t}
+      />
+
+      {/* Escalation Config 設置模態框 */}
+      <EscalationConfigModal
+        visible={escalationConfigModalVisible}
+        onCancel={() => {
+          setEscalationConfigModalVisible(false);
+          setTempEscalationConfig(null);
+        }}
+        onSave={(config) => {
+          // 保存配置到 validation.escalationConfig
+          const newValidation = {
+            ...(selectedNode.data.validation || {}),
+            escalationConfig: config
+          };
+          handleNodeDataChange({ validation: newValidation });
+          setEscalationConfigModalVisible(false);
+          setTempEscalationConfig(null);
+          message.success(t('workflowDesigner.timeValidator.escalationSaved'));
+        }}
+        initialConfig={tempEscalationConfig || selectedNode?.data?.validation?.escalationConfig}
+        onOpenTemplateModal={() => {
+          setTemplateModalSource('escalation');
+          setIsTemplateModalVisible(true);
+        }}
+        onOpenRecipientModal={() => {
+          setTemplateModalSource('escalation');
+          setTimeValidatorRecipientModalVisible(true);
+        }}
+        workflowDefinitionId={workflowId}
+        processVariables={processVariables}
+        t={t}
+      />
+
+      {/* Time Validator 專用的 Template Modal */}
+
+      {/* Time Validator 專用的 Recipient Modal */}
+      <RecipientModal
+        visible={timeValidatorRecipientModalVisible}
+        onCancel={() => setTimeValidatorRecipientModalVisible(false)}
+        onSelect={(recipients, recipientDetails) => {
+          // 根據來源保存到對應的臨時配置
+          if (templateModalSource === 'escalation') {
+            setTempEscalationConfig(prev => ({
+              ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
+              recipients: recipients,
+              recipientDetails: recipientDetails
+            }));
+          } else if (templateModalSource === 'overdue') {
+            setTempOverdueEscalationConfig(prev => ({
+              ...(prev || selectedNode?.data?.overdueConfig?.escalationConfig || {}),
+              recipients: recipients,
+              recipientDetails: recipientDetails
+            }));
+          }
+          setTimeValidatorRecipientModalVisible(false);
+        }}
+        value={
+          templateModalSource === 'overdue' 
+            ? (tempOverdueEscalationConfig?.recipients || '') 
+            : (tempEscalationConfig?.recipients || '')
+        }
+        recipientDetails={
+          templateModalSource === 'overdue'
+            ? (tempOverdueEscalationConfig?.recipientDetails || null)
+            : (tempEscalationConfig?.recipientDetails || null)
+        }
+        allowMultiple={true}
+        placeholder={t('workflowDesigner.selectRecipients')}
+        workflowDefinitionId={workflowId}
+      />
+
+      {/* Overdue Escalation 設置模態框（Start 節點）*/}
+      <OverdueEscalationModal
+        visible={overdueEscalationModalVisible}
+        onCancel={() => {
+          setOverdueEscalationModalVisible(false);
+          setTempOverdueEscalationConfig(null);
+        }}
+        onSave={(config) => {
+          // 保存配置到 overdueConfig.escalationConfig
+          const newOverdueConfig = {
+            ...(selectedNode.data.overdueConfig || {}),
+            escalationConfig: config
+          };
+          handleNodeDataChange({ overdueConfig: newOverdueConfig });
+          setOverdueEscalationModalVisible(false);
+          setTempOverdueEscalationConfig(null);
+          message.success(t('workflowDesigner.overdue.escalationSaved'));
+        }}
+        initialConfig={tempOverdueEscalationConfig || selectedNode?.data?.overdueConfig?.escalationConfig}
+        onOpenTemplateModal={() => {
+          setTemplateModalSource('overdue');
+          setIsTemplateModalVisible(true);
+        }}
+        onOpenRecipientModal={() => {
+          setTemplateModalSource('overdue');
+          setTimeValidatorRecipientModalVisible(true);
+        }}
+        workflowDefinitionId={workflowId}
+        processVariables={processVariables}
+        t={t}
+      />
     </Drawer>
   );
 };

@@ -1,0 +1,1227 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using PurpleRice.Data;
+using PurpleRice.Models;
+
+namespace PurpleRice.Services
+{
+    /// <summary>
+    /// 工作流程監控定時服務
+    /// 負責檢查並處理 Time Validator 重試和 Overdue 逾期通知
+    /// </summary>
+    public class WorkflowMonitoringSchedulerService : BackgroundService
+    {
+        private readonly IServiceScopeFactory _serviceScopeFactory;
+        private readonly IConfiguration _configuration;
+        private int _checkIntervalSeconds;
+        private bool _enableRetryMonitoring;
+        private bool _enableOverdueMonitoring;
+
+        public WorkflowMonitoringSchedulerService(
+            IServiceScopeFactory serviceScopeFactory,
+            IConfiguration configuration)
+        {
+            _serviceScopeFactory = serviceScopeFactory;
+            _configuration = configuration;
+
+            // 從配置文件讀取設定
+            _checkIntervalSeconds = _configuration.GetValue<int>("WorkflowMonitoring:CheckIntervalSeconds", 300);
+            _enableRetryMonitoring = _configuration.GetValue<bool>("WorkflowMonitoring:EnableRetryMonitoring", true);
+            _enableOverdueMonitoring = _configuration.GetValue<bool>("WorkflowMonitoring:EnableOverdueMonitoring", true);
+
+            // 使用 Console.WriteLine 進行初始化日誌，因為此時還沒有 LoggingService
+            Console.WriteLine("=== WorkflowMonitoringSchedulerService 初始化 ===");
+            Console.WriteLine($"檢查間隔: {_checkIntervalSeconds} 秒");
+            Console.WriteLine($"重試監控: {(_enableRetryMonitoring ? "啟用" : "停用")}");
+            Console.WriteLine($"逾期監控: {(_enableOverdueMonitoring ? "啟用" : "停用")}");
+        }
+
+        /// <summary>
+        /// 獲取 LoggingService 實例
+        /// </summary>
+        private LoggingService GetLoggingService()
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
+            return scope.ServiceProvider.GetRequiredService<Func<string, LoggingService>>()("WorkflowMonitoringSchedulerService");
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            var loggingService = GetLoggingService();
+            
+            loggingService.LogInformation("WorkflowMonitoringSchedulerService 已啟動");
+
+            // 首次執行延遲 30 秒（避免啟動時資源競爭）
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await PerformMonitoringCheckAsync();
+                }
+                catch (Exception ex)
+                {
+                    loggingService.LogError($"監控檢查執行失敗: {ex.Message}");
+                    loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                }
+
+                // 等待下一次檢查
+                await Task.Delay(TimeSpan.FromSeconds(_checkIntervalSeconds), stoppingToken);
+            }
+
+            loggingService.LogInformation("WorkflowMonitoringSchedulerService 已停止");
+        }
+
+        /// <summary>
+        /// 執行監控檢查
+        /// </summary>
+        private async Task PerformMonitoringCheckAsync()
+        {
+            var checkTime = DateTime.UtcNow;
+            var loggingService = GetLoggingService();
+            loggingService.LogInformation($"=== 開始監控檢查 ({checkTime:yyyy-MM-dd HH:mm:ss}) ===");
+
+            using (var scope = _serviceScopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+
+                // 1. 檢查需要重試的等待步驟
+                if (_enableRetryMonitoring)
+                {
+                    await CheckWaitingStepsForRetryAsync(db, scope.ServiceProvider);
+                }
+
+                // 2. 檢查逾期的流程
+                if (_enableOverdueMonitoring)
+                {
+                    await CheckWorkflowsForOverdueAsync(db, scope.ServiceProvider);
+                }
+            }
+
+            loggingService.LogInformation("=== 監控檢查完成 ===");
+        }
+
+        /// <summary>
+        /// 檢查等待中的步驟是否需要重試
+        /// </summary>
+        private async Task CheckWaitingStepsForRetryAsync(PurpleRiceDbContext db, IServiceProvider serviceProvider)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                loggingService.LogInformation("--- 開始檢查重試步驟 ---");
+
+                // 查詢所有等待中的步驟（包含 ValidationConfig）
+                var waitingSteps = await db.WorkflowStepExecutions
+                    .Where(s => s.IsWaiting && 
+                                s.Status == "Waiting" && 
+                                s.ValidationConfig != null)
+                    .Include(s => s.WorkflowExecution)
+                        .ThenInclude(we => we.WorkflowDefinition)
+                    .ToListAsync();
+
+                loggingService.LogInformation($"找到 {waitingSteps.Count} 個等待中的步驟");
+
+                int retryCount = 0;
+                int escalationCount = 0;
+
+                foreach (var step in waitingSteps)
+                {
+                    try
+                    {
+                        // 解析 ValidationConfig
+                        var validation = JsonSerializer.Deserialize<ValidationConfig>(step.ValidationConfig);
+                        
+                        if (validation?.ValidatorType != "time")
+                        {
+                            continue; // 不是 Time Validator，跳過
+                        }
+
+                        // 計算重試間隔（轉換為總分鐘數）
+                        int retryIntervalMinutes = (validation.RetryIntervalDays ?? 0) * 24 * 60 +
+                                                   (validation.RetryIntervalHours ?? 0) * 60 +
+                                                   (validation.RetryIntervalMinutes ?? 0);
+
+                        if (retryIntervalMinutes <= 0)
+                        {
+                            loggingService.LogWarning($"步驟 {step.Id} 的重試間隔設置無效: {retryIntervalMinutes} 分鐘，跳過");
+                            continue;
+                        }
+
+                        // 計算距離上次活動的時間
+                        var lastActivityTime = step.LastRetryAt ?? step.StartedAt ?? DateTime.Now;
+                        var minutesSinceLastActivity = (DateTime.Now - lastActivityTime).TotalMinutes;
+
+                        loggingService.LogDebug($"步驟 {step.Id} ({step.TaskName}): 距上次活動 {minutesSinceLastActivity:F1} 分鐘，重試間隔 {retryIntervalMinutes} 分鐘，已重試 {step.RetryCount} 次");
+
+                        // 判斷是否需要重試
+                        if (minutesSinceLastActivity >= retryIntervalMinutes)
+                        {
+                            if (step.RetryCount < (validation.RetryLimit ?? 3))
+                            {
+                                // 發送重試訊息
+                                loggingService.LogInformation($"⏰ 發送重試訊息 - 步驟 {step.Id} ({step.TaskName})，第 {step.RetryCount + 1} 次重試");
+                                await SendRetryMessageAsync(db, serviceProvider, step, validation.RetryMessageConfig);
+                                
+                                // 更新重試計數
+                                step.RetryCount++;
+                                step.LastRetryAt = DateTime.UtcNow;
+                                retryCount++;
+                            }
+                            else if (!step.EscalationSent && validation.EscalationConfig != null)
+                            {
+                                // 達到重試上限，發送升級通知
+                                loggingService.LogInformation($"📢 發送升級通知 - 步驟 {step.Id} ({step.TaskName})，已達重試上限 {validation.RetryLimit}");
+                                await SendEscalationMessageAsync(db, serviceProvider, step, validation.EscalationConfig);
+                                
+                                // 標記已發送升級通知
+                                step.EscalationSent = true;
+                                step.EscalationSentAt = DateTime.UtcNow;
+                                escalationCount++;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        loggingService.LogError($"處理步驟 {step.Id} 失敗: {ex.Message}");
+                    }
+                }
+
+                // 保存所有變更
+                if (retryCount > 0 || escalationCount > 0)
+                {
+                    try
+                    {
+                        await db.SaveChangesAsync();
+                        loggingService.LogInformation($"✅ 重試檢查完成 - 發送 {retryCount} 個重試訊息，{escalationCount} 個升級通知");
+                    }
+                    catch (Exception saveEx)
+                    {
+                        loggingService.LogError($"保存變更失敗: {saveEx.Message}");
+                        loggingService.LogDebug($"保存錯誤堆疊追蹤: {saveEx.StackTrace}");
+                        
+                        // 嘗試獲取更詳細的錯誤信息
+                        if (saveEx.InnerException != null)
+                        {
+                            loggingService.LogError($"內部錯誤: {saveEx.InnerException.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    loggingService.LogInformation("✅ 重試檢查完成 - 無需處理的步驟");
+                }
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"重試檢查失敗: {ex.Message}");
+                loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// 檢查運行中的流程是否逾期
+        /// </summary>
+        private async Task CheckWorkflowsForOverdueAsync(PurpleRiceDbContext db, IServiceProvider serviceProvider)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                loggingService.LogInformation("--- 開始檢查逾期流程 ---");
+
+                // 查詢所有運行中且未發送逾期通知的流程
+                var runningWorkflows = await db.WorkflowExecutions
+                    .Where(w => w.Status == "Running" && !w.OverdueNotified)
+                    .Include(w => w.WorkflowDefinition)
+                    .ToListAsync();
+
+                loggingService.LogInformation($"找到 {runningWorkflows.Count} 個運行中的流程");
+
+                int overdueCount = 0;
+
+                foreach (var workflow in runningWorkflows)
+                {
+                    try
+                    {
+                        // 從 WorkflowDefinition.Json 中提取 Start 節點的 overdueConfig
+                        var overdueConfig = ExtractOverdueConfigFromDefinition(workflow.WorkflowDefinition);
+                        
+                        if (overdueConfig == null || !overdueConfig.Enabled)
+                        {
+                            continue; // 未啟用逾期監控，跳過
+                        }
+
+                        // 計算逾期閾值（轉換為總分鐘數）
+                        int thresholdMinutes = (overdueConfig.Days ?? 0) * 24 * 60 +
+                                              (overdueConfig.Hours ?? 0) * 60 +
+                                              (overdueConfig.Minutes ?? 0);
+
+                        if (thresholdMinutes <= 0)
+                        {
+                            loggingService.LogWarning($"流程 {workflow.Id} 的逾期時限設置無效: {thresholdMinutes} 分鐘，跳過");
+                            continue;
+                        }
+
+                        // 計算距離啟動的時間
+                        var minutesSinceStart = (DateTime.UtcNow - workflow.StartedAt).TotalMinutes;
+
+                        loggingService.LogDebug($"流程 {workflow.Id} ({workflow.WorkflowDefinition?.Name}): 運行 {minutesSinceStart:F1} 分鐘，閾值 {thresholdMinutes} 分鐘");
+
+                        // 判斷是否逾期
+                        if (minutesSinceStart >= thresholdMinutes)
+                        {
+                            loggingService.LogInformation($"⏰ 發送逾期通知 - 流程 {workflow.Id} ({workflow.WorkflowDefinition?.Name})，已運行 {minutesSinceStart:F1} 分鐘");
+                            await SendOverdueNotificationAsync(db, serviceProvider, workflow, overdueConfig.EscalationConfig);
+                            
+                            // 標記已發送逾期通知
+                            workflow.OverdueNotified = true;
+                            workflow.OverdueNotifiedAt = DateTime.UtcNow;
+                            workflow.OverdueThresholdMinutes = thresholdMinutes;
+                            overdueCount++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        loggingService.LogError($"處理流程 {workflow.Id} 失敗: {ex.Message}");
+                    }
+                }
+
+                // 保存所有變更
+                if (overdueCount > 0)
+                {
+                    await db.SaveChangesAsync();
+                    loggingService.LogInformation($"✅ 逾期檢查完成 - 發送 {overdueCount} 個逾期通知");
+                }
+                else
+                {
+                    loggingService.LogInformation("✅ 逾期檢查完成 - 無逾期流程");
+                }
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"逾期檢查失敗: {ex.Message}");
+                loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+            }
+        }
+
+        /// <summary>
+        /// 解析模板變量，將流程變量映射轉換為模板參數
+        /// </summary>
+        private async Task<Dictionary<string, string>> ResolveTemplateVariablesAsync(
+            List<TemplateVariableMapping> templateVariables, 
+            WorkflowExecution workflow,
+            PurpleRiceDbContext db)
+        {
+            var loggingService = GetLoggingService();
+            var templateParams = new Dictionary<string, string>();
+            
+            loggingService.LogDebug($"🔍 開始解析模板變量 - 工作流程 {workflow.Id}");
+            loggingService.LogDebug($"🔍 模板變量配置數量: {templateVariables?.Count ?? 0}");
+            
+            if (templateVariables == null || templateVariables.Count == 0)
+            {
+                loggingService.LogWarning("⚠️ 沒有模板變量配置，返回空參數");
+                return templateParams;
+            }
+
+            // 解析流程變量值
+            var processVariableValues = new Dictionary<string, string>();
+            
+            // 從 WorkflowExecution.InputJson 中提取流程變量值
+            if (!string.IsNullOrEmpty(workflow.InputJson))
+            {
+                try
+                {
+                    loggingService.LogDebug($"🔍 InputJson 內容: {workflow.InputJson}");
+                    
+                    var inputData = JsonSerializer.Deserialize<Dictionary<string, object>>(workflow.InputJson);
+                    if (inputData != null)
+                    {
+                        foreach (var kvp in inputData)
+                        {
+                            processVariableValues[kvp.Key] = kvp.Value?.ToString() ?? "";
+                            loggingService.LogDebug($"🔍 流程變量: {kvp.Key} = {kvp.Value}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    loggingService.LogWarning($"解析流程變量失敗: {ex.Message}");
+                }
+            }
+            else
+            {
+                loggingService.LogWarning("⚠️ WorkflowExecution.InputJson 為空");
+            }
+
+            // 從 ProcessVariableValues 表中獲取流程變量值
+            var processVariableDbValues = await db.ProcessVariableValues
+                .Where(pv => pv.WorkflowExecutionId == workflow.Id)
+                .ToListAsync();
+
+            loggingService.LogDebug($"🔍 從數據庫獲取的流程變量數量: {processVariableDbValues.Count}");
+            
+            foreach (var pv in processVariableDbValues)
+            {
+                var value = pv.GetValue()?.ToString() ?? "";
+                processVariableValues[pv.VariableName] = value;
+                loggingService.LogDebug($"🔍 數據庫流程變量: {pv.VariableName} = {value}");
+            }
+
+            // 映射模板變量
+            foreach (var mapping in templateVariables)
+            {
+                loggingService.LogDebug($"🔍 處理模板變量映射: ParameterName={mapping.ParameterName}, ProcessVariableId={mapping.ProcessVariableId}, ProcessVariableName={mapping.ProcessVariableName}");
+                
+                string variableValue = null;
+                
+                if (!string.IsNullOrEmpty(mapping.ProcessVariableName))
+                {
+                    // 優先通過 ProcessVariableName 查找（這是最可靠的方式）
+                    if (processVariableValues.ContainsKey(mapping.ProcessVariableName))
+                    {
+                        variableValue = processVariableValues[mapping.ProcessVariableName];
+                        loggingService.LogDebug($"🔍 通過 ProcessVariableName 找到值: {mapping.ProcessVariableName} = {variableValue}");
+                    }
+                    else
+                    {
+                        // 從 ProcessVariableValues 表中通過 variable_name 查找
+                        var pvRecord = processVariableDbValues.FirstOrDefault(pv => pv.VariableName == mapping.ProcessVariableName);
+                        if (pvRecord != null)
+                        {
+                            variableValue = pvRecord.GetValue()?.ToString();
+                            loggingService.LogDebug($"🔍 通過數據庫 ProcessVariableName 找到值: {mapping.ProcessVariableName} = {variableValue}");
+                        }
+                    }
+                }
+                
+                // 如果通過 ProcessVariableName 沒找到，嘗試通過 ProcessVariableId 查找
+                if (string.IsNullOrEmpty(variableValue) && !string.IsNullOrEmpty(mapping.ProcessVariableId))
+                {
+                    // 先從 InputJson 中查找
+                    if (processVariableValues.ContainsKey(mapping.ProcessVariableId))
+                    {
+                        variableValue = processVariableValues[mapping.ProcessVariableId];
+                        loggingService.LogDebug($"🔍 通過 ProcessVariableId (InputJson) 找到值: {mapping.ProcessVariableId} = {variableValue}");
+                    }
+                    else
+                    {
+                        // 從 ProcessVariableValues 表中查找
+                        var pvRecord = processVariableDbValues.FirstOrDefault(pv => pv.Id.ToString() == mapping.ProcessVariableId);
+                        if (pvRecord != null)
+                        {
+                            variableValue = pvRecord.GetValue()?.ToString();
+                            loggingService.LogDebug($"🔍 通過 ProcessVariableId (數據庫) 找到值: {mapping.ProcessVariableId} = {variableValue}");
+                        }
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(variableValue))
+                {
+                    var paramName = !string.IsNullOrEmpty(mapping.ParameterName) 
+                        ? mapping.ParameterName 
+                        : mapping.ProcessVariableName ?? mapping.ProcessVariableId;
+                    
+                    templateParams[paramName] = variableValue;
+                    loggingService.LogDebug($"🔍 映射成功: {paramName} = {variableValue}");
+                }
+                else
+                {
+                    loggingService.LogWarning($"⚠️ 無法映射模板變量: ProcessVariableId={mapping.ProcessVariableId}, ProcessVariableName={mapping.ProcessVariableName}");
+                    loggingService.LogDebug($"🔍 可用的流程變量: {string.Join(", ", processVariableValues.Keys)}");
+                }
+            }
+
+            loggingService.LogDebug($"🔍 最終模板參數: {JsonSerializer.Serialize(templateParams)}");
+            return templateParams;
+        }
+
+        /// <summary>
+        /// 發送重試訊息
+        /// </summary>
+        private async Task SendRetryMessageAsync(
+            PurpleRiceDbContext db, 
+            IServiceProvider serviceProvider,
+            WorkflowStepExecution step, 
+            RetryMessageConfig messageConfig)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                var messageSendService = serviceProvider.GetRequiredService<WorkflowMessageSendService>();
+                var recipientResolver = serviceProvider.GetRequiredService<RecipientResolverService>();
+                var whatsAppService = serviceProvider.GetRequiredService<WhatsAppWorkflowService>();
+
+                // 獲取收件人（從 step.WaitingForUser 或使用流程啟動人）
+                var recipients = await ResolveRecipientsForStep(db, step);
+
+                if (recipients == null || recipients.Count == 0)
+                {
+                    loggingService.LogWarning($"步驟 {step.Id} 無法解析收件人，跳過重試");
+                    return;
+                }
+
+                // 創建訊息發送記錄
+                var messageSendId = await messageSendService.CreateMessageSendAsync(
+                    workflowExecutionId: step.WorkflowExecutionId,
+                    workflowStepExecutionId: step.Id,
+                    nodeId: $"step_{step.StepIndex}",
+                    nodeType: step.StepType ?? "waitReply",
+                    messageContent: messageConfig?.UseTemplate == false ? messageConfig.Message : null,
+                    templateId: messageConfig?.UseTemplate == true ? messageConfig.TemplateId : null,
+                    templateName: messageConfig?.UseTemplate == true ? messageConfig.TemplateName : null,
+                    messageType: messageConfig?.UseTemplate == true ? "template" : "text",
+                    companyId: step.WorkflowExecution.WorkflowDefinition.CompanyId,
+                    createdBy: "system_retry"
+                );
+
+                // 更新發送原因
+                var messageSend = await db.WorkflowMessageSends.FindAsync(messageSendId);
+                if (messageSend != null)
+                {
+                    messageSend.SendReason = SendReason.Retry;
+                    messageSend.RelatedStepExecutionId = step.Id;
+                    db.WorkflowMessageSends.Update(messageSend); // 明確標記為更新
+                    
+                    // 先保存 WorkflowMessageSend 記錄
+                    await db.SaveChangesAsync();
+                    loggingService.LogDebug($"已保存重試訊息記錄: {messageSendId}");
+                }
+
+                // 添加收件人
+                await messageSendService.AddRecipientsAsync(messageSendId, recipients, "system_retry");
+
+                // 發送訊息並更新狀態
+                if (messageConfig?.UseTemplate == true)
+                {
+                    // 解析模板變量
+                    var templateParams = await ResolveTemplateVariablesAsync(
+                        messageConfig.TemplateVariables, 
+                        step.WorkflowExecution,
+                        db);
+                    
+                    loggingService.LogInformation($"步驟 {step.Id} 重試訊息模板變量: {JsonSerializer.Serialize(templateParams)}");
+                    
+                    // 使用模板發送
+                    foreach (var recipient in recipients)
+                    {
+                        try
+                        {
+                            // 獲取收件人記錄
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                // 發送消息並獲取 WhatsApp Message ID
+                                var whatsappMessageId = await whatsAppService.SendWhatsAppTemplateMessageAsync(
+                                    recipient.PhoneNumber,
+                                    messageConfig.TemplateId,
+                                    step.WorkflowExecution,
+                                    db,
+                                    templateParams,  // 使用解析的模板變量
+                                    messageConfig.IsMetaTemplate,
+                                    messageConfig.TemplateName,
+                                    null
+                                );
+                                
+                                // 更新收件人狀態為已發送
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Sent, 
+                                    whatsappMessageId);
+                                
+                                loggingService.LogInformation($"✅ 重試訊息已發送到 {recipient.PhoneNumber}，WhatsApp Message ID: {whatsappMessageId}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            loggingService.LogError($"發送重試訊息到 {recipient.PhoneNumber} 失敗: {ex.Message}");
+                            
+                            // 更新收件人狀態為失敗
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Failed, 
+                                    null, 
+                                    ex.Message);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // 使用直接訊息發送
+                    foreach (var recipient in recipients)
+                    {
+                        try
+                        {
+                            // 獲取收件人記錄
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                // 發送消息
+                                await whatsAppService.SendWhatsAppMessageAsync(
+                                    recipient.PhoneNumber,
+                                    messageConfig?.Message ?? "請儘快回覆",
+                                    step.WorkflowExecution,
+                                    db
+                                );
+                                
+                                // 更新收件人狀態為已發送（SendWhatsAppMessageAsync 不返回 Message ID）
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Sent);
+                                
+                                loggingService.LogInformation($"✅ 重試訊息已發送到 {recipient.PhoneNumber}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            loggingService.LogError($"發送重試訊息到 {recipient.PhoneNumber} 失敗: {ex.Message}");
+                            
+                            // 更新收件人狀態為失敗
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Failed, 
+                                    null, 
+                                    ex.Message);
+                            }
+                        }
+                    }
+                }
+
+                loggingService.LogInformation($"✅ 重試訊息已發送 - 步驟 {step.Id}，收件人 {recipients.Count} 位");
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"發送重試訊息失敗 - 步驟 {step.Id}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 發送升級通知
+        /// </summary>
+        private async Task SendEscalationMessageAsync(
+            PurpleRiceDbContext db,
+            IServiceProvider serviceProvider,
+            WorkflowStepExecution step,
+            EscalationConfig escalationConfig)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                var messageSendService = serviceProvider.GetRequiredService<WorkflowMessageSendService>();
+                var recipientResolver = serviceProvider.GetRequiredService<RecipientResolverService>();
+                var whatsAppService = serviceProvider.GetRequiredService<WhatsAppWorkflowService>();
+
+                // 解析升級通知的收件人
+                var recipientDetailsJson = escalationConfig.RecipientDetails != null 
+                    ? JsonSerializer.Serialize(escalationConfig.RecipientDetails) 
+                    : null;
+                    
+                var recipients = await recipientResolver.ResolveRecipientsAsync(
+                    escalationConfig.Recipients,
+                    recipientDetailsJson,
+                    step.WorkflowExecutionId,
+                    step.WorkflowExecution.WorkflowDefinition.CompanyId
+                );
+
+                if (recipients == null || recipients.Count == 0)
+                {
+                    loggingService.LogWarning($"步驟 {step.Id} 無法解析升級通知收件人，跳過");
+                    return;
+                }
+
+                // 創建訊息發送記錄
+                var messageSendId = await messageSendService.CreateMessageSendAsync(
+                    workflowExecutionId: step.WorkflowExecutionId,
+                    workflowStepExecutionId: step.Id,
+                    nodeId: $"step_{step.StepIndex}_escalation",
+                    nodeType: step.StepType ?? "waitReply",
+                    messageContent: escalationConfig?.UseTemplate == false ? escalationConfig.Message : null,
+                    templateId: escalationConfig?.UseTemplate == true ? escalationConfig.TemplateId : null,
+                    templateName: escalationConfig?.UseTemplate == true ? escalationConfig.TemplateName : null,
+                    messageType: escalationConfig?.UseTemplate == true ? "template" : "text",
+                    companyId: step.WorkflowExecution.WorkflowDefinition.CompanyId,
+                    createdBy: "system_escalation"
+                );
+
+                // 更新發送原因
+                var messageSend = await db.WorkflowMessageSends.FindAsync(messageSendId);
+                if (messageSend != null)
+                {
+                    messageSend.SendReason = SendReason.Escalation;
+                    messageSend.RelatedStepExecutionId = step.Id;
+                    db.WorkflowMessageSends.Update(messageSend); // 明確標記為更新
+                    
+                    // 先保存 WorkflowMessageSend 記錄
+                    await db.SaveChangesAsync();
+                    loggingService.LogDebug($"已保存升級通知記錄: {messageSendId}");
+                }
+
+                // 添加收件人
+                await messageSendService.AddRecipientsAsync(messageSendId, recipients, "system_escalation");
+
+                // 發送訊息並更新狀態
+                var company = await db.Companies.FindAsync(step.WorkflowExecution.WorkflowDefinition.CompanyId);
+                if (company == null)
+                {
+                    loggingService.LogError($"找不到公司 ID: {step.WorkflowExecution.WorkflowDefinition.CompanyId}");
+                    return;
+                }
+                
+                if (escalationConfig?.UseTemplate == true)
+                {
+                    // 解析模板變量
+                    var templateParams = await ResolveTemplateVariablesAsync(
+                        escalationConfig.TemplateVariables, 
+                        step.WorkflowExecution,
+                        db);
+                    
+                    loggingService.LogInformation($"步驟 {step.Id} 升級通知模板變量: {JsonSerializer.Serialize(templateParams)}");
+                    
+                    foreach (var recipient in recipients)
+                    {
+                        try
+                        {
+                            // 獲取收件人記錄
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                // 發送消息並獲取 WhatsApp Message ID
+                                var whatsappMessageId = await whatsAppService.SendWhatsAppTemplateMessageAsync(
+                                    recipient.PhoneNumber,
+                                    escalationConfig.TemplateId,
+                                    step.WorkflowExecution,
+                                    db,
+                                    templateParams,  // 使用解析的模板變量
+                                    escalationConfig.IsMetaTemplate,
+                                    escalationConfig.TemplateName,
+                                    null
+                                );
+                                
+                                // 更新收件人狀態為已發送
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Sent, 
+                                    whatsappMessageId);
+                                
+                                loggingService.LogInformation($"✅ 升級通知已發送到 {recipient.PhoneNumber}，WhatsApp Message ID: {whatsappMessageId}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            loggingService.LogError($"發送升級通知到 {recipient.PhoneNumber} 失敗: {ex.Message}");
+                            
+                            // 更新收件人狀態為失敗
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Failed, 
+                                    null, 
+                                    ex.Message);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    var message = escalationConfig?.Message ?? $"步驟 {step.TaskName} 已達重試上限，請協助處理";
+                    foreach (var recipient in recipients)
+                    {
+                        try
+                        {
+                            // 獲取收件人記錄
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                // 發送消息
+                                await whatsAppService.SendWhatsAppMessageAsync(
+                                    recipient.PhoneNumber,
+                                    message,
+                                    step.WorkflowExecution,
+                                    db
+                                );
+                                
+                                // 更新收件人狀態為已發送（SendWhatsAppMessageAsync 不返回 Message ID）
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Sent);
+                                
+                                loggingService.LogInformation($"✅ 升級通知已發送到 {recipient.PhoneNumber}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            loggingService.LogError($"發送升級通知到 {recipient.PhoneNumber} 失敗: {ex.Message}");
+                            
+                            // 更新收件人狀態為失敗
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Failed, 
+                                    null, 
+                                    ex.Message);
+                            }
+                        }
+                    }
+                }
+
+                loggingService.LogInformation($"✅ 升級通知已發送 - 步驟 {step.Id}，收件人 {recipients.Count} 位");
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"發送升級通知失敗 - 步驟 {step.Id}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 發送逾期通知
+        /// </summary>
+        private async Task SendOverdueNotificationAsync(
+            PurpleRiceDbContext db,
+            IServiceProvider serviceProvider,
+            WorkflowExecution workflow,
+            EscalationConfig escalationConfig)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                var messageSendService = serviceProvider.GetRequiredService<WorkflowMessageSendService>();
+                var recipientResolver = serviceProvider.GetRequiredService<RecipientResolverService>();
+                var whatsAppService = serviceProvider.GetRequiredService<WhatsAppWorkflowService>();
+
+                // 解析逾期通知的收件人
+                var recipientDetailsJson = escalationConfig.RecipientDetails != null 
+                    ? JsonSerializer.Serialize(escalationConfig.RecipientDetails) 
+                    : null;
+                    
+                var recipients = await recipientResolver.ResolveRecipientsAsync(
+                    escalationConfig.Recipients,
+                    recipientDetailsJson,
+                    workflow.Id,
+                    workflow.WorkflowDefinition.CompanyId
+                );
+
+                if (recipients == null || recipients.Count == 0)
+                {
+                    loggingService.LogWarning($"流程 {workflow.Id} 無法解析逾期通知收件人，跳過");
+                    return;
+                }
+
+                // 創建訊息發送記錄
+                var messageSendId = await messageSendService.CreateMessageSendAsync(
+                    workflowExecutionId: workflow.Id,
+                    workflowStepExecutionId: null,
+                    nodeId: "start_overdue",
+                    nodeType: "start",
+                    messageContent: escalationConfig?.UseTemplate == false ? escalationConfig.Message : null,
+                    templateId: escalationConfig?.UseTemplate == true ? escalationConfig.TemplateId : null,
+                    templateName: escalationConfig?.UseTemplate == true ? escalationConfig.TemplateName : null,
+                    messageType: escalationConfig?.UseTemplate == true ? "template" : "text",
+                    companyId: workflow.WorkflowDefinition.CompanyId,
+                    createdBy: "system_overdue"
+                );
+
+                // 更新發送原因
+                var messageSend = await db.WorkflowMessageSends.FindAsync(messageSendId);
+                if (messageSend != null)
+                {
+                    messageSend.SendReason = SendReason.Overdue;
+                    db.WorkflowMessageSends.Update(messageSend); // 明確標記為更新
+                    
+                    // 先保存 WorkflowMessageSend 記錄
+                    await db.SaveChangesAsync();
+                    loggingService.LogDebug($"已保存逾期通知記錄: {messageSendId}");
+                }
+
+                // 添加收件人
+                await messageSendService.AddRecipientsAsync(messageSendId, recipients, "system_overdue");
+
+                // 發送訊息並更新狀態
+                var company = await db.Companies.FindAsync(workflow.WorkflowDefinition.CompanyId);
+                if (company == null)
+                {
+                    loggingService.LogError($"找不到公司 ID: {workflow.WorkflowDefinition.CompanyId}");
+                    return;
+                }
+                
+                if (escalationConfig?.UseTemplate == true)
+                {
+                    // 解析模板變量
+                    var templateParams = await ResolveTemplateVariablesAsync(
+                        escalationConfig.TemplateVariables, 
+                        workflow,
+                        db);
+                    
+                    loggingService.LogInformation($"流程 {workflow.Id} 逾期通知模板變量: {JsonSerializer.Serialize(templateParams)}");
+                    
+                    foreach (var recipient in recipients)
+                    {
+                        try
+                        {
+                            // 獲取收件人記錄
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                // 發送消息並獲取 WhatsApp Message ID
+                                var whatsappMessageId = await whatsAppService.SendWhatsAppTemplateMessageAsync(
+                                    recipient.PhoneNumber,
+                                    escalationConfig.TemplateId,
+                                    workflow,
+                                    db,
+                                    templateParams,  // 使用解析的模板變量
+                                    escalationConfig.IsMetaTemplate,
+                                    escalationConfig.TemplateName,
+                                    null
+                                );
+                                
+                                // 更新收件人狀態為已發送
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Sent, 
+                                    whatsappMessageId);
+                                
+                                loggingService.LogInformation($"✅ 逾期通知已發送到 {recipient.PhoneNumber}，WhatsApp Message ID: {whatsappMessageId}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            loggingService.LogError($"發送逾期通知到 {recipient.PhoneNumber} 失敗: {ex.Message}");
+                            
+                            // 更新收件人狀態為失敗
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Failed, 
+                                    null, 
+                                    ex.Message);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    var message = escalationConfig?.Message ?? $"流程 {workflow.WorkflowDefinition?.Name} 已逾期，請盡快處理";
+                    foreach (var recipient in recipients)
+                    {
+                        try
+                        {
+                            // 獲取收件人記錄
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                // 發送消息
+                                await whatsAppService.SendWhatsAppMessageAsync(
+                                    recipient.PhoneNumber,
+                                    message,
+                                    workflow,
+                                    db
+                                );
+                                
+                                // 更新收件人狀態為已發送（SendWhatsAppMessageAsync 不返回 Message ID）
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Sent);
+                                
+                                loggingService.LogInformation($"✅ 逾期通知已發送到 {recipient.PhoneNumber}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            loggingService.LogError($"發送逾期通知到 {recipient.PhoneNumber} 失敗: {ex.Message}");
+                            
+                            // 更新收件人狀態為失敗
+                            var recipientRecord = await db.WorkflowMessageRecipients
+                                .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.PhoneNumber == recipient.PhoneNumber);
+                            
+                            if (recipientRecord != null)
+                            {
+                                await messageSendService.UpdateRecipientStatusAsync(
+                                    recipientRecord.Id, 
+                                    RecipientStatus.Failed, 
+                                    null, 
+                                    ex.Message);
+                            }
+                        }
+                    }
+                }
+
+                loggingService.LogInformation($"✅ 逾期通知已發送 - 流程 {workflow.Id}，收件人 {recipients.Count} 位");
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"發送逾期通知失敗 - 流程 {workflow.Id}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 從流程定義中提取 Start 節點的 overdueConfig
+        /// </summary>
+        private OverdueConfig ExtractOverdueConfigFromDefinition(WorkflowDefinition definition)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                if (string.IsNullOrEmpty(definition?.Json))
+                    return null;
+
+                var workflowData = JsonSerializer.Deserialize<WorkflowDefinitionData>(definition.Json);
+                var startNode = workflowData?.Nodes?.FirstOrDefault(n => n.Data?.Type == "start");
+                
+                return startNode?.Data?.OverdueConfig;
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"提取 overdueConfig 失敗: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 解析步驟的收件人（從 WaitingForUser 或流程啟動人）
+        /// </summary>
+        private async Task<List<ResolvedRecipient>> ResolveRecipientsForStep(
+            PurpleRiceDbContext db,
+            WorkflowStepExecution step)
+        {
+            var loggingService = GetLoggingService();
+            try
+            {
+                var recipients = new List<ResolvedRecipient>();
+
+                // 獲取公司 ID
+                var companyId = step.WorkflowExecution?.WorkflowDefinition?.CompanyId ?? Guid.Empty;
+                
+                // 優先使用 WaitingForUser
+                if (!string.IsNullOrEmpty(step.WaitingForUser))
+                {
+                    recipients.Add(new ResolvedRecipient
+                    {
+                        Id = Guid.NewGuid(),
+                        PhoneNumber = step.WaitingForUser,
+                        RecipientType = RecipientType.PhoneNumber,
+                        RecipientName = step.WaitingForUser,
+                        CompanyId = companyId
+                    });
+                }
+                // 否則使用流程啟動人
+                else if (!string.IsNullOrEmpty(step.WorkflowExecution?.InitiatedBy))
+                {
+                    recipients.Add(new ResolvedRecipient
+                    {
+                        Id = Guid.NewGuid(),
+                        PhoneNumber = step.WorkflowExecution.InitiatedBy,
+                        RecipientType = RecipientType.Initiator,
+                        RecipientName = "Process Initiator",
+                        CompanyId = companyId
+                    });
+                }
+
+                return recipients;
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"解析收件人失敗: {ex.Message}");
+                return new List<ResolvedRecipient>();
+            }
+        }
+
+        public override Task StopAsync(CancellationToken cancellationToken)
+        {
+            var loggingService = GetLoggingService();
+            loggingService.LogInformation("WorkflowMonitoringSchedulerService 正在停止...");
+            return base.StopAsync(cancellationToken);
+        }
+    }
+
+    #region 配置數據結構
+
+    /// <summary>
+    /// Validation 配置（從 ValidationConfig JSON 反序列化）
+    /// </summary>
+    public class ValidationConfig
+    {
+        public bool? Enabled { get; set; }
+        public string ValidatorType { get; set; }
+        public int? RetryIntervalDays { get; set; }
+        public int? RetryIntervalHours { get; set; }
+        public int? RetryIntervalMinutes { get; set; }
+        public int? RetryLimit { get; set; }
+        public RetryMessageConfig RetryMessageConfig { get; set; }
+        public EscalationConfig EscalationConfig { get; set; }
+    }
+
+    /// <summary>
+    /// 重試訊息配置
+    /// </summary>
+    public class RetryMessageConfig
+    {
+        public bool UseTemplate { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public string TemplateId { get; set; } = string.Empty;
+        public string TemplateName { get; set; } = string.Empty;
+        public bool IsMetaTemplate { get; set; }
+        public List<TemplateVariableMapping> TemplateVariables { get; set; } = new List<TemplateVariableMapping>();
+    }
+
+    /// <summary>
+    /// 升級通知配置
+    /// </summary>
+    public class EscalationConfig
+    {
+        public string Recipients { get; set; } = string.Empty;
+        public RecipientDetailsConfig RecipientDetails { get; set; } = new RecipientDetailsConfig();
+        public bool UseTemplate { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public string TemplateId { get; set; } = string.Empty;
+        public string TemplateName { get; set; } = string.Empty;
+        public bool IsMetaTemplate { get; set; }
+        public List<TemplateVariableMapping> TemplateVariables { get; set; } = new List<TemplateVariableMapping>();
+    }
+
+    /// <summary>
+    /// 收件人詳細信息配置
+    /// </summary>
+    public class RecipientDetailsConfig
+    {
+        public List<UserRecipient> Users { get; set; } = new List<UserRecipient>();
+        public List<ContactRecipient> Contacts { get; set; } = new List<ContactRecipient>();
+        public List<string> Groups { get; set; } = new List<string>(); // 改為字符串列表，因為 JSON 中是字符串 ID
+        public List<string> Hashtags { get; set; } = new List<string>(); // 改為字符串列表
+        public bool UseInitiator { get; set; }
+        public List<string> PhoneNumbers { get; set; } = new List<string>();
+    }
+
+    public class UserRecipient
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+    }
+
+    public class ContactRecipient
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+    }
+
+    public class GroupRecipient
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    public class HashtagRecipient
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Overdue 配置（從 Start 節點的 overdueConfig 反序列化）
+    /// </summary>
+    public class OverdueConfig
+    {
+        public bool Enabled { get; set; }
+        public int? Days { get; set; }
+        public int? Hours { get; set; }
+        public int? Minutes { get; set; }
+        public EscalationConfig EscalationConfig { get; set; }
+    }
+
+    /// <summary>
+    /// 工作流程定義數據（用於解析 WorkflowDefinition.Json）
+    /// </summary>
+    public class WorkflowDefinitionData
+    {
+        public List<NodeDefinition> Nodes { get; set; }
+        public List<EdgeDefinition> Edges { get; set; }
+    }
+
+    public class NodeDefinition
+    {
+        public string Id { get; set; }
+        public string Type { get; set; }
+        public NodeData Data { get; set; }
+        public Position Position { get; set; }
+    }
+
+    public class NodeData
+    {
+        public string Type { get; set; }
+        public string Label { get; set; }
+        public string TaskName { get; set; }
+        public OverdueConfig OverdueConfig { get; set; }
+        // 其他屬性根據需要添加...
+    }
+
+    public class Position
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
+    public class EdgeDefinition
+    {
+        public string Id { get; set; }
+        public string Source { get; set; }
+        public string Target { get; set; }
+    }
+
+    /// <summary>
+    /// 模板變量映射
+    /// </summary>
+    public class TemplateVariableMapping
+    {
+        public string ParameterName { get; set; } = string.Empty;
+        public string ProcessVariableId { get; set; } = string.Empty;
+        public string ProcessVariableName { get; set; } = string.Empty;
+    }
+
+    #endregion
+}
+
