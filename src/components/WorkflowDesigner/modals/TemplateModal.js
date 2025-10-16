@@ -10,6 +10,7 @@ const TemplateModal = ({
   onSelectTemplate, 
   t 
 }) => {
+  console.log('🚀 TemplateModal 渲染:', { visible, templatesCount: templates?.length, metaTemplatesCount: metaTemplates?.length });
   const [activeTab, setActiveTab] = useState('internal');
 
   // 渲染模板列表
@@ -20,7 +21,10 @@ const TemplateModal = ({
           key={template.id}
           size="small"
           style={{ marginBottom: 8, cursor: 'pointer' }}
-          onClick={() => onSelectTemplate(template, isMetaTemplate)}
+          onClick={() => {
+            console.log('🎯 模板選擇:', { template: template.name, isMetaTemplate, templateId: template.id });
+            onSelectTemplate(template, isMetaTemplate);
+          }}
           hoverable
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -100,6 +104,8 @@ const TemplateModal = ({
       onCancel={onCancel}
       footer={null}
       width={800}
+      zIndex={1100}
+      destroyOnHidden
     >
       <Tabs
         activeKey={activeTab}
@@ -110,4 +116,4 @@ const TemplateModal = ({
   );
 };
 
-export default TemplateModal;
+export default React.memo(TemplateModal);

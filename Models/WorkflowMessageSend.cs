@@ -122,6 +122,19 @@ namespace PurpleRice.Models
         /// </summary>
         public bool IsActive { get; set; } = true;
 
+        /// <summary>
+        /// 發送原因（用於區分訊息類型）
+        /// </summary>
+        [MaxLength(50)]
+        [Column("send_reason")]
+        public string SendReason { get; set; } = "normal";
+
+        /// <summary>
+        /// 關聯的步驟執行ID（用於追蹤重試來源）
+        /// </summary>
+        [Column("related_step_execution_id")]
+        public int? RelatedStepExecutionId { get; set; }
+
         // 導航屬性
         [ForeignKey("WorkflowExecutionId")]
         public virtual WorkflowExecution WorkflowExecution { get; set; }
@@ -298,5 +311,16 @@ namespace PurpleRice.Models
         public const string Hashtag = "Hashtag";
         public const string Initiator = "Initiator";
         public const string PhoneNumber = "PhoneNumber";
+    }
+
+    /// <summary>
+    /// 發送原因枚舉（用於 Time Validator 和 Overdue 監控）
+    /// </summary>
+    public static class SendReason
+    {
+        public const string Normal = "normal";           // 正常發送
+        public const string Retry = "retry";             // 重試發送（Time Validator）
+        public const string Escalation = "escalation";   // 升級通知（Time Validator 達到上限）
+        public const string Overdue = "overdue";         // 逾期通知（Start 節點 Overdue）
     }
 }

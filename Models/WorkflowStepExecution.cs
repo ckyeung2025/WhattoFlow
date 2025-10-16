@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PurpleRice.Models
 {
@@ -20,5 +21,15 @@ namespace PurpleRice.Models
         public bool IsWaiting { get; set; }
         public string? WaitingForUser { get; set; }
         public string? ValidationConfig { get; set; } // JSON 格式的驗證配置
+        
+        // Time Validator 重試機制相關屬性
+        [Column("last_retry_at")]
+        public DateTime? LastRetryAt { get; set; }        // 上次重試時間
+        [Column("retry_count")]
+        public int RetryCount { get; set; }               // 已重試次數
+        [Column("escalation_sent")]
+        public bool EscalationSent { get; set; }          // 是否已發送升級通知
+        [Column("escalation_sent_at")]
+        public DateTime? EscalationSentAt { get; set; }   // 升級通知發送時間
     }
 } 

@@ -142,7 +142,7 @@ const Toolbar = ({
         
         {/* 對齊按鈕 */}
         <Dropdown 
-          overlay={alignMenu} 
+          menu={{ items: alignMenu }} 
           trigger={['click']}
           disabled={!selectedNodes || selectedNodes.length < 2}
         >

@@ -10,7 +10,12 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+    });
 
 builder.Services.AddDbContext<PurpleRiceDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("PurpleRice")));
@@ -114,6 +119,9 @@ builder.Services.AddScoped<IEFormTokenService, EFormTokenService>();
 
 // 註冊 HttpClient 服務
 builder.Services.AddHttpClient();
+
+// 註冊工作流程監控定時服務（背景服務）
+builder.Services.AddHostedService<WorkflowMonitoringSchedulerService>();
 
 var app = builder.Build();
 

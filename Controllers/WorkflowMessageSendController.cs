@@ -51,8 +51,19 @@ namespace PurpleRice.Controllers
                 var companyId = GetCurrentCompanyId();
                 var messageSends = await _messageSendService.GetWorkflowMessageSendsAsync(workflowExecutionId);
 
+                _logger.LogInformation("從數據庫獲取的記錄數: {Count}", messageSends.Count);
+                _logger.LogInformation("公司ID: {CompanyId}", companyId);
+                
+                foreach (var ms in messageSends)
+                {
+                    _logger.LogInformation("記錄ID: {Id}, 公司ID: {CompanyId}, 節點ID: {NodeId}, 發送原因: {SendReason}", 
+                        ms.Id, ms.CompanyId, ms.NodeId, ms.SendReason);
+                }
+
                 // 過濾當前公司的記錄
                 var filteredSends = messageSends.Where(ms => ms.CompanyId == companyId).ToList();
+                
+                _logger.LogInformation("過濾後的記錄數: {Count}", filteredSends.Count);
 
                 return Ok(new { data = filteredSends });
             }

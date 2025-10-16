@@ -74,6 +74,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 import WhatsAppChat from '../components/WhatsAppChat';
+import MessageSendStatusModal from '../components/MessageSendStatusModal';
 
 dayjs.extend(duration);
 
@@ -145,6 +146,10 @@ const WorkflowMonitorPage = () => {
   const [selectedMessageSend, setSelectedMessageSend] = useState(null);
   const [messageSendDetailModalVisible, setMessageSendDetailModalVisible] = useState(false);
   const [selectedMessageSendDetail, setSelectedMessageSendDetail] = useState(null);
+  const [newMessageSendStatusModalVisible, setNewMessageSendStatusModalVisible] = useState(false);
+  const [selectedMessageSendId, setSelectedMessageSendId] = useState(null);
+  const [selectedWorkflowExecutionId, setSelectedWorkflowExecutionId] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
   
   // 右側詳情面板狀態
   const [detailPanelVisible, setDetailPanelVisible] = useState(false);
@@ -446,6 +451,7 @@ const WorkflowMonitorPage = () => {
   // 查看消息發送詳細狀態（包含收件人詳情）
   const handleViewMessageSendDetail = async (messageSendId) => {
     try {
+      // 先獲取單個消息發送記錄的詳情
       const response = await fetch(`/api/workflowmessagesend/${messageSendId}/detail`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -457,8 +463,13 @@ const WorkflowMonitorPage = () => {
       }
 
       const data = await response.json();
-      setSelectedMessageSendDetail(data.data);
-      setMessageSendDetailModalVisible(true);
+      const messageSend = data.data;
+      
+      // 使用新的模態框組件
+      setSelectedMessageSendId(messageSendId);
+      setSelectedWorkflowExecutionId(messageSend.workflowExecutionId);
+      setSelectedNodeId(messageSend.nodeId);
+      setNewMessageSendStatusModalVisible(true);
     } catch (error) {
       message.error(t('workflowMonitor.loadMessageSendStatusFailed') + ': ' + error.message);
     }
@@ -1126,6 +1137,15 @@ const WorkflowMonitorPage = () => {
           )}
         </Modal>
 
+        {/* 新的消息發送狀態模態框 */}
+        <MessageSendStatusModal
+          visible={newMessageSendStatusModalVisible}
+          onClose={() => setNewMessageSendStatusModalVisible(false)}
+          messageSendId={selectedMessageSendId}
+          workflowExecutionId={selectedWorkflowExecutionId}
+          nodeId={selectedNodeId}
+        />
+
         {/* 內嵌表單 Modal */}
         <Modal
           title={embeddedFormInstance ? `${t('workflowMonitor.formInstance')}: ${embeddedFormInstance.formName || t('workflowMonitor.unnamedForm')}` : t('workflowMonitor.formInstance')}
@@ -1404,6 +1424,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
     }
   }, [activeTab, instance.id]);
 
+
   // 鍵盤快捷鍵支持
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -1625,6 +1646,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
     }
   };
 
+
   const getEformStatusColor = (status) => {
     switch (status) {
       case 'Pending': return 'orange';
@@ -1641,6 +1663,23 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
       case 'Rejected': return t('workflowMonitor.eformStatusRejected');
       default: return status;
     }
+  };
+
+  const getSendReasonTag = (sendReason) => {
+    const reasonConfig = {
+      normal: { color: 'blue', text: t('workflowMonitor.sendReasonNormal') },
+      retry: { color: 'orange', text: t('workflowMonitor.sendReasonRetry') },
+      escalation: { color: 'red', text: t('workflowMonitor.sendReasonEscalation') },
+      overdue: { color: 'purple', text: t('workflowMonitor.sendReasonOverdue') }
+    };
+    
+    const config = reasonConfig[sendReason] || reasonConfig.normal;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
   };
 
   const formatVariableValue = (value, dataType) => {
@@ -3338,6 +3377,23 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
     );
   };
 
+  const getSendReasonTag = (sendReason) => {
+    const reasonConfig = {
+      normal: { color: 'blue', text: t('workflowMonitor.sendReasonNormal') },
+      retry: { color: 'orange', text: t('workflowMonitor.sendReasonRetry') },
+      escalation: { color: 'red', text: t('workflowMonitor.sendReasonEscalation') },
+      overdue: { color: 'purple', text: t('workflowMonitor.sendReasonOverdue') }
+    };
+    
+    const config = reasonConfig[sendReason] || reasonConfig.normal;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
   return (
     <div>
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
@@ -3359,6 +3415,10 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
               {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
             </Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.createdBy')}>{messageSend.createdBy}</Descriptions.Item>
+            <Descriptions.Item label={t('workflowMonitor.sendReason')}>{getSendReasonTag(messageSend.sendReason)}</Descriptions.Item>
+            {messageSend.relatedStepExecutionId && (
+              <Descriptions.Item label={t('workflowMonitor.relatedStepExecutionId')}>{messageSend.relatedStepExecutionId}</Descriptions.Item>
+            )}
           </Descriptions>
           
           {messageSend.messageContent && (
@@ -3593,6 +3653,23 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
     );
   };
 
+  const getSendReasonTag = (sendReason) => {
+    const reasonConfig = {
+      normal: { color: 'blue', text: t('workflowMonitor.sendReasonNormal') },
+      retry: { color: 'orange', text: t('workflowMonitor.sendReasonRetry') },
+      escalation: { color: 'red', text: t('workflowMonitor.sendReasonEscalation') },
+      overdue: { color: 'purple', text: t('workflowMonitor.sendReasonOverdue') }
+    };
+    
+    const config = reasonConfig[sendReason] || reasonConfig.normal;
+    
+    return (
+      <Tag color={config.color}>
+        {config.text}
+      </Tag>
+    );
+  };
+
   return (
     <div>
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
@@ -3680,6 +3757,10 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
                 {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('workflowMonitor.createdBy')}>{messageSend.createdBy}</Descriptions.Item>
+              <Descriptions.Item label={t('workflowMonitor.sendReason')}>{getSendReasonTag(messageSend.sendReason)}</Descriptions.Item>
+              {messageSend.relatedStepExecutionId && (
+                <Descriptions.Item label={t('workflowMonitor.relatedStepExecutionId')}>{messageSend.relatedStepExecutionId}</Descriptions.Item>
+              )}
             </Descriptions>
             
             {messageSend.messageContent && (
@@ -3707,6 +3788,129 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
                 showIcon
                 style={{ marginTop: 16 }}
               />
+            )}
+          </Card>
+
+          {/* 所有相關消息發送記錄 */}
+          <Card title={t('workflowMonitor.allRelatedMessageSends')} style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 16, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
+              <Text type="secondary">
+                調試信息: allMessageSends = {JSON.stringify(messageSend.allMessageSends)}
+              </Text>
+            </div>
+            {messageSend.allMessageSends && messageSend.allMessageSends.length > 0 ? (
+              <Table
+                dataSource={messageSend.allMessageSends}
+                rowKey="id"
+                pagination={false}
+                size="small"
+                scroll={{ x: 1000 }}
+                columns={[
+                  {
+                    title: t('workflowMonitor.messageSendId'),
+                    dataIndex: 'id',
+                    key: 'id',
+                    width: 150,
+                    ellipsis: true,
+                    render: (text, record) => (
+                      <Text code style={{ fontSize: '12px' }}>
+                        {text.substring(0, 8)}...
+                        {record.id === messageSend.id && (
+                          <Tag color="blue" style={{ marginLeft: 8 }}>當前</Tag>
+                        )}
+                      </Text>
+                    )
+                  },
+                  {
+                    title: t('workflowMonitor.nodeId'),
+                    dataIndex: 'nodeId',
+                    key: 'nodeId',
+                    width: 100,
+                    render: (text) => text || '-'
+                  },
+                  {
+                    title: t('workflowMonitor.sendReason'),
+                    dataIndex: 'sendReason',
+                    key: 'sendReason',
+                    width: 120,
+                    render: (sendReason) => getSendReasonTag(sendReason)
+                  },
+                  {
+                    title: t('workflowMonitor.status'),
+                    dataIndex: 'status',
+                    key: 'status',
+                    width: 100,
+                    render: (status) => {
+                      const statusConfig = {
+                        Pending: { color: 'default', text: t('workflowMonitor.statusPending') },
+                        InProgress: { color: 'processing', text: t('workflowMonitor.statusInProgress') },
+                        Completed: { color: 'success', text: t('workflowMonitor.statusCompleted') },
+                        Failed: { color: 'error', text: t('workflowMonitor.statusFailed') },
+                        PartiallyFailed: { color: 'warning', text: t('workflowMonitor.statusPartiallyFailed') }
+                      };
+                      const config = statusConfig[status] || statusConfig.Pending;
+                      return <Tag color={config.color}>{config.text}</Tag>;
+                    }
+                  },
+                  {
+                    title: t('workflowMonitor.totalRecipients'),
+                    dataIndex: 'totalRecipients',
+                    key: 'totalRecipients',
+                    width: 80,
+                    align: 'center'
+                  },
+                  {
+                    title: t('workflowMonitor.successCount'),
+                    dataIndex: 'successCount',
+                    key: 'successCount',
+                    width: 80,
+                    align: 'center'
+                  },
+                  {
+                    title: t('workflowMonitor.failedCount'),
+                    dataIndex: 'failedCount',
+                    key: 'failedCount',
+                    width: 80,
+                    align: 'center'
+                  },
+                  {
+                    title: t('workflowMonitor.createdBy'),
+                    dataIndex: 'createdBy',
+                    key: 'createdBy',
+                    width: 100,
+                    render: (text) => text || '-'
+                  },
+                  {
+                    title: t('workflowMonitor.startedAt'),
+                    dataIndex: 'startedAt',
+                    key: 'startedAt',
+                    width: 120,
+                    render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                  },
+                  {
+                    title: t('workflowMonitor.actions'),
+                    key: 'actions',
+                    width: 100,
+                    fixed: 'right',
+                    render: (_, record) => (
+                      <Space>
+                        <Button
+                          type="link"
+                          size="small"
+                          onClick={() => onViewMessageSendDetail(record.id)}
+                          disabled={record.id === messageSend.id}
+                        >
+                          {record.id === messageSend.id ? t('workflowMonitor.current') : t('workflowMonitor.viewDetails')}
+                        </Button>
+                      </Space>
+                    )
+                  }
+                ]}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <Text type="secondary">暫無相關消息發送記錄</Text>
+              </div>
             )}
           </Card>
         </TabPane>

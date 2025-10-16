@@ -364,7 +364,115 @@ const zhSC = {
     no: '否',
     ok: '确定',
     required: '必填',
-    minLength: '至少 {min} 码'
+    minLength: '至少 {min} 码',
+    pageRange: '第 {start}-{end} 项，共 {total} 项'
+  },
+
+  // 收件人选择器
+  recipientSelector: {
+    title: '选择收件人',
+    placeholder: '选择收件人',
+    clearAll: '清除全部',
+    confirmSelection: '确认选择',
+    clear: '清除',
+    
+    // Tabs
+    users: '用户',
+    contacts: '联系人',
+    processVariables: '流程变量',
+    initiators: '流程启动人',
+    
+    // Search placeholders
+    searchUsers: '搜索用户...',
+    searchContacts: '搜索联系人...',
+    
+    // Selected recipients display
+    selectedRecipients: '已选收件人',
+    usersCount: '{count} 位用户',
+    contactsCount: '{count} 个联系人',
+    groupsCount: '{count} 个群组',
+    hashtagsCount: '{count} 个标签',
+    variablesCount: '{count} 个变量',
+    processInitiator: '流程启动人',
+    
+    // Users tab
+    usersTab: {
+      title: '用户',
+      noUsersFound: '找不到用户',
+      userPhone: '电话：{phone}',
+      userEmail: '邮箱：{email}'
+    },
+    
+    // Contacts tab
+    contactsTab: {
+      title: '联系人',
+      broadcastGroups: '广播群组',
+      noGroupsData: '无广播群组资料',
+      hashtags: '标签',
+      noHashtagsData: '无标签资料',
+      contactList: '联系人列表',
+      totalContacts: '共 {count} 个联系人',
+      noContactsFound: '找不到联系人',
+      whatsAppNumber: 'WhatsApp：{number}',
+      email: '邮箱：{email}',
+      pageRange: '第 {start}-{end} 项，共 {total} 项'
+    },
+    
+    // Process Variables tab
+    processVariablesTab: {
+      title: '流程变量',
+      description: '选择流程变量，系统将在执行时自动替换为实际值（建议选择包含电话号码的变量）',
+      noVariablesFound: '找不到流程变量',
+      value: '值：{value}',
+      dataType: '类型：{type}',
+      instructions: {
+        title: '使用说明',
+        items: [
+          '显示所有类型的流程变量',
+          '建议选择包含电话号码的变量',
+          '选中的变量将以 ${variableName} 格式保存',
+          '系统将在工作流执行时自动替换为实际值',
+          '适合与外部系统（如 ERP）集成'
+        ]
+      }
+    },
+    
+    // Process Initiator tab
+    initiatorsTab: {
+      title: '流程启动人',
+      useInitiator: '使用流程启动人',
+      description: '勾选后，系统将在执行时自动使用启动此工作流实例的用户作为收件人',
+      instructions: {
+        title: '使用说明',
+        items: [
+          '此选项将在工作流执行时自动替换为实际的流程启动人',
+          '适合需要向流程启动人发送消息或等待其回复的场景',
+          '系统将自动从 workflow_executions 表的 InitiatedBy 字段获取启动人信息'
+        ]
+      }
+    },
+    
+    // Tags and labels
+    tagLabels: {
+      user: '用户',
+      contact: '联系人',
+      group: '群组',
+      hashtag: '标签',
+      variable: '变量',
+      initiator: '流程启动人'
+    },
+    
+    // Fallback texts
+    fallbackTexts: {
+      unknownGroup: '未知群组',
+      unknownTag: '未知标签',
+      unknownVariable: '未知变量',
+      autoReplace: '运行时自动替换',
+      noBroadcastGroupsData: '无广播群组资料',
+      noHashtagsData: '无标签资料',
+      noUsersData: '无用户资料',
+      noContactListsData: '无联系人列表资料'
+    }
   },
 
   // 联系人管理
@@ -1533,9 +1641,65 @@ const zhSC = {
     customValidator: '自定义验证器',
     openaiValidation: 'OpenAI 验证',
     xaiValidation: 'XAI 验证',
+    timeValidatorLabel: '时间验证器（无回应提醒）',
     promptText: '提示文字',
-    retryMessage: '重试消息',
-    maxRetries: '最大重试次数',
+    retryMessage: '提醒消息',
+    maxRetries: '最大提醒次数',
+    minutes: '分钟',
+    days: '天',
+    hours: '小时',
+    
+    // Time Validator 相关翻译
+    timeValidator: {
+      retryInterval: '提醒间隔',
+      retryIntervalHelp: '用户在此时间内没有回应，系统将自动重新发送提醒消息',
+      retryLimit: '提醒次数上限',
+      retryMessage: '提醒消息设置',
+      escalation: '升级通知设置',
+      configureRetryMessage: '设置提醒消息',
+      configureEscalation: '设置升级通知',
+      directMessage: '直接消息',
+      useTemplate: '使用模板',
+      retryMessageDescription: '设置当用户在指定时间内没有回应时，重新发送的提醒消息内容：',
+      retryMessagePlaceholder: '请输入提醒消息内容，提醒用户尽快回复...',
+      retryMessageTip: '提示：此消息会在每次提醒时发送给用户',
+      templateDescription: '选择一个已建立的模板作为提醒消息：',
+      noTemplateSelected: '尚未选择模板',
+      escalationMessageDescription: '设置当达到提醒上限后，发送给升级对象的通知消息：',
+      escalationMessagePlaceholder: '请输入升级通知消息内容，告知管理者需要处理...',
+      escalationMessageTip: '提示：此消息只会在达到提醒上限后发送一次',
+      escalationRecipients: '升级通知收件人',
+      escalationRecipientsDescription: '选择在达到提醒上限后，需要接收升级通知的人员：',
+      escalationMessage: '升级通知消息',
+      retryMessageSaved: '提醒消息配置已保存',
+      escalationSaved: '升级通知配置已保存',
+    },
+    
+    // Drawer 全屏相关
+    enterFullscreen: '全屏显示',
+    exitFullscreen: '退出全屏',
+    
+    // Overdue Settings（流程逾期设置 - Start 节点）
+    overdueConfig: '流程逾期设置',
+    overdueSettings: '逾期监控设定',
+    overdue: {
+      enabled: '启用逾期监控',
+      duration: '逾期时限',
+      escalation: '逾期通知设置',
+      configureEscalation: '设置逾期通知',
+      durationHelp: '流程从启动后超过此时限仍未完成，将发送逾期通知',
+      escalationRecipients: '逾期通知收件人',
+      escalationRecipientsDescription: '选择在流程逾期时需要接收通知的管理人员：',
+      escalationMessage: '逾期通知消息',
+      escalationMessageDescription: '设置当流程逾期时，发送给管理者的通知消息：',
+      escalationMessagePlaceholder: '请输入逾期通知消息内容，告知管理者流程已逾期需要处理...',
+      escalationMessageTip: '提示：此消息会在流程逾期时发送一次',
+      escalationSaved: '逾期通知配置已保存',
+      howItWorks: '运作方式',
+      description1: '系统定时检查所有运行中的流程，计算从启动至今的时间',
+      description2: '当超过设定的时限（天数 + 小时），且流程仍在运行（未 Complete 或 Failed），则发送逾期通知',
+      description3: '逾期通知只发送一次，避免重复打扰',
+    },
     
     // 功能说明
     waitReplyDescription1: '1. 流程执行到此节点时会暂停等待用户回复',
@@ -1557,6 +1721,14 @@ const zhSC = {
     watchTable: '监看数据表',
     queryCondition: '查询条件',
     checkInterval: '检查间隔 (秒)',
+    
+    // Webhook 相关
+    webhookToken: 'Webhook Token',
+    webhookTokenPlaceholder: '请输入 Webhook Token',
+    webhookInfo: 'Webhook 信息',
+    webhookDescription1: '1. 请在公司设置页面配置 Meta Webhook URL',
+    webhookDescription2: '2. 当收到 WhatsApp 消息时，系统会回复菜单让用户选择功能',
+    webhookDescription3: 'Webhook Token 已在公司层级配置，流程将自动使用公司的 Webhook 设定',
     
     // 配置说明
     metaWebhookConfigTitle: 'Meta Webhook 配置说明',
@@ -2275,9 +2447,65 @@ const zhSC = {
     customValidator: '自定义验证器',
     openaiValidation: 'OpenAI 验证',
     xaiValidation: 'XAI 验证',
+    timeValidatorLabel: '时间验证器（无回应提醒）',
     promptText: '提示文字',
-    retryMessage: '重试消息',
-    maxRetries: '最大重试次数',
+    retryMessage: '提醒消息',
+    maxRetries: '最大提醒次数',
+    minutes: '分钟',
+    days: '天',
+    hours: '小时',
+    
+    // Time Validator 相关翻译
+    timeValidator: {
+      retryInterval: '提醒间隔',
+      retryIntervalHelp: '用户在此时间内没有回应，系统将自动重新发送提醒消息',
+      retryLimit: '提醒次数上限',
+      retryMessage: '提醒消息设置',
+      escalation: '升级通知设置',
+      configureRetryMessage: '设置提醒消息',
+      configureEscalation: '设置升级通知',
+      directMessage: '直接消息',
+      useTemplate: '使用模板',
+      retryMessageDescription: '设置当用户在指定时间内没有回应时，重新发送的提醒消息内容：',
+      retryMessagePlaceholder: '请输入提醒消息内容，提醒用户尽快回复...',
+      retryMessageTip: '提示：此消息会在每次提醒时发送给用户',
+      templateDescription: '选择一个已建立的模板作为提醒消息：',
+      noTemplateSelected: '尚未选择模板',
+      escalationMessageDescription: '设置当达到提醒上限后，发送给升级对象的通知消息：',
+      escalationMessagePlaceholder: '请输入升级通知消息内容，告知管理者需要处理...',
+      escalationMessageTip: '提示：此消息只会在达到提醒上限后发送一次',
+      escalationRecipients: '升级通知收件人',
+      escalationRecipientsDescription: '选择在达到提醒上限后，需要接收升级通知的人员：',
+      escalationMessage: '升级通知消息',
+      retryMessageSaved: '提醒消息配置已保存',
+      escalationSaved: '升级通知配置已保存',
+    },
+    
+    // Drawer 全屏相关
+    enterFullscreen: '全屏显示',
+    exitFullscreen: '退出全屏',
+    
+    // Overdue Settings（流程逾期设置 - Start 节点）
+    overdueConfig: '流程逾期设置',
+    overdueSettings: '逾期监控设定',
+    overdue: {
+      enabled: '启用逾期监控',
+      duration: '逾期时限',
+      escalation: '逾期通知设置',
+      configureEscalation: '设置逾期通知',
+      durationHelp: '流程从启动后超过此时限仍未完成，将发送逾期通知',
+      escalationRecipients: '逾期通知收件人',
+      escalationRecipientsDescription: '选择在流程逾期时需要接收通知的管理人员：',
+      escalationMessage: '逾期通知消息',
+      escalationMessageDescription: '设置当流程逾期时，发送给管理者的通知消息：',
+      escalationMessagePlaceholder: '请输入逾期通知消息内容，告知管理者流程已逾期需要处理...',
+      escalationMessageTip: '提示：此消息会在流程逾期时发送一次',
+      escalationSaved: '逾期通知配置已保存',
+      howItWorks: '运作方式',
+      description1: '系统定时检查所有运行中的流程，计算从启动至今的时间',
+      description2: '当超过设定的时限（天数 + 小时），且流程仍在运行（未 Complete 或 Failed），则发送逾期通知',
+      description3: '逾期通知只发送一次，避免重复打扰',
+    },
     
     // 功能说明
     waitReplyDescription1: '1. 流程执行到此节点时会暂停等待用户回复',
@@ -2309,6 +2537,14 @@ const zhSC = {
     watchTable: '监看数据表',
     queryCondition: '查询条件',
     checkInterval: '检查间隔 (秒)',
+    
+    // Webhook 相关
+    webhookToken: 'Webhook Token',
+    webhookTokenPlaceholder: '请输入 Webhook Token',
+    webhookInfo: 'Webhook 信息',
+    webhookDescription1: '1. 请在公司设置页面配置 Meta Webhook URL',
+    webhookDescription2: '2. 当收到 WhatsApp 消息时，系统会回复菜单让用户选择功能',
+    webhookDescription3: 'Webhook Token 已在公司层级配置，流程将自动使用公司的 Webhook 设定',
     
     // 配置说明
     metaWebhookConfigTitle: 'Meta Webhook 配置说明',
@@ -2912,6 +3148,60 @@ const zhSC = {
     whatsappChat: 'WhatsApp 对话',
     openSettingsModal: '打开设置弹窗',
     cannotFindMessageSendId: '无法找到消息发送记录ID，请检查后端数据',
+    
+    // MessageSendStatusModal 相关翻译
+    messageSendStatus: '消息发送状态',
+    loadingMessageSendRecords: '加载消息发送记录中...',
+    loadMessageSendRecordsFailed: '加载消息发送记录失败',
+    normalSend: '正常发送',
+    retrySend: '提醒发送',
+    escalationNotification: '升级通知',
+    normalSendRecords: '正常消息发送记录',
+    retrySendRecords: '提醒消息发送记录',
+    escalationSendRecords: '升级消息发送记录',
+    totalSendCount: '总发送数',
+    successCount: '成功数',
+    failureCount: '失败数',
+    currentRecord: '当前',
+    messageSendId: '消息发送ID',
+    nodeId: '节点ID',
+    sendReason: '发送原因',
+    sendReasonNormal: '正常发送',
+    sendReasonRetry: '提醒发送',
+    sendReasonEscalation: '升级通知',
+    sendReasonOverdue: '逾期通知',
+    status: '状态',
+    totalRecipients: '总收件人',
+    successCount: '成功数',
+    failedCount: '失败数',
+    creator: '创建者',
+    startTime: '开始时间',
+    viewDetails: '查看详情',
+    noMessageSendRecords: '暂无消息发送记录',
+    recipientDetails: '收件人详情',
+    recipient: '收件人',
+    whatsAppMessageId: 'WhatsApp消息ID',
+    sendTime: '发送时间',
+    deliveredTime: '送达时间',
+    readTime: '已读时间',
+    retryCount: '重试次数',
+    errorMessage: '错误信息',
+    createTime: '创建时间',
+    normal: '正常',
+    retry: '重试',
+    escalation: '升级',
+    overdue: '逾期',
+    pending: '等待中',
+    inProgress: '进行中',
+    completed: '已完成',
+    failed: '失败',
+    partiallyFailed: '部分失败',
+    sent: '已发送',
+    delivered: '已送达',
+    read: '已读',
+    retrying: '重试中',
+    operation: '操作',
+    person: '人',
     time: '时间',
     userResponse: '用户回应',
     error: '错误',

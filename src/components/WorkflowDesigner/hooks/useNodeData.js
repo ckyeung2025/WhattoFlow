@@ -11,8 +11,6 @@ export const useNodeData = (isReady, t) => {
           return { 
             taskName: 'Start',
             activationType: 'manual',
-            webhookToken: '',
-            webhookUrl: '',
             scheduledTable: '',
             scheduledQuery: '',
             scheduledInterval: 300
@@ -65,8 +63,6 @@ export const useNodeData = (isReady, t) => {
         return { 
           taskName: t('workflowDesigner.defaultStartNode'),
           activationType: 'manual', // manual, webhook, scheduled
-          webhookToken: '',
-          webhookUrl: '',
           scheduledTable: '',
           scheduledQuery: '',
           scheduledInterval: 300 // 5分鐘

@@ -371,6 +371,113 @@ const zhTC = {
     pageRange: '第 {start}-{end} 項，共 {total} 項'
   },
 
+  // 收件人選擇器
+  recipientSelector: {
+    title: '選擇收件人',
+    placeholder: '選擇收件人',
+    clearAll: '清除全部',
+    confirmSelection: '確認選擇',
+    clear: '清除',
+    
+    // Tabs
+    users: '用戶',
+    contacts: '聯絡人',
+    processVariables: '流程變量',
+    initiators: '流程啟動人',
+    
+    // Search placeholders
+    searchUsers: '搜尋用戶...',
+    searchContacts: '搜尋聯絡人...',
+    
+    // Selected recipients display
+    selectedRecipients: '已選收件人',
+    usersCount: '{count} 位用戶',
+    contactsCount: '{count} 個聯絡人',
+    groupsCount: '{count} 個群組',
+    hashtagsCount: '{count} 個標籤',
+    variablesCount: '{count} 個變量',
+    processInitiator: '流程啟動人',
+    
+    // Users tab
+    usersTab: {
+      title: '用戶',
+      noUsersFound: '找不到用戶',
+      userPhone: '電話：{phone}',
+      userEmail: '郵箱：{email}'
+    },
+    
+    // Contacts tab
+    contactsTab: {
+      title: '聯絡人',
+      broadcastGroups: '廣播群組',
+      noGroupsData: '無廣播群組資料',
+      hashtags: '標籤',
+      noHashtagsData: '無標籤資料',
+      contactList: '聯絡人清單',
+      totalContacts: '共 {count} 個聯絡人',
+      noContactsFound: '找不到聯絡人',
+      whatsAppNumber: 'WhatsApp：{number}',
+      email: '郵箱：{email}',
+      pageRange: '第 {start}-{end} 項，共 {total} 項'
+    },
+    
+    // Process Variables tab
+    processVariablesTab: {
+      title: '流程變量',
+      description: '選擇流程變量，系統將在執行時自動替換為實際值（建議選擇包含電話號碼的變量）',
+      noVariablesFound: '找不到流程變量',
+      value: '值：{value}',
+      dataType: '類型：{type}',
+      instructions: {
+        title: '使用說明',
+        items: [
+          '顯示所有類型的流程變量',
+          '建議選擇包含電話號碼的變量',
+          '選中的變量將以 ${variableName} 格式保存',
+          '系統將在工作流執行時自動替換為實際值',
+          '適合與外部系統（如 ERP）集成'
+        ]
+      }
+    },
+    
+    // Process Initiator tab
+    initiatorsTab: {
+      title: '流程啟動人',
+      useInitiator: '使用流程啟動人',
+      description: '勾選後，系統將在執行時自動使用啟動此工作流實例的用戶作為收件人',
+      instructions: {
+        title: '使用說明',
+        items: [
+          '此選項將在工作流執行時自動替換為實際的流程啟動人',
+          '適合需要向流程啟動人發送消息或等待其回覆的場景',
+          '系統將自動從 workflow_executions 表的 InitiatedBy 字段獲取啟動人信息'
+        ]
+      }
+    },
+    
+    // Tags and labels
+    tagLabels: {
+      user: '用戶',
+      contact: '聯絡人',
+      group: '群組',
+      hashtag: '標籤',
+      variable: '變量',
+      initiator: '流程啟動人'
+    },
+    
+    // Fallback texts
+    fallbackTexts: {
+      unknownGroup: '未知群組',
+      unknownTag: '未知標籤',
+      unknownVariable: '未知變量',
+      autoReplace: '運行時自動替換',
+      noBroadcastGroupsData: '無廣播群組資料',
+      noHashtagsData: '無標籤資料',
+      noUsersData: '無用戶資料',
+      noContactListsData: '無聯絡人清單資料'
+    }
+  },
+
   // 聯絡人管理
   contactList: {
     title: '聯絡人管理',
@@ -634,7 +741,28 @@ const zhTC = {
     batchDisable: "批量停用",
     timezone: "時區",
     language: "語言",
-    addCompany: "新增公司"
+    addCompany: "新增公司",
+    roles: "角色",
+    selectRoles: "選擇角色",
+    roleManagement: "角色管理",
+    tenantAdmin: "租戶管理員",
+    companyAdmin: "公司管理員",
+    designer: "設計師",
+    approver: "審批者",
+    addRole: "新增角色",
+    removeRole: "移除角色",
+    noRoles: "無角色",
+    currentRoles: "當前角色",
+    userInfo: "用戶信息",
+    avatar: "頭像",
+    status: "狀態",
+    isMainAccount: "是否為主帳號",
+    enabled: "啟用",
+    disabled: "停用",
+    yes: "是",
+    no: "否",
+    editUser: "編輯用戶",
+    mainAccountNote: "（在 SaaS 版本中，主帳號是指付款帳號）"
   },
   companyEdit: {
     uploadLogo: "點擊上傳公司頭像",
@@ -2151,9 +2279,86 @@ const zhTC = {
     customValidator: '自定義驗證器',
     openaiValidation: 'OpenAI 驗證',
     xaiValidation: 'XAI 驗證',
+    timeValidatorLabel: '時間驗證器（無回應提醒）',
     promptText: '提示文字',
-    retryMessage: '重試訊息',
-    maxRetries: '最大重試次數',
+    retryMessage: '提醒訊息',
+    maxRetries: '最大提醒次數',
+    minutes: '分鐘',
+    days: '天',
+    hours: '小時',
+    
+    // Time Validator 相關翻譯
+    timeValidator: {
+      retryInterval: '提醒間隔',
+      retryIntervalHelp: '用戶在此時間內沒有回應，系統將自動重新發送提醒訊息',
+      retryLimit: '提醒次數上限',
+      retryMessage: '提醒訊息設置',
+      escalation: '升級通知設置',
+      configureRetryMessage: '設置提醒訊息',
+      configureEscalation: '設置升級通知',
+      directMessage: '直接訊息',
+      useTemplate: '使用模板',
+      retryMessageDescription: '設置當用戶在指定時間內沒有回應時，重新發送的提醒訊息內容：',
+      retryMessagePlaceholder: '請輸入提醒訊息內容，提醒用戶儘快回覆...',
+      retryMessageTip: '提示：此訊息會在每次提醒時發送給用戶',
+      templateDescription: '選擇一個已建立的模板作為提醒訊息：',
+      noTemplateSelected: '尚未選擇模板',
+      escalationMessageDescription: '設置當達到提醒上限後，發送給升級對象的通知訊息：',
+      escalationMessagePlaceholder: '請輸入升級通知訊息內容，告知管理者需要處理...',
+      escalationMessageTip: '提示：此訊息只會在達到提醒上限後發送一次',
+      escalationRecipients: '升級通知收件人',
+      escalationRecipientsDescription: '選擇在達到提醒上限後，需要接收升級通知的人員：',
+      escalationMessage: '升級通知訊息',
+      retryMessageSaved: '提醒訊息配置已保存',
+      escalationSaved: '升級通知配置已保存',
+    },
+    
+    // 模板變量配置相關翻譯
+    templateVariables: '模板變量配置',
+    addTemplateVariable: '添加模板變量',
+    templateVariable: '模板變量',
+    parameterName: '參數名稱',
+    processVariable: '流程變量',
+    selectProcessVariable: '選擇流程變量',
+    noTemplateVariables: '暫無模板變量配置',
+    
+    // Meta 模板變量配置
+    metaTemplateVariableConfig: 'Meta 模板變量配置',
+    metaTemplateVariableDescription: 'Meta 官方模板使用數字參數(1, 2, 3...) 或命名參數。請根據模板定義配置對應的變量來源。',
+    metaTemplateParameterPlaceholder: '1, 2, 3...',
+    metaTemplateParameterHint: 'Meta 模板參數：使用數字(1,2,3...) 或變量名 (customer_name, order_id)',
+    
+    // 內部模板變量配置
+    internalTemplateVariableConfig: '內部模板變量配置',
+    internalTemplateVariableDescription: '內部模板使用命名參數。請根據模板定義配置對應的變量來源。',
+    internalTemplateParameterPlaceholder: 'customer_name, order_id...',
+    internalTemplateParameterHint: '內部模板參數：使用變量名 (customer_name, order_id)',
+    
+    // Drawer 全屏相關
+    enterFullscreen: '全屏顯示',
+    exitFullscreen: '退出全屏',
+    
+    // Overdue Settings（流程逾期設置 - Start 節點）
+    overdueConfig: '流程逾期設置',
+    overdueSettings: '逾期監控設定',
+    overdue: {
+      enabled: '啟用逾期監控',
+      duration: '逾期時限',
+      escalation: '逾期通知設置',
+      configureEscalation: '設置逾期通知',
+      durationHelp: '流程從啟動後超過此時限仍未完成，將發送逾期通知',
+      escalationRecipients: '逾期通知收件人',
+      escalationRecipientsDescription: '選擇在流程逾期時需要接收通知的管理人員：',
+      escalationMessage: '逾期通知訊息',
+      escalationMessageDescription: '設置當流程逾期時，發送給管理者的通知訊息：',
+      escalationMessagePlaceholder: '請輸入逾期通知訊息內容，告知管理者流程已逾期需要處理...',
+      escalationMessageTip: '提示：此訊息會在流程逾期時發送一次',
+      escalationSaved: '逾期通知配置已保存',
+      howItWorks: '運作方式',
+      description1: '系統定時檢查所有運行中的流程，計算從啟動至今的時間',
+      description2: '當超過設定的時限（天數 + 小時），且流程仍在運行（未 Complete 或 Failed），則發送逾期通知',
+      description3: '逾期通知只發送一次，避免重複打擾',
+    },
     
     // 功能說明
     waitReplyDescription1: '1. 流程執行到此節點時會暫停等待用戶回覆',
@@ -2192,6 +2397,7 @@ const zhTC = {
     webhookInfo: 'Webhook 資訊',
     webhookDescription1: '1. 請在公司設定頁面配置 Meta Webhook URL',
     webhookDescription2: '2. 當收到 WhatsApp 訊息時，系統會回覆選單讓用戶選擇功能',
+    webhookDescription3: 'Webhook Token 已在公司層級配置，流程將自動使用公司的 Webhook 設定',
     
     // 定時監看相關
     scheduledTable: '監看數據表',
@@ -2730,6 +2936,18 @@ const zhTC = {
     failed: '失敗',
     retrying: '重試中',
     
+    // 發送原因
+    sendReason: '發送原因',
+    sendReasonNormal: '正常發送',
+    sendReasonRetry: '提醒發送',
+    sendReasonEscalation: '升級通知',
+    sendReasonOverdue: '逾期通知',
+    relatedStepExecutionId: '關聯步驟執行ID',
+    
+    // 相關消息發送記錄
+    allRelatedMessageSends: '所有相關消息發送記錄',
+    current: '當前',
+    
     // 狀態標籤
     statusRunning: '運行中',
     statusCompleted: '已完成',
@@ -2863,6 +3081,56 @@ const zhTC = {
     openWhatsAppChat: '打開 WhatsApp 對話',
     openSettingsModal: '打開設置彈窗',
     cannotFindMessageSendId: '無法找到消息發送記錄ID，請檢查後端數據',
+    
+    // MessageSendStatusModal 相關翻譯
+    messageSendStatus: '消息發送狀態',
+    loadingMessageSendRecords: '載入消息發送記錄中...',
+    loadMessageSendRecordsFailed: '載入消息發送記錄失敗',
+    normalSend: '正常發送',
+    retrySend: '提醒發送',
+    escalationNotification: '升級通知',
+    normalSendRecords: '正常消息發送記錄',
+    retrySendRecords: '提醒消息發送記錄',
+    escalationSendRecords: '升級消息發送記錄',
+    totalSendCount: '總發送數',
+    successCount: '成功數',
+    failureCount: '失敗數',
+    currentRecord: '當前',
+    messageSendId: '消息發送ID',
+    nodeId: '節點ID',
+    sendReason: '發送原因',
+    status: '狀態',
+    totalRecipients: '總收件人',
+    successCount: '成功數',
+    failedCount: '失敗數',
+    creator: '創建者',
+    startTime: '開始時間',
+    viewDetails: '查看詳情',
+    noMessageSendRecords: '暫無消息發送記錄',
+    recipientDetails: '收件人詳情',
+    recipient: '收件人',
+    whatsAppMessageId: 'WhatsApp消息ID',
+    sendTime: '發送時間',
+    deliveredTime: '送達時間',
+    readTime: '已讀時間',
+    retryCount: '重試次數',
+    errorMessage: '錯誤信息',
+    createTime: '創建時間',
+    normal: '正常',
+    retry: '重試',
+    escalation: '升級',
+    overdue: '逾期',
+    pending: '等待中',
+    inProgress: '進行中',
+    completed: '已完成',
+    failed: '失敗',
+    partiallyFailed: '部分失敗',
+    sent: '已發送',
+    delivered: '已送達',
+    read: '已讀',
+    retrying: '重試中',
+    operation: '操作',
+    person: '人',
     time: '時間',
     userResponse: '用戶回應',
     error: '錯誤',

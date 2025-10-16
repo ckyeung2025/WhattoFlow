@@ -32,20 +32,32 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogInformation("📊 開始獲取公司用戶統計數據");
 
-                // 總用戶數
-                var totalUsers = await _context.Users.CountAsync();
+                // 獲取當前用戶的公司ID
+                var currentCompanyId = GetCurrentCompanyId();
+                if (currentCompanyId == Guid.Empty)
+                {
+                    _loggingService.LogWarning("❌ 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
 
-                // 總公司數
-                var totalCompanies = await _context.Companies.CountAsync();
+                _loggingService.LogInformation($"📊 當前用戶公司ID: {currentCompanyId}");
 
-                // 管理員用戶數（IsOwner = true）
-                var adminUsers = await _context.Users
-                    .Where(u => u.IsOwner)
+                // 當前公司的用戶數
+                var totalUsers = await _context.Users
+                    .Where(u => u.CompanyId == currentCompanyId)
                     .CountAsync();
 
-                // 活躍用戶數
+                // 當前公司數（應該是1）
+                var totalCompanies = 1;
+
+                // 當前公司的管理員用戶數（IsOwner = true）
+                var adminUsers = await _context.Users
+                    .Where(u => u.CompanyId == currentCompanyId && u.IsOwner)
+                    .CountAsync();
+
+                // 當前公司的活躍用戶數
                 var activeUsers = await _context.Users
-                    .Where(u => u.IsActive)
+                    .Where(u => u.CompanyId == currentCompanyId && u.IsActive)
                     .CountAsync();
 
                 var statistics = new
@@ -64,6 +76,39 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogError($"❌ 獲取統計數據失敗: {ex.Message}", ex);
                 return StatusCode(500, new { error = $"獲取統計數據失敗: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// 獲取當前用戶的公司ID
+        /// </summary>
+        private Guid GetCurrentCompanyId()
+        {
+            try
+            {
+                var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "user_id")?.Value;
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    _loggingService.LogWarning("❌ 無法從 JWT token 中獲取用戶ID");
+                    return Guid.Empty;
+                }
+
+                var userId = Guid.Parse(userIdClaim);
+                var user = _context.Users.FirstOrDefault(u => u.Id == userId);
+                
+                if (user == null)
+                {
+                    _loggingService.LogWarning($"❌ 找不到用戶，ID: {userId}");
+                    return Guid.Empty;
+                }
+
+                _loggingService.LogInformation($"✅ 找到用戶: {user.Name}, 公司ID: {user.CompanyId}");
+                return user.CompanyId;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 獲取當前用戶公司ID失敗: {ex.Message}", ex);
+                return Guid.Empty;
             }
         }
 

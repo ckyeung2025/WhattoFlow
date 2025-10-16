@@ -16,6 +16,8 @@ namespace PurpleRice.Data
         public DbSet<DeliveryReceipt> DeliveryReceipt { get; set; }
         public DbSet<Company> Companies { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<Role> Roles { get; set; }
+        public DbSet<UserRole> UserRoles { get; set; }
         public DbSet<delivery_receipt> delivery_receipt { get; set; }
         public DbSet<PurpleRice.Models.eFormDefinition> eFormDefinitions { get; set; }
         public DbSet<WhatsAppTemplate> WhatsAppTemplates { get; set; }
