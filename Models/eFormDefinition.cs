@@ -1,6 +1,8 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using System.Collections.Generic;
 
 namespace PurpleRice.Models
 {
@@ -44,5 +46,32 @@ namespace PurpleRice.Models
 
         [Column("source_file_path")]
         public string? SourceFilePath { get; set; }
+
+        [Column("field_display_settings")]
+        public string? FieldDisplaySettings { get; set; }
+
+        // 添加屬性來處理 JSON
+        [NotMapped]
+        public List<FieldDisplaySetting>? FieldDisplaySettingsList
+        {
+            get => string.IsNullOrEmpty(FieldDisplaySettings) 
+                ? null 
+                : JsonSerializer.Deserialize<List<FieldDisplaySetting>>(FieldDisplaySettings);
+            set => FieldDisplaySettings = value != null 
+                ? JsonSerializer.Serialize(value) 
+                : null;
+        }
+    }
+
+    // 字段顯示設定類
+    public class FieldDisplaySetting
+    {
+        public string FieldId { get; set; } = string.Empty;
+        public string FieldType { get; set; } = string.Empty;
+        public string InputType { get; set; } = string.Empty;
+        public string OriginalLabel { get; set; } = string.Empty;
+        public string DisplayLabel { get; set; } = string.Empty;
+        public bool ShowInList { get; set; } = true;
+        public int Order { get; set; } = 0;
     }
 } 

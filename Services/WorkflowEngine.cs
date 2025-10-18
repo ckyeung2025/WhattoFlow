@@ -1735,6 +1735,12 @@ namespace PurpleRice.Services
         private async Task<bool> ExecuteSendEForm(WorkflowNodeData nodeData, WorkflowStepExecution stepExec, WorkflowExecution execution)
         {
             WriteLog($"=== 執行 sendEForm 節點 ===");
+            WriteLog($"🔍 [DEBUG] sendEForm 節點配置:");
+            WriteLog($"🔍 [DEBUG] FormName: '{nodeData.FormName}'");
+            WriteLog($"🔍 [DEBUG] To: '{nodeData.To}'");
+            WriteLog($"🔍 [DEBUG] RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+            WriteLog($"🔍 [DEBUG] SendEFormMode: '{nodeData.SendEFormMode}'");
+            WriteLog($"🔍 [DEBUG] IntegratedDataSetQueryNodeId: '{nodeData.IntegratedDataSetQueryNodeId}'");
                         
                         if (!string.IsNullOrEmpty(nodeData.FormName))
                         {
@@ -1752,14 +1758,38 @@ namespace PurpleRice.Services
                                 }
 
                                 // 查詢表單定義
-                                var eFormDefinition = await db.eFormDefinitions
-                                    .FirstOrDefaultAsync(f => f.Name == nodeData.FormName && f.Status == "A");
+                                WriteLog($"🔍 [DEBUG] 查詢表單定義: FormId={nodeData.FormId}, FormName={nodeData.FormName}");
+                                
+                                eFormDefinition eFormDefinition = null;
+                                
+                                // 優先使用 FormId 查找（推薦方式）
+                                if (!string.IsNullOrEmpty(nodeData.FormId))
+                                {
+                                    WriteLog($"🔍 [DEBUG] 使用 FormId 查找表單定義: {nodeData.FormId}");
+                                    eFormDefinition = await db.eFormDefinitions
+                                        .FirstOrDefaultAsync(f => f.Id == Guid.Parse(nodeData.FormId) && f.Status == "A");
+                                }
+                                
+                                // 如果 FormId 查找失敗，則使用 FormName 查找（向後兼容）
+                                if (eFormDefinition == null && !string.IsNullOrEmpty(nodeData.FormName))
+                                {
+                                    WriteLog($"🔍 [DEBUG] FormId 查找失敗，使用 FormName 查找: {nodeData.FormName}");
+                                    eFormDefinition = await db.eFormDefinitions
+                                        .FirstOrDefaultAsync(f => f.Name == nodeData.FormName && f.Status == "A");
+                                }
 
                                 if (eFormDefinition == null)
                                 {
-                                    stepExec.OutputJson = JsonSerializer.Serialize(new { error = $"Form definition not found: {nodeData.FormName}" });
+                                    WriteLog($"❌ [ERROR] 找不到表單定義: FormId={nodeData.FormId}, FormName={nodeData.FormName}");
+                                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                                        error = $"Form definition not found", 
+                                        formId = nodeData.FormId,
+                                        formName = nodeData.FormName
+                                    });
                         return false;
                                 }
+                                
+                                WriteLog($"✅ [SUCCESS] 找到表單定義: {eFormDefinition.Id}, 狀態: {eFormDefinition.Status}");
 
                     // 先解析收件人（所有模式都需要）
                     WriteLog($"🔍 [DEBUG] 開始解析收件人");
@@ -2047,6 +2077,15 @@ namespace PurpleRice.Services
                                 break;
                         }
 
+                        // ✅ 調試：記錄收件人信息
+                        WriteLog($"🔍 [DEBUG] AI/Data Fill 模式收件人信息:");
+                        WriteLog($"🔍 [DEBUG] 收件人數量: {resolvedRecipients.Count}");
+                        if (resolvedRecipients.Any())
+                        {
+                            var firstRecipient = resolvedRecipients.First();
+                            WriteLog($"🔍 [DEBUG] 主要收件人: {firstRecipient.PhoneNumber} ({firstRecipient.RecipientName})");
+                        }
+
                         // 創建單一表單實例
                         var eFormInstance = new EFormInstance
                         {
@@ -2062,7 +2101,15 @@ namespace PurpleRice.Services
                             Status = "Pending",
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow,
-                            FillType = sendEFormMode == "integrateWaitReply" ? "AI" : "Data"
+                            FillType = sendEFormMode == "integrateWaitReply" ? "AI" : "Data",
+                            
+                            // ✅ 修復：添加收件人信息
+                            // 對於單一表單實例，使用第一個收件人的信息作為主要收件人
+                            RecipientWhatsAppNo = resolvedRecipients.FirstOrDefault()?.PhoneNumber,
+                            RecipientName = resolvedRecipients.FirstOrDefault()?.RecipientName,
+                            
+                            // 如果需要支持多個收件人，可以考慮添加額外字段來存儲所有收件人信息
+                            // 或者為每個收件人創建獨立的表單實例（類似 Manual Fill 模式）
                         };
 
                         // 生成表單 URL
@@ -2097,15 +2144,27 @@ namespace PurpleRice.Services
                 }
                 catch (Exception ex)
                 {
-                    WriteLog($"eForm 處理失敗: {ex.Message}");
-                    stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
+                    WriteLog($"❌ [ERROR] eForm 處理失敗: {ex.Message}");
+                    WriteLog($"❌ [ERROR] 錯誤堆疊: {ex.StackTrace}");
+                    WriteLog($"❌ [ERROR] 內部異常: {ex.InnerException?.Message}");
+                    stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                        error = ex.Message,
+                        stackTrace = ex.StackTrace,
+                        innerException = ex.InnerException?.Message
+                    });
                     return false;
                 }
             }
             else
             {
-                WriteLog($"sendEForm 步驟缺少必要參數: formName={nodeData.FormName}, recipientDetails={nodeData.RecipientDetails}");
-                stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameters" });
+                WriteLog($"❌ [ERROR] sendEForm 步驟缺少必要參數:");
+                WriteLog($"❌ [ERROR] FormName: '{nodeData.FormName}' (是否為空: {string.IsNullOrEmpty(nodeData.FormName)})");
+                WriteLog($"❌ [ERROR] RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                    error = "Missing required parameters",
+                    formName = nodeData.FormName,
+                    recipientDetails = nodeData.RecipientDetails
+                });
                 return false;
             }
         }
