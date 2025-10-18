@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeftOutlined, SaveOutlined, UpOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SaveOutlined, UpOutlined, SettingOutlined } from '@ant-design/icons';
 import { Button, Space, message, Typography, Input } from 'antd';
-import { EFormDesignerUpload, EFormDesignerAI } from '../components/EFormDesigner';
+import { EFormDesignerUpload, EFormDesignerAI, EFormFieldDisplaySetting } from '../components/EFormDesigner';
 import useGrapesJS from '../hooks/useGrapesJS';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -43,6 +43,16 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
   // AI 相關狀態
   const [aiModalVisible, setAiModalVisible] = useState(false);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
+  
+  // 字段顯示設定相關狀態
+  const [fieldDisplaySettingVisible, setFieldDisplaySettingVisible] = useState(false);
+  const [fieldDisplaySettings, setFieldDisplaySettings] = useState([]);
+  
+  // 編輯相關狀態
+  const urlParams = new URLSearchParams(window.location.search);
+  const editFormId = urlParams.get('edit');
+  const [isEditing, setIsEditing] = useState(!!initialSchema?.id || !!editFormId);
+  const [formId, setFormId] = useState(initialSchema?.id || editFormId);
   
   // 編輯相關狀態 - 改為右側面板
   const [editPanelOpen, setEditPanelOpen] = useState(false);
@@ -91,6 +101,22 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
       
       if (formData.description) {
         setFormDescription(formData.description);
+      }
+
+      // 載入字段顯示設定
+      console.log('🔍 載入的 fieldDisplaySettings 原始數據:', formData.fieldDisplaySettings);
+      if (formData.fieldDisplaySettings) {
+        try {
+          const settings = JSON.parse(formData.fieldDisplaySettings);
+          console.log('🔍 解析後的字段設定:', settings);
+          setFieldDisplaySettings(settings);
+        } catch (error) {
+          console.warn('解析字段顯示設定失敗:', error);
+          setFieldDisplaySettings([]);
+        }
+      } else {
+        console.log('🔍 沒有字段顯示設定數據');
+        setFieldDisplaySettings([]);
       }
 
       message.success('表單內容載入成功！');
@@ -184,12 +210,24 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
   // 檢查 URL 參數並載入表單內容
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const editFormId = urlParams.get('edit');
+    console.log('🔍 useEffect 檢查載入條件:', { editFormId, initialSchemaId: initialSchema?.id, initialSchemaFieldDisplaySettings: initialSchema?.fieldDisplaySettings });
     
     if (editFormId && !initialSchema?.id) {
       console.log('🔍 檢測到編輯表單 ID:', editFormId);
       loadFormContent(editFormId);
+    } else if (initialSchema?.id) {
+      console.log('🔍 使用 initialSchema 數據');
+      // 如果有 initialSchema，也需要載入字段顯示設定
+      if (initialSchema.fieldDisplaySettings) {
+        try {
+          const settings = JSON.parse(initialSchema.fieldDisplaySettings);
+          console.log('🔍 從 initialSchema 載入字段設定:', settings);
+          setFieldDisplaySettings(settings);
+        } catch (error) {
+          console.warn('從 initialSchema 解析字段顯示設定失敗:', error);
+          setFieldDisplaySettings([]);
+        }
+      }
     }
   }, []);
 
@@ -426,6 +464,53 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
     setAiModalVisible(true);
   };
 
+  // 打開字段顯示設定模態框
+  const openFieldDisplaySetting = () => {
+    if (!htmlContent.trim()) {
+      message.warning('請先設計表單內容');
+      return;
+    }
+    setFieldDisplaySettingVisible(true);
+  };
+
+  // 處理字段顯示設定保存
+  const handleFieldDisplaySettingSave = async (settings) => {
+    setFieldDisplaySettings(settings);
+    
+    // 如果表單已經存在（編輯模式），立即保存字段設定到後端
+    if (isEditing && formId) {
+      try {
+        const response = await fetch(`/api/eforms/${formId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: formName,
+            description: formDescription,
+            htmlCode: htmlContent,
+            status: 'A',
+            RStatus: 'A',
+            fieldDisplaySettings: settings.length > 0 ? JSON.stringify(settings) : null,
+            updatedAt: new Date().toISOString()
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`更新失敗: ${response.status}`);
+        }
+
+        message.success('字段顯示設定已保存');
+      } catch (error) {
+        console.error('保存字段設定失敗:', error);
+        message.error('保存字段設定失敗: ' + error.message);
+      }
+    } else {
+      message.success('字段顯示設定已保存到本地');
+    }
+  };
+
   // 保存表單
   const handleSave = async () => {
     if (!htmlContent.trim()) {
@@ -435,18 +520,13 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
     setIsSaving(true);
     try {
-      // 檢查是否為編輯模式（從 initialSchema 或 URL 參數）
-      const urlParams = new URLSearchParams(window.location.search);
-      const editFormId = urlParams.get('edit');
-      const isEditing = !!initialSchema?.id || !!editFormId;
-      const formId = initialSchema?.id || editFormId;
-      
       const formData = {
         name: formName,
         description: formDescription,
         htmlCode: htmlContent,
         status: 'A', // Active
-        RStatus: 'A' // Active - 修正字段名以匹配後端模型
+        RStatus: 'A', // Active - 修正字段名以匹配後端模型
+        fieldDisplaySettings: fieldDisplaySettings.length > 0 ? JSON.stringify(fieldDisplaySettings) : null
       };
 
       // 如果是編輯模式，添加 updatedAt
@@ -489,6 +569,10 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
       // 後端直接返回表單對象，沒有 success 字段
       if (result && result.id) {
+        // 更新編輯狀態和表單ID
+        setIsEditing(true);
+        setFormId(result.id);
+        
         message.success('✅ 表單保存成功！');
         // 只調用 onSave 回調，不傳遞數據，避免重複保存
         onSave && onSave();
@@ -554,6 +638,18 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
               width: '32px',
               padding: '0'
             }}
+          />
+          <Button
+            icon={<SettingOutlined />}
+            type="default"
+            onClick={openFieldDisplaySetting}
+            disabled={!htmlContent.trim()}
+            style={{
+              height: '32px',
+              width: '32px',
+              padding: '0'
+            }}
+            title="字段顯示設定"
           />
           <Button
             icon={<SaveOutlined />}
@@ -749,6 +845,14 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
         htmlContent={htmlContent}
         isGenerating={isAiGenerating}
         setIsGenerating={setIsAiGenerating}
+      />
+
+      <EFormFieldDisplaySetting
+        visible={fieldDisplaySettingVisible}
+        onClose={() => setFieldDisplaySettingVisible(false)}
+        htmlContent={htmlContent}
+        onSave={handleFieldDisplaySettingSave}
+        initialSettings={fieldDisplaySettings}
       />
     </div>
   );

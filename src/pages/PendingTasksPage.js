@@ -21,7 +21,8 @@ import {
   Alert,
   Select,
   Divider,
-  Tabs
+  Tabs,
+  DatePicker
 } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
@@ -51,7 +52,9 @@ import {
   DownloadOutlined,
   CloseOutlined,
   LeftOutlined,
-  RightOutlined
+  RightOutlined,
+  PlusOutlined,
+  MinusOutlined
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -62,6 +65,53 @@ const { Search } = Input;
 const { Option } = Select;
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
+const { RangePicker } = DatePicker;
+
+// 自定義表格樣式
+const customTableStyle = `
+  .custom-table-with-summary .ant-table-thead > tr > th {
+    padding: 8px 12px !important;
+    height: 40px !important;
+    line-height: 1.2 !important;
+  }
+  
+  .custom-table-with-summary .ant-table-tbody > tr > td {
+    padding: 8px 12px !important;
+    vertical-align: top !important;
+  }
+  
+  .custom-table-with-summary .ant-table-tbody > tr {
+    height: auto !important;
+    min-height: 40px !important;
+  }
+  
+  .custom-table-with-summary .ant-table-tbody > tr:hover {
+    background-color: #f5f5f5 !important;
+  }
+  
+  .form-summary-field {
+    display: inline-flex;
+    align-items: center;
+    background-color: #f0f8ff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #d6e4ff;
+    margin-right: 4px;
+    margin-bottom: 2px;
+  }
+  
+  .form-summary-field-label {
+    font-size: 11px;
+    color: #666;
+    margin-right: 4px;
+  }
+  
+  .form-summary-field-value {
+    font-size: 11px;
+    font-weight: 500;
+    color: #1890ff;
+  }
+`;
 
 // ResizableTitle 元件
 const ResizableTitle = (props) => {
@@ -113,6 +163,9 @@ const PendingTasksPage = () => {
   const [lightboxFiles, setLightboxFiles] = useState([]);
   const [lightboxCurrentIndex, setLightboxCurrentIndex] = useState(0);
   
+  // 展開行狀態
+  const [expandedRowKeys, setExpandedRowKeys] = useState([]);
+  
   // 批量處理相關狀態
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [selectedRows, setSelectedRows] = useState([]);
@@ -120,6 +173,19 @@ const PendingTasksPage = () => {
   const [batchAction, setBatchAction] = useState('');
   const [batchNote, setBatchNote] = useState('');
   const [processingBatch, setProcessingBatch] = useState(false);
+
+  // 應用自定義表格樣式
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = customTableStyle;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      if (document.head.contains(styleElement)) {
+        document.head.removeChild(styleElement);
+      }
+    };
+  }, []);
 
   // 調試：監控 embeddedFormInstance 的變化
   useEffect(() => {
@@ -188,7 +254,7 @@ const PendingTasksPage = () => {
   // 動態計算表格高度
   const getTableScrollHeight = () => {
     // 基礎高度減去固定元素的高度
-    let baseHeight = 480;
+    let baseHeight = 420; // 調整基礎高度，確保分頁器可見
     
     // 如果有批量操作卡片，額外減去卡片高度
     if (selectedRowKeys.length > 0) {
@@ -260,6 +326,11 @@ const PendingTasksPage = () => {
         params.append('priority', filters.priority);
       }
 
+      if (filters.dateRange && filters.dateRange.length === 2) {
+        params.append('createdDateFrom', filters.dateRange[0].toISOString());
+        params.append('createdDateTo', filters.dateRange[1].toISOString());
+      }
+
       console.log('Loading pending tasks, query parameters:', params.toString());
 
       const response = await fetch(`/api/eforminstances/pending?${params}`, {
@@ -275,6 +346,19 @@ const PendingTasksPage = () => {
       const data = await response.json();
       console.log('Loaded pending tasks:', data);
       
+      // 調試：檢查前幾條記錄的 fieldDisplaySettings
+      if (data.data && data.data.length > 0) {
+        console.log('🔍 檢查前3條記錄的 fieldDisplaySettings:');
+        data.data.slice(0, 3).forEach((record, index) => {
+          console.log(`🔍 記錄 ${index + 1}:`, {
+            id: record.id,
+            formName: record.formName,
+            fieldDisplaySettings: record.fieldDisplaySettings,
+            filledHtmlCode: record.filledHtmlCode ? '有' : '無'
+          });
+        });
+      }
+      
       // Convert data format to match frontend expected structure
       const formattedData = data.data?.map(item => ({
         id: item.id,
@@ -289,7 +373,14 @@ const PendingTasksPage = () => {
         workflowInstanceId: item.workflowInstanceId,
         userMessage: item.userMessage,
         accessToken: item.accessToken,
-        formData: {} // Actual form data needs to be obtained through separate API
+        formData: {}, // Actual form data needs to be obtained through separate API
+        fieldDisplaySettings: item.fieldDisplaySettings, // 添加字段顯示設定
+        filledHtmlCode: item.filledHtmlCode, // 添加填寫的HTML代碼
+        htmlCode: item.htmlCode, // 添加原始HTML代碼
+        recipientName: item.recipientName, // 添加收件人姓名
+        recipientWhatsAppNo: item.recipientWhatsAppNo, // 添加收件人WhatsApp號碼
+        updatedAt: item.updatedAt, // 添加更新時間
+        approvalAt: item.approvalAt // 添加審批時間
       })) || [];
       
       // Filter out Manual Fill records - these don't need manual processing
@@ -336,6 +427,11 @@ const PendingTasksPage = () => {
         params.append('search', filters.searchText);
       }
 
+      if (filters.dateRange && filters.dateRange.length === 2) {
+        params.append('createdDateFrom', filters.dateRange[0].toISOString());
+        params.append('createdDateTo', filters.dateRange[1].toISOString());
+      }
+
       console.log('Loading approved forms, query parameters:', params.toString());
 
       const response = await fetch(`/api/eforminstances/approved?${params}`, {
@@ -364,7 +460,14 @@ const PendingTasksPage = () => {
         workflowInstanceId: item.workflowInstanceId,
         userMessage: item.userMessage,
         accessToken: item.accessToken, // 添加 accessToken 字段
-        formData: {}
+        formData: {},
+        fieldDisplaySettings: item.fieldDisplaySettings, // 添加字段顯示設定
+        filledHtmlCode: item.filledHtmlCode, // 添加填寫的HTML代碼
+        htmlCode: item.htmlCode, // 添加原始HTML代碼
+        recipientName: item.recipientName, // 添加收件人姓名
+        recipientWhatsAppNo: item.recipientWhatsAppNo, // 添加收件人WhatsApp號碼
+        updatedAt: item.updatedAt, // 添加更新時間
+        approvalAt: item.approvalAt // 添加審批時間
       })) || [];
       
       setApprovedEforms(formattedData);
@@ -396,6 +499,11 @@ const PendingTasksPage = () => {
         params.append('search', filters.searchText);
       }
 
+      if (filters.dateRange && filters.dateRange.length === 2) {
+        params.append('createdDateFrom', filters.dateRange[0].toISOString());
+        params.append('createdDateTo', filters.dateRange[1].toISOString());
+      }
+
       console.log('Loading rejected forms, query parameters:', params.toString());
 
       const response = await fetch(`/api/eforminstances/rejected?${params}`, {
@@ -424,7 +532,14 @@ const PendingTasksPage = () => {
         workflowInstanceId: item.workflowInstanceId,
         userMessage: item.userMessage,
         accessToken: item.accessToken, // 添加 accessToken 字段
-        formData: {}
+        formData: {},
+        fieldDisplaySettings: item.fieldDisplaySettings, // 添加字段顯示設定
+        filledHtmlCode: item.filledHtmlCode, // 添加填寫的HTML代碼
+        htmlCode: item.htmlCode, // 添加原始HTML代碼
+        recipientName: item.recipientName, // 添加收件人姓名
+        recipientWhatsAppNo: item.recipientWhatsAppNo, // 添加收件人WhatsApp號碼
+        updatedAt: item.updatedAt, // 添加更新時間
+        approvalAt: item.approvalAt // 添加審批時間
       })) || [];
       
       setRejectedEforms(formattedData);
@@ -517,6 +632,11 @@ const PendingTasksPage = () => {
         params.append('search', filters.searchText);
       }
 
+      if (filters.dateRange && filters.dateRange.length === 2) {
+        params.append('createdDateFrom', filters.dateRange[0].toISOString());
+        params.append('createdDateTo', filters.dateRange[1].toISOString());
+      }
+
       console.log('Loading manual pending forms, query parameters:', params.toString());
 
       const response = await fetch(`/api/eforminstances/manual/pending?${params}`, {
@@ -547,7 +667,12 @@ const PendingTasksPage = () => {
         recipientWhatsAppNo: item.recipientWhatsAppNo,
         recipientName: item.recipientName,
         accessToken: item.accessToken,
-        formData: {}
+        formData: {},
+        fieldDisplaySettings: item.fieldDisplaySettings, // 添加字段顯示設定
+        filledHtmlCode: item.filledHtmlCode, // 添加填寫的HTML代碼
+        htmlCode: item.htmlCode, // 添加原始HTML代碼
+        updatedAt: item.updatedAt, // 添加更新時間
+        approvalAt: item.approvalAt // 添加審批時間
       })) || [];
       
       setManualPendingEforms(formattedData);
@@ -577,6 +702,11 @@ const PendingTasksPage = () => {
 
       if (filters.searchText) {
         params.append('search', filters.searchText);
+      }
+
+      if (filters.dateRange && filters.dateRange.length === 2) {
+        params.append('createdDateFrom', filters.dateRange[0].toISOString());
+        params.append('createdDateTo', filters.dateRange[1].toISOString());
       }
 
       console.log('Loading manual responded forms, query parameters:', params.toString());
@@ -614,7 +744,10 @@ const PendingTasksPage = () => {
         approvalAt: item.approvalAt,
         rejectedBy: item.rejectedBy,
         rejectedAt: item.rejectedAt,
-        formData: {}
+        formData: {},
+        fieldDisplaySettings: item.fieldDisplaySettings, // 添加字段顯示設定
+        filledHtmlCode: item.filledHtmlCode, // 添加填寫的HTML代碼
+        htmlCode: item.htmlCode // 添加原始HTML代碼
       })) || [];
       
       setManualRespondedEforms(formattedData);
@@ -640,6 +773,41 @@ const PendingTasksPage = () => {
 
   const handlePriorityFilter = (value) => {
     setFilters(prev => ({ ...prev, priority: value }));
+  };
+
+  const handleDateRangeChange = (dates) => {
+    setFilters(prev => ({ ...prev, dateRange: dates }));
+  };
+
+  // 切換全部展開/收合功能
+  const handleToggleExpandAll = () => {
+    const currentEforms = getCurrentEforms();
+    const expandableKeys = currentEforms
+      .filter(record => {
+        let fieldSettings = [];
+        if (record.fieldDisplaySettings) {
+          if (typeof record.fieldDisplaySettings === 'string') {
+            try {
+              fieldSettings = JSON.parse(record.fieldDisplaySettings);
+            } catch (error) {
+              fieldSettings = [];
+            }
+          } else if (Array.isArray(record.fieldDisplaySettings)) {
+            fieldSettings = record.fieldDisplaySettings;
+          }
+        }
+        return fieldSettings.filter(f => f.showInList).length > 0;
+      })
+      .map(record => record.id);
+    
+    // 如果所有可展開的行都已展開，則收合；否則展開所有
+    const allExpanded = expandableKeys.length > 0 && expandableKeys.every(key => expandedRowKeys.includes(key));
+    
+    if (allExpanded) {
+      setExpandedRowKeys([]);
+    } else {
+      setExpandedRowKeys(expandableKeys);
+    }
   };
 
   const getCurrentEforms = () => {
@@ -1395,6 +1563,85 @@ const PendingTasksPage = () => {
     return new Date(dueDate) < new Date();
   };
 
+  // 獲取行樣式的函數
+  const getRowStyle = (record) => {
+    let fieldSettings = [];
+    
+    // 處理 fieldDisplaySettings 可能是字符串或數組的情況
+    if (record.fieldDisplaySettings) {
+      if (typeof record.fieldDisplaySettings === 'string') {
+        try {
+          fieldSettings = JSON.parse(record.fieldDisplaySettings);
+        } catch (error) {
+          console.warn('解析字段顯示設定失敗:', error);
+          fieldSettings = [];
+        }
+      } else if (Array.isArray(record.fieldDisplaySettings)) {
+        fieldSettings = record.fieldDisplaySettings;
+      }
+    }
+    
+    const hasFields = fieldSettings.filter(f => f.showInList).length > 0;
+    
+    return {
+      cursor: 'pointer',
+      minHeight: hasFields ? '45px' : '35px' // 減少行高，讓界面更緊湊
+    };
+  };
+
+  // 獲取字段值的函數
+  const getFieldValue = (record, fieldId) => {
+    // 優先從 FilledHtmlCode 中解析字段值
+    if (record.filledHtmlCode) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(record.filledHtmlCode, 'text/html');
+        const element = doc.querySelector(`#${fieldId}`) || doc.querySelector(`[name="${fieldId}"]`);
+        if (element) {
+          // 處理不同類型的輸入元素
+          if (element.tagName === 'INPUT') {
+            if (element.type === 'checkbox' || element.type === 'radio') {
+              return element.checked ? element.value || '✓' : null;
+            }
+            return element.value || null;
+          } else if (element.tagName === 'SELECT') {
+            const selectedOption = element.options[element.selectedIndex];
+            return selectedOption ? selectedOption.textContent : null;
+          } else if (element.tagName === 'TEXTAREA') {
+            return element.textContent || element.value || null;
+          }
+        }
+      } catch (error) {
+        console.warn('解析 FilledHtmlCode 字段值失敗:', error);
+      }
+    }
+    
+    // 備用：從表單數據中獲取字段值
+    if (record.formData && record.formData[fieldId]) {
+      return record.formData[fieldId];
+    }
+    
+    // 最後備用：從原始 HTML 中解析
+    if (record.htmlCode) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(record.htmlCode, 'text/html');
+        const element = doc.querySelector(`#${fieldId}`) || doc.querySelector(`[name="${fieldId}"]`);
+        return element ? element.value : null;
+      } catch (error) {
+        console.warn('解析字段值失敗:', error);
+        return null;
+      }
+    }
+    
+    return null;
+  };
+
+  // 渲染表單摘要 - 這個函數現在不再使用，因為我們改用展開行
+  const renderFormSummary = (record) => {
+    return null; // 不再在主行顯示摘要，改用展開行
+  };
+
   const getStatusTag = (status, dueDate) => {
     // 根據實際狀態決定顯示
     let color, text, icon;
@@ -1432,12 +1679,159 @@ const PendingTasksPage = () => {
     );
   };
 
+  // 渲染展開行的內容
+  const renderExpandedRow = (record) => {
+    console.log('🔍 renderExpandedRow 被調用:', record.id);
+    console.log('🔍 record.fieldDisplaySettings:', record.fieldDisplaySettings);
+    console.log('🔍 record.filledHtmlCode 長度:', record.filledHtmlCode?.length);
+    
+    let fieldSettings = [];
+    
+    // 處理 fieldDisplaySettings 可能是字符串或數組的情況
+    if (record.fieldDisplaySettings) {
+      if (typeof record.fieldDisplaySettings === 'string') {
+        try {
+          fieldSettings = JSON.parse(record.fieldDisplaySettings);
+          console.log('🔍 解析後的 fieldSettings:', fieldSettings);
+        } catch (error) {
+          console.warn('解析字段顯示設定失敗:', error);
+          fieldSettings = [];
+        }
+      } else if (Array.isArray(record.fieldDisplaySettings)) {
+        fieldSettings = record.fieldDisplaySettings;
+        console.log('🔍 直接使用的 fieldSettings:', fieldSettings);
+      }
+    }
+    
+    const visibleFields = fieldSettings.filter(f => f.showInList);
+    console.log('🔍 visibleFields:', visibleFields);
+    
+    if (visibleFields.length === 0) {
+      return (
+        <div style={{ padding: '16px', textAlign: 'center', color: '#999' }}>
+          無字段摘要設定
+        </div>
+      );
+    }
+    
+    // 準備子表格的數據 - 從 FilledHtmlCode 解析字段值
+    const expandedData = visibleFields.map(field => {
+      const fieldValue = getFieldValue(record, field.fieldId);
+      console.log(`🔍 字段 ${field.fieldId} 的值:`, fieldValue);
+      return {
+        key: field.fieldId,
+        displayLabel: field.displayLabel,
+        fieldValue: fieldValue || '-'
+      };
+    });
+    
+    console.log('🔍 expandedData:', expandedData);
+    
+    return (
+      <div style={{ padding: '8px', backgroundColor: '#fafafa' }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: `repeat(${visibleFields.length}, 1fr)`,
+          gap: '4px',
+          backgroundColor: '#fff',
+          borderRadius: '4px',
+          padding: '6px',
+          border: '1px solid #e8e8e8'
+        }}>
+          {/* 表頭行 - 字段標籤 */}
+          {visibleFields.map(field => (
+            <div key={`header-${field.fieldId}`} style={{
+              fontWeight: '600',
+              color: '#333',
+              fontSize: '12px',
+              padding: '4px',
+              backgroundColor: '#f5f5f5',
+              borderRadius: '3px',
+              textAlign: 'center',
+              border: '1px solid #d9d9d9'
+            }}>
+              {field.displayLabel}
+            </div>
+          ))}
+          
+          {/* 數據行 - 字段值 */}
+          {visibleFields.map(field => {
+            const fieldValue = getFieldValue(record, field.fieldId);
+            return (
+              <div key={`value-${field.fieldId}`} style={{
+                color: '#666',
+                fontSize: '12px',
+                padding: '4px',
+                backgroundColor: '#fff',
+                borderRadius: '3px',
+                textAlign: 'center',
+                border: '1px solid #e8e8e8',
+                minHeight: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {fieldValue || '-'}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // 子行表格的列定義（用於顯示字段摘要）
+  const expandedRowColumns = [
+    {
+      title: '字段標籤',
+      dataIndex: 'displayLabel',
+      key: 'displayLabel',
+      width: 150,
+    },
+    {
+      title: '字段值',
+      dataIndex: 'fieldValue',
+      key: 'fieldValue',
+      width: 200,
+    }
+  ];
+
   // columns 狀態化與寬度調整 - 使用 useMemo 根據 activeTab 動態計算
   const baseColumns = React.useMemo(() => [
     // 批量選擇列
     {
       title: (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Button
+            type="text"
+            size="small"
+            icon={(() => {
+              const currentEforms = getCurrentEforms();
+              const expandableKeys = currentEforms
+                .filter(record => {
+                  let fieldSettings = [];
+                  if (record.fieldDisplaySettings) {
+                    if (typeof record.fieldDisplaySettings === 'string') {
+                      try {
+                        fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                      } catch (error) {
+                        fieldSettings = [];
+                      }
+                    } else if (Array.isArray(record.fieldDisplaySettings)) {
+                      fieldSettings = record.fieldDisplaySettings;
+                    }
+                  }
+                  return fieldSettings.filter(f => f.showInList).length > 0;
+                })
+                .map(record => record.id);
+              
+              const allExpanded = expandableKeys.length > 0 && expandableKeys.every(key => expandedRowKeys.includes(key));
+              return allExpanded ? <MinusOutlined /> : <PlusOutlined />;
+            })()}
+            onClick={handleToggleExpandAll}
+            title="全部展開/收合"
+            style={{ padding: '2px 6px', fontSize: '12px' }}
+          />
           <input
             type="checkbox"
             checked={(() => {
@@ -1499,7 +1893,6 @@ const PendingTasksPage = () => {
               return allSelected ? t('pendingTasks.deselectAll') : t('pendingTasks.selectAll');
             })()}
           />
-          <span>{t('pendingTasks.select')}</span>
           {selectedRowKeys.length > 0 && (
             <Tag color="blue" style={{ fontSize: '10px', margin: 0 }}>
               {selectedRowKeys.length}
@@ -1545,11 +1938,10 @@ const PendingTasksPage = () => {
       sortDirections: ['ascend', 'descend'],
       render: (text, record) => (
         <div>
-          <Text strong>{text}</Text>
-          <br />
-          <Text type="secondary" style={{ fontSize: '12px' }}>
+          <Text strong style={{ fontSize: '14px' }}>{text}</Text>
+          <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>
             {record.instanceName}
-          </Text>
+          </div>
         </div>
       )
     },
@@ -1557,7 +1949,7 @@ const PendingTasksPage = () => {
       title: t('pendingTasks.status'),
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 120,
       sorter: (a, b) => {
         const getStatusValue = (record) => {
           if (isOverdue(record.dueDate)) return 0; // Overdue first
@@ -1572,10 +1964,10 @@ const PendingTasksPage = () => {
       title: t('pendingTasks.fillType'),
       dataIndex: 'fillType',
       key: 'fillType',
-      width: 100,
+      width: 120,
       sorter: (a, b) => a.fillType?.localeCompare(b.fillType || ''),
       sortDirections: ['ascend', 'descend'],
-      render: (fillType) => (
+      render: (fillType, record) => (
         <Tag color={getFillTypeColor(fillType)}>
           {getFillTypeText(fillType)}
         </Tag>
@@ -1585,13 +1977,13 @@ const PendingTasksPage = () => {
       title: t('pendingTasks.priority'),
       dataIndex: 'priority',
       key: 'priority',
-      width: 80,
+      width: 100,
       sorter: (a, b) => {
         const priorityOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
         return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
       },
       sortDirections: ['ascend', 'descend'],
-      render: (priority) => (
+      render: (priority, record) => (
         <Tag color={getPriorityColor(priority)}>
           {getPriorityText(priority)}
         </Tag>
@@ -1601,10 +1993,10 @@ const PendingTasksPage = () => {
       title: t('pendingTasks.applicant'),
       dataIndex: 'createdBy',
       key: 'createdBy',
-      width: 100,
+      width: 120,
       sorter: (a, b) => a.createdBy.localeCompare(b.createdBy),
       sortDirections: ['ascend', 'descend'],
-      render: (text) => (
+      render: (text, record) => (
         <Space>
           <UserOutlined />
           {text}
@@ -1612,29 +2004,63 @@ const PendingTasksPage = () => {
       )
     },
     {
-      title: t('pendingTasks.applicationTime'),
+      title: 'User Message',
+      dataIndex: 'userMessage',
+      key: 'userMessage',
+      width: 200,
+      render: (text) => (
+        <div style={{ fontSize: '12px', color: '#333' }}>
+          {text || '-'}
+        </div>
+      )
+    },
+    {
+      title: 'Recipient Name',
+      dataIndex: 'recipientName',
+      key: 'recipientName',
+      width: 150,
+      render: (text) => (
+        <div style={{ fontSize: '12px', color: '#333' }}>
+          {text || '-'}
+        </div>
+      )
+    },
+    {
+      title: 'Recipient WhatsApp',
+      dataIndex: 'recipientWhatsAppNo',
+      key: 'recipientWhatsAppNo',
+      width: 150,
+      render: (text) => (
+        <div style={{ fontSize: '12px', color: '#333' }}>
+          {text || '-'}
+        </div>
+      )
+    },
+    {
+      title: 'Created At',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 150,
       sorter: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
       sortDirections: ['ascend', 'descend'],
-      render: (date) => dayjs(date).format('MM-DD HH:mm')
+      render: (text) => (
+        <div style={{ fontSize: '12px', color: '#333' }}>
+          {text ? dayjs(text).format('MM-DD HH:mm') : '-'}
+        </div>
+      )
     },
     {
-      title: t('pendingTasks.dueDate'),
-      dataIndex: 'dueDate',
-      key: 'dueDate',
+      title: 'Updated At',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
       width: 150,
-      sorter: (a, b) => new Date(a.dueDate) - new Date(b.dueDate),
+      sorter: (a, b) => new Date(a.updatedAt) - new Date(b.updatedAt),
       sortDirections: ['ascend', 'descend'],
-      render: (date, record) => {
-        const isOverdueStatus = isOverdue(date);
-        return (
-          <Text type={isOverdueStatus ? 'danger' : 'secondary'}>
-            {dayjs(date).format('MM-DD HH:mm')}
-          </Text>
-        );
-      }
+      render: (text) => (
+        <div style={{ fontSize: '12px', color: '#333' }}>
+          {text ? dayjs(text).format('MM-DD HH:mm') : '-'}
+        </div>
+      )
     },
     {
       title: t('pendingTasks.action'),
@@ -1737,7 +2163,7 @@ const PendingTasksPage = () => {
          }
        }
     }
-  ], [activeTab, viewMode, t, selectedRowKeys]);
+  ], [activeTab, viewMode, t, selectedRowKeys, expandedRowKeys, pendingEforms, approvedEforms, rejectedEforms, manualPendingEforms, manualRespondedEforms]);
 
   const [columnWidths, setColumnWidths] = useState({});
 
@@ -1794,7 +2220,7 @@ const PendingTasksPage = () => {
               display: 'flex', 
               gap: '12px',
               width: '100%',
-              marginBottom: '16px'
+              marginBottom: '3px'
             }}>
               {/* In-house Form Smart Button */}
               <Card 
@@ -1949,6 +2375,15 @@ const PendingTasksPage = () => {
                   value={filters.searchText}
                   onChange={(e) => setFilters(prev => ({ ...prev, searchText: e.target.value }))}
                   onSearch={handleSearch}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+              
+              <Col flex="240px">
+                <RangePicker
+                  placeholder={['Create date from', 'Create date to']}
+                  value={filters.dateRange}
+                  onChange={handleDateRangeChange}
                   style={{ width: '100%' }}
                 />
               </Col>
@@ -2108,6 +2543,86 @@ const PendingTasksPage = () => {
                           dataSource={manualPendingEforms}
                           rowKey="id"
                           loading={loading}
+                          expandable={{
+                            expandedRowKeys: expandedRowKeys,
+                            onExpandedRowsChange: setExpandedRowKeys,
+                            expandedRowRender: renderExpandedRow,
+                            expandRowByClick: false,
+                            expandIconColumnIndex: 0,
+                            expandIconColumnTitle: () => (
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={(() => {
+                                  const currentEforms = getCurrentEforms();
+                                  const expandableKeys = currentEforms
+                                    .filter(record => {
+                                      let fieldSettings = [];
+                                      if (record.fieldDisplaySettings) {
+                                        if (typeof record.fieldDisplaySettings === 'string') {
+                                          try {
+                                            fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                                          } catch (error) {
+                                            fieldSettings = [];
+                                          }
+                                        } else if (Array.isArray(record.fieldDisplaySettings)) {
+                                          fieldSettings = record.fieldDisplaySettings;
+                                        }
+                                      }
+                                      return fieldSettings.filter(f => f.showInList).length > 0;
+                                    })
+                                    .map(record => record.id);
+                                  
+                                  const allExpanded = expandableKeys.length > 0 && expandableKeys.every(key => expandedRowKeys.includes(key));
+                                  return allExpanded ? <MinusOutlined /> : <PlusOutlined />;
+                                })()}
+                                onClick={handleToggleExpandAll}
+                                title="全部展開/收合"
+                                style={{ padding: '2px 6px', fontSize: '12px' }}
+                              />
+                            ),
+                            expandIcon: ({ expanded, onExpand, record }) => {
+                              let fieldSettings = [];
+                              
+                              // 處理 fieldDisplaySettings 可能是字符串或數組的情況
+                              if (record.fieldDisplaySettings) {
+                                if (typeof record.fieldDisplaySettings === 'string') {
+                                  try {
+                                    fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                                  } catch (error) {
+                                    console.warn('解析字段顯示設定失敗:', error);
+                                    fieldSettings = [];
+                                  }
+                                } else if (Array.isArray(record.fieldDisplaySettings)) {
+                                  fieldSettings = record.fieldDisplaySettings;
+                                }
+                              }
+                              
+                              const hasFields = fieldSettings.filter(f => f.showInList).length > 0;
+                              
+                              if (!hasFields) return null;
+                              
+                              return (
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onExpand(record, e);
+                                  }}
+                                  style={{ 
+                                    width: '20px', 
+                                    height: '20px', 
+                                    padding: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                />
+                              );
+                            }
+                          }}
                           onRow={(record) => ({
                             onClick: (e) => {
                               // 如果點擊的是選擇列（固定左側列），不觸發打開表單
@@ -2119,7 +2634,7 @@ const PendingTasksPage = () => {
                               }
                               handleViewEform(record);
                             },
-                            style: { cursor: 'pointer' }
+                            style: getRowStyle(record)
                           })}
                           pagination={{
                             showSizeChanger: true,
@@ -2134,7 +2649,7 @@ const PendingTasksPage = () => {
                             }
                           }}
                           scroll={{ 
-                            x: 1000,
+                            x: 1200,
                             y: getTableScrollHeight()
                           }}
                           sticky={{
@@ -2186,7 +2701,7 @@ const PendingTasksPage = () => {
                               }
                               handleViewEform(record);
                             },
-                            style: { cursor: 'pointer' }
+                            style: getRowStyle(record)
                           })}
                           pagination={{
                             showSizeChanger: true,
@@ -2201,7 +2716,7 @@ const PendingTasksPage = () => {
                             }
                           }}
                           scroll={{ 
-                            x: 1000,
+                            x: 1200,
                             y: getTableScrollHeight()
                           }}
                           sticky={{
@@ -2243,6 +2758,86 @@ const PendingTasksPage = () => {
                 dataSource={pendingEforms}
                 rowKey="id"
                 loading={loading}
+                expandable={{
+                  expandedRowKeys: expandedRowKeys,
+                  onExpandedRowsChange: setExpandedRowKeys,
+                  expandedRowRender: renderExpandedRow,
+                  expandRowByClick: false,
+                  expandIconColumnIndex: 0,
+                  expandIconColumnTitle: () => (
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={(() => {
+                        const currentEforms = getCurrentEforms();
+                        const expandableKeys = currentEforms
+                          .filter(record => {
+                            let fieldSettings = [];
+                            if (record.fieldDisplaySettings) {
+                              if (typeof record.fieldDisplaySettings === 'string') {
+                                try {
+                                  fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                                } catch (error) {
+                                  fieldSettings = [];
+                                }
+                              } else if (Array.isArray(record.fieldDisplaySettings)) {
+                                fieldSettings = record.fieldDisplaySettings;
+                              }
+                            }
+                            return fieldSettings.filter(f => f.showInList).length > 0;
+                          })
+                          .map(record => record.id);
+                        
+                        const allExpanded = expandableKeys.length > 0 && expandableKeys.every(key => expandedRowKeys.includes(key));
+                        return allExpanded ? <MinusOutlined /> : <PlusOutlined />;
+                      })()}
+                      onClick={handleToggleExpandAll}
+                      title="全部展開/收合"
+                      style={{ padding: '2px 6px', fontSize: '12px' }}
+                    />
+                  ),
+                  expandIcon: ({ expanded, onExpand, record }) => {
+                    let fieldSettings = [];
+                    
+                    // 處理 fieldDisplaySettings 可能是字符串或數組的情況
+                    if (record.fieldDisplaySettings) {
+                      if (typeof record.fieldDisplaySettings === 'string') {
+                        try {
+                          fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                        } catch (error) {
+                          console.warn('解析字段顯示設定失敗:', error);
+                          fieldSettings = [];
+                        }
+                      } else if (Array.isArray(record.fieldDisplaySettings)) {
+                        fieldSettings = record.fieldDisplaySettings;
+                      }
+                    }
+                    
+                    const hasFields = fieldSettings.filter(f => f.showInList).length > 0;
+                    
+                    if (!hasFields) return null;
+                    
+                    return (
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExpand(record, e);
+                        }}
+                        style={{ 
+                          width: '20px', 
+                          height: '20px', 
+                          padding: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      />
+                    );
+                  }
+                }}
                 onRow={(record) => ({
                   onClick: (e) => {
                     // 如果點擊的是選擇列（固定左側列），不觸發打開表單
@@ -2254,7 +2849,7 @@ const PendingTasksPage = () => {
                     }
                     handleViewEform(record);
                   },
-                  style: { cursor: 'pointer' }
+                  style: getRowStyle(record)
                 })}
                 pagination={{
                   showSizeChanger: true,
@@ -2310,6 +2905,53 @@ const PendingTasksPage = () => {
                           dataSource={approvedEforms}
                           rowKey="id"
                           loading={loading}
+                          expandable={{
+                            expandedRowKeys: expandedRowKeys,
+                            onExpandedRowsChange: setExpandedRowKeys,
+                            expandedRowRender: renderExpandedRow,
+                            expandRowByClick: false,
+                            expandIcon: ({ expanded, onExpand, record }) => {
+                              let fieldSettings = [];
+                              
+                              // 處理 fieldDisplaySettings 可能是字符串或數組的情況
+                              if (record.fieldDisplaySettings) {
+                                if (typeof record.fieldDisplaySettings === 'string') {
+                                  try {
+                                    fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                                  } catch (error) {
+                                    console.warn('解析字段顯示設定失敗:', error);
+                                    fieldSettings = [];
+                                  }
+                                } else if (Array.isArray(record.fieldDisplaySettings)) {
+                                  fieldSettings = record.fieldDisplaySettings;
+                                }
+                              }
+                              
+                              const hasFields = fieldSettings.filter(f => f.showInList).length > 0;
+                              
+                              if (!hasFields) return null;
+                              
+                              return (
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onExpand(record, e);
+                                  }}
+                                  style={{ 
+                                    width: '20px', 
+                                    height: '20px', 
+                                    padding: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                />
+                              );
+                            }
+                          }}
                           onRow={(record) => ({
                             onClick: (e) => {
                               // 如果點擊的是選擇列（固定左側列），不觸發打開表單
@@ -2321,7 +2963,7 @@ const PendingTasksPage = () => {
                               }
                               handleViewEform(record);
                             },
-                            style: { cursor: 'pointer' }
+                            style: getRowStyle(record)
                           })}
                           pagination={{
                             showSizeChanger: true,
@@ -2336,7 +2978,7 @@ const PendingTasksPage = () => {
                             }
                           }}
                           scroll={{ 
-                            x: 1000,
+                            x: 1200,
                             y: getTableScrollHeight()
                           }}
                           sticky={{
@@ -2377,6 +3019,53 @@ const PendingTasksPage = () => {
                           dataSource={rejectedEforms}
                           rowKey="id"
                           loading={loading}
+                          expandable={{
+                            expandedRowKeys: expandedRowKeys,
+                            onExpandedRowsChange: setExpandedRowKeys,
+                            expandedRowRender: renderExpandedRow,
+                            expandRowByClick: false,
+                            expandIcon: ({ expanded, onExpand, record }) => {
+                              let fieldSettings = [];
+                              
+                              // 處理 fieldDisplaySettings 可能是字符串或數組的情況
+                              if (record.fieldDisplaySettings) {
+                                if (typeof record.fieldDisplaySettings === 'string') {
+                                  try {
+                                    fieldSettings = JSON.parse(record.fieldDisplaySettings);
+                                  } catch (error) {
+                                    console.warn('解析字段顯示設定失敗:', error);
+                                    fieldSettings = [];
+                                  }
+                                } else if (Array.isArray(record.fieldDisplaySettings)) {
+                                  fieldSettings = record.fieldDisplaySettings;
+                                }
+                              }
+                              
+                              const hasFields = fieldSettings.filter(f => f.showInList).length > 0;
+                              
+                              if (!hasFields) return null;
+                              
+                              return (
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onExpand(record, e);
+                                  }}
+                                  style={{ 
+                                    width: '20px', 
+                                    height: '20px', 
+                                    padding: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                />
+                              );
+                            }
+                          }}
                           onRow={(record) => ({
                             onClick: (e) => {
                               // 如果點擊的是選擇列（固定左側列），不觸發打開表單
@@ -2388,7 +3077,7 @@ const PendingTasksPage = () => {
                               }
                               handleViewEform(record);
                             },
-                            style: { cursor: 'pointer' }
+                            style: getRowStyle(record)
                           })}
                           pagination={{
                             showSizeChanger: true,
@@ -2403,7 +3092,7 @@ const PendingTasksPage = () => {
                             }
                           }}
                           scroll={{ 
-                            x: 1000,
+                            x: 1200,
                             y: getTableScrollHeight()
                           }}
                           sticky={{

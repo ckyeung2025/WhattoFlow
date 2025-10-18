@@ -191,6 +191,12 @@ namespace PurpleRice.Controllers
                 form.UpdatedUserId = userId;        // 新增：設置更新用戶ID
                 form.Status = "A"; // Active
                 form.RStatus = "A"; // Active
+                
+                // 處理字段顯示設定
+                if (!string.IsNullOrEmpty(form.FieldDisplaySettings))
+                {
+                    _loggingService.LogInformation($"保存字段顯示設定: {form.FieldDisplaySettings}");
+                }
 
                 _loggingService.LogInformation($"準備保存表單定義: ID={form.Id}, CompanyId={form.CompanyId}, CreatedUserId={form.CreatedUserId}, Name={form.Name}");
 
@@ -251,8 +257,15 @@ namespace PurpleRice.Controllers
                 existingForm.Description = form.Description;
                 existingForm.HtmlCode = form.HtmlCode;
                 existingForm.Status = form.Status;
+                existingForm.FieldDisplaySettings = form.FieldDisplaySettings; // 新增：更新字段顯示設定
                 existingForm.UpdatedAt = DateTime.UtcNow;
                 existingForm.UpdatedUserId = userId;    // 新增：設置更新用戶ID
+                
+                // 記錄字段顯示設定更新
+                if (!string.IsNullOrEmpty(form.FieldDisplaySettings))
+                {
+                    _loggingService.LogInformation($"更新字段顯示設定: {form.FieldDisplaySettings}");
+                }
 
                 await _context.SaveChangesAsync();
 

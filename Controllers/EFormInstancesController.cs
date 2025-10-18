@@ -93,7 +93,9 @@ namespace PurpleRice.Controllers
                         e.WorkflowExecutionId,
                         createdBy = "系統",
                         dueDate = e.CreatedAt.AddDays(7), // 假設 7 天後到期
-                        priority = "High" // 暫時設為高優先級
+                        priority = "High", // 暫時設為高優先級
+                        fieldDisplaySettings = e.EFormDefinition != null ? e.EFormDefinition.FieldDisplaySettings : null, // 新增：字段顯示設定
+                        htmlCode = e.FilledHtmlCode ?? e.OriginalHtmlCode // 新增：HTML 代碼用於解析字段值
                     })
                     .ToListAsync();
 
@@ -172,7 +174,9 @@ namespace PurpleRice.Controllers
                         priority = "High",
                         approvalBy = e.ApprovalBy,
                         approvalAt = e.ApprovalAt,
-                        approvalNote = e.ApprovalNote
+                        approvalNote = e.ApprovalNote,
+                        fieldDisplaySettings = e.EFormDefinition != null ? e.EFormDefinition.FieldDisplaySettings : null, // 新增：字段顯示設定
+                        htmlCode = e.FilledHtmlCode ?? e.OriginalHtmlCode // 新增：HTML 代碼用於解析字段值
                     })
                     .ToListAsync();
 
@@ -251,7 +255,9 @@ namespace PurpleRice.Controllers
                         priority = "High",
                         approvalBy = e.ApprovalBy,
                         approvalAt = e.ApprovalAt,
-                        approvalNote = e.ApprovalNote
+                        approvalNote = e.ApprovalNote,
+                        fieldDisplaySettings = e.EFormDefinition != null ? e.EFormDefinition.FieldDisplaySettings : null, // 新增：字段顯示設定
+                        htmlCode = e.FilledHtmlCode ?? e.OriginalHtmlCode // 新增：HTML 代碼用於解析字段值
                     })
                     .ToListAsync();
 
@@ -580,7 +586,8 @@ namespace PurpleRice.Controllers
                         recipientWhatsAppNo = instance.RecipientWhatsAppNo,
                         recipientName = instance.RecipientName,
                         urlToken = token, // 返回 Token 供前端使用
-                        isManualFill = true
+                        isManualFill = true,
+                        fieldDisplaySettings = instance.EFormDefinition?.FieldDisplaySettings // 新增：字段顯示設定
                     });
                 }
                 else
@@ -599,7 +606,8 @@ namespace PurpleRice.Controllers
                         approvalAt = instance.ApprovalAt,
                         approvalNote = instance.ApprovalNote,
                         fillType = instance.FillType,
-                        isManualFill = false
+                        isManualFill = false,
+                        fieldDisplaySettings = instance.EFormDefinition?.FieldDisplaySettings // 新增：字段顯示設定
                     });
                 }
             }
