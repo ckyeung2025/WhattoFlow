@@ -3443,6 +3443,7 @@ const zhTC = {
     googleDocsSheetNamePlaceholder: '例如：Sheet1',
     googleDocsIntegration: 'Google Docs 整合說明',
     googleDocsIntegrationDescription: '請確保 Google Docs 文件已設定為可公開讀取，或已配置適當的認證信息。',
+    loadColumnDefinition: '載入欄位定義',
     
     // 自動更新
     autoUpdate: '自動更新',

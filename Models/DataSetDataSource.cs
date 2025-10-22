@@ -49,8 +49,6 @@ namespace PurpleRice.Models
         public string? AuthenticationConfig { get; set; } // JSON 格式的認證配置
         
         // 更新設定
-        public bool AutoUpdate { get; set; } = false;
-        public int? UpdateIntervalMinutes { get; set; }
         public DateTime? LastUpdateTime { get; set; }
         
         // 導航屬性

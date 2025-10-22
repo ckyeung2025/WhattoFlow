@@ -148,8 +148,6 @@ namespace PurpleRice.Controllers
                         GoogleDocsSheetName = dataSource.GoogleDocsSheetName,
                         SqlParameters = dataSource.SqlParameters,
                         AuthenticationConfig = dataSource.AuthenticationConfig,
-                        AutoUpdate = dataSource.AutoUpdate,
-                        UpdateIntervalMinutes = dataSource.UpdateIntervalMinutes,
                         LastUpdateTime = dataSource.LastUpdateTime
                     } : null
                 }).ToList();
@@ -251,8 +249,6 @@ namespace PurpleRice.Controllers
                             GoogleDocsUrl = ds.GoogleDocsUrl,
                             GoogleDocsSheetName = ds.GoogleDocsSheetName,
                             AuthenticationConfig = ds.AuthenticationConfig,
-                            AutoUpdate = ds.AutoUpdate,
-                            UpdateIntervalMinutes = ds.UpdateIntervalMinutes,
                             LastUpdateTime = ds.LastUpdateTime
                             // 不包含 DataSet 導航屬性，避免循環引用
                         })
@@ -342,9 +338,7 @@ namespace PurpleRice.Controllers
                         ExcelUrl = request.DataSource.ExcelUrl,
                         GoogleDocsUrl = request.DataSource.GoogleDocsUrl,
                         GoogleDocsSheetName = request.DataSource.GoogleDocsSheetName,
-                        AuthenticationConfig = request.DataSource.AuthenticationConfig,
-                        AutoUpdate = request.DataSource.AutoUpdate,
-                        UpdateIntervalMinutes = request.DataSource.UpdateIntervalMinutes
+                        AuthenticationConfig = request.DataSource.AuthenticationConfig
                     };
                     
                     _loggingService.LogInformation($"Excel 相關配置 - 文件路徑: {request.DataSource.ExcelFilePath}, 工作表: {request.DataSource.ExcelSheetName}, URL: {request.DataSource.ExcelUrl}");
@@ -466,8 +460,6 @@ namespace PurpleRice.Controllers
                     dataSource.GoogleDocsUrl = request.DataSource.GoogleDocsUrl;
                     dataSource.GoogleDocsSheetName = request.DataSource.GoogleDocsSheetName;
                     dataSource.AuthenticationConfig = request.DataSource.AuthenticationConfig;
-                    dataSource.AutoUpdate = request.DataSource.AutoUpdate;
-                    dataSource.UpdateIntervalMinutes = request.DataSource.UpdateIntervalMinutes;
                     
                     _loggingService.LogInformation($"數據源配置更新完成");
                     _loggingService.LogInformation($"更新後的 AuthenticationConfig: {dataSource.AuthenticationConfig}");
@@ -1024,13 +1016,14 @@ namespace PurpleRice.Controllers
                     
                     foreach (var kvp in firstRow)
                     {
-                        var columnName = kvp.Key;
+                        var originalColumnName = kvp.Key;
+                        var normalizedColumnName = ColumnNameNormalizer.Normalize(originalColumnName);
                         var value = kvp.Value;
                         
                         columns.Add(new
                         {
-                            columnName = columnName,
-                            displayName = columnName,
+                            columnName = normalizedColumnName,
+                            displayName = originalColumnName,
                             dataType = InferDataTypeFromValue(value),
                             maxLength = GetMaxLengthFromValue(value),
                             defaultValue = (string)null
@@ -1109,7 +1102,8 @@ namespace PurpleRice.Controllers
 
                     foreach (var column in firstRow)
                     {
-                        var columnName = column.Key;
+                        var originalColumnName = column.Key;
+                        var normalizedColumnName = ColumnNameNormalizer.Normalize(originalColumnName);
                         var value = column.Value;
                         
                         // 推斷數據類型
@@ -1117,8 +1111,8 @@ namespace PurpleRice.Controllers
                         
                         columns.Add(new
                         {
-                            columnName = columnName,
-                            displayName = columnName, // 可以根據需要自定義顯示名稱
+                            columnName = normalizedColumnName,
+                            displayName = originalColumnName, // 可以根據需要自定義顯示名稱
                             dataType = dataType,
                             maxLength = dataType == "string" ? (int?)255 : (int?)null,
                             defaultValue = (string)null
@@ -1445,18 +1439,44 @@ namespace PurpleRice.Controllers
 
                 // 讀取數據行（從第二行開始）
                 var dataRows = rows.Skip(1).ToList();
-                var totalRecords = 0;
-
-                foreach (var row in dataRows)
+                
+                // 將 Excel 數據轉換為統一的 Dictionary 格式
+                var excelData = new List<Dictionary<string, object>>();
+                
+                foreach (var (row, rowIndex) in dataRows.Select((row, index) => (row, index)))
                 {
-                    if (await ProcessExcelRow(dataSet, row, headers, workbookPart.SharedStringTablePart))
+                    var cellValues = GetCellValues(row, workbookPart.SharedStringTablePart);
+                    
+                    // 確保有足夠的單元格值
+                    while (cellValues.Count < headers.Count)
                     {
-                        totalRecords++;
+                        cellValues.Add(string.Empty);
                     }
+
+                    // 檢查是否為空行
+                    if (cellValues.All(cell => string.IsNullOrWhiteSpace(cell)))
+                    {
+                        continue;
+                    }
+
+                    var rowData = new Dictionary<string, object>();
+                    
+                    // 添加行號作為主鍵（如果沒有其他主鍵）
+                    rowData["row_number"] = rowIndex + 2; // +2 因為 Excel 從 1 開始，且跳過了標題行
+                    
+                    for (int i = 0; i < headers.Count; i++)
+                    {
+                        var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
+                        rowData[normalizedColumnName] = cellValues[i] ?? string.Empty;
+                    }
+                    
+                    excelData.Add(rowData);
                 }
 
+                // 使用通用的增量同步方法
+                var totalRecords = await ProcessIncrementalSync(dataSet, excelData, "Excel");
+                
                 _loggingService.LogInformation($"Excel 數據同步完成，共處理 {totalRecords} 條記錄，數據集ID: {dataSet.Id}");
-
                 return new SyncResult { Success = true, TotalRecords = totalRecords };
             }
             catch (Exception ex)
@@ -1631,6 +1651,31 @@ namespace PurpleRice.Controllers
                 .Where(c => c.DataSetId == dataSet.Id)
                 .ToListAsync();
 
+            // 首先確保 row_number 欄位存在（用於主鍵）
+            var existingColumnNames = existingColumns.Select(c => c.ColumnName).ToHashSet();
+            if (!existingColumnNames.Contains("row_number"))
+            {
+                var rowNumberColumn = new DataSetColumn
+                {
+                    Id = Guid.NewGuid(),
+                    DataSetId = dataSet.Id,
+                    ColumnName = "row_number",
+                    DisplayName = "Row Number",
+                    DataType = "int",
+                    MaxLength = null,
+                    IsRequired = true,
+                    IsPrimaryKey = false, // 稍後會自動檢測
+                    IsSearchable = false,
+                    IsSortable = true,
+                    IsIndexed = true,
+                    DefaultValue = null,
+                    SortOrder = -1 // 放在最前面
+                };
+                _context.DataSetColumns.Add(rowNumberColumn);
+                existingColumns.Add(rowNumberColumn);
+                _loggingService.LogInformation($"創建 row_number 欄位，數據集ID: {dataSet.Id}");
+            }
+
             var columnIndex = 0;
             for (int i = 0; i < headers.Count; i++)
             {
@@ -1638,7 +1683,7 @@ namespace PurpleRice.Controllers
                 if (string.IsNullOrWhiteSpace(header))
                     continue;
 
-                var columnName = header.Trim().Replace(" ", "_").ToLower();
+                var columnName = ColumnNameNormalizer.Normalize(header);
                 var existingColumn = existingColumns.FirstOrDefault(c => c.ColumnName == columnName);
 
                 if (existingColumn == null)
@@ -1740,7 +1785,7 @@ namespace PurpleRice.Controllers
                     if (string.IsNullOrWhiteSpace(headers[i]))
                         continue;
 
-                    var columnName = headers[i].Trim().Replace(" ", "_").ToLower();
+                    var columnName = ColumnNameNormalizer.Normalize(headers[i]);
                     var cellValue = cellValues[i] ?? string.Empty;
                     
                     // 找到對應的欄位定義
@@ -1885,33 +1930,73 @@ namespace PurpleRice.Controllers
                     return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有數據" };
                 }
 
-                // 處理標題行（第一行）
-                var headers = sheetData.FirstOrDefault() ?? new List<string>();
+                // 尋找標題行（跳過空行）
+                var headers = new List<string>();
+                var headerRowIndex = -1;
+                
+                for (int i = 0; i < sheetData.Count; i++)
+                {
+                    var row = sheetData[i];
+                    if (row.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+                    {
+                        headers = row.ToList();
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+                
                 if (!headers.Any())
                 {
-                    _loggingService.LogWarning($"Google Sheets 沒有標題行，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
-                    return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有標題行" };
+                    _loggingService.LogWarning($"Google Sheets 沒有找到有效的標題行，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有找到有效的標題行" };
                 }
 
-                _loggingService.LogInformation($"Google Sheets 標題行: {string.Join(", ", headers)}, 數據集ID: {dataSet.Id}");
+                _loggingService.LogInformation($"Google Sheets 標題行（第 {headerRowIndex + 1} 行）: {string.Join(", ", headers)}, 數據集ID: {dataSet.Id}");
+
+                // 測試標準化邏輯
+                foreach (var header in headers)
+                {
+                    var normalized = ColumnNameNormalizer.Normalize(header);
+                    _loggingService.LogInformation($"標準化測試: '{header}' -> '{normalized}', 數據集ID: {dataSet.Id}");
+                }
 
                 // 檢查並創建欄位定義
                 await EnsureGoogleSheetsColumnsExist(dataSet, headers);
 
-                // 處理數據行（從第二行開始）
-                var dataRows = sheetData.Skip(1).ToList();
-                var totalRecords = 0;
-
-                foreach (var row in dataRows)
+                // 處理數據行（從標題行之後開始）
+                var dataRows = sheetData.Skip(headerRowIndex + 1).ToList();
+                _loggingService.LogInformation($"準備處理 {dataRows.Count} 行數據，數據集ID: {dataSet.Id}");
+                
+                // 將 Google Sheets 數據轉換為統一的 Dictionary 格式
+                var googleSheetsData = new List<Dictionary<string, object>>();
+                
+                foreach (var (row, rowIndex) in dataRows.Select((row, index) => (row, index)))
                 {
-                    if (await ProcessGoogleSheetsRow(dataSet, row, headers))
+                    // 檢查是否為空行
+                    if (row.All(cell => string.IsNullOrWhiteSpace(cell)))
                     {
-                        totalRecords++;
+                        continue;
                     }
+
+                    var rowData = new Dictionary<string, object>();
+                    
+                    // 添加行號作為主鍵（如果沒有其他主鍵）
+                    rowData["row_number"] = rowIndex + headerRowIndex + 2; // +2 因為 Excel 從 1 開始，且跳過了標題行
+                    
+                    for (int i = 0; i < headers.Count; i++)
+                    {
+                        var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
+                        var value = i < row.Count ? row[i] : string.Empty;
+                        rowData[normalizedColumnName] = value ?? string.Empty;
+                    }
+                    
+                    googleSheetsData.Add(rowData);
                 }
 
+                // 使用通用的增量同步方法
+                var totalRecords = await ProcessIncrementalSync(dataSet, googleSheetsData, "Google Sheets");
+                
                 _loggingService.LogInformation($"Google Sheets 數據同步完成，共處理 {totalRecords} 條記錄，數據集ID: {dataSet.Id}");
-
                 return new SyncResult { Success = true, TotalRecords = totalRecords };
             }
             catch (Exception ex)
@@ -1932,35 +2017,78 @@ namespace PurpleRice.Controllers
                     .ToListAsync();
 
                 var existingColumnNames = existingColumns.Select(c => c.ColumnName).ToHashSet();
+                var newColumns = new List<DataSetColumn>();
+
+                // 首先確保 row_number 欄位存在（用於主鍵）
+                if (!existingColumnNames.Contains("row_number"))
+                {
+                    var rowNumberColumn = new DataSetColumn
+                    {
+                        Id = Guid.NewGuid(),
+                        DataSetId = dataSet.Id,
+                        ColumnName = "row_number",
+                        DisplayName = "Row Number",
+                        DataType = "int",
+                        MaxLength = null,
+                        IsRequired = true,
+                        IsPrimaryKey = false, // 稍後會自動檢測
+                        IsSearchable = false,
+                        IsSortable = true,
+                        IsIndexed = true,
+                        DefaultValue = null,
+                        SortOrder = 0
+                    };
+                    newColumns.Add(rowNumberColumn);
+                    existingColumnNames.Add("row_number");
+                    _loggingService.LogInformation($"創建 row_number 欄位，數據集ID: {dataSet.Id}");
+                }
 
                 foreach (var header in headers)
                 {
-                    if (string.IsNullOrWhiteSpace(header) || existingColumnNames.Contains(header))
+                    if (string.IsNullOrWhiteSpace(header))
                         continue;
+
+                    // 使用統一的欄位名稱標準化函數
+                    var normalizedColumnName = ColumnNameNormalizer.Normalize(header);
+                    
+                    // 檢查是否已存在（使用標準化的名稱）
+                    if (existingColumnNames.Contains(normalizedColumnName))
+                    {
+                        _loggingService.LogInformation($"欄位 {normalizedColumnName} 已存在，跳過");
+                        continue;
+                    }
 
                     var column = new DataSetColumn
                     {
                         Id = Guid.NewGuid(),
                         DataSetId = dataSet.Id,
-                        ColumnName = header,
-                        DisplayName = header,
+                        ColumnName = normalizedColumnName,  // 使用標準化的名稱
+                        DisplayName = header.Trim(),        // 顯示名稱使用原始標題
                         DataType = InferDataType(header),
-                        MaxLength = 255,
+                        MaxLength = InferDataType(header) == "string" ? 255 : (int?)null,
                         IsRequired = false,
                         IsPrimaryKey = IsPrimaryKeyColumn(header),
                         IsSearchable = true,
                         IsSortable = true,
                         IsIndexed = false,
                         DefaultValue = null,
-                        SortOrder = existingColumns.Count + headers.IndexOf(header)
+                        SortOrder = existingColumns.Count + newColumns.Count
                     };
 
-                    _context.DataSetColumns.Add(column);
-                    existingColumns.Add(column);
+                    newColumns.Add(column);
+                    existingColumnNames.Add(normalizedColumnName); // 添加到檢查集合中
                 }
 
-                await _context.SaveChangesAsync();
-                _loggingService.LogInformation($"Google Sheets 欄位定義更新完成，數據集ID: {dataSet.Id}");
+                if (newColumns.Any())
+                {
+                    _context.DataSetColumns.AddRange(newColumns);
+                    await _context.SaveChangesAsync();
+                    _loggingService.LogInformation($"Google Sheets 欄位定義更新完成，新增 {newColumns.Count} 個欄位，數據集ID: {dataSet.Id}");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"沒有需要新增的欄位，數據集ID: {dataSet.Id}");
+                }
             }
             catch (Exception ex)
             {
@@ -1968,6 +2096,114 @@ namespace PurpleRice.Controllers
                 throw;
             }
         }
+
+        /// <summary>
+        /// 預覽 Google Sheets 欄位定義
+        /// </summary>
+        [HttpGet("google-sheets/preview")]
+        public async Task<IActionResult> PreviewGoogleSheetsColumns([FromQuery] string url, [FromQuery] string? sheetName = null)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始預覽 Google Sheets 欄位定義，URL: {url}, 工作表: {sheetName}");
+
+                if (string.IsNullOrEmpty(url))
+                {
+                    return BadRequest(new { success = false, message = "請提供 Google Sheets URL" });
+                }
+
+                // 從 URL 中提取表格 ID
+                var spreadsheetId = GoogleSheetsService.ExtractSpreadsheetId(url);
+                if (string.IsNullOrEmpty(spreadsheetId))
+                {
+                    _loggingService.LogWarning($"無法從 URL 中提取表格 ID: {url}");
+                    return BadRequest(new { success = false, message = "無效的 Google Sheets URL" });
+                }
+
+                _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}");
+
+                // 測試連接
+                var connectionTest = await _googleSheetsService.TestConnectionAsync(spreadsheetId);
+                if (!connectionTest)
+                {
+                    _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}");
+                    return BadRequest(new { success = false, message = "無法連接到 Google Sheets，請檢查 URL 是否正確且表格為公開訪問" });
+                }
+
+                // 獲取工作表名稱
+                var targetSheetName = sheetName ?? "Sheet1";
+                _loggingService.LogInformation($"使用工作表名稱: {targetSheetName}");
+
+                // 讀取數據
+                var sheetData = await _googleSheetsService.ReadSheetDataAsync(spreadsheetId, targetSheetName);
+                if (!sheetData.Any())
+                {
+                    _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {targetSheetName}");
+                    return BadRequest(new { success = false, message = "Google Sheets 沒有數據" });
+                }
+
+                // 尋找標題行（跳過空行）
+                var headers = new List<string>();
+                var headerRowIndex = -1;
+                
+                for (int i = 0; i < sheetData.Count; i++)
+                {
+                    var row = sheetData[i];
+                    if (row.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+                    {
+                        headers = row.ToList();
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+                
+                if (!headers.Any())
+                {
+                    _loggingService.LogWarning($"Google Sheets 沒有找到有效的標題行，表格ID: {spreadsheetId}");
+                    return BadRequest(new { success = false, message = "Google Sheets 沒有找到有效的標題行" });
+                }
+
+                _loggingService.LogInformation($"Google Sheets 標題行（第 {headerRowIndex + 1} 行）: {string.Join(", ", headers)}");
+
+                // 生成欄位定義
+                var columns = new List<object>();
+                for (int i = 0; i < headers.Count; i++)
+                {
+                    var header = headers[i];
+                    if (string.IsNullOrWhiteSpace(header))
+                        continue;
+
+                    columns.Add(new
+                    {
+                        columnName = ColumnNameNormalizer.Normalize(header),
+                        displayName = header.Trim(),
+                        dataType = InferDataType(header),
+                        maxLength = InferDataType(header) == "string" ? 255 : (int?)null,
+                        isRequired = false,
+                        isPrimaryKey = IsPrimaryKeyColumn(header),
+                        isSearchable = true,
+                        isSortable = true,
+                        isIndexed = false,
+                        defaultValue = (string?)null,
+                        sortOrder = i
+                    });
+                }
+
+                _loggingService.LogInformation($"成功預覽 Google Sheets 欄位定義，共 {columns.Count} 個欄位");
+
+                return Ok(new
+                {
+                    success = true,
+                    columns = columns
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"預覽 Google Sheets 欄位定義失敗: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, message = "預覽欄位定義失敗: " + ex.Message });
+            }
+        }
+
 
         private async Task<bool> ProcessGoogleSheetsRow(DataSet dataSet, List<string> row, List<string> headers)
         {
@@ -1982,8 +2218,11 @@ namespace PurpleRice.Controllers
                 // 檢查是否為空行
                 if (row.All(cell => string.IsNullOrWhiteSpace(cell)))
                 {
+                    _loggingService.LogInformation($"跳過空行，數據集ID: {dataSet.Id}");
                     return false;
                 }
+
+                _loggingService.LogInformation($"處理行數據: {string.Join(" | ", row)}, 數據集ID: {dataSet.Id}");
 
                 // 創建記錄
                 var record = new DataSetRecord
@@ -2004,11 +2243,17 @@ namespace PurpleRice.Controllers
                     if (string.IsNullOrWhiteSpace(header))
                         continue;
 
+                    // 使用統一的欄位名稱標準化函數
+                    var normalizedColumnName = ColumnNameNormalizer.Normalize(header);
+                    
                     var column = await _context.DataSetColumns
-                        .FirstOrDefaultAsync(c => c.DataSetId == dataSet.Id && c.ColumnName == header);
+                        .FirstOrDefaultAsync(c => c.DataSetId == dataSet.Id && c.ColumnName == normalizedColumnName);
 
                     if (column == null)
+                    {
+                        _loggingService.LogWarning($"找不到欄位定義，DataSet ID: {dataSet.Id}, 原始標題: {header}, 標準化名稱: {normalizedColumnName}");
                         continue;
+                    }
 
                     var recordValue = new DataSetRecordValue
                     {
@@ -2026,6 +2271,7 @@ namespace PurpleRice.Controllers
                     };
 
                     _context.DataSetRecordValues.Add(recordValue);
+                    _loggingService.LogInformation($"創建記錄值: 欄位={column.ColumnName}, 值={value}, 類型={column.DataType}, 記錄ID={record.Id}");
                 }
 
                 await _context.SaveChangesAsync();
@@ -2237,14 +2483,46 @@ namespace PurpleRice.Controllers
                     var row = new Dictionary<string, object>();
                     for (int i = 0; i < reader.FieldCount; i++)
                     {
-                        var columnName = reader.GetName(i);
+                        var originalColumnName = reader.GetName(i);
+                        var normalizedColumnName = ColumnNameNormalizer.Normalize(originalColumnName);
                         var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                        row[columnName] = value;
+                        row[normalizedColumnName] = value;
                     }
                     results.Add(row);
                 }
                 
                 _loggingService.LogInformation($"SQL 查詢執行成功，返回 {results.Count} 行數據");
+                
+                // 調試：顯示第一行的欄位名稱
+                if (results.Any())
+                {
+                    var firstRow = results.First();
+                    _loggingService.LogInformation($"第一行欄位名稱: {string.Join(", ", firstRow.Keys)}");
+                    
+                    // 檢查特定記錄的數據
+                    var targetRecord = results.FirstOrDefault(r => 
+                        r.ContainsKey("id") && 
+                        r["id"]?.ToString()?.ToUpper() == "434E218F-81FF-4D41-BF5E-2EE4B22C4DCE".ToUpper());
+                    
+                    if (targetRecord != null)
+                    {
+                        _loggingService.LogInformation($"找到目標記錄，occupation 值: {targetRecord.GetValueOrDefault("occupation", "NULL")}");
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"未找到目標記錄 434E218F-81FF-4D41-BF5E-2EE4B22C4DCE");
+                        
+                        // 顯示前幾個記錄的 ID 和 occupation
+                        _loggingService.LogInformation("前幾個記錄的 ID 和 occupation:");
+                        foreach (var record in results.Take(3))
+                        {
+                            var id = record.GetValueOrDefault("id", "NULL");
+                            var occupation = record.GetValueOrDefault("occupation", "NULL");
+                            _loggingService.LogInformation($"  - ID: {id}, Occupation: {occupation}");
+                        }
+                    }
+                }
+                
                 return (true, results, null);
             }
             catch (Exception ex)
@@ -2254,12 +2532,14 @@ namespace PurpleRice.Controllers
             }
         }
 
-        // 處理 SQL 查詢結果並存儲到數據庫 - 增量同步版本
-        private async Task<int> ProcessSqlResults(DataSet dataSet, List<Dictionary<string, object>> sqlResults)
+        /// <summary>
+        /// 通用的增量同步方法 - 使用 Hash 比較檢測新增、更新、刪除
+        /// </summary>
+        private async Task<int> ProcessIncrementalSync(DataSet dataSet, List<Dictionary<string, object>> sourceData, string sourceType)
         {
             try
             {
-                _loggingService.LogInformation($"開始處理 SQL 查詢結果，數據集ID: {dataSet.Id}，結果行數: {sqlResults.Count}");
+                _loggingService.LogInformation($"開始處理 {sourceType} 查詢結果，數據集ID: {dataSet.Id}，結果行數: {sourceData.Count}");
                 
                 // 獲取欄位定義
                 var columns = await _context.DataSetColumns
@@ -2280,9 +2560,10 @@ namespace PurpleRice.Controllers
                 {
                     _loggingService.LogWarning($"數據集沒有主鍵欄位定義，嘗試自動檢測主鍵欄位");
                     
-                    // 自動檢測主鍵：優先選擇 id 欄位，然後是 within_code
+                    // 自動檢測主鍵：優先選擇 id 欄位，然後是 within_code，然後是 row_number，最後是第一個欄位
                     var idColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "id");
                     var withinCodeColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "within_code");
+                    var rowNumberColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "row_number");
                     
                     if (idColumn != null && withinCodeColumn != null)
                     {
@@ -2299,15 +2580,52 @@ namespace PurpleRice.Controllers
                         primaryKeyColumns = new List<DataSetColumn> { withinCodeColumn };
                         _loggingService.LogInformation($"自動檢測到主鍵: {withinCodeColumn.ColumnName}");
                     }
+                    else if (rowNumberColumn != null)
+                    {
+                        primaryKeyColumns = new List<DataSetColumn> { rowNumberColumn };
+                        _loggingService.LogInformation($"使用行號作為主鍵: {rowNumberColumn.ColumnName}");
+                    }
                     else
                     {
-                        _loggingService.LogError($"無法自動檢測主鍵欄位，數據集ID: {dataSet.Id}");
-                        return 0;
+                        // 如果沒有找到標準主鍵，使用第一個欄位作為主鍵
+                        var firstColumn = columns.OrderBy(c => c.SortOrder).FirstOrDefault();
+                        if (firstColumn != null)
+                        {
+                            primaryKeyColumns = new List<DataSetColumn> { firstColumn };
+                            _loggingService.LogInformation($"使用第一個欄位作為主鍵: {firstColumn.ColumnName}");
+                        }
+                        else
+                        {
+                            _loggingService.LogError($"無法自動檢測主鍵欄位，數據集ID: {dataSet.Id}");
+                            return 0;
+                        }
                     }
                 }
                 else
                 {
                     _loggingService.LogInformation($"找到 {primaryKeyColumns.Count} 個主鍵欄位: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
+                    
+                    // 檢查主鍵欄位是否包含空值，如果包含空值，簡化為主鍵
+                    var hasEmptyValues = false;
+                    foreach (var pkCol in primaryKeyColumns)
+                    {
+                        if (pkCol.ColumnName.ToLower() == "broadcast_group_id" || pkCol.ColumnName.ToLower() == "whatsapp_number")
+                        {
+                            hasEmptyValues = true;
+                            _loggingService.LogWarning($"主鍵欄位 {pkCol.ColumnName} 可能包含空值，建議簡化主鍵配置");
+                        }
+                    }
+                    
+                    // 如果主鍵包含可能為空的欄位，簡化為只使用 id
+                    if (hasEmptyValues)
+                    {
+                        var idColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "id");
+                        if (idColumn != null)
+                        {
+                            _loggingService.LogInformation($"簡化主鍵配置，只使用 id 欄位作為主鍵");
+                            primaryKeyColumns = new List<DataSetColumn> { idColumn };
+                        }
+                    }
                 }
 
                 var stats = new SyncStats();
@@ -2317,30 +2635,32 @@ namespace PurpleRice.Controllers
                 var existingRecordsHash = await GetExistingRecordsHash(dataSet.Id, columns);
                 _loggingService.LogInformation($"獲取到 {existingRecordsHash.Count} 條現有記錄");
                 
-                // 調試：顯示前幾個現有記錄的主鍵
+                // 調試：顯示前幾個現有記錄的主鍵和 Hash
                 var existingKeys = existingRecordsHash.Keys.Take(3).ToList();
                 foreach (var key in existingKeys)
                 {
-                    _loggingService.LogInformation($"現有記錄主鍵: {key}");
+                    var (record, hash) = existingRecordsHash[key];
+                    _loggingService.LogInformation($"現有記錄主鍵: {key}, Hash: {hash.Substring(0, Math.Min(16, hash.Length))}...");
                 }
 
                 // 2. 計算新記錄的 Hash
                 _loggingService.LogInformation("開始計算新記錄 Hash...");
-                var newRecordsHash = CalculateNewRecordsHash(sqlResults, columns, primaryKeyColumns);
+                var newRecordsHash = CalculateNewRecordsHash(sourceData, columns, primaryKeyColumns);
                 _loggingService.LogInformation($"計算完成 {newRecordsHash.Count} 條新記錄 Hash");
                 
-                // 調試：顯示前幾個新記錄的主鍵
+                // 調試：顯示前幾個新記錄的主鍵和 Hash
                 var newKeys = newRecordsHash.Keys.Take(3).ToList();
                 foreach (var key in newKeys)
                 {
-                    _loggingService.LogInformation($"新記錄主鍵: {key}");
+                    var (row, hash) = newRecordsHash[key];
+                    _loggingService.LogInformation($"新記錄主鍵: {key}, Hash: {hash.Substring(0, Math.Min(16, hash.Length))}...");
                 }
 
                 // 3. 分類處理：新增、更新、刪除
                 var (newRecords, updateRecords, deleteRecords) = ClassifyRecords(
                     existingRecordsHash, 
                     newRecordsHash, 
-                    sqlResults, 
+                    sourceData, 
                     primaryKeyColumns
                 );
 
@@ -2370,9 +2690,15 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"處理 SQL 結果失敗: {ex.Message}", ex);
+                _loggingService.LogError($"處理 {sourceType} 結果失敗: {ex.Message}", ex);
                 throw;
             }
+        }
+
+        // 處理 SQL 查詢結果並存儲到數據庫 - 增量同步版本
+        private async Task<int> ProcessSqlResults(DataSet dataSet, List<Dictionary<string, object>> sqlResults)
+        {
+            return await ProcessIncrementalSync(dataSet, sqlResults, "SQL");
         }
 
         // 獲取現有記錄的 Hash 映射（支援複合主鍵）
@@ -3240,8 +3566,6 @@ namespace PurpleRice.Controllers
         public string? GoogleDocsUrl { get; set; }
         public string? GoogleDocsSheetName { get; set; }
         public string? AuthenticationConfig { get; set; }
-        public bool AutoUpdate { get; set; } = false;
-        public int? UpdateIntervalMinutes { get; set; }
     }
 
     public class UpdateDataSetRequest

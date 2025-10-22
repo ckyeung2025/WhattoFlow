@@ -417,8 +417,6 @@ namespace PurpleRice.Data
                 entity.Property(e => e.GoogleDocsUrl).HasColumnName("google_docs_url");
                 entity.Property(e => e.GoogleDocsSheetName).HasColumnName("google_docs_sheet_name");
                 entity.Property(e => e.AuthenticationConfig).HasColumnName("authentication_config");
-                entity.Property(e => e.AutoUpdate).HasColumnName("auto_update");
-                entity.Property(e => e.UpdateIntervalMinutes).HasColumnName("update_interval_minutes");
                 entity.Property(e => e.LastUpdateTime).HasColumnName("last_update_time");
                 
                 entity.HasIndex(e => e.DataSetId);

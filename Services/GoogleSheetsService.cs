@@ -68,8 +68,8 @@ namespace PurpleRice.Services
             {
                 _loggingService.LogInformation($"開始讀取 Google Sheets 數據，表格ID: {spreadsheetId}, 工作表: {sheetName}");
 
-                // 構建範圍字符串
-                var rangeString = range ?? $"{sheetName}!A:Z"; // 默認讀取 A 到 Z 列
+                // 構建範圍字符串 - 擴大讀取範圍以確保讀取所有數據
+                var rangeString = range ?? $"{sheetName}!A:ZZ"; // 擴展到 ZZ 列以確保讀取所有數據
                 
                 _loggingService.LogInformation($"讀取範圍: {rangeString}");
 
@@ -94,6 +94,19 @@ namespace PurpleRice.Services
                 }
 
                 _loggingService.LogInformation($"成功讀取 Google Sheets 數據，共 {result.Count} 行，表格ID: {spreadsheetId}");
+                
+                // 添加詳細的調試信息
+                if (result.Any())
+                {
+                    _loggingService.LogInformation($"第一行數據: {string.Join(" | ", result.First())}");
+                    _loggingService.LogInformation($"第一行列數: {result.First().Count}");
+                    if (result.Count > 1)
+                    {
+                        _loggingService.LogInformation($"第二行數據: {string.Join(" | ", result[1])}");
+                        _loggingService.LogInformation($"第二行列數: {result[1].Count}");
+                    }
+                }
+                
                 return result;
             }
             catch (Exception ex)

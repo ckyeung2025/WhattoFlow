@@ -264,7 +264,7 @@ namespace PurpleRice.Controllers
                                     
                                     columns.Add(new
                                     {
-                                        columnName = headerValue.Trim().Replace(" ", "_").ToLower(),
+                                        columnName = ColumnNameNormalizer.Normalize(headerValue),
                                         displayName = headerValue.Trim(),
                                         dataType = inferredType,  // ✅ 使用推斷的類型
                                         maxLength = inferredType == "string" ? 255 : (int?)null,
@@ -323,6 +323,7 @@ namespace PurpleRice.Controllers
         }
 
         // 新增：根據樣本數據推斷數據類型（改進版本）
+
         private string InferDataTypeFromSample(List<DocumentFormat.OpenXml.Spreadsheet.Row> sampleRows, int columnIndex, DocumentFormat.OpenXml.Packaging.SharedStringTablePart? sharedStringTable)
         {
             // 首先嘗試從標題行推斷類型（優先級最高）
