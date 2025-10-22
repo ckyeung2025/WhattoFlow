@@ -2045,6 +2045,7 @@ const zhSC = {
     googleDocsSheetNamePlaceholder: '例如：Sheet1',
     googleDocsIntegration: 'Google Docs 整合说明',
     googleDocsIntegrationDescription: '请确保 Google Docs 文件已设定为可公开读取，或已配置适当的认证信息。',
+    loadColumnDefinition: '载入字段定义',
     
     // 自动更新
     autoUpdate: '自动更新',

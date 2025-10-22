@@ -3028,6 +3028,7 @@ const en = {
     googleDocsSheetNamePlaceholder: 'e.g.: Sheet1',
     googleDocsIntegration: 'Google Docs Integration Instructions',
     googleDocsIntegrationDescription: 'Please ensure that the Google Docs file is set to publicly readable, or configure appropriate authentication information.',
+    loadColumnDefinition: 'Load Column Definition',
     
     // Auto update
     autoUpdate: 'Auto Update',
