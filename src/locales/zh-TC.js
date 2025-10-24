@@ -3339,6 +3339,32 @@ const zhTC = {
     inactive: '停用',
     error: '錯誤',
     
+    // 同步狀態標籤
+    idle: '閒置',
+    running: '同步中',
+    completed: '已完成',
+    failed: '失敗',
+    paused: '已暫停',
+    
+    // 同步進度
+    syncStatus: '同步狀態',
+    syncProgress: '同步進度',
+    syncInProgress: '數據集正在同步中，請稍後再試',
+    syncStarted: '同步已開始',
+    syncCompleted: '同步完成 - 新增: {inserted}, 更新: {updated}, 刪除: {deleted}',
+    syncFailed: '同步失敗',
+    inserted: '新增',
+    updated: '更新',
+    deleted: '刪除',
+    skipped: '跳過',
+    processed: '已處理',
+    total: '總計',
+    syncPaused: '同步已暫停',
+    readyToSync: '準備同步',
+    syncing: '同步中...',
+    processingSpeed: '速度',
+    remaining: '剩餘',
+    
     // 數據源類型
     sql: 'SQL',
     excel: 'EXCEL',
@@ -3429,8 +3455,6 @@ const zhTC = {
     excelFilePathPlaceholder: '例如：/uploads/excel/data.xlsx',
     excelSheetName: '工作表名稱',
     excelSheetNamePlaceholder: '選擇工作表',
-    excelUrl: 'Excel 文件 URL',
-    excelUrlPlaceholder: '例如：https://example.com/data.xlsx',
     uploadExcelFile: '上傳 Excel 文件',
     excelUploadDescription: 'Excel 上傳說明',
     excelUploadInfo: '上傳成功後，文件路徑會自動填充。保存 DataSet 後，點擊「同步數據」按鈕來將 Excel 數據導入到數據庫中。系統會自動根據 Excel 標題行生成欄位定義。',

@@ -22,6 +22,26 @@ namespace PurpleRice.Models.DTOs
         public DateTime? UpdatedAt { get; set; }
         public string? UpdatedBy { get; set; }
         
+        // 同步狀態管理
+        public string SyncStatus { get; set; } = "Idle";
+        public DateTime? SyncStartedAt { get; set; }
+        public DateTime? SyncCompletedAt { get; set; }
+        public string? SyncErrorMessage { get; set; }
+        public string? SyncStartedBy { get; set; }
+        
+        // 進度追蹤
+        public int? TotalRecordsToSync { get; set; } = 0;
+        public int? RecordsProcessed { get; set; } = 0;
+        public int? RecordsInserted { get; set; } = 0;
+        public int? RecordsUpdated { get; set; } = 0;
+        public int? RecordsDeleted { get; set; } = 0;
+        public int? RecordsSkipped { get; set; } = 0;
+        
+        // 批次處理設定
+        public int? BatchSize { get; set; } = 1000;
+        public int? MaxSyncDurationMinutes { get; set; } = 60;
+        public bool? AllowOverlap { get; set; } = false;
+        
         // 不包含循環引用的導航屬性
         public List<DataSetColumnDto> Columns { get; set; } = new();
         public DataSetDataSourceDto? DataSource { get; set; }
@@ -58,8 +78,6 @@ namespace PurpleRice.Models.DTOs
         public string? GoogleDocsSheetName { get; set; }
         public string? SqlParameters { get; set; }
         public string? AuthenticationConfig { get; set; }
-        public bool AutoUpdate { get; set; }
-        public int? UpdateIntervalMinutes { get; set; }
         public DateTime? LastUpdateTime { get; set; }
     }
 }

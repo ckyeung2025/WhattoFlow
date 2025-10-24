@@ -370,6 +370,27 @@ namespace PurpleRice.Data
                 entity.Property(e => e.NextUpdateTime).HasColumnName("next_update_time");
                 entity.Property(e => e.TotalRecords).HasColumnName("total_records");
                 entity.Property(e => e.LastDataSyncTime).HasColumnName("last_data_sync_time");
+                
+                // 同步狀態管理欄位映射
+                entity.Property(e => e.SyncStatus).HasColumnName("sync_status");
+                entity.Property(e => e.SyncStartedAt).HasColumnName("sync_started_at");
+                entity.Property(e => e.SyncCompletedAt).HasColumnName("sync_completed_at");
+                entity.Property(e => e.SyncErrorMessage).HasColumnName("sync_error_message");
+                entity.Property(e => e.SyncStartedBy).HasColumnName("sync_started_by");
+                
+                // 進度追蹤欄位映射
+                entity.Property(e => e.TotalRecordsToSync).HasColumnName("total_records_to_sync");
+                entity.Property(e => e.RecordsProcessed).HasColumnName("records_processed");
+                entity.Property(e => e.RecordsInserted).HasColumnName("records_inserted");
+                entity.Property(e => e.RecordsUpdated).HasColumnName("records_updated");
+                entity.Property(e => e.RecordsDeleted).HasColumnName("records_deleted");
+                entity.Property(e => e.RecordsSkipped).HasColumnName("records_skipped");
+                
+                // 批次處理設定欄位映射
+                entity.Property(e => e.BatchSize).HasColumnName("batch_size");
+                entity.Property(e => e.MaxSyncDurationMinutes).HasColumnName("max_sync_duration_minutes");
+                entity.Property(e => e.AllowOverlap).HasColumnName("allow_overlap");
+                
                 entity.Property(e => e.CreatedBy).HasColumnName("created_by");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
@@ -378,6 +399,11 @@ namespace PurpleRice.Data
                 entity.HasIndex(e => e.CompanyId);
                 entity.HasIndex(e => e.Status);
                 entity.HasIndex(e => new { e.CompanyId, e.Name }).IsUnique();
+                
+                // 新增同步狀態相關索引
+                entity.HasIndex(e => e.SyncStatus);
+                entity.HasIndex(e => e.SyncStartedAt);
+                entity.HasIndex(e => new { e.CompanyId, e.SyncStatus });
             });
             
             modelBuilder.Entity<DataSetColumn>(entity =>
@@ -413,7 +439,6 @@ namespace PurpleRice.Data
                 entity.Property(e => e.SqlParameters).HasColumnName("sql_parameters");
                 entity.Property(e => e.ExcelFilePath).HasColumnName("excel_file_path");
                 entity.Property(e => e.ExcelSheetName).HasColumnName("excel_sheet_name");
-                entity.Property(e => e.ExcelUrl).HasColumnName("excel_url");
                 entity.Property(e => e.GoogleDocsUrl).HasColumnName("google_docs_url");
                 entity.Property(e => e.GoogleDocsSheetName).HasColumnName("google_docs_sheet_name");
                 entity.Property(e => e.AuthenticationConfig).HasColumnName("authentication_config");

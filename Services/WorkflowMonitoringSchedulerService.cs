@@ -1050,6 +1050,7 @@ namespace PurpleRice.Services
 
                 int syncCount = 0;
 
+                // 順序處理每個數據集，避免重疊同步
                 foreach (var dataSet in autoSyncDataSets)
                 {
                     try
@@ -1061,12 +1062,29 @@ namespace PurpleRice.Services
                         {
                             loggingService.LogInformation($"🔄 開始自動同步數據集: {dataSet.Name} (ID: {dataSet.Id})");
                             
-                            // 執行數據同步
+                            // 設置同步開始狀態
+                            dataSet.SyncStatus = "Running";
+                            dataSet.SyncStartedAt = DateTime.UtcNow;
+                            dataSet.SyncStartedBy = "Scheduler";
+                            dataSet.SyncErrorMessage = null;
+                            dataSet.TotalRecordsToSync = 0;
+                            dataSet.RecordsProcessed = 0;
+                            dataSet.RecordsInserted = 0;
+                            dataSet.RecordsUpdated = 0;
+                            dataSet.RecordsDeleted = 0;
+                            dataSet.RecordsSkipped = 0;
+                            await db.SaveChangesAsync();
+                            
+                            // 執行數據同步（同步執行，確保一個一個排隊）
                             var syncResult = await PerformDataSetSyncAsync(db, serviceProvider, dataSet);
                             
                             if (syncResult.Success)
                             {
-                                // 更新最後同步時間
+                                // 設置同步完成狀態
+                                dataSet.SyncStatus = "Completed";
+                                dataSet.SyncCompletedAt = DateTime.UtcNow;
+                                dataSet.SyncStartedAt = null; // 清理同步開始時間
+                                dataSet.SyncErrorMessage = null;
                                 dataSet.LastDataSyncTime = DateTime.UtcNow;
                                 dataSet.LastUpdateTime = DateTime.UtcNow;
                                 dataSet.TotalRecords = syncResult.TotalRecords;
@@ -1076,9 +1094,21 @@ namespace PurpleRice.Services
                             }
                             else
                             {
-                                // 記錄同步失敗
+                                // 設置同步失敗狀態
+                                dataSet.SyncStatus = "Failed";
+                                dataSet.SyncCompletedAt = DateTime.UtcNow;
+                                dataSet.SyncStartedAt = null; // 清理同步開始時間
+                                dataSet.SyncErrorMessage = syncResult.ErrorMessage;
                                 dataSet.LastDataSyncTime = DateTime.UtcNow;
                                 dataSet.LastUpdateTime = DateTime.UtcNow;
+                                
+                                // 重置進度計數器
+                                dataSet.TotalRecordsToSync = 0;
+                                dataSet.RecordsProcessed = 0;
+                                dataSet.RecordsInserted = 0;
+                                dataSet.RecordsUpdated = 0;
+                                dataSet.RecordsDeleted = 0;
+                                dataSet.RecordsSkipped = 0;
                                 
                                 loggingService.LogError($"❌ 數據集 {dataSet.Name} 自動同步失敗: {syncResult.ErrorMessage}");
                             }
@@ -1123,6 +1153,13 @@ namespace PurpleRice.Services
         {
             var loggingService = GetLoggingService();
             
+            // 檢查是否正在同步中
+            if (dataSet.SyncStatus == "Running")
+            {
+                loggingService.LogDebug($"數據集 {dataSet.Name} 正在同步中，跳過定時同步");
+                return false;
+            }
+            
             // 如果從未同步過，需要同步
             if (dataSet.LastDataSyncTime == null)
             {
@@ -1153,36 +1190,108 @@ namespace PurpleRice.Services
             
             try
             {
-                // 獲取必要的服務
+                loggingService.LogInformation($"開始執行數據集同步: {dataSet.Name} (ID: {dataSet.Id})");
+                
+                // 創建獨立的 DbContext 實例以避免並發問題
+                using var scope = serviceProvider.CreateScope();
+                var newDbContext = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                
+                // 重新獲取 DataSet 對象，確保使用 scopedContext
+                var scopedDataSet = await newDbContext.DataSets
+                    .Include(ds => ds.Columns)
+                    .Include(ds => ds.DataSources)
+                    .FirstOrDefaultAsync(ds => ds.Id == dataSet.Id);
+                
+                if (scopedDataSet == null)
+                {
+                    loggingService.LogError($"找不到對應的 DataSet，DataSet ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "找不到對應的 DataSet" };
+                }
+                
+                // 設置同步啟動者為 Scheduler
+                scopedDataSet.SyncStartedBy = "Scheduler";
+                
+                // 重置同步狀態，避免與手動同步衝突
+                scopedDataSet.SyncStatus = "Idle";
+                scopedDataSet.SyncStartedAt = null;
+                scopedDataSet.SyncCompletedAt = null;
+                scopedDataSet.SyncErrorMessage = null;
+                
+                // 重置進度計數器
+                scopedDataSet.TotalRecordsToSync = 0;
+                scopedDataSet.RecordsProcessed = 0;
+                scopedDataSet.RecordsInserted = 0;
+                scopedDataSet.RecordsUpdated = 0;
+                scopedDataSet.RecordsDeleted = 0;
+                scopedDataSet.RecordsSkipped = 0;
+                
+                await newDbContext.SaveChangesAsync();
+                loggingService.LogInformation($"已重置數據集 {dataSet.Name} 的同步狀態");
+                
+                // 創建 DataSetsController 實例來調用具體的同步方法
+                var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+                var logger = loggerFactory.CreateLogger<DataSetsController>();
+                var environment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
+                var loggingServiceFactory = serviceProvider.GetRequiredService<Func<string, LoggingService>>();
                 var googleSheetsService = serviceProvider.GetRequiredService<IGoogleSheetsService>();
                 
-                // 根據數據源類型執行同步
-                if (dataSet.DataSources == null || !dataSet.DataSources.Any())
+                var dataSetsController = new DataSetsController(newDbContext, logger, environment, loggingServiceFactory, googleSheetsService, serviceProvider);
+                
+                // 獲取數據源
+                var dataSource = scopedDataSet.DataSources.FirstOrDefault();
+                if (dataSource == null)
                 {
-                    return new SyncResult 
-                    { 
-                        Success = false, 
-                        ErrorMessage = "數據集沒有配置數據源" 
-                    };
+                    loggingService.LogError($"未找到數據源配置，數據集ID: {scopedDataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "未找到數據源配置" };
                 }
-
-                var dataSource = dataSet.DataSources.First();
-                loggingService.LogInformation($"開始同步數據集 {dataSet.Name}，數據源類型: {dataSource.SourceType}");
-
-                switch (dataSource.SourceType.ToUpper())
+                
+                // 設置同步狀態為運行中
+                scopedDataSet.SyncStatus = "Running";
+                scopedDataSet.SyncStartedAt = DateTime.UtcNow;
+                scopedDataSet.SyncStartedBy = "Scheduler";
+                scopedDataSet.SyncErrorMessage = null;
+                scopedDataSet.SyncCompletedAt = null;
+                
+                // 重置進度計數器
+                scopedDataSet.TotalRecordsToSync = 0;
+                scopedDataSet.RecordsProcessed = 0;
+                scopedDataSet.RecordsInserted = 0;
+                scopedDataSet.RecordsUpdated = 0;
+                scopedDataSet.RecordsDeleted = 0;
+                scopedDataSet.RecordsSkipped = 0;
+                
+                await newDbContext.SaveChangesAsync();
+                loggingService.LogInformation($"已設置同步狀態為運行中，數據集ID: {scopedDataSet.Id}");
+                
+                // 直接調用具體的同步方法（同步執行）
+                SyncResult result;
+                var methodName = dataSource.SourceType.ToUpper() switch
                 {
-                    case "SQL":
-                        return await SyncFromSqlAsync(db, dataSource, loggingService, serviceProvider);
-                    case "EXCEL":
-                        return await SyncFromExcelAsync(db, dataSource, loggingService, serviceProvider);
-                    case "GOOGLE_DOCS":
-                        return await SyncFromGoogleDocsAsync(db, dataSource, googleSheetsService, loggingService, serviceProvider);
-                    default:
-                        return new SyncResult 
-                        { 
-                            Success = false, 
-                            ErrorMessage = $"不支援的數據源類型: {dataSource.SourceType}" 
-                        };
+                    "SQL" => "SyncFromSql",
+                    "EXCEL" => "SyncFromExcel", 
+                    "GOOGLE_DOCS" => "SyncFromGoogleDocs",
+                    _ => null
+                };
+                
+                if (methodName == null)
+                {
+                    loggingService.LogWarning($"不支援的數據源類型，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
+                    return new SyncResult { Success = false, ErrorMessage = "不支援的數據源類型" };
+                }
+                
+                // 使用反射調用具體的同步方法
+                var syncMethod = typeof(DataSetsController).GetMethod(methodName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                if (syncMethod != null)
+                {
+                    result = await (Task<SyncResult>)syncMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                    loggingService.LogInformation($"數據集 {dataSet.Name} 同步完成，結果: {result.Success}, 記錄數: {result.TotalRecords}");
+                    return result;
+                }
+                else
+                {
+                    loggingService.LogError($"無法找到 DataSetsController.{methodName} 方法");
+                    return new SyncResult { Success = false, ErrorMessage = $"無法找到同步方法 {methodName}" };
                 }
             }
             catch (Exception ex)
@@ -1196,181 +1305,6 @@ namespace PurpleRice.Services
             }
         }
 
-        /// <summary>
-        /// SQL 數據源同步
-        /// </summary>
-        private async Task<SyncResult> SyncFromSqlAsync(PurpleRiceDbContext db, DataSetDataSource dataSource, LoggingService loggingService, IServiceProvider serviceProvider)
-        {
-            try
-            {
-                loggingService.LogInformation($"開始同步 SQL 數據源: {dataSource.SqlQuery}");
-                
-                // 創建獨立的 DbContext 實例以避免並發問題
-                using var scope = serviceProvider.CreateScope();
-                var newDbContext = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                
-                // 使用反射調用 DataSetsController 的私有方法
-                var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-                var logger = loggerFactory.CreateLogger<DataSetsController>();
-                var environment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
-                var loggingServiceFactory = serviceProvider.GetRequiredService<Func<string, LoggingService>>();
-                var googleSheetsService = serviceProvider.GetRequiredService<IGoogleSheetsService>();
-                
-                var dataSetsController = new DataSetsController(newDbContext, logger, environment, loggingServiceFactory, googleSheetsService);
-                var syncMethod = typeof(DataSetsController).GetMethod("SyncDataSetData", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
-                if (syncMethod != null)
-                {
-                    // 獲取 DataSet 對象
-                    var dataSet = await newDbContext.DataSets
-                        .Include(ds => ds.Columns)
-                        .Include(ds => ds.DataSources)
-                        .FirstOrDefaultAsync(ds => ds.DataSources.Any(ds => ds.Id == dataSource.Id));
-                    
-                    if (dataSet != null)
-                    {
-                        var result = await (Task<SyncResult>)syncMethod.Invoke(dataSetsController, new object[] { dataSet });
-                        return result;
-                    }
-                    else
-                    {
-                        loggingService.LogError($"找不到對應的 DataSet，DataSource ID: {dataSource.Id}");
-                        return new SyncResult { Success = false, ErrorMessage = "找不到對應的 DataSet" };
-                    }
-                }
-                else
-                {
-                    loggingService.LogError("無法找到 DataSetsController.SyncDataSetData 方法");
-                    return new SyncResult { Success = false, ErrorMessage = "無法找到同步方法" };
-                }
-            }
-            catch (Exception ex)
-            {
-                loggingService.LogError($"SQL 同步失敗: {ex.Message}");
-                return new SyncResult 
-                { 
-                    Success = false, 
-                    ErrorMessage = ex.Message 
-                };
-            }
-        }
-
-        /// <summary>
-        /// Excel 數據源同步
-        /// </summary>
-        private async Task<SyncResult> SyncFromExcelAsync(PurpleRiceDbContext db, DataSetDataSource dataSource, LoggingService loggingService, IServiceProvider serviceProvider)
-        {
-            try
-            {
-                loggingService.LogInformation($"開始同步 Excel 數據源: {dataSource.ExcelFilePath}");
-                
-                // 創建獨立的 DbContext 實例以避免並發問題
-                using var scope = serviceProvider.CreateScope();
-                var newDbContext = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                
-                // 使用反射調用 DataSetsController 的私有方法
-                var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-                var logger = loggerFactory.CreateLogger<DataSetsController>();
-                var environment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
-                var loggingServiceFactory = serviceProvider.GetRequiredService<Func<string, LoggingService>>();
-                var googleSheetsService = serviceProvider.GetRequiredService<IGoogleSheetsService>();
-                
-                var dataSetsController = new DataSetsController(newDbContext, logger, environment, loggingServiceFactory, googleSheetsService);
-                var syncMethod = typeof(DataSetsController).GetMethod("SyncDataSetData", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
-                if (syncMethod != null)
-                {
-                    // 獲取 DataSet 對象
-                    var dataSet = await newDbContext.DataSets
-                        .Include(ds => ds.Columns)
-                        .Include(ds => ds.DataSources)
-                        .FirstOrDefaultAsync(ds => ds.DataSources.Any(ds => ds.Id == dataSource.Id));
-                    
-                    if (dataSet != null)
-                    {
-                        var result = await (Task<SyncResult>)syncMethod.Invoke(dataSetsController, new object[] { dataSet });
-                        return result;
-                    }
-                    else
-                    {
-                        loggingService.LogError($"找不到對應的 DataSet，DataSource ID: {dataSource.Id}");
-                        return new SyncResult { Success = false, ErrorMessage = "找不到對應的 DataSet" };
-                    }
-                }
-                else
-                {
-                    loggingService.LogError("無法找到 DataSetsController.SyncDataSetData 方法");
-                    return new SyncResult { Success = false, ErrorMessage = "無法找到同步方法" };
-                }
-            }
-            catch (Exception ex)
-            {
-                loggingService.LogError($"Excel 同步失敗: {ex.Message}");
-                return new SyncResult 
-                { 
-                    Success = false, 
-                    ErrorMessage = ex.Message 
-                };
-            }
-        }
-
-        /// <summary>
-        /// Google Docs 數據源同步
-        /// </summary>
-        private async Task<SyncResult> SyncFromGoogleDocsAsync(PurpleRiceDbContext db, DataSetDataSource dataSource, IGoogleSheetsService googleSheetsService, LoggingService loggingService, IServiceProvider serviceProvider)
-        {
-            try
-            {
-                loggingService.LogInformation($"開始同步 Google Docs 數據源: {dataSource.GoogleDocsUrl}");
-                
-                // 創建獨立的 DbContext 實例以避免並發問題
-                using var scope = serviceProvider.CreateScope();
-                var newDbContext = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                
-                // 使用反射調用 DataSetsController 的私有方法
-                var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-                var logger = loggerFactory.CreateLogger<DataSetsController>();
-                var environment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
-                var loggingServiceFactory = serviceProvider.GetRequiredService<Func<string, LoggingService>>();
-                
-                var dataSetsController = new DataSetsController(newDbContext, logger, environment, loggingServiceFactory, googleSheetsService);
-                var syncMethod = typeof(DataSetsController).GetMethod("SyncDataSetData", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
-                if (syncMethod != null)
-                {
-                    // 獲取 DataSet 對象
-                    var dataSet = await newDbContext.DataSets
-                        .Include(ds => ds.Columns)
-                        .Include(ds => ds.DataSources)
-                        .FirstOrDefaultAsync(ds => ds.DataSources.Any(ds => ds.Id == dataSource.Id));
-                    
-                    if (dataSet != null)
-                    {
-                        var result = await (Task<SyncResult>)syncMethod.Invoke(dataSetsController, new object[] { dataSet });
-                        return result;
-                    }
-                    else
-                    {
-                        loggingService.LogError($"找不到對應的 DataSet，DataSource ID: {dataSource.Id}");
-                        return new SyncResult { Success = false, ErrorMessage = "找不到對應的 DataSet" };
-                    }
-                }
-                else
-                {
-                    loggingService.LogError("無法找到 DataSetsController.SyncDataSetData 方法");
-                    return new SyncResult { Success = false, ErrorMessage = "無法找到同步方法" };
-                }
-            }
-            catch (Exception ex)
-            {
-                loggingService.LogError($"Google Sheets 同步失敗: {ex.Message}");
-                return new SyncResult 
-                { 
-                    Success = false, 
-                    ErrorMessage = ex.Message 
-                };
-            }
-        }
 
         /// <summary>
         /// 解析步驟的收件人（從 WaitingForUser 或流程啟動人）

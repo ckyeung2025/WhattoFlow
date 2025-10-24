@@ -1947,6 +1947,29 @@ const zhSC = {
     inactive: '停用',
     error: '错误',
     
+    // 同步状态标签
+    idle: '闲置',
+    running: '同步中',
+    completed: '已完成',
+    failed: '失败',
+    paused: '已暂停',
+    
+    // 同步进度
+    syncStatus: '同步状态',
+    syncProgress: '同步进度',
+    syncInProgress: '数据集正在同步中，请稍后再试',
+    syncStarted: '同步已开始',
+    syncCompleted: '同步完成 - 新增: {inserted}, 更新: {updated}, 删除: {deleted}',
+    syncFailed: '同步失败',
+    inserted: '新增',
+    updated: '更新',
+    deleted: '删除',
+    skipped: '跳过',
+    processed: '已处理',
+    total: '总计',
+    syncPaused: '同步已暂停',
+    readyToSync: '准备同步',
+    
     // 数据源类型
     sql: 'SQL',
     excel: 'EXCEL',
@@ -2031,8 +2054,6 @@ const zhSC = {
     excelFilePathPlaceholder: '例如：/uploads/excel/data.xlsx',
     excelSheetName: '工作表名称',
     excelSheetNamePlaceholder: '选择工作表',
-    excelUrl: 'Excel 文件 URL',
-    excelUrlPlaceholder: '例如：https://example.com/data.xlsx',
     uploadExcelFile: '上传 Excel 文件',
     excelUploadDescription: 'Excel 上传说明',
     excelUploadInfo: '上传成功后，文件路径会自动填充。保存 DataSet 后，点击「同步数据」按钮来将 Excel 数据导入到数据库中。系统会自动根据 Excel 标题行生成字段定义。',

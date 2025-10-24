@@ -2918,12 +2918,39 @@ const en = {
     status: 'Status',
     recordCount: 'Record Count',
     lastUpdate: 'Last Update',
+    neverSynced: 'Never Synced',
     actions: 'Actions',
     
     // Status labels
     active: 'Active',
     inactive: 'Inactive',
     error: 'Error',
+    
+    // Sync status labels
+    idle: 'Idle',
+    running: 'Running',
+    completed: 'Completed',
+    failed: 'Failed',
+    paused: 'Paused',
+    
+    // Sync progress
+    syncStatus: 'Sync Status',
+    syncProgress: 'Sync Progress',
+    syncInProgress: 'Dataset is currently syncing, please try again later',
+    syncStarted: 'Sync started',
+    syncCompleted: 'Sync completed - Inserted: {inserted}, Updated: {updated}, Deleted: {deleted}',
+    syncFailed: 'Sync failed',
+    inserted: 'Inserted',
+    updated: 'Updated',
+    deleted: 'Deleted',
+    skipped: 'Skipped',
+    processed: 'Processed',
+    total: 'Total',
+    syncPaused: 'Sync paused',
+    readyToSync: 'Ready to sync',
+    syncing: 'Syncing...',
+    processingSpeed: 'Speed',
+    remaining: 'Remaining',
     
     // Data source types
     sql: 'SQL',
@@ -2943,6 +2970,7 @@ const en = {
     
     // Confirmation dialogs
     confirmDelete: 'Are you sure you want to delete this DataSet?',
+    confirmDeleteDescription: 'This will permanently delete the dataset "{datasetName}" and all {recordCount} records. This action cannot be undone.',
     confirmDeleteOk: 'Confirm',
     confirmDeleteCancel: 'Cancel',
     
@@ -3014,8 +3042,6 @@ const en = {
     excelFilePathPlaceholder: 'e.g.: /uploads/excel/data.xlsx',
     excelSheetName: 'Sheet Name',
     excelSheetNamePlaceholder: 'Select sheet',
-    excelUrl: 'Excel File URL',
-    excelUrlPlaceholder: 'e.g.: https://example.com/data.xlsx',
     uploadExcelFile: 'Upload Excel File',
     excelUploadDescription: 'Excel Upload Instructions',
     excelUploadInfo: 'After successful upload, the file path will be automatically filled. After saving the DataSet, click the "Sync Data" button to import Excel data into the database. The system will automatically generate column definitions based on Excel headers.',
