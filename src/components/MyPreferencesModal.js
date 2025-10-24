@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Tabs, Form, Input, Button, Select, Upload, message, Avatar } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
-import axios from 'axios';
+import apiClient from '../services/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const { TabPane } = Tabs;
@@ -42,12 +42,10 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('token');
     try {
-      const res = await axios.post('/api/users/avatar', formData, {
+      const res = await apiClient.post('/api/users/avatar', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-          Authorization: 'Bearer ' + token
+          'Content-Type': 'multipart/form-data'
         }
       });
       if (res.data.success) {
@@ -67,7 +65,6 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      const token = localStorage.getItem('token');
       
       // 構建與 AuthController UpdateMe 端點匹配的 payload
       const payload = {
@@ -76,7 +73,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
         phone: values.phone,
         language: values.language,
         timezone: values.timezone,
-        avatarUrl: avatarUrl
+        AvatarUrl: avatarUrl
       };
       
       // 如果密碼有填寫，則添加到 payload
@@ -85,14 +82,10 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
       }
       
       // 使用 /api/auth/me 端點更新用戶信息
-      await axios.put('/api/auth/me', payload, {
-        headers: { Authorization: 'Bearer ' + token }
-      });
+      await apiClient.put('/api/auth/me', payload);
       
       // 重新取得最新 userInfo
-      const res = await axios.get('/api/auth/me', {
-        headers: { Authorization: 'Bearer ' + token }
-      });
+      const res = await apiClient.get('/api/auth/me');
       
       if (res.data) {
         if (typeof onUserInfoUpdate === 'function') {

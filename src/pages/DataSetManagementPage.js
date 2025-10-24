@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Button, Modal, Form, Input, Select, Upload, message, 
   Card, Tag, Space, Typography, Drawer, Tooltip, Popconfirm,
-  Tabs, Switch, InputNumber, Divider, Alert, Row, Col, Collapse, Radio
+  Tabs, Switch, InputNumber, Divider, Alert, Row, Col, Collapse, Radio, Progress
 } from 'antd';
 import { 
   PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined,
@@ -79,6 +79,10 @@ const DataSetManagementPage = () => {
 
   // 同步狀態管理
   const [syncingDataSets, setSyncingDataSets] = useState(new Set());
+  
+  // 定時檢查同步狀態的間隔器
+  const [syncStatusInterval, setSyncStatusInterval] = useState(null);
+  const [forceUpdate, setForceUpdate] = useState(0); // 強制重新渲染
 
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -86,6 +90,16 @@ const DataSetManagementPage = () => {
   useEffect(() => {
     console.log('DataSetManagementPage: 組件已掛載，開始獲取數據');
     fetchDataSets();
+    
+    // 啟動定時檢查同步狀態
+    startGlobalSyncStatusCheck();
+    
+    // 組件卸載時清理定時器
+    return () => {
+      if (syncStatusInterval) {
+        clearInterval(syncStatusInterval);
+      }
+    };
   }, []);
 
   // 處理 URL 參數中的 edit 參數
@@ -136,6 +150,20 @@ const DataSetManagementPage = () => {
       if (result.success) {
         console.log('fetchDataSets: 成功獲取數據，數據集數量:', result.data.length);
         console.log('fetchDataSets: 第一個數據集示例:', result.data[0]);
+        
+        // 調試：檢查同步狀態數據
+        if (result.data.length > 0) {
+          const firstDataSet = result.data[0];
+          console.log('fetchDataSets: 第一個數據集的同步狀態:', {
+            syncStatus: firstDataSet.syncStatus,
+            totalRecordsToSync: firstDataSet.totalRecordsToSync,
+            recordsProcessed: firstDataSet.recordsProcessed,
+            recordsInserted: firstDataSet.recordsInserted,
+            recordsUpdated: firstDataSet.recordsUpdated,
+            recordsDeleted: firstDataSet.recordsDeleted
+          });
+        }
+        
         setDataSets(result.data);
         if (result.pagination) {
           setPagination({
@@ -143,6 +171,13 @@ const DataSetManagementPage = () => {
             pageSize: result.pagination.pageSize,
             total: result.pagination.totalCount
           });
+        }
+        
+        // 檢查是否有運行中的數據集，如果有則啟動全局狀態檢查
+        const runningDataSets = result.data.filter(ds => ds.syncStatus === 'Running');
+        if (runningDataSets.length > 0 && !syncStatusInterval) {
+          console.log(`發現 ${runningDataSets.length} 個運行中的數據集，啟動全局狀態檢查`);
+          startGlobalSyncStatusCheck();
         }
       } else {
         console.error('fetchDataSets: API 返回失敗:', result.message);
@@ -167,6 +202,7 @@ const DataSetManagementPage = () => {
     // 設置預設值
     setTimeout(() => {
       dataSourceForm.setFieldsValue({
+        sourceType: 'SQL',  // 設置預設的數據源類型
         connectionType: 'preset',
         presetConnection: 'purple_rice'
       });
@@ -190,6 +226,14 @@ const DataSetManagementPage = () => {
     if (record.dataSource) {
       console.log('handleEdit: 填充數據源表單:', record.dataSource);
       const dataSource = record.dataSource;
+      
+      // 首先設置 sourceType，確保表單正確顯示
+      if (dataSource.sourceType) {
+        console.log('設置 sourceType:', dataSource.sourceType);
+        dataSourceForm.setFieldsValue({
+          sourceType: dataSource.sourceType
+        });
+      }
       
       // 處理 SQL 連接配置
       if (dataSource.sourceType === 'SQL' && dataSource.authenticationConfig) {
@@ -240,7 +284,14 @@ const DataSetManagementPage = () => {
         }
       } else {
         // 非 SQL 數據源或其他情況
-        dataSourceForm.setFieldsValue({
+        console.log('設置非 SQL 數據源字段:', {
+          sourceType: dataSource.sourceType,
+          googleDocsUrl: dataSource.googleDocsUrl,
+          googleDocsSheetName: dataSource.googleDocsSheetName
+        });
+        
+        // 設置所有可能的字段，確保表單有完整的數據
+        const fieldsToSet = {
           sourceType: dataSource.sourceType,
           databaseConnection: dataSource.databaseConnection,
           sqlQuery: dataSource.sqlQuery,
@@ -248,6 +299,17 @@ const DataSetManagementPage = () => {
           excelSheetName: dataSource.excelSheetName,
           googleDocsUrl: dataSource.googleDocsUrl,
           googleDocsSheetName: dataSource.googleDocsSheetName
+        };
+        
+        console.log('設置的字段值:', fieldsToSet);
+        dataSourceForm.setFieldsValue(fieldsToSet);
+      }
+      
+      // 確保 sourceType 總是設置，即使在其他情況下
+      if (dataSource.sourceType && !dataSource.authenticationConfig) {
+        console.log('確保 sourceType 設置:', dataSource.sourceType);
+        dataSourceForm.setFieldsValue({
+          sourceType: dataSource.sourceType
         });
       }
     } else {
@@ -298,6 +360,13 @@ const DataSetManagementPage = () => {
   const handleSync = async (id) => {
     console.log('handleSync: 開始同步 DataSet, ID:', id);
     
+    // 檢查是否正在同步
+    const dataSet = dataSets.find(ds => ds.id === id);
+    if (dataSet?.syncStatus === 'Running') {
+      message.warning(t('dataSetManagement.syncInProgress'));
+      return;
+    }
+    
     // 設置同步狀態
     setSyncingDataSets(prev => new Set(prev).add(id));
     
@@ -309,8 +378,9 @@ const DataSetManagementPage = () => {
       console.log('handleSync: 同步結果:', result);
       
       if (result.success) {
-        message.success(t('dataSetManagement.syncSuccess', { count: result.data?.totalRecords || 0 }));
-        fetchDataSets();
+        message.success(t('dataSetManagement.syncStarted'));
+        // 開始輪詢同步狀態
+        startSyncStatusPolling(id);
       } else {
         message.error(t('dataSetManagement.syncFailed') + ': ' + (result.error || result.message));
       }
@@ -325,6 +395,130 @@ const DataSetManagementPage = () => {
         return newSet;
       });
     }
+  };
+
+  // 新增：啟動全局同步狀態檢查
+  const startGlobalSyncStatusCheck = () => {
+    console.log('啟動全局同步狀態檢查');
+    
+    const interval = setInterval(async () => {
+      try {
+        // 定期從服務器獲取最新的數據集狀態，確保能檢測到後台服務啟動的同步
+        const response = await fetch('/api/datasets');
+        const result = await response.json();
+        
+        if (result.success) {
+          const serverDataSets = result.data;
+          
+          // 檢查服務器上是否有運行中的數據集
+          const runningDataSets = serverDataSets.filter(ds => ds.syncStatus === 'Running');
+          
+          if (runningDataSets.length > 0) {
+            console.log(`服務器上發現 ${runningDataSets.length} 個運行中的數據集，開始檢查狀態`);
+            
+            // 更新本地狀態
+            setDataSets(serverDataSets);
+            
+            // 並行檢查所有運行中數據集的狀態
+            runningDataSets.forEach(async (dataSet) => {
+              try {
+                const statusResponse = await fetch(`/api/datasets/${dataSet.id}/sync-status`);
+                const statusResult = await statusResponse.json();
+                
+                if (statusResult.success) {
+                  const syncStatus = statusResult.data;
+                  console.log(`數據集 ${dataSet.name} 同步狀態:`, syncStatus);
+                  
+                  // 更新 DataSet 的同步狀態
+                  setDataSets(prev => prev.map(ds => 
+                    ds.id === dataSet.id ? { ...ds, ...syncStatus } : ds
+                  ));
+                  
+                  // 強制重新渲染以更新進度條
+                  setForceUpdate(prev => prev + 1);
+                  
+                  // 如果同步完成或失敗，顯示通知
+                  if (syncStatus.syncStatus === 'Completed') {
+                    message.success(t('dataSetManagement.syncCompleted', {
+                      datasetName: dataSet.name,
+                      inserted: syncStatus.recordsInserted || 0,
+                      updated: syncStatus.recordsUpdated || 0,
+                      deleted: syncStatus.recordsDeleted || 0
+                    }));
+                  } else if (syncStatus.syncStatus === 'Failed') {
+                    message.error(`${dataSet.name} ${t('dataSetManagement.syncFailed')}: ${syncStatus.syncErrorMessage || ''}`);
+                  }
+                }
+              } catch (error) {
+                console.error(`檢查數據集 ${dataSet.name} 同步狀態失敗:`, error);
+              }
+            });
+          } else {
+            // 如果沒有運行中的數據集，也更新本地狀態以保持同步
+            setDataSets(serverDataSets);
+          }
+        }
+      } catch (error) {
+        console.error('全局同步狀態檢查失敗:', error);
+      }
+    }, 10000); // 每10秒檢查一次，平衡實時性和性能
+    
+    setSyncStatusInterval(interval);
+  };
+
+  // 新增：輪詢同步狀態
+  const startSyncStatusPolling = (id) => {
+    console.log(`開始輪詢同步狀態，數據集ID: ${id}`);
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/datasets/${id}/sync-status`);
+        const result = await response.json();
+        
+        if (result.success) {
+          const syncStatus = result.data;
+          console.log(`輪詢到同步狀態:`, syncStatus);
+          
+          // 更新 DataSet 的同步狀態
+          setDataSets(prev => prev.map(ds => 
+            ds.id === id ? { ...ds, ...syncStatus } : ds
+          ));
+          
+          // 強制重新渲染以更新進度條
+          setForceUpdate(prev => prev + 1);
+          
+          // 如果同步完成或失敗，停止輪詢
+          if (syncStatus.syncStatus === 'Completed' || syncStatus.syncStatus === 'Failed') {
+            console.log(`同步${syncStatus.syncStatus}，停止輪詢`);
+            clearInterval(pollInterval);
+            
+            if (syncStatus.syncStatus === 'Completed') {
+              message.success(t('dataSetManagement.syncCompleted', { 
+                inserted: syncStatus.recordsInserted || 0,
+                updated: syncStatus.recordsUpdated || 0,
+                deleted: syncStatus.recordsDeleted || 0
+              }));
+            } else if (syncStatus.syncStatus === 'Failed') {
+              message.error(t('dataSetManagement.syncFailed') + ': ' + (syncStatus.syncErrorMessage || ''));
+            }
+            
+            // 刷新數據集列表
+            fetchDataSets();
+          }
+        } else {
+          console.error('輪詢同步狀態失敗:', result.message);
+        }
+      } catch (error) {
+        console.error('輪詢同步狀態失敗:', error);
+        clearInterval(pollInterval);
+      }
+    }, 10000); // 每10秒輪詢一次，手動同步頻率
+    
+    // 設置超時，30分鐘後停止輪詢
+    setTimeout(() => {
+      console.log(`輪詢超時，停止輪詢數據集ID: ${id}`);
+      clearInterval(pollInterval);
+    }, 30 * 60 * 1000);
   };
 
   const handleViewRecords = async (record) => {
@@ -492,8 +686,38 @@ const DataSetManagementPage = () => {
     console.log('handleSubmit: 開始提交表單');
     try {
       const values = await form.validateFields();
-      const dataSourceValues = await dataSourceForm.validateFields();
-      const columnsValues = await columnsForm.validateFields();
+      
+      // 先檢查 dataSourceForm 的當前值，不進行驗證
+      const dataSourceCurrentValues = dataSourceForm.getFieldsValue();
+      console.log('handleSubmit: 數據源表單當前值:', dataSourceCurrentValues);
+      
+      // 如果沒有 sourceType，嘗試從編輯的數據集中獲取
+      if (!dataSourceCurrentValues.sourceType && editingDataSet?.dataSource?.sourceType) {
+        console.log('handleSubmit: 從編輯數據集中獲取 sourceType:', editingDataSet.dataSource.sourceType);
+        dataSourceForm.setFieldsValue({
+          sourceType: editingDataSet.dataSource.sourceType
+        });
+      }
+      
+      let dataSourceValues;
+      let columnsValues;
+      
+      try {
+        dataSourceValues = await dataSourceForm.validateFields();
+      } catch (error) {
+        console.error('數據源表單驗證失敗:', error);
+        console.log('數據源表單當前值:', dataSourceForm.getFieldsValue());
+        message.error(t('dataSetManagement.dataSourceFormValidationFailed'));
+        return;
+      }
+      
+      try {
+        columnsValues = await columnsForm.validateFields();
+      } catch (error) {
+        console.error('欄位表單驗證失敗:', error);
+        message.error(t('dataSetManagement.columnsFormValidationFailed'));
+        return;
+      }
       
       console.log('handleSubmit: 表單驗證通過，基本資訊:', values);
       console.log('handleSubmit: 數據源配置:', dataSourceValues);
@@ -504,6 +728,11 @@ const DataSetManagementPage = () => {
       
       if (!sourceType) {
         message.error(t('dataSetManagement.pleaseSelectDataSourceType'));
+        // 自動切換到數據源配置標籤頁
+        const dataSourceTab = document.querySelector('.ant-tabs-tab[data-key="dataSource"]');
+        if (dataSourceTab) {
+          dataSourceTab.click();
+        }
         return;
       }
       
@@ -629,20 +858,186 @@ const DataSetManagementPage = () => {
       }
     },
     {
-      title: t('dataSetManagement.recordCount'),
-      dataIndex: 'totalRecords',
-      key: 'totalRecords',
-      width: 120,
-      sorter: true,
-      render: (count) => <Text>{count || 0}</Text>
-    },
-    {
       title: t('dataSetManagement.lastUpdate'),
       dataIndex: 'lastDataSyncTime',
       key: 'lastDataSyncTime',
       width: 180,
       sorter: true,
       render: (time) => time ? new Date(time).toLocaleString('zh-TW') : t('dataSetManagement.neverSynced')
+    },
+    {
+      title: t('dataSetManagement.syncProgress'),
+      key: 'syncProgress',
+      width: 280,
+      render: (_, record) => {
+        if (record.syncStatus === 'Running') {
+          const totalRecords = record.totalRecordsToSync || 0;
+          const processedRecords = record.recordsProcessed || 0;
+          const progressPercentage = totalRecords > 0 ? Math.round((processedRecords / totalRecords) * 100) : 0;
+          
+          // 計算處理速度（每秒處理的記錄數）
+          const syncStartedAt = record.syncStartedAt;
+          let processingSpeed = 0;
+          if (syncStartedAt && processedRecords > 0) {
+            const elapsedSeconds = (Date.now() - new Date(syncStartedAt).getTime()) / 1000;
+            processingSpeed = elapsedSeconds > 0 ? Math.round(processedRecords / elapsedSeconds) : 0;
+          }
+          
+          // 估算剩餘時間
+          let estimatedTimeRemaining = '';
+          if (processingSpeed > 0 && totalRecords > processedRecords) {
+            const remainingRecords = totalRecords - processedRecords;
+            const remainingSeconds = Math.round(remainingRecords / processingSpeed);
+            if (remainingSeconds < 60) {
+              estimatedTimeRemaining = `${remainingSeconds}秒`;
+            } else if (remainingSeconds < 3600) {
+              estimatedTimeRemaining = `${Math.round(remainingSeconds / 60)}分鐘`;
+            } else {
+              estimatedTimeRemaining = `${Math.round(remainingSeconds / 3600)}小時`;
+            }
+          }
+          
+          return (
+            <div style={{ width: '100%' }}>
+              {/* 同步狀態指示器 */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                marginBottom: '4px',
+                fontSize: '12px',
+                color: '#1890ff'
+              }}>
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#1890ff',
+                  marginRight: '6px',
+                  animation: 'pulse 1.5s ease-in-out infinite'
+                }} />
+                <span>{t('dataSetManagement.syncing')}</span>
+              </div>
+              
+              {/* 進度條 */}
+              <Progress
+                percent={progressPercentage}
+                size="small"
+                status="active"
+                strokeColor={{
+                  '0%': '#108ee9',
+                  '100%': '#87d068',
+                }}
+                format={(percent) => `${percent}%`}
+                style={{ marginBottom: '4px' }}
+                showInfo={true}
+                animation={true}
+              />
+              
+              {/* 詳細統計信息 */}
+              <div style={{ fontSize: '11px', color: '#666', lineHeight: '1.2' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span>{t('dataSetManagement.processed')}: {processedRecords.toLocaleString()}</span>
+                  <span>{t('dataSetManagement.total')}: {totalRecords.toLocaleString()}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontWeight: 'bold' }}>
+                  <span style={{ color: '#1890ff' }}>{t('dataSetManagement.totalRecords', { total: (record.totalRecords || 0).toLocaleString() })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ color: '#52c41a' }}>{t('dataSetManagement.inserted')}: {(record.recordsInserted || 0).toLocaleString()}</span>
+                  <span style={{ color: '#1890ff' }}>{t('dataSetManagement.updated')}: {(record.recordsUpdated || 0).toLocaleString()}</span>
+                  <span style={{ color: '#ff4d4f' }}>{t('dataSetManagement.deleted')}: {(record.recordsDeleted || 0).toLocaleString()}</span>
+                </div>
+                {processingSpeed > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#999' }}>
+                    <span>{t('dataSetManagement.processingSpeed')}: {processingSpeed.toLocaleString()}/秒</span>
+                    {estimatedTimeRemaining && <span>{t('dataSetManagement.remaining')}: {estimatedTimeRemaining}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        } else if (record.syncStatus === 'Completed') {
+          return (
+            <div>
+              <Progress
+                percent={100}
+                size="small"
+                status="success"
+                format={() => t('dataSetManagement.completed')}
+                style={{ marginBottom: '4px' }}
+              />
+              <div style={{ fontSize: '11px', color: '#666', lineHeight: '1.2' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontWeight: 'bold' }}>
+                  <span style={{ color: '#1890ff' }}>{t('dataSetManagement.totalRecords', { total: (record.totalRecords || 0).toLocaleString() })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span style={{ color: '#52c41a' }}>{t('dataSetManagement.inserted')}: {(record.recordsInserted || 0).toLocaleString()}</span>
+                  <span style={{ color: '#1890ff' }}>{t('dataSetManagement.updated')}: {(record.recordsUpdated || 0).toLocaleString()}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#ff4d4f' }}>{t('dataSetManagement.deleted')}: {(record.recordsDeleted || 0).toLocaleString()}</span>
+                  <span style={{ color: '#faad14' }}>{t('dataSetManagement.skipped')}: {(record.recordsSkipped || 0).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          );
+        } else if (record.syncStatus === 'Failed') {
+          return (
+            <div>
+              <Progress
+                percent={0}
+                size="small"
+                status="exception"
+                format={() => t('dataSetManagement.failed')}
+                style={{ marginBottom: '4px' }}
+              />
+              {record.syncErrorMessage && (
+                <Tooltip title={record.syncErrorMessage}>
+                  <Text style={{ fontSize: '11px', color: '#ff4d4f', display: 'block', marginTop: '2px' }}>
+                    {record.syncErrorMessage.length > 25 
+                      ? record.syncErrorMessage.substring(0, 25) + '...' 
+                      : record.syncErrorMessage}
+                  </Text>
+                </Tooltip>
+              )}
+            </div>
+          );
+        } else if (record.syncStatus === 'Paused') {
+          return (
+            <div>
+              <Progress
+                percent={0}
+                size="small"
+                status="normal"
+                format={() => t('dataSetManagement.paused')}
+                style={{ marginBottom: '4px' }}
+              />
+              <Text style={{ fontSize: '11px', color: '#faad14' }}>
+                {t('dataSetManagement.syncPaused')}
+              </Text>
+            </div>
+          );
+        }
+        return (
+          <div>
+            <Progress
+              percent={0}
+              size="small"
+              status="normal"
+              format={() => t('dataSetManagement.idle')}
+              style={{ marginBottom: '4px' }}
+            />
+            <div style={{ fontSize: '11px', color: '#666', lineHeight: '1.2' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', fontWeight: 'bold' }}>
+                <span style={{ color: '#1890ff' }}>{t('dataSetManagement.totalRecords', { total: (record.totalRecords || 0).toLocaleString() })}</span>
+              </div>
+              <Text style={{ color: '#999' }}>
+                {t('dataSetManagement.readyToSync')}
+              </Text>
+            </div>
+          </div>
+        );
+      }
     },
     {
       title: t('dataSetManagement.actions'),
@@ -663,7 +1058,7 @@ const DataSetManagementPage = () => {
               icon={<SyncOutlined />} 
               onClick={() => handleSync(record.id)}
               loading={syncingDataSets.has(record.id)}
-              disabled={syncingDataSets.has(record.id)}
+              disabled={syncingDataSets.has(record.id) || record.syncStatus === 'Running'}
             />
           </Tooltip>
           <Tooltip title={t('dataSetManagement.edit')}>
@@ -826,8 +1221,21 @@ const DataSetManagementPage = () => {
   // 新增：載入 Google Sheets 欄位定義
   const loadGoogleSheetsColumns = async () => {
     try {
-      const values = await dataSourceForm.validateFields(['googleDocsUrl', 'googleDocsSheetName']);
-      const { googleDocsUrl, googleDocsSheetName } = values;
+      // 先嘗試獲取表單值，如果驗證失敗則使用 getFieldValue
+      let googleDocsUrl, googleDocsSheetName;
+      
+      try {
+        const values = await dataSourceForm.validateFields(['googleDocsUrl', 'googleDocsSheetName']);
+        googleDocsUrl = values.googleDocsUrl;
+        googleDocsSheetName = values.googleDocsSheetName;
+      } catch (validationError) {
+        // 如果驗證失敗，直接獲取字段值
+        console.log('表單驗證失敗，直接獲取字段值:', validationError);
+        console.log('當前表單的所有值:', dataSourceForm.getFieldsValue());
+        googleDocsUrl = dataSourceForm.getFieldValue('googleDocsUrl');
+        googleDocsSheetName = dataSourceForm.getFieldValue('googleDocsSheetName');
+        console.log('獲取的字段值:', { googleDocsUrl, googleDocsSheetName });
+      }
       
       if (!googleDocsUrl) {
         message.error(t('dataSetManagement.googleDocsUrlRequired'));
@@ -835,6 +1243,7 @@ const DataSetManagementPage = () => {
       }
       
       console.log('開始載入 Google Sheets 欄位定義，URL:', googleDocsUrl, '工作表:', googleDocsSheetName);
+      console.log('當前表單的所有值:', dataSourceForm.getFieldsValue());
       setSheetLoading(true);
       
       // 構建請求參數
@@ -903,7 +1312,20 @@ const DataSetManagementPage = () => {
     setSheetLoading(true);
     
     try {
-      const filePath = dataSourceForm.getFieldValue('excelFilePath');
+      // 先嘗試獲取表單值，如果失敗則使用 getFieldValue
+      let filePath;
+      
+      try {
+        const values = await dataSourceForm.validateFields(['excelFilePath']);
+        filePath = values.excelFilePath;
+      } catch (validationError) {
+        // 如果驗證失敗，直接獲取字段值
+        console.log('表單驗證失敗，直接獲取字段值:', validationError);
+        console.log('當前表單的所有值:', dataSourceForm.getFieldsValue());
+        filePath = dataSourceForm.getFieldValue('excelFilePath');
+        console.log('獲取的文件路徑:', filePath);
+      }
+      
       if (!filePath) {
         message.error(t('dataSetManagement.uploadExcelFirst'));
         return;
@@ -1261,6 +1683,24 @@ const DataSetManagementPage = () => {
 
   return (
     <div style={{ padding: '24px' }}>
+      <style>
+        {`
+          @keyframes pulse {
+            0% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 0.5;
+              transform: scale(1.1);
+            }
+            100% {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+        `}
+      </style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <Button 
           type="primary" 
@@ -1308,7 +1748,7 @@ const DataSetManagementPage = () => {
         cancelText={t('dataSetManagement.cancel')}
       >
         <Tabs defaultActiveKey="basic">
-          <TabPane tab={t('dataSetManagement.basicInfo')} key="basic">
+          <TabPane tab={t('dataSetManagement.basicInfo')} key="basic" forceRender>
             <Form form={form} layout="vertical">
               <Row gutter={16}>
                 <Col span={24}>
@@ -1367,7 +1807,7 @@ const DataSetManagementPage = () => {
             </Form>
           </TabPane>
           
-          <TabPane tab={t('dataSetManagement.dataSourceConfig')} key="dataSource">
+          <TabPane tab={t('dataSetManagement.dataSourceConfig')} key="dataSource" forceRender>
             <Form form={dataSourceForm} layout="vertical">
               <Form.Item
                 name="sourceType"
@@ -1616,9 +2056,6 @@ const DataSetManagementPage = () => {
                            </Select>
                          </Form.Item>
                         
-                        <Form.Item name="excelUrl" label={t('dataSetManagement.excelUrl')}>
-                          <Input placeholder={t('dataSetManagement.excelUrlPlaceholder')} />
-                        </Form.Item>
                         
                         <Upload
                           name="file"
@@ -1781,7 +2218,7 @@ const DataSetManagementPage = () => {
             </Form>
           </TabPane>
           
-                     <TabPane tab={t('dataSetManagement.columnDefinition')} key="columns">
+          <TabPane tab={t('dataSetManagement.columnDefinition')} key="columns" forceRender>
              <Form form={columnsForm} layout="vertical">
                <Alert
                  message={t('dataSetManagement.columnDefinitionDescription')}

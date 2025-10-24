@@ -34,9 +34,6 @@ namespace PurpleRice.Models
         [StringLength(100)]
         public string? ExcelSheetName { get; set; }
         
-        [StringLength(1000)]
-        public string? ExcelUrl { get; set; }
-        
         // Google Docs 數據源
         [StringLength(1000)]
         public string? GoogleDocsUrl { get; set; }

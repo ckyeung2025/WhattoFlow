@@ -44,6 +44,18 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// 添加 CORS 配置
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 builder.Services.AddScoped<PdfService>();
 builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<DocumentConverterService>();
@@ -125,6 +137,7 @@ builder.Services.AddHostedService<WorkflowMonitoringSchedulerService>();
 
 var app = builder.Build();
 
+app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 

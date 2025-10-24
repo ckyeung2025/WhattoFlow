@@ -22,14 +22,16 @@ namespace PurpleRice.Controllers
         private readonly IWebHostEnvironment _environment;
         private readonly LoggingService _loggingService;
         private readonly IGoogleSheetsService _googleSheetsService;
+        private readonly IServiceProvider _serviceProvider;
 
-        public DataSetsController(PurpleRiceDbContext context, ILogger<DataSetsController> logger, IWebHostEnvironment environment, Func<string, LoggingService> loggingServiceFactory, IGoogleSheetsService googleSheetsService)
+        public DataSetsController(PurpleRiceDbContext context, ILogger<DataSetsController> logger, IWebHostEnvironment environment, Func<string, LoggingService> loggingServiceFactory, IGoogleSheetsService googleSheetsService, IServiceProvider serviceProvider)
         {
             _context = context;
             _logger = logger;
             _environment = environment;
             _loggingService = loggingServiceFactory("DataSetsController");
             _googleSheetsService = googleSheetsService;
+            _serviceProvider = serviceProvider;
         }
 
         // GET: api/datasets
@@ -118,6 +120,27 @@ namespace PurpleRice.Controllers
                     CreatedBy = ds.CreatedBy,
                     UpdatedAt = ds.UpdatedAt,
                     UpdatedBy = ds.UpdatedBy,
+                    
+                    // 同步狀態管理
+                    SyncStatus = ds.SyncStatus,
+                    SyncStartedAt = ds.SyncStartedAt,
+                    SyncCompletedAt = ds.SyncCompletedAt,
+                    SyncErrorMessage = ds.SyncErrorMessage,
+                    SyncStartedBy = ds.SyncStartedBy,
+                    
+                    // 進度追蹤
+                    TotalRecordsToSync = ds.TotalRecordsToSync ?? 0,
+                    RecordsProcessed = ds.RecordsProcessed ?? 0,
+                    RecordsInserted = ds.RecordsInserted ?? 0,
+                    RecordsUpdated = ds.RecordsUpdated ?? 0,
+                    RecordsDeleted = ds.RecordsDeleted ?? 0,
+                    RecordsSkipped = ds.RecordsSkipped ?? 0,
+                    
+                    // 批次處理設定
+                    BatchSize = ds.BatchSize ?? 1000,
+                    MaxSyncDurationMinutes = ds.MaxSyncDurationMinutes ?? 60,
+                    AllowOverlap = ds.AllowOverlap ?? false,
+                    
                     Columns = ds.Columns.Select(c => new DataSetColumnDto
                     {
                         Id = c.Id,
@@ -143,7 +166,6 @@ namespace PurpleRice.Controllers
                         DatabaseConnection = dataSource.DatabaseConnection,
                         ExcelFilePath = dataSource.ExcelFilePath,
                         ExcelSheetName = dataSource.ExcelSheetName,
-                        ExcelUrl = dataSource.ExcelUrl,
                         GoogleDocsUrl = dataSource.GoogleDocsUrl,
                         GoogleDocsSheetName = dataSource.GoogleDocsSheetName,
                         SqlParameters = dataSource.SqlParameters,
@@ -245,7 +267,6 @@ namespace PurpleRice.Controllers
                             SqlParameters = ds.SqlParameters,
                             ExcelFilePath = ds.ExcelFilePath,
                             ExcelSheetName = ds.ExcelSheetName,
-                            ExcelUrl = ds.ExcelUrl,
                             GoogleDocsUrl = ds.GoogleDocsUrl,
                             GoogleDocsSheetName = ds.GoogleDocsSheetName,
                             AuthenticationConfig = ds.AuthenticationConfig,
@@ -335,13 +356,12 @@ namespace PurpleRice.Controllers
                         SqlParameters = request.DataSource.SqlParameters,
                         ExcelFilePath = request.DataSource.ExcelFilePath,
                         ExcelSheetName = request.DataSource.ExcelSheetName,
-                        ExcelUrl = request.DataSource.ExcelUrl,
                         GoogleDocsUrl = request.DataSource.GoogleDocsUrl,
                         GoogleDocsSheetName = request.DataSource.GoogleDocsSheetName,
                         AuthenticationConfig = request.DataSource.AuthenticationConfig
                     };
                     
-                    _loggingService.LogInformation($"Excel 相關配置 - 文件路徑: {request.DataSource.ExcelFilePath}, 工作表: {request.DataSource.ExcelSheetName}, URL: {request.DataSource.ExcelUrl}");
+                    _loggingService.LogInformation($"Excel 相關配置 - 文件路徑: {request.DataSource.ExcelFilePath}, 工作表: {request.DataSource.ExcelSheetName}");
                     
                     _context.DataSetDataSources.Add(dataSource);
                 }
@@ -364,7 +384,27 @@ namespace PurpleRice.Controllers
                     IsScheduled = dataSet.IsScheduled,
                     UpdateIntervalMinutes = dataSet.UpdateIntervalMinutes,
                     CreatedBy = dataSet.CreatedBy,
-                    CreatedAt = dataSet.CreatedAt
+                    CreatedAt = dataSet.CreatedAt,
+                    
+                    // 同步狀態管理
+                    SyncStatus = dataSet.SyncStatus,
+                    SyncStartedAt = dataSet.SyncStartedAt,
+                    SyncCompletedAt = dataSet.SyncCompletedAt,
+                    SyncErrorMessage = dataSet.SyncErrorMessage,
+                    SyncStartedBy = dataSet.SyncStartedBy,
+                    
+                    // 進度追蹤
+                    TotalRecordsToSync = dataSet.TotalRecordsToSync ?? 0,
+                    RecordsProcessed = dataSet.RecordsProcessed ?? 0,
+                    RecordsInserted = dataSet.RecordsInserted ?? 0,
+                    RecordsUpdated = dataSet.RecordsUpdated ?? 0,
+                    RecordsDeleted = dataSet.RecordsDeleted ?? 0,
+                    RecordsSkipped = dataSet.RecordsSkipped ?? 0,
+                    
+                    // 批次處理設定
+                    BatchSize = dataSet.BatchSize ?? 1000,
+                    MaxSyncDurationMinutes = dataSet.MaxSyncDurationMinutes ?? 60,
+                    AllowOverlap = dataSet.AllowOverlap ?? false
                 };
 
                 return CreatedAtAction(nameof(GetDataSet), new { id = dataSet.Id }, 
@@ -384,7 +424,7 @@ namespace PurpleRice.Controllers
             try
             {
                 _loggingService.LogInformation($"開始更新數據集，ID: {id}");
-                _loggingService.LogInformation($"請求數據詳細內容: {JsonSerializer.Serialize(request, new JsonSerializerOptions { WriteIndented = true })}");
+                _loggingService.LogDebug($"請求數據詳細內容: {JsonSerializer.Serialize(request, new JsonSerializerOptions { WriteIndented = true })}");
                 
                 var dataSet = await _context.DataSets
                     .Include(ds => ds.DataSources)  // 包含數據源
@@ -456,7 +496,6 @@ namespace PurpleRice.Controllers
                     dataSource.SqlParameters = request.DataSource.SqlParameters;
                     dataSource.ExcelFilePath = request.DataSource.ExcelFilePath;
                     dataSource.ExcelSheetName = request.DataSource.ExcelSheetName;
-                    dataSource.ExcelUrl = request.DataSource.ExcelUrl;
                     dataSource.GoogleDocsUrl = request.DataSource.GoogleDocsUrl;
                     dataSource.GoogleDocsSheetName = request.DataSource.GoogleDocsSheetName;
                     dataSource.AuthenticationConfig = request.DataSource.AuthenticationConfig;
@@ -756,6 +795,57 @@ namespace PurpleRice.Controllers
                     message = "獲取 DataSet 記錄失敗",
                     error = ex.Message,
                     stackTrace = ex.StackTrace
+                });
+            }
+        }
+
+        // GET: api/datasets/{id}/sync-status
+        [HttpGet("{id}/sync-status")]
+        public async Task<ActionResult<object>> GetDataSetSyncStatus(Guid id)
+        {
+            try
+            {
+                _loggingService.LogInformation($"獲取數據集同步狀態，數據集ID: {id}");
+                
+                var dataSet = await _context.DataSets.FindAsync(id);
+                if (dataSet == null)
+                {
+                    _loggingService.LogWarning($"數據集不存在，ID: {id}");
+                    return NotFound(new { success = false, message = "數據集不存在" });
+                }
+
+                var syncStatus = new
+                {
+                    dataSetId = dataSet.Id,
+                    syncStatus = dataSet.SyncStatus,
+                    syncStartedAt = dataSet.SyncStartedAt,
+                    syncCompletedAt = dataSet.SyncCompletedAt,
+                    syncErrorMessage = dataSet.SyncErrorMessage,
+                    syncStartedBy = dataSet.SyncStartedBy,
+                    totalRecordsToSync = dataSet.TotalRecordsToSync ?? 0,
+                    recordsProcessed = dataSet.RecordsProcessed ?? 0,
+                    recordsInserted = dataSet.RecordsInserted ?? 0,
+                    recordsUpdated = dataSet.RecordsUpdated ?? 0,
+                    recordsDeleted = dataSet.RecordsDeleted ?? 0,
+                    recordsSkipped = dataSet.RecordsSkipped ?? 0,
+                    batchSize = dataSet.BatchSize ?? 1000,
+                    maxSyncDurationMinutes = dataSet.MaxSyncDurationMinutes ?? 60,
+                    allowOverlap = dataSet.AllowOverlap ?? false,
+                    progressPercentage = (dataSet.TotalRecordsToSync ?? 0) > 0 
+                        ? Math.Round((double)(dataSet.RecordsProcessed ?? 0) / (dataSet.TotalRecordsToSync ?? 1) * 100, 2)
+                        : 0
+                };
+
+                _loggingService.LogInformation($"成功獲取數據集同步狀態，數據集ID: {id}, 狀態: {dataSet.SyncStatus}");
+                return Ok(new { success = true, data = syncStatus });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取數據集同步狀態失敗: {ex.Message}", ex);
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = "獲取數據集同步狀態失敗",
+                    error = ex.Message
                 });
             }
         }
@@ -1204,31 +1294,209 @@ namespace PurpleRice.Controllers
             try
             {
                 _loggingService.LogInformation($"開始同步數據集數據，數據集ID: {dataSet.Id}");
+                
+                // 檢查是否允許重疊同步
+                if (dataSet.SyncStatus == "Running" && !(dataSet.AllowOverlap ?? false))
+                {
+                    _loggingService.LogWarning($"數據集正在同步中，不允許重疊同步，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "數據集正在同步中，請稍後再試" };
+                }
+                
+                // 檢查同步時間限制
+                if (dataSet.SyncStartedAt.HasValue)
+                {
+                    var elapsedMinutes = (DateTime.UtcNow - dataSet.SyncStartedAt.Value).TotalMinutes;
+                    var maxDuration = dataSet.MaxSyncDurationMinutes ?? 60;
+                    if (elapsedMinutes > maxDuration)
+                    {
+                        _loggingService.LogWarning($"同步時間超過限制 ({maxDuration} 分鐘)，數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = $"同步時間超過限制 ({maxDuration} 分鐘)" };
+                    }
+                }
+                
+                // 設置同步狀態為運行中
+                dataSet.SyncStatus = "Running";
+                dataSet.SyncStartedAt = DateTime.UtcNow;
+                dataSet.SyncStartedBy = "User"; // 手動同步
+                dataSet.SyncErrorMessage = null;
+                dataSet.SyncCompletedAt = null;
+                
+                // 重置進度計數器
+                dataSet.TotalRecordsToSync = 0;
+                dataSet.RecordsProcessed = 0;
+                dataSet.RecordsInserted = 0;
+                dataSet.RecordsUpdated = 0;
+                dataSet.RecordsDeleted = 0;
+                dataSet.RecordsSkipped = 0;
+                
+                await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"已設置同步狀態為運行中，數據集ID: {dataSet.Id}");
+                
                 var dataSource = dataSet.DataSources.FirstOrDefault();
                 if (dataSource == null)
                 {
                     _loggingService.LogWarning($"未找到數據源配置，數據集ID: {dataSet.Id}");
+                    await SetSyncStatusFailed(dataSet, "未找到數據源配置");
                     return new SyncResult { Success = false, ErrorMessage = "未找到數據源配置" };
                 }
 
-                switch (dataSource.SourceType.ToUpper())
+                // 異步執行同步過程，讓前端能夠輪詢進度
+                _ = Task.Run(async () =>
                 {
-                    case "SQL":
-                        return await SyncFromSql(dataSet, dataSource);
-                    case "EXCEL":
-                        return await SyncFromExcel(dataSet, dataSource);
-                    case "GOOGLE_DOCS":
-                        return await SyncFromGoogleDocs(dataSet, dataSource);
-                    default:
-                        _loggingService.LogWarning($"不支援的數據源類型，數據集ID: {dataSet.Id}, 數據源類型: {dataSource.SourceType}");
-                        return new SyncResult { Success = false, ErrorMessage = "不支援的數據源類型" };
-                }
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                    var scopedLoggingService = scope.ServiceProvider.GetRequiredService<Func<string, LoggingService>>()("DataSetsController");
+                    var scopedGoogleSheetsService = scope.ServiceProvider.GetRequiredService<IGoogleSheetsService>();
+                    
+                    // 重新獲取 DataSet 對象，確保使用 scopedContext
+                    var scopedDataSet = await scopedContext.DataSets
+                        .Include(ds => ds.DataSources)
+                        .FirstOrDefaultAsync(ds => ds.Id == dataSet.Id);
+                    
+                    if (scopedDataSet == null)
+                    {
+                        scopedLoggingService.LogError($"在異步執行中找不到數據集，ID: {dataSet.Id}");
+                        return;
+                    }
+                    
+                    // 在異步執行中也設置同步狀態
+                    scopedDataSet.SyncStatus = "Running";
+                    scopedDataSet.SyncStartedAt = DateTime.UtcNow;
+                    scopedDataSet.SyncStartedBy = dataSet.SyncStartedBy ?? "User";
+                    scopedDataSet.SyncErrorMessage = null;
+                    scopedDataSet.SyncCompletedAt = null;
+                    
+                    // 重置進度計數器
+                    scopedDataSet.TotalRecordsToSync = 0;
+                    scopedDataSet.RecordsProcessed = 0;
+                    scopedDataSet.RecordsInserted = 0;
+                    scopedDataSet.RecordsUpdated = 0;
+                    scopedDataSet.RecordsDeleted = 0;
+                    scopedDataSet.RecordsSkipped = 0;
+                    
+                    await scopedContext.SaveChangesAsync();
+                    scopedLoggingService.LogInformation($"異步執行中已設置同步狀態為運行中，數據集ID: {scopedDataSet.Id}");
+                    
+                    // 創建一個新的 DataSetsController 實例來處理同步
+                    var syncController = new DataSetsController(scopedContext, 
+                        scope.ServiceProvider.GetRequiredService<ILogger<DataSetsController>>(),
+                        scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>(),
+                        scope.ServiceProvider.GetRequiredService<Func<string, LoggingService>>(),
+                        scopedGoogleSheetsService,
+                        scope.ServiceProvider);
+                    
+                    try
+                    {
+                        SyncResult result;
+                        switch (dataSource.SourceType.ToUpper())
+                        {
+                            case "SQL":
+                                result = await syncController.SyncFromSql(scopedDataSet, dataSource);
+                                break;
+                            case "EXCEL":
+                                result = await syncController.SyncFromExcel(scopedDataSet, dataSource);
+                                break;
+                            case "GOOGLE_DOCS":
+                                result = await syncController.SyncFromGoogleDocs(scopedDataSet, dataSource);
+                                break;
+                            default:
+                                scopedLoggingService.LogWarning($"不支援的數據源類型，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
+                                await syncController.SetSyncStatusFailedWithContext(scopedDataSet, "不支援的數據源類型", scopedContext, scopedLoggingService);
+                                return;
+                        }
+                        
+                        // 設置同步完成狀態
+                        if (result.Success)
+                        {
+                            await syncController.SetSyncStatusCompletedWithContext(scopedDataSet, result.TotalRecords, scopedContext, scopedLoggingService);
+                            scopedLoggingService.LogInformation($"異步同步成功，數據集ID: {scopedDataSet.Id}, 總記錄數: {result.TotalRecords}");
+                        }
+                        else
+                        {
+                            await syncController.SetSyncStatusFailedWithContext(scopedDataSet, result.ErrorMessage, scopedContext, scopedLoggingService);
+                            scopedLoggingService.LogError($"異步同步失敗，數據集ID: {scopedDataSet.Id}, 錯誤: {result.ErrorMessage}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        scopedLoggingService.LogError($"異步同步過程發生異常，數據集ID: {scopedDataSet.Id}, 錯誤: {ex.Message}", ex);
+                        await syncController.SetSyncStatusFailedWithContext(scopedDataSet, $"同步過程發生異常: {ex.Message}", scopedContext, scopedLoggingService);
+                    }
+                });
+
+                // 立即返回成功，讓前端開始輪詢
+                _loggingService.LogInformation($"已啟動異步同步過程，數據集ID: {dataSet.Id}");
+                return new SyncResult { Success = true, TotalRecords = 0 };
             }
             catch (Exception ex)
             {
                 _loggingService.LogError("同步數據失敗", ex);
+                await SetSyncStatusFailed(dataSet, ex.Message);
                 return new SyncResult { Success = false, ErrorMessage = ex.Message };
             }
+        }
+        
+        private async Task SetSyncStatusCompleted(DataSet dataSet, int totalRecords)
+        {
+            dataSet.SyncStatus = "Completed";
+            dataSet.SyncCompletedAt = DateTime.UtcNow;
+            dataSet.SyncStartedAt = null; // 清理同步開始時間
+            dataSet.SyncErrorMessage = null;
+            dataSet.LastDataSyncTime = DateTime.UtcNow;
+            dataSet.TotalRecords = totalRecords;
+            await _context.SaveChangesAsync();
+            _loggingService.LogInformation($"同步完成，數據集ID: {dataSet.Id}, 總記錄數: {totalRecords}");
+        }
+        
+        private async Task SetSyncStatusCompletedWithContext(DataSet dataSet, int totalRecords, PurpleRiceDbContext context, LoggingService loggingService)
+        {
+            dataSet.SyncStatus = "Completed";
+            dataSet.SyncCompletedAt = DateTime.UtcNow;
+            dataSet.SyncStartedAt = null; // 清理同步開始時間
+            dataSet.SyncErrorMessage = null;
+            dataSet.LastDataSyncTime = DateTime.UtcNow;
+            dataSet.TotalRecords = totalRecords;
+            dataSet.TotalRecordsToSync = totalRecords; // 同時設置 TotalRecordsToSync 以確保前端正確顯示
+            await context.SaveChangesAsync();
+            loggingService.LogInformation($"同步完成，數據集ID: {dataSet.Id}, 總記錄數: {totalRecords}");
+        }
+        
+        private async Task SetSyncStatusFailed(DataSet dataSet, string errorMessage)
+        {
+            dataSet.SyncStatus = "Failed";
+            dataSet.SyncCompletedAt = DateTime.UtcNow;
+            dataSet.SyncStartedAt = null; // 清理同步開始時間
+            dataSet.SyncErrorMessage = errorMessage;
+
+            // 重置進度計數器，避免顯示錯誤的統計信息
+            dataSet.TotalRecordsToSync = 0;
+            dataSet.RecordsProcessed = 0;
+            dataSet.RecordsInserted = 0;
+            dataSet.RecordsUpdated = 0;
+            dataSet.RecordsDeleted = 0;
+            dataSet.RecordsSkipped = 0;
+
+            await _context.SaveChangesAsync();
+            _loggingService.LogError($"同步失敗，數據集ID: {dataSet.Id}, 錯誤: {errorMessage}");
+        }
+        
+        private async Task SetSyncStatusFailedWithContext(DataSet dataSet, string errorMessage, PurpleRiceDbContext context, LoggingService loggingService)
+        {
+            dataSet.SyncStatus = "Failed";
+            dataSet.SyncCompletedAt = DateTime.UtcNow;
+            dataSet.SyncStartedAt = null; // 清理同步開始時間
+            dataSet.SyncErrorMessage = errorMessage;
+
+            // 重置進度計數器，避免顯示錯誤的統計信息
+            dataSet.TotalRecordsToSync = 0;
+            dataSet.RecordsProcessed = 0;
+            dataSet.RecordsInserted = 0;
+            dataSet.RecordsUpdated = 0;
+            dataSet.RecordsDeleted = 0;
+            dataSet.RecordsSkipped = 0;
+
+            await context.SaveChangesAsync();
+            loggingService.LogError($"同步失敗，數據集ID: {dataSet.Id}, 錯誤: {errorMessage}");
         }
 
         private async Task<SyncResult> SyncFromSql(DataSet dataSet, DataSetDataSource dataSource)
@@ -1325,8 +1593,13 @@ namespace PurpleRice.Controllers
                 if (result.Success)
                 {
                     // 處理查詢結果並存儲到數據庫
-                    var totalRecords = await ProcessSqlResults(dataSet, result.Data);
-                    return new SyncResult { Success = true, TotalRecords = totalRecords };
+                    var processedRecords = await ProcessSqlResults(dataSet, result.Data);
+                    
+                    // 返回實際的數據源記錄數，而不是處理的記錄數
+                    var actualRecordCount = result.Data.Count;
+                    
+                    _loggingService.LogInformation($"SQL 數據同步完成，數據源記錄數: {actualRecordCount}，處理記錄數: {processedRecords}，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = true, TotalRecords = actualRecordCount };
                 }
                 else
                 {
@@ -1362,10 +1635,10 @@ namespace PurpleRice.Controllers
                     // 使用當前目錄構建完整路徑
                     filePath = Path.Combine(Directory.GetCurrentDirectory(), relativePath);
                     
-                    _loggingService.LogInformation($"同步Excel路徑構建調試 - 原始路徑: {dataSource.ExcelFilePath}");
-                    _loggingService.LogInformation($"同步Excel路徑構建調試 - 相對路徑: {relativePath}");
-                    _loggingService.LogInformation($"同步Excel路徑構建調試 - 當前目錄: {Directory.GetCurrentDirectory()}");
-                    _loggingService.LogInformation($"同步Excel路徑構建調試 - 最終路徑: {filePath}");
+                    _loggingService.LogDebug($"同步Excel路徑構建調試 - 原始路徑: {dataSource.ExcelFilePath}");
+                    _loggingService.LogDebug($"同步Excel路徑構建調試 - 相對路徑: {relativePath}");
+                    _loggingService.LogDebug($"同步Excel路徑構建調試 - 當前目錄: {Directory.GetCurrentDirectory()}");
+                    _loggingService.LogDebug($"同步Excel路徑構建調試 - 最終路徑: {filePath}");
                 }
                 else
                 {
@@ -1461,9 +1734,6 @@ namespace PurpleRice.Controllers
 
                     var rowData = new Dictionary<string, object>();
                     
-                    // 添加行號作為主鍵（如果沒有其他主鍵）
-                    rowData["row_number"] = rowIndex + 2; // +2 因為 Excel 從 1 開始，且跳過了標題行
-                    
                     for (int i = 0; i < headers.Count; i++)
                     {
                         var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
@@ -1474,10 +1744,13 @@ namespace PurpleRice.Controllers
                 }
 
                 // 使用通用的增量同步方法
-                var totalRecords = await ProcessIncrementalSync(dataSet, excelData, "Excel");
+                var processedRecords = await ProcessIncrementalSync(dataSet, excelData, "Excel");
                 
-                _loggingService.LogInformation($"Excel 數據同步完成，共處理 {totalRecords} 條記錄，數據集ID: {dataSet.Id}");
-                return new SyncResult { Success = true, TotalRecords = totalRecords };
+                // 返回實際的數據源記錄數，而不是處理的記錄數
+                var actualRecordCount = excelData.Count;
+                
+                _loggingService.LogInformation($"Excel 數據同步完成，數據源記錄數: {actualRecordCount}，處理記錄數: {processedRecords}，數據集ID: {dataSet.Id}");
+                return new SyncResult { Success = true, TotalRecords = actualRecordCount };
             }
             catch (Exception ex)
             {
@@ -1651,30 +1924,7 @@ namespace PurpleRice.Controllers
                 .Where(c => c.DataSetId == dataSet.Id)
                 .ToListAsync();
 
-            // 首先確保 row_number 欄位存在（用於主鍵）
-            var existingColumnNames = existingColumns.Select(c => c.ColumnName).ToHashSet();
-            if (!existingColumnNames.Contains("row_number"))
-            {
-                var rowNumberColumn = new DataSetColumn
-                {
-                    Id = Guid.NewGuid(),
-                    DataSetId = dataSet.Id,
-                    ColumnName = "row_number",
-                    DisplayName = "Row Number",
-                    DataType = "int",
-                    MaxLength = null,
-                    IsRequired = true,
-                    IsPrimaryKey = false, // 稍後會自動檢測
-                    IsSearchable = false,
-                    IsSortable = true,
-                    IsIndexed = true,
-                    DefaultValue = null,
-                    SortOrder = -1 // 放在最前面
-                };
-                _context.DataSetColumns.Add(rowNumberColumn);
-                existingColumns.Add(rowNumberColumn);
-                _loggingService.LogInformation($"創建 row_number 欄位，數據集ID: {dataSet.Id}");
-            }
+            // 不再自動創建 row_number 欄位，讓系統使用 Hash 進行比較
 
             var columnIndex = 0;
             for (int i = 0; i < headers.Count; i++)
@@ -1980,9 +2230,6 @@ namespace PurpleRice.Controllers
 
                     var rowData = new Dictionary<string, object>();
                     
-                    // 添加行號作為主鍵（如果沒有其他主鍵）
-                    rowData["row_number"] = rowIndex + headerRowIndex + 2; // +2 因為 Excel 從 1 開始，且跳過了標題行
-                    
                     for (int i = 0; i < headers.Count; i++)
                     {
                         var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
@@ -1994,10 +2241,13 @@ namespace PurpleRice.Controllers
                 }
 
                 // 使用通用的增量同步方法
-                var totalRecords = await ProcessIncrementalSync(dataSet, googleSheetsData, "Google Sheets");
+                var processedRecords = await ProcessIncrementalSync(dataSet, googleSheetsData, "Google Sheets");
                 
-                _loggingService.LogInformation($"Google Sheets 數據同步完成，共處理 {totalRecords} 條記錄，數據集ID: {dataSet.Id}");
-                return new SyncResult { Success = true, TotalRecords = totalRecords };
+                // 返回實際的數據源記錄數，而不是處理的記錄數
+                var actualRecordCount = googleSheetsData.Count;
+                
+                _loggingService.LogInformation($"Google Sheets 數據同步完成，數據源記錄數: {actualRecordCount}，處理記錄數: {processedRecords}，數據集ID: {dataSet.Id}");
+                return new SyncResult { Success = true, TotalRecords = actualRecordCount };
             }
             catch (Exception ex)
             {
@@ -2019,29 +2269,7 @@ namespace PurpleRice.Controllers
                 var existingColumnNames = existingColumns.Select(c => c.ColumnName).ToHashSet();
                 var newColumns = new List<DataSetColumn>();
 
-                // 首先確保 row_number 欄位存在（用於主鍵）
-                if (!existingColumnNames.Contains("row_number"))
-                {
-                    var rowNumberColumn = new DataSetColumn
-                    {
-                        Id = Guid.NewGuid(),
-                        DataSetId = dataSet.Id,
-                        ColumnName = "row_number",
-                        DisplayName = "Row Number",
-                        DataType = "int",
-                        MaxLength = null,
-                        IsRequired = true,
-                        IsPrimaryKey = false, // 稍後會自動檢測
-                        IsSearchable = false,
-                        IsSortable = true,
-                        IsIndexed = true,
-                        DefaultValue = null,
-                        SortOrder = 0
-                    };
-                    newColumns.Add(rowNumberColumn);
-                    existingColumnNames.Add("row_number");
-                    _loggingService.LogInformation($"創建 row_number 欄位，數據集ID: {dataSet.Id}");
-                }
+                // 不再自動創建 row_number 欄位，讓系統使用 Hash 進行比較
 
                 foreach (var header in headers)
                 {
@@ -2082,7 +2310,7 @@ namespace PurpleRice.Controllers
                 if (newColumns.Any())
                 {
                     _context.DataSetColumns.AddRange(newColumns);
-                    await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync();
                     _loggingService.LogInformation($"Google Sheets 欄位定義更新完成，新增 {newColumns.Count} 個欄位，數據集ID: {dataSet.Id}");
                 }
                 else
@@ -2245,7 +2473,7 @@ namespace PurpleRice.Controllers
 
                     // 使用統一的欄位名稱標準化函數
                     var normalizedColumnName = ColumnNameNormalizer.Normalize(header);
-                    
+
                     var column = await _context.DataSetColumns
                         .FirstOrDefaultAsync(c => c.DataSetId == dataSet.Id && c.ColumnName == normalizedColumnName);
 
@@ -2375,14 +2603,29 @@ namespace PurpleRice.Controllers
         // 獲取預設連接字符串
         private string GetPresetConnectionString(string connectionName)
         {
-            var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            IConfiguration configuration;
+            
+            // 嘗試從 HttpContext 獲取配置，如果失敗則從 ServiceProvider 獲取
+            try
+            {
+                configuration = HttpContext?.RequestServices?.GetRequiredService<IConfiguration>();
+                if (configuration == null)
+                {
+                    configuration = _serviceProvider.GetRequiredService<IConfiguration>();
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"無法從 HttpContext 獲取配置，嘗試從 ServiceProvider 獲取: {ex.Message}");
+                configuration = _serviceProvider.GetRequiredService<IConfiguration>();
+            }
             
             _loggingService.LogInformation($"嘗試獲取預設連接字符串，連接名稱: '{connectionName}'");
             
             switch (connectionName?.ToLower())
             {
                 case "erp_awh":
-                    var erpConnection = configuration.GetConnectionString("ErpDbContext");
+                    var erpConnection = configuration.GetConnectionString("ErpDatabase");
                     _loggingService.LogInformation($"ERP 連接字符串: {erpConnection}");
                     return erpConnection;
                 case "purple_rice":
@@ -2541,98 +2784,47 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogInformation($"開始處理 {sourceType} 查詢結果，數據集ID: {dataSet.Id}，結果行數: {sourceData.Count}");
                 
+                // 重新獲取 DataSet 對象，確保被 Entity Framework 正確追蹤
+                var trackedDataSet = await _context.DataSets.FindAsync(dataSet.Id);
+                if (trackedDataSet == null)
+                {
+                    _loggingService.LogError($"找不到數據集，ID: {dataSet.Id}");
+                    return 0;
+                }
+                
+                // 設置總記錄數
+                trackedDataSet.TotalRecordsToSync = sourceData.Count;
+                await _context.SaveChangesAsync();
+                
                 // 獲取欄位定義
                 var columns = await _context.DataSetColumns
-                    .Where(c => c.DataSetId == dataSet.Id)
+                    .Where(c => c.DataSetId == trackedDataSet.Id)
                     .ToListAsync();
                 
                 if (!columns.Any())
                 {
-                    _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {dataSet.Id}");
+                    _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {trackedDataSet.Id}");
                     return 0;
                 }
 
                 // 找到主鍵欄位（支援複合主鍵）
                 var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
                 
-                // 如果沒有找到主鍵，嘗試自動檢測
-                if (!primaryKeyColumns.Any())
+                if (primaryKeyColumns.Any())
                 {
-                    _loggingService.LogWarning($"數據集沒有主鍵欄位定義，嘗試自動檢測主鍵欄位");
-                    
-                    // 自動檢測主鍵：優先選擇 id 欄位，然後是 within_code，然後是 row_number，最後是第一個欄位
-                    var idColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "id");
-                    var withinCodeColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "within_code");
-                    var rowNumberColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "row_number");
-                    
-                    if (idColumn != null && withinCodeColumn != null)
-                    {
-                        primaryKeyColumns = new List<DataSetColumn> { idColumn, withinCodeColumn };
-                        _loggingService.LogInformation($"自動檢測到複合主鍵: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
-                    }
-                    else if (idColumn != null)
-                    {
-                        primaryKeyColumns = new List<DataSetColumn> { idColumn };
-                        _loggingService.LogInformation($"自動檢測到主鍵: {idColumn.ColumnName}");
-                    }
-                    else if (withinCodeColumn != null)
-                    {
-                        primaryKeyColumns = new List<DataSetColumn> { withinCodeColumn };
-                        _loggingService.LogInformation($"自動檢測到主鍵: {withinCodeColumn.ColumnName}");
-                    }
-                    else if (rowNumberColumn != null)
-                    {
-                        primaryKeyColumns = new List<DataSetColumn> { rowNumberColumn };
-                        _loggingService.LogInformation($"使用行號作為主鍵: {rowNumberColumn.ColumnName}");
-                    }
-                    else
-                    {
-                        // 如果沒有找到標準主鍵，使用第一個欄位作為主鍵
-                        var firstColumn = columns.OrderBy(c => c.SortOrder).FirstOrDefault();
-                        if (firstColumn != null)
-                        {
-                            primaryKeyColumns = new List<DataSetColumn> { firstColumn };
-                            _loggingService.LogInformation($"使用第一個欄位作為主鍵: {firstColumn.ColumnName}");
-                        }
-                        else
-                        {
-                            _loggingService.LogError($"無法自動檢測主鍵欄位，數據集ID: {dataSet.Id}");
-                            return 0;
-                        }
-                    }
+                    _loggingService.LogInformation($"找到 {primaryKeyColumns.Count} 個主鍵欄位: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
+                    _loggingService.LogInformation($"嚴格按照設置的主鍵欄位來構建主鍵，不進行自動簡化");
                 }
                 else
                 {
-                    _loggingService.LogInformation($"找到 {primaryKeyColumns.Count} 個主鍵欄位: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
-                    
-                    // 檢查主鍵欄位是否包含空值，如果包含空值，簡化為主鍵
-                    var hasEmptyValues = false;
-                    foreach (var pkCol in primaryKeyColumns)
-                    {
-                        if (pkCol.ColumnName.ToLower() == "broadcast_group_id" || pkCol.ColumnName.ToLower() == "whatsapp_number")
-                        {
-                            hasEmptyValues = true;
-                            _loggingService.LogWarning($"主鍵欄位 {pkCol.ColumnName} 可能包含空值，建議簡化主鍵配置");
-                        }
-                    }
-                    
-                    // 如果主鍵包含可能為空的欄位，簡化為只使用 id
-                    if (hasEmptyValues)
-                    {
-                        var idColumn = columns.FirstOrDefault(c => c.ColumnName.ToLower() == "id");
-                        if (idColumn != null)
-                        {
-                            _loggingService.LogInformation($"簡化主鍵配置，只使用 id 欄位作為主鍵");
-                            primaryKeyColumns = new List<DataSetColumn> { idColumn };
-                        }
-                    }
+                    _loggingService.LogWarning($"數據集沒有主鍵欄位定義，將使用整個記錄的 Hash 進行比較");
                 }
 
                 var stats = new SyncStats();
 
                 // 1. 獲取現有記錄的 Hash 映射
                 _loggingService.LogInformation("開始獲取現有記錄...");
-                var existingRecordsHash = await GetExistingRecordsHash(dataSet.Id, columns);
+                var existingRecordsHash = await GetExistingRecordsHash(trackedDataSet.Id, columns, primaryKeyColumns);
                 _loggingService.LogInformation($"獲取到 {existingRecordsHash.Count} 條現有記錄");
                 
                 // 調試：顯示前幾個現有記錄的主鍵和 Hash
@@ -2665,28 +2857,50 @@ namespace PurpleRice.Controllers
                 );
 
                 _loggingService.LogInformation($"記錄分類完成 - 新增: {newRecords.Count}, 更新: {updateRecords.Count}, 刪除: {deleteRecords.Count}");
+                
+                // 調試：顯示前幾個需要更新的記錄
+                if (updateRecords.Count > 0)
+                {
+                    _loggingService.LogInformation($"前3個需要更新的記錄:");
+                    for (int i = 0; i < Math.Min(3, updateRecords.Count); i++)
+                    {
+                        var (record, row) = updateRecords[i];
+                        var recordId = record.PrimaryKeyValue ?? "Unknown";
+                        var existingHash = existingRecordsHash.ContainsKey(recordId) ? existingRecordsHash[recordId].Hash.Substring(0, Math.Min(16, existingRecordsHash[recordId].Hash.Length)) : "N/A";
+                        var newHash = newRecordsHash.ContainsKey(recordId) ? newRecordsHash[recordId].Hash.Substring(0, Math.Min(16, newRecordsHash[recordId].Hash.Length)) : "N/A";
+                        _loggingService.LogInformation($"更新記錄 {i+1}: ID={recordId}, 現有Hash={existingHash}..., 新Hash={newHash}...");
+                    }
+                }
 
                 // 4. 批量處理各類記錄
                 if (newRecords.Any())
                 {
-                    stats.NewRecords = await BatchInsertRecords(dataSet, newRecords, columns);
+                    stats.NewRecords = await BatchInsertRecords(trackedDataSet, newRecords, columns);
+                    trackedDataSet.RecordsInserted = stats.NewRecords;
+                    await _context.SaveChangesAsync();
                 }
 
                 if (updateRecords.Any())
                 {
                     stats.UpdatedRecords = await BatchUpdateRecords(updateRecords, columns);
+                    trackedDataSet.RecordsUpdated = stats.UpdatedRecords;
+                    await _context.SaveChangesAsync();
                 }
 
                 if (deleteRecords.Any())
                 {
                     stats.DeletedRecords = await BatchDeleteRecords(deleteRecords);
+                    trackedDataSet.RecordsDeleted = stats.DeletedRecords;
+                    await _context.SaveChangesAsync();
                 }
 
+                // 更新總處理記錄數
+                trackedDataSet.RecordsProcessed = stats.NewRecords + stats.UpdatedRecords + stats.DeletedRecords;
                 await _context.SaveChangesAsync();
                 
-                _loggingService.LogInformation($"增量同步完成，數據集ID: {dataSet.Id}，新增: {stats.NewRecords}，更新: {stats.UpdatedRecords}，刪除: {stats.DeletedRecords}");
+                _loggingService.LogInformation($"增量同步完成，數據集ID: {trackedDataSet.Id}，新增: {stats.NewRecords}，更新: {stats.UpdatedRecords}，刪除: {stats.DeletedRecords}");
                 
-                return stats.NewRecords + stats.UpdatedRecords;
+                return stats.NewRecords + stats.UpdatedRecords + stats.DeletedRecords;
             }
             catch (Exception ex)
             {
@@ -2704,40 +2918,86 @@ namespace PurpleRice.Controllers
         // 獲取現有記錄的 Hash 映射（支援複合主鍵）
         private async Task<Dictionary<string, (DataSetRecord Record, string Hash)>> GetExistingRecordsHash(
             Guid dataSetId, 
-            List<DataSetColumn> columns)
+            List<DataSetColumn> columns,
+            List<DataSetColumn> primaryKeyColumns)
         {
-            var existingRecords = await _context.DataSetRecords
+            const int maxRetries = 3;
+            int retryCount = 0;
+            
+            while (retryCount < maxRetries)
+            {
+                try
+                {
+                    var existingRecords = await _context.DataSetRecords
                 .Where(r => r.DataSetId == dataSetId)
                 .Include(r => r.Values)
-                .AsNoTracking() // 提高查詢效能
+                .AsNoTracking() // 提高查詢效能，減少鎖定
                 .ToListAsync();
 
-            var hashDict = new Dictionary<string, (DataSetRecord Record, string Hash)>();
-            var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
-            
-            foreach (var record in existingRecords)
-            {
-                var hash = CalculateRecordHash(record, columns);
-                
-                // 構建複合主鍵
-                var compositeKey = BuildCompositeKeyFromRecord(record, primaryKeyColumns);
-                
-                if (!string.IsNullOrEmpty(compositeKey))
-                {
-                    hashDict[compositeKey] = (record, hash);
-                }
-                else
-                {
-                    // 如果無法構建複合主鍵，使用原始主鍵值
-                    var primaryKey = record.PrimaryKeyValue ?? string.Empty;
-                    if (!string.IsNullOrEmpty(primaryKey))
+                    var hashDict = new Dictionary<string, (DataSetRecord Record, string Hash)>();
+                    
+                    if (primaryKeyColumns.Any())
                     {
-                        hashDict[primaryKey] = (record, hash);
+                        _loggingService.LogInformation($"使用已定義的主鍵欄位: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
+                    
+                        foreach (var record in existingRecords)
+                        {
+                            var hash = CalculateRecordHash(record, columns);
+                        
+                            // 構建複合主鍵
+                            var compositeKey = BuildCompositeKeyFromRecord(record, primaryKeyColumns);
+                            
+                            if (!string.IsNullOrEmpty(compositeKey))
+                            {
+                                hashDict[compositeKey] = (record, hash);
+                            }
+                            else
+                            {
+                                // 如果無法構建複合主鍵，使用原始主鍵值
+                                var primaryKey = record.PrimaryKeyValue ?? string.Empty;
+                                if (!string.IsNullOrEmpty(primaryKey))
+                                {
+                                    hashDict[primaryKey] = (record, hash);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"數據集沒有主鍵欄位定義，使用整個記錄的 Hash 作為 key");
+                        
+                        // 如果沒有主鍵，使用整個記錄的 Hash 作為 key
+                        foreach (var record in existingRecords)
+                        {
+                            var hash = CalculateRecordHash(record, columns);
+                            
+                            // 使用 Hash 作為 key（因為沒有主鍵）
+                            hashDict[hash] = (record, hash);
+                        }
+                    }
+
+                    return hashDict;
+                }
+                catch (Exception ex) when (ex.Message.Contains("deadlock") || ex.Message.Contains("deadlocked"))
+                {
+                    retryCount++;
+                    _loggingService.LogWarning($"獲取現有記錄時發生死鎖，第 {retryCount} 次重試，數據集ID: {dataSetId}");
+                    
+                    if (retryCount < maxRetries)
+                    {
+                        // 等待隨機時間後重試，避免多個進程同時重試
+                        var delay = new Random().Next(1000, 3000);
+                        await Task.Delay(delay);
+                    }
+                    else
+                    {
+                        _loggingService.LogError($"獲取現有記錄失敗，已重試 {maxRetries} 次，數據集ID: {dataSetId}");
+                        throw;
                     }
                 }
             }
-
-            return hashDict;
+            
+            return new Dictionary<string, (DataSetRecord Record, string Hash)>();
         }
 
         // 計算新記錄的 Hash（支援複合主鍵）
@@ -2749,6 +3009,9 @@ namespace PurpleRice.Controllers
             var hashDict = new Dictionary<string, (Dictionary<string, object> Row, string Hash)>();
             var duplicateKeys = new Dictionary<string, int>();
             
+            if (primaryKeyColumns.Any())
+            {
+                // 有主鍵的情況：使用主鍵作為 key
             foreach (var row in sqlResults)
             {
                 // 構建複合主鍵
@@ -2782,6 +3045,20 @@ namespace PurpleRice.Controllers
             if (duplicateKeys.Any())
             {
                 _loggingService.LogWarning($"總共發現 {duplicateKeys.Count} 個重複複合主鍵，共影響 {duplicateKeys.Values.Sum()} 條記錄");
+                }
+            }
+            else
+            {
+                // 沒有主鍵的情況：使用 Hash 作為 key
+                _loggingService.LogWarning($"沒有主鍵欄位，使用整個記錄的 Hash 作為 key");
+                
+                foreach (var row in sqlResults)
+                {
+                    var hash = CalculateRowHash(row, columns);
+                    
+                    // 使用 Hash 作為 key（因為沒有主鍵）
+                    hashDict[hash] = (row, hash);
+                }
             }
 
             return hashDict;
@@ -2799,6 +3076,7 @@ namespace PurpleRice.Controllers
             var newRecords = new List<Dictionary<string, object>>();
             var updateRecords = new List<(DataSetRecord Record, Dictionary<string, object> Row)>();
             var deleteRecords = new List<DataSetRecord>();
+            var skipRecords = new List<DataSetRecord>(); // 添加跳過記錄列表
 
             // 找出新增和更新的記錄
             foreach (var kvp in newRecordsHash)
@@ -2806,14 +3084,28 @@ namespace PurpleRice.Controllers
                 var primaryKey = kvp.Key;
                 var (row, newHash) = kvp.Value;
 
+            // 調試：記錄查找過程
+            _loggingService.LogDebug($"查找記錄主鍵: '{primaryKey}'，現有記錄字典中是否包含此主鍵: {existingRecordsHash.ContainsKey(primaryKey)}");
+
                 if (existingRecordsHash.TryGetValue(primaryKey, out var existing))
                 {
                     if (existing.Hash != newHash)
                     {
                         // Hash 不同，需要更新
                         updateRecords.Add((existing.Record, row));
+                        
+                        // 調試：記錄 Hash 不匹配的詳細信息
+                        if (updateRecords.Count <= 3) // 只記錄前3個
+                        {
+                            _loggingService.LogInformation($"Hash不匹配 - 主鍵: {primaryKey}, 現有Hash: {existing.Hash.Substring(0, Math.Min(16, existing.Hash.Length))}..., 新Hash: {newHash.Substring(0, Math.Min(16, newHash.Length))}...");
+                        }
                     }
-                    // Hash 相同，無需處理
+                    else
+                    {
+                        // Hash 相同，跳過
+                        skipRecords.Add(existing.Record);
+                        _loggingService.LogDebug($"Hash匹配 - 主鍵: {primaryKey}，跳過更新");
+                    }
                 }
                 else
                 {
@@ -2836,7 +3128,7 @@ namespace PurpleRice.Controllers
         }
 
         // 批量插入新記錄
-        private async Task<int> BatchInsertRecords(DataSet dataSet, List<Dictionary<string, object>> newRecords, List<DataSetColumn> columns)
+        private async Task<int> BatchInsertRecords(DataSet trackedDataSet, List<Dictionary<string, object>> newRecords, List<DataSetColumn> columns)
         {
             var totalInserted = 0;
             const int batchSize = 100; // 批次大小
@@ -2854,7 +3146,7 @@ namespace PurpleRice.Controllers
                     var record = new DataSetRecord
                     {
                         Id = Guid.NewGuid(),
-                        DataSetId = dataSet.Id,
+                        DataSetId = trackedDataSet.Id,
                         PrimaryKeyValue = GetPrimaryKeyValue(row, columns),
                         Status = "Active",
                         CreatedAt = DateTime.UtcNow,
@@ -2891,6 +3183,10 @@ namespace PurpleRice.Controllers
                 await _context.SaveChangesAsync();
                 totalInserted += records.Count;
                 
+                // 更新進度
+                trackedDataSet.RecordsProcessed = totalInserted;
+                await _context.SaveChangesAsync();
+                
                 _loggingService.LogInformation($"批量插入完成，本批次: {records.Count}，累計: {totalInserted}");
             }
 
@@ -2912,6 +3208,10 @@ namespace PurpleRice.Controllers
 
                 foreach (var (record, row) in batch)
                 {
+                    // 重新附加記錄到 DbContext 以確保變更追蹤
+                    _context.DataSetRecords.Attach(record);
+                    _context.Entry(record).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                    
                     var hasChanges = false;
 
                     // 更新或新增欄位值
@@ -2948,6 +3248,12 @@ namespace PurpleRice.Controllers
                             
                             if (oldValueStr != newValueStr)
                             {
+                                // 調試：記錄實際的欄位值變更
+                                if (totalUpdated < 3 && (columnName == "ename" || columnName == "cname"))
+                                {
+                                    _loggingService.LogInformation($"欄位值變更 - 記錄ID: {record.PrimaryKeyValue}, 欄位: {columnName}, 舊值: '{oldValueStr}', 新值: '{newValueStr}'");
+                                }
+                                
                                 ClearValueFields(existingValue);
                                 SetValueByType(existingValue, newValue, column.DataType);
                                 hasChanges = true;
@@ -2963,6 +3269,8 @@ namespace PurpleRice.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+                _loggingService.LogInformation($"數據庫保存完成，本批次: {batch.Count}，累計: {totalUpdated}");
+                
                 _loggingService.LogInformation($"批量更新完成，本批次: {batch.Count}，累計: {totalUpdated}");
             }
 
@@ -2984,6 +3292,7 @@ namespace PurpleRice.Controllers
                 await _context.SaveChangesAsync();
                 
                 totalDeleted += batch.Count;
+                
                 _loggingService.LogInformation($"批量刪除完成，本批次: {batch.Count}，累計: {totalDeleted}");
             }
 
@@ -2995,37 +3304,61 @@ namespace PurpleRice.Controllers
         {
             var values = new List<string>();
             
+            
             foreach (var column in columns.OrderBy(c => c.ColumnName))
             {
                 var value = record.Values?.FirstOrDefault(v => v.ColumnName == column.ColumnName);
                 var formattedValue = GetValueAsString(value, column.DataType);
                 values.Add($"{column.ColumnName}:{formattedValue}");
+                
+                // 針對目標記錄的詳細調試
+                
+                // 調試特定欄位
+                if (column.ColumnName == "ename" || column.ColumnName == "cname")
+                {
+                    _loggingService.LogDebug($"Hash計算 - 記錄ID: {record.PrimaryKeyValue}, 欄位: {column.ColumnName}, 原始值: {value?.StringValue ?? "NULL"}, 格式化值: {formattedValue}");
+                }
             }
             
             var combined = string.Join("|", values);
-            return Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined)));
+            var hash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined)));
+            
+            
+            return hash;
         }
 
         // 計算行 Hash
         private string CalculateRowHash(Dictionary<string, object> row, List<DataSetColumn> columns)
         {
             var values = new List<string>();
+            var recordId = row.ContainsKey("id") ? row["id"]?.ToString() : "Unknown";
             
             foreach (var column in columns.OrderBy(c => c.ColumnName))
             {
                 var value = row.ContainsKey(column.ColumnName) ? row[column.ColumnName] : null;
                 var formattedValue = GetValueAsString(value, column.DataType);
                 values.Add($"{column.ColumnName}:{formattedValue}");
+                
+                
+                // 調試特定欄位
+                if (column.ColumnName == "ename" || column.ColumnName == "cname")
+                {
+                    _loggingService.LogDebug($"新記錄Hash計算 - 記錄ID: {recordId}, 欄位: {column.ColumnName}, 原始值: {value?.ToString() ?? "NULL"}, 格式化值: {formattedValue}");
+                }
             }
             
             var combined = string.Join("|", values);
-            return Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined)));
+            var hash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(combined)));
+            
+            
+            return hash;
         }
 
         // 構建複合主鍵（從 SQL 行數據）
         private string BuildCompositeKey(Dictionary<string, object> row, List<DataSetColumn> primaryKeyColumns)
         {
             var keyParts = new List<string>();
+            
             
             foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
             {
@@ -3040,15 +3373,20 @@ namespace PurpleRice.Controllers
                 }
                 
                 keyParts.Add($"{pkColumn.ColumnName}:{value}");
+                
             }
             
-            return string.Join("|", keyParts);
+            var compositeKey = string.Join("|", keyParts);
+            
+            
+            return compositeKey;
         }
 
         // 構建複合主鍵（從現有記錄）
         private string BuildCompositeKeyFromRecord(DataSetRecord record, List<DataSetColumn> primaryKeyColumns)
         {
             var keyParts = new List<string>();
+            
             
             foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
             {
@@ -3062,9 +3400,13 @@ namespace PurpleRice.Controllers
                 }
                 
                 keyParts.Add($"{pkColumn.ColumnName}:{valueStr}");
+                
             }
             
-            return string.Join("|", keyParts);
+            var compositeKey = string.Join("|", keyParts);
+            
+            
+            return compositeKey;
         }
 
         // 獲取主鍵值（用於記錄創建）
@@ -3101,11 +3443,78 @@ namespace PurpleRice.Controllers
             // 如果是 DataSetRecordValue 對象
             if (value is DataSetRecordValue recordValue)
             {
-                return recordValue.StringValue ?? 
-                       recordValue.NumericValue?.ToString() ?? 
-                       recordValue.DateValue?.ToString("yyyy-MM-dd HH:mm:ss") ?? 
-                       recordValue.BooleanValue?.ToString() ?? 
-                       string.Empty;
+                // 統一使用基於數據類型的格式化邏輯，與新記錄保持一致
+                if (!string.IsNullOrEmpty(dataType))
+                {
+                    switch (dataType.ToLower())
+                    {
+                        case "int":
+                            if (recordValue.NumericValue.HasValue)
+                            {
+                                return ((int)recordValue.NumericValue.Value).ToString();
+                            }
+                            break;
+                        case "decimal":
+                            if (recordValue.NumericValue.HasValue)
+                            {
+                                return recordValue.NumericValue.Value.ToString("F2");
+                            }
+                            break;
+                        case "datetime":
+                        case "date":
+                            if (recordValue.DateValue.HasValue)
+                            {
+                                return recordValue.DateValue.Value.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                            }
+                            break;
+                        case "boolean":
+                        case "bool":
+                            if (recordValue.BooleanValue.HasValue)
+                            {
+                                return recordValue.BooleanValue.Value.ToString().ToLower();
+                            }
+                            break;
+                        case "string":
+                        case "text":
+                            return recordValue.StringValue ?? string.Empty;
+                    }
+                }
+                
+                // 如果沒有特定的數據類型處理，優先使用 StringValue，然後是其他值
+                // 但對於數值類型，確保使用統一的格式化
+                if (recordValue.StringValue != null)
+                {
+                    return recordValue.StringValue;
+                }
+                
+                if (recordValue.NumericValue.HasValue)
+                {
+                    // 對於數值，使用與新記錄相同的格式化邏輯
+                    if (!string.IsNullOrEmpty(dataType) && dataType.ToLower() == "int")
+                    {
+                        return ((int)recordValue.NumericValue.Value).ToString();
+                    }
+                    else if (!string.IsNullOrEmpty(dataType) && dataType.ToLower() == "decimal")
+                    {
+                        return recordValue.NumericValue.Value.ToString("F2");
+                    }
+                    else
+                    {
+                        return recordValue.NumericValue.Value.ToString();
+                    }
+                }
+                
+                if (recordValue.DateValue.HasValue)
+                {
+                    return recordValue.DateValue.Value.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                }
+                
+                if (recordValue.BooleanValue.HasValue)
+                {
+                    return recordValue.BooleanValue.Value.ToString().ToLower();
+                }
+                
+                return string.Empty;
             }
             
             // 如果是原始值，根據數據類型格式化
@@ -3117,7 +3526,7 @@ namespace PurpleRice.Controllers
                     case "date":
                         if (value is DateTime dateValue)
                         {
-                            return dateValue.ToString("yyyy-MM-dd HH:mm:ss");
+                            return dateValue.ToString("yyyy-MM-dd HH:mm:ss.fff");
                         }
                         break;
                     case "decimal":
@@ -3562,7 +3971,6 @@ namespace PurpleRice.Controllers
         public string? SqlParameters { get; set; }
         public string? ExcelFilePath { get; set; }
         public string? ExcelSheetName { get; set; }
-        public string? ExcelUrl { get; set; }
         public string? GoogleDocsUrl { get; set; }
         public string? GoogleDocsSheetName { get; set; }
         public string? AuthenticationConfig { get; set; }
@@ -3613,6 +4021,7 @@ namespace PurpleRice.Controllers
         public int DeletedRecords { get; set; }
         public int UnchangedRecords { get; set; }
     }
+    }
 
     // DataSet 查詢預覽請求模型
     public class DataSetQueryPreviewRequest
@@ -3621,5 +4030,4 @@ namespace PurpleRice.Controllers
         public string WhereClause { get; set; } = string.Empty;
         public int Limit { get; set; } = 10;
         public Dictionary<string, object> ProcessVariableValues { get; set; } = new Dictionary<string, object>();
-    }
 }

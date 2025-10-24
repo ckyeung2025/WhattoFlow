@@ -38,6 +38,31 @@ namespace PurpleRice.Models
         public int TotalRecords { get; set; } = 0;
         public DateTime? LastDataSyncTime { get; set; }
         
+        // 同步狀態管理
+        [StringLength(20)]
+        public string SyncStatus { get; set; } = "Idle"; // Idle, Running, Completed, Failed, Paused
+        
+        public DateTime? SyncStartedAt { get; set; }
+        public DateTime? SyncCompletedAt { get; set; }
+        
+        public string? SyncErrorMessage { get; set; }
+        
+        [StringLength(50)]
+        public string? SyncStartedBy { get; set; } // Scheduler, User
+        
+        // 進度追蹤
+        public int? TotalRecordsToSync { get; set; } = 0;
+        public int? RecordsProcessed { get; set; } = 0;
+        public int? RecordsInserted { get; set; } = 0;
+        public int? RecordsUpdated { get; set; } = 0;
+        public int? RecordsDeleted { get; set; } = 0;
+        public int? RecordsSkipped { get; set; } = 0;
+        
+        // 批次處理設定
+        public int? BatchSize { get; set; } = 1000;
+        public int? MaxSyncDurationMinutes { get; set; } = 60;
+        public bool? AllowOverlap { get; set; } = false;
+        
         // 審計欄位
         [Required]
         [StringLength(100)]
