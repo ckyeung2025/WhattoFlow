@@ -501,6 +501,8 @@ const zhTC = {
     company: '公司/部門',
     group: '群組',
     tags: '標籤',
+    createdAt: '創建時間',
+    updatedAt: '更新時間',
     actions: '操作',
     edit: '編輯',
     delete: '刪除',
@@ -564,6 +566,7 @@ const zhTC = {
     groupColor: '群組顏色',
     contactCount: '聯絡人數量',
     createdAt: '創建時間',
+    updatedAt: '更新時間',
     actions: '操作',
     edit: '編輯',
     delete: '刪除',
@@ -599,15 +602,27 @@ const zhTC = {
     importDataDesc: '確認並開始匯入',
     
     // 數據源選項
+    selectDataSource: '選擇數據源',
     excelFile: 'Excel 文件',
+    excelFileDesc: '從 Excel 文件匯入數據',
     googleSheets: 'Google Sheets',
     sqlDatabase: 'SQL 數據庫',
     uploadExcel: '上傳 Excel 文件',
+    uploadExcelFile: '上傳 Excel 文件',
     connectGoogle: '連接 Google Sheets',
     connectSQL: '連接 SQL 數據庫',
     supportedFormats: '支援 .xlsx, .xls, .csv 格式',
     googleSheetsDesc: '從 Google Sheets 匯入數據',
     sqlDatabaseDesc: '從 SQL 數據庫匯入數據',
+    
+    // Excel 配置
+    excelConfig: 'Excel 文件配置',
+    excelFilePath: 'Excel 文件路徑',
+    selectSheet: '選擇工作表',
+    
+    // Google Docs 配置
+    googleDocsConfig: 'Google Docs 配置',
+    googleDocsUrl: 'Google Docs URL',
     
     // SQL 配置
     sqlConfig: 'SQL 連接配置',
@@ -619,12 +634,15 @@ const zhTC = {
     customQuery: '自定義查詢',
     testConnection: '測試連接',
     loadData: '載入數據',
+    nextStep: '下一步',
     
     // 字段映射
     dataPreview: '數據預覽',
     fieldMapping: '字段映射',
     selectColumn: '選擇欄位',
     selectGroup: '選擇群組',
+    dataSourceType: '數據源類型',
+    sheetName: '工作表名稱',
     name: '姓名',
     title: '職稱',
     occupation: '職業',
@@ -645,7 +663,16 @@ const zhTC = {
     backToList: '返回聯絡人列表',
     importMore: '繼續匯入',
     previous: '上一步',
-    startImport: '開始匯入'
+    startImport: '開始匯入',
+    
+    // 重複確認
+    duplicateConfirmation: '重複記錄確認',
+    duplicateWarning: '發現重複的 WhatsApp 號碼',
+    duplicateDescription: '以下記錄的 WhatsApp 號碼已存在於系統中。如果繼續，將會覆蓋現有記錄。請確認是否要更新這些記錄。',
+    confirmUpdate: '確認更新',
+    rowNumber: '行號',
+    newData: '新數據',
+    existingData: '現有數據'
   },
 
   // 標籤管理
@@ -660,6 +687,7 @@ const zhTC = {
     color: '顏色',
     usageCount: '使用次數',
     createdAt: '創建時間',
+    updatedAt: '更新時間',
     actions: '操作',
     edit: '編輯',
     delete: '刪除',
@@ -706,6 +734,7 @@ const zhTC = {
     phone: '電話',
     language: '語言',
     timezone: '時區',
+    selectTimezone: '請選擇時區',
     password: '密碼',
     passwordPlaceholder: '如需修改請輸入新密碼',
     isActive: '啟用',
@@ -740,6 +769,7 @@ const zhTC = {
     batchEnable: "批量啟用",
     batchDisable: "批量停用",
     timezone: "時區",
+    selectTimezone: "請選擇時區",
     language: "語言",
     addCompany: "新增公司",
     roles: "角色",
@@ -779,7 +809,31 @@ const zhTC = {
     waPhoneNoId: "wA_PhoneNo_ID",
     waVerifyToken: "wA_VerifyToken",
     back: "返回",
-    save: "儲存"
+    save: "儲存",
+    // WhatsApp 菜單設置
+    chatbotMenuConfig: "聊天機器人菜單設置",
+    apiSettings: "API 設定",
+    menuConfigHint: "這些設定用於自定義 WhatsApp 聊天機器人的菜單文字。留空將使用系統默認值。",
+    welcomeMessage: "歡迎訊息",
+    welcomeMessageTooltip: "用戶首次使用時顯示的歡迎文字",
+    noFunctionMessage: "無功能提示",
+    noFunctionMessageTooltip: "當沒有可用工作流程時顯示的訊息",
+    menuTitle: "菜單標題",
+    menuTitleTooltip: "WhatsApp 列表菜單的標題",
+    menuButton: "查看按鈕",
+    menuButtonTooltip: "菜單的查看選項按鈕文字",
+    menuFooter: "菜單底部文字",
+    menuFooterTooltip: "WhatsApp 列表菜單的底部提示",
+    sectionTitle: "區段標題",
+    sectionTitleTooltip: "服務選項的分類標題",
+    defaultOptionDescription: "預設選項描述",
+    defaultOptionDescriptionTooltip: "工作流程沒有描述時的預設文字",
+    inputErrorMessage: "輸入錯誤提示",
+    inputErrorMessageTooltip: "用戶輸入格式錯誤時的提示訊息",
+    fallbackMessage: "回退提示",
+    fallbackMessageTooltip: "當 WhatsApp 互動式消息失敗時的回退提示",
+    systemErrorMessage: "系統錯誤提示",
+    systemErrorMessageTooltip: "系統發生錯誤時的一般性提示訊息"
   },
   
   // EForm 相關
@@ -1964,6 +2018,8 @@ const zhTC = {
       
       // 總計顯示
       totalTemplates: "共 {count} 個模板",
+      pageRange: "第 ",
+      total: " 個模板",
       
       // 錯誤消息
       validationFailed: "驗證失敗",
@@ -3389,6 +3445,8 @@ const zhTC = {
     
     // 分頁
     totalRecords: '共 {total} 條記錄',
+    pageRange: '第 ',
+    total: ' 條記錄',
     pageSizeOptions: ['10', '20', '50', '100'],
     
     // 標籤頁

@@ -8,6 +8,65 @@ using System.Text.Json;
 namespace PurpleRice.Services.WebhookServices
 {
     /// <summary>
+    /// WhatsApp 菜單設置類
+    /// 用於管理 WhatsApp 菜單的自定義文字和默認值
+    /// </summary>
+    public class WhatsAppMenuSettings
+    {
+        public string WelcomeMessage { get; set; }
+        public string NoFunctionMessage { get; set; }
+        public string MenuTitle { get; set; }
+        public string MenuFooter { get; set; }
+        public string MenuButton { get; set; }
+        public string SectionTitle { get; set; }
+        public string DefaultOptionDescription { get; set; }
+        public string InputErrorMessage { get; set; }
+        public string FallbackMessage { get; set; }
+        public string SystemErrorMessage { get; set; }
+
+        /// <summary>
+        /// 獲取默認的 WhatsApp 菜單設置
+        /// </summary>
+        public static WhatsAppMenuSettings GetDefaults()
+        {
+            return new WhatsAppMenuSettings
+            {
+                WelcomeMessage = "歡迎使用我們的服務！\n\n請選擇您需要的功能：",
+                NoFunctionMessage = "歡迎使用我們的服務！\n\n目前沒有可用的功能，請聯繫管理員。",
+                MenuTitle = "服務選單",
+                MenuFooter = "請選擇您需要的服務",
+                MenuButton = "查看選項",
+                SectionTitle = "服務選項",
+                DefaultOptionDescription = "點擊選擇此服務",
+                InputErrorMessage = "輸入不正確，請重新輸入。",
+                FallbackMessage = "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。",
+                SystemErrorMessage = "系統錯誤：無法找到 QR Code 節點配置。"
+            };
+        }
+
+        /// <summary>
+        /// 從公司設置創建菜單設置，如果公司設置為空則使用默認值
+        /// </summary>
+        public static WhatsAppMenuSettings FromCompany(Company company)
+        {
+            var defaults = GetDefaults();
+            return new WhatsAppMenuSettings
+            {
+                WelcomeMessage = company.WA_WelcomeMessage ?? defaults.WelcomeMessage,
+                NoFunctionMessage = company.WA_NoFunctionMessage ?? defaults.NoFunctionMessage,
+                MenuTitle = company.WA_MenuTitle ?? defaults.MenuTitle,
+                MenuFooter = company.WA_MenuFooter ?? defaults.MenuFooter,
+                MenuButton = company.WA_MenuButton ?? defaults.MenuButton,
+                SectionTitle = company.WA_SectionTitle ?? defaults.SectionTitle,
+                DefaultOptionDescription = company.WA_DefaultOptionDescription ?? defaults.DefaultOptionDescription,
+                InputErrorMessage = company.WA_InputErrorMessage ?? defaults.InputErrorMessage,
+                FallbackMessage = company.WA_FallbackMessage ?? defaults.FallbackMessage,
+                SystemErrorMessage = company.WA_SystemErrorMessage ?? defaults.SystemErrorMessage
+            };
+        }
+    }
+
+    /// <summary>
     /// Webhook 消息處理服務
     /// 負責處理 Meta Webhook 的消息提取和業務邏輯處理
     /// </summary>
@@ -57,7 +116,7 @@ namespace PurpleRice.Services.WebhookServices
                 // 記錄原始 payload
                 var json = payload.ToString();
                 _loggingService.LogInformation($"=== 開始處理 Webhook ===");
-                _loggingService.LogInformation($"時間: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                _loggingService.LogInformation($"時間: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}");
                 _loggingService.LogInformation($"Payload 長度: {json.Length}");
                 _loggingService.LogInformation($"公司 Token: {companyToken}");
                 _loggingService.LogInformation($"Payload: {json}");
@@ -265,7 +324,7 @@ namespace PurpleRice.Services.WebhookServices
                     ContactName = contactName,
                     MessageId = messageId,
                     MessageText = messageText,
-                    Timestamp = DateTime.Now,
+                    Timestamp = DateTime.UtcNow,
                     Source = "MetaWebhook",
                     MessageType = messageType,
                     InteractiveType = interactiveType,
@@ -389,7 +448,7 @@ namespace PurpleRice.Services.WebhookServices
                 Status = "Running",
                 CurrentStep = 0,
                 InputJson = JsonSerializer.Serialize(messageData),
-                StartedAt = DateTime.Now,
+                StartedAt = DateTime.UtcNow,
                 CreatedBy = "MetaWebhook",
                 InitiatedBy = messageData.WaId // 記錄觸發的 WhatsApp 用戶電話號碼
             };
@@ -468,7 +527,7 @@ namespace PurpleRice.Services.WebhookServices
                     MessageType = messageData.MessageType, // ✅ 保存消息類型
                     MediaId = messageData.MediaId, // ✅ 保存媒體 ID
                     MediaUrl = savedImagePath, // ✅ 保存圖片本地路徑
-                    CreatedAt = DateTime.Now
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 // 執行驗證
@@ -490,7 +549,8 @@ namespace PurpleRice.Services.WebhookServices
                 if (!validationResult.IsValid)
                 {
                     // 驗證失敗，發送錯誤訊息並保持等待狀態
-                    var errorMessage = validationResult.ErrorMessage ?? "輸入不正確，請重新輸入。";
+                    var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                    var errorMessage = validationResult.ErrorMessage ?? menuSettings.InputErrorMessage;
                     await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
                     _loggingService.LogInformation($"驗證失敗，保持等待狀態: {errorMessage}");
                     return;
@@ -500,7 +560,7 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"驗證通過，繼續執行流程");
                 execution.IsWaiting = false;
                 execution.WaitingSince = null;
-                execution.LastUserActivity = DateTime.Now;
+                execution.LastUserActivity = DateTime.UtcNow;
                 execution.Status = "Running";
 
                 // ✅ 重要：不要在這裡更新 stepExecution.IsWaiting 和 Status
@@ -539,7 +599,7 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"=== 檢查表單審批後的流程繼續 ===");
                 _loggingService.LogInformation($"表單實例ID: {formInstanceId}");
                 _loggingService.LogInformation($"新狀態: {newStatus}");
-                _loggingService.LogInformation($"調用時間: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                _loggingService.LogInformation($"調用時間: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}");
 
                 // 查找對應的流程執行記錄
                 var formInstance = await _context.EFormInstances
@@ -804,6 +864,9 @@ namespace PurpleRice.Services.WebhookServices
             {
                 _loggingService.LogInformation($"開始發送選單給用戶 {waId}，公司: {company.Name}");
                 
+                // 獲取 WhatsApp 菜單設置
+                var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                
                 // 獲取當前公司的所有啟用的 webhook 流程
                 var allEnabledWorkflows = await _context.WorkflowDefinitions
                     .Where(w => w.Status == "Enabled" && w.CompanyId == company.Id)
@@ -827,16 +890,15 @@ namespace PurpleRice.Services.WebhookServices
                 {
                     // 如果沒有 webhook 流程，發送預設消息
                     _loggingService.LogInformation("沒有找到啟用的 webhook 流程，發送預設消息");
-                    await SendWhatsAppMessage(company, waId, "歡迎使用我們的服務！\n\n目前沒有可用的功能，請聯繫管理員。");
+                    await SendWhatsAppMessage(company, waId, menuSettings.NoFunctionMessage);
                     return;
                 }
 
                 // 構建選單消息
-                var menuText = "歡迎使用我們的服務！\n\n請選擇您需要的功能：";
-                _loggingService.LogInformation($"選單文字: {menuText}");
+                _loggingService.LogInformation($"選單文字: {menuSettings.WelcomeMessage}");
                 
                 // 使用 List Messages 支援多達 10 個選項
-                await SendWhatsAppListMessage(company, waId, menuText, webhookWorkflows);
+                await SendWhatsAppListMessage(company, waId, menuSettings.WelcomeMessage, webhookWorkflows, menuSettings);
             }
             catch (Exception ex)
             {
@@ -1055,7 +1117,8 @@ namespace PurpleRice.Services.WebhookServices
                     _loggingService.LogError($"發送 WhatsApp Button 消息失敗: {response.StatusCode} - {responseContent}");
                     // 如果 Button 發送失敗，回退到純文字
                     _loggingService.LogInformation("回退到純文字消息");
-                    await SendWhatsAppMessage(company, waId, message + "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。");
+                    var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                    await SendWhatsAppMessage(company, waId, message + menuSettings.FallbackMessage);
                 }
                 else
                 {
@@ -1068,7 +1131,8 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
                 // 如果 Button 發送失敗，回退到純文字
                 _loggingService.LogInformation("回退到純文字消息");
-                await SendWhatsAppMessage(company, waId, message + "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。");
+                var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                await SendWhatsAppMessage(company, waId, message + menuSettings.FallbackMessage);
             }
         }
 
@@ -1079,7 +1143,8 @@ namespace PurpleRice.Services.WebhookServices
         /// <param name="waId">用戶 WhatsApp ID</param>
         /// <param name="message">消息內容</param>
         /// <param name="workflows">工作流程列表</param>
-        private async Task SendWhatsAppListMessage(Company company, string waId, string message, List<WorkflowDefinition> workflows)
+        /// <param name="menuSettings">菜單設置</param>
+        private async Task SendWhatsAppListMessage(Company company, string waId, string message, List<WorkflowDefinition> workflows, WhatsAppMenuSettings menuSettings)
         {
             try
             {
@@ -1093,7 +1158,7 @@ namespace PurpleRice.Services.WebhookServices
                 // 將工作流程分組到不同的區段中，每個區段最多 10 個選項
                 var sections = new List<object>();
                 var currentSection = new List<object>();
-                var sectionTitle = "服務選項";
+                var sectionTitle = menuSettings.SectionTitle;
                 var sectionIndex = 1;
 
                 for (int i = 0; i < workflows.Count && i < 10; i++) // WhatsApp List 最多支援 10 個選項
@@ -1102,7 +1167,7 @@ namespace PurpleRice.Services.WebhookServices
                     var workflowName = workflow.Name ?? "未命名流程";
                     var optionId = $"option_{i + 1}";
                     var optionTitle = $"{i + 1}. {workflowName}";
-                    var optionDescription = workflow.Description ?? "點擊選擇此服務";
+                    var optionDescription = workflow.Description ?? menuSettings.DefaultOptionDescription;
 
                     // WhatsApp 選項標題限制最多 24 個字符
                     if (optionTitle.Length > 24)
@@ -1147,13 +1212,13 @@ namespace PurpleRice.Services.WebhookServices
                         header = new
                         {
                             type = "text",
-                            text = "服務選單"
+                            text = menuSettings.MenuTitle
                         },
                         body = new { text = message },
-                        footer = new { text = "請選擇您需要的服務" },
+                        footer = new { text = menuSettings.MenuFooter },
                         action = new
                         {
-                            button = "查看選項",
+                            button = menuSettings.MenuButton,
                             sections = sections.ToArray()
                         }
                     }
@@ -1177,7 +1242,7 @@ namespace PurpleRice.Services.WebhookServices
                     _loggingService.LogError($"發送 WhatsApp List 消息失敗: {response.StatusCode} - {responseContent}");
                     // 如果 List 發送失敗，回退到純文字
                     _loggingService.LogInformation("回退到純文字消息");
-                    await SendWhatsAppMessage(company, waId, message + "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。");
+                    await SendWhatsAppMessage(company, waId, message + menuSettings.FallbackMessage);
                 }
                 else
                 {
@@ -1190,7 +1255,7 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
                 // 如果 List 發送失敗，回退到純文字
                 _loggingService.LogInformation("回退到純文字消息");
-                await SendWhatsAppMessage(company, waId, message + "\n\n回覆數字選擇功能，或輸入「選單」重新顯示選單。");
+                await SendWhatsAppMessage(company, waId, message + menuSettings.FallbackMessage);
             }
         }
 
@@ -1210,12 +1275,15 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"媒體ID: {messageData.MediaId}");
                 _loggingService.LogInformation($"訊息類型: {messageData.MessageType}");
                 
+                // 獲取 WhatsApp 菜單設置
+                var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                
                 // 從工作流程定義中獲取 waitForQRCode 節點信息
                 var nodeInfo = await GetWaitForQRCodeNodeInfo(execution);
                 if (nodeInfo == null)
                 {
                     _loggingService.LogError("無法找到 waitForQRCode 節點");
-                    await SendWhatsAppMessage(company, messageData.WaId, "系統錯誤：無法找到 QR Code 節點配置。");
+                    await SendWhatsAppMessage(company, messageData.WaId, menuSettings.SystemErrorMessage);
                     return;
                 }
                 
@@ -1298,7 +1366,7 @@ namespace PurpleRice.Services.WebhookServices
                             savedImagePath, 
                             caption = messageData.MessageText // ✅ 即使掃描失敗也保存 caption
                         }),
-                    CreatedAt = DateTime.Now
+                    CreatedAt = DateTime.UtcNow
                 };
                 
                 _context.MessageValidations.Add(validation);
@@ -1322,7 +1390,7 @@ namespace PurpleRice.Services.WebhookServices
                 {
                     stepExecution.IsWaiting = false;
                     stepExecution.Status = "Completed";
-                    stepExecution.EndedAt = DateTime.Now;
+                    stepExecution.EndedAt = DateTime.UtcNow;
                     _loggingService.LogInformation($"✅ 更新 waitForQRCode 步驟狀態為 Completed，步驟索引: {stepExecution.StepIndex}");
                 }
                 else
@@ -1333,7 +1401,7 @@ namespace PurpleRice.Services.WebhookServices
                 // 更新流程執行狀態
                 execution.IsWaiting = false;
                 execution.WaitingSince = null;
-                execution.LastUserActivity = DateTime.Now;
+                execution.LastUserActivity = DateTime.UtcNow;
                 execution.Status = "Running";
                 
                 await _context.SaveChangesAsync();
@@ -1515,7 +1583,7 @@ namespace PurpleRice.Services.WebhookServices
                 }
 
                 // 生成文件名：使用時間戳和 GUID 確保唯一性
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 var guid = Guid.NewGuid().ToString("N").Substring(0, 8); // 取前8位
                 var fileName = $"reply_image_{timestamp}_{guid}.jpg";
                 

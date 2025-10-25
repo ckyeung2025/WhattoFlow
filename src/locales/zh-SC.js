@@ -498,6 +498,8 @@ const zhSC = {
     company: '公司/部门',
     group: '群组',
     tags: '标签',
+    createdAt: '创建时间',
+    updatedAt: '更新时间',
     actions: '操作',
     edit: '编辑',
     delete: '删除',
@@ -561,6 +563,7 @@ const zhSC = {
     groupColor: '群组颜色',
     contactCount: '联系人数量',
     createdAt: '创建时间',
+    updatedAt: '更新时间',
     actions: '操作',
     edit: '编辑',
     delete: '删除',
@@ -596,15 +599,27 @@ const zhSC = {
     importDataDesc: '确认并开始导入',
     
     // 数据源选项
+    selectDataSource: '选择数据源',
     excelFile: 'Excel 文件',
+    excelFileDesc: '从 Excel 文件导入数据',
     googleSheets: 'Google Sheets',
     sqlDatabase: 'SQL 数据库',
     uploadExcel: '上传 Excel 文件',
+    uploadExcelFile: '上传 Excel 文件',
     connectGoogle: '连接 Google Sheets',
     connectSQL: '连接 SQL 数据库',
     supportedFormats: '支持 .xlsx, .xls, .csv 格式',
     googleSheetsDesc: '从 Google Sheets 导入数据',
     sqlDatabaseDesc: '从 SQL 数据库导入数据',
+    
+    // Excel 配置
+    excelConfig: 'Excel 文件配置',
+    excelFilePath: 'Excel 文件路径',
+    selectSheet: '选择工作表',
+    
+    // Google Docs 配置
+    googleDocsConfig: 'Google Docs 配置',
+    googleDocsUrl: 'Google Docs URL',
     
     // SQL 配置
     sqlConfig: 'SQL 连接配置',
@@ -616,12 +631,15 @@ const zhSC = {
     customQuery: '自定义查询',
     testConnection: '测试连接',
     loadData: '加载数据',
+    nextStep: '下一步',
     
     // 字段映射
     dataPreview: '数据预览',
     fieldMapping: '字段映射',
     selectColumn: '选择字段',
     selectGroup: '选择群组',
+    dataSourceType: '数据源类型',
+    sheetName: '工作表名称',
     
     // 导入过程
     importing: '正在导入...',
@@ -632,7 +650,16 @@ const zhSC = {
     backToList: '返回联系人列表',
     importMore: '继续导入',
     previous: '上一步',
-    startImport: '开始导入'
+    startImport: '开始导入',
+    
+    // 重复确认
+    duplicateConfirmation: '重复记录确认',
+    duplicateWarning: '发现重复的 WhatsApp 号码',
+    duplicateDescription: '以下记录的 WhatsApp 号码已存在于系统中。如果继续，将会覆盖现有记录。请确认是否要更新这些记录。',
+    confirmUpdate: '确认更新',
+    rowNumber: '行号',
+    newData: '新数据',
+    existingData: '现有数据'
   },
 
   // 标签管理
@@ -647,6 +674,7 @@ const zhSC = {
     color: '颜色',
     usageCount: '使用次数',
     createdAt: '创建时间',
+    updatedAt: '更新时间',
     actions: '操作',
     edit: '编辑',
     delete: '删除',
@@ -1988,6 +2016,8 @@ const zhSC = {
     
     // 分页
     totalRecords: '共 {total} 条记录',
+    pageRange: '第 ',
+    total: ' 条记录',
     pageSizeOptions: ['10', '20', '50', '100'],
     
     // 标签页
@@ -2591,6 +2621,9 @@ const zhSC = {
       approved: '已审核',
       pending: '审核中',
       rejected: '已拒绝',
+      totalTemplates: "共 {count} 个模板",
+      pageRange: "第 ",
+      total: " 个模板",
     },
     
     // 讯息模式

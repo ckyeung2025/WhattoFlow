@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Space, Tag, message, Pagination, Card, Typography, Tooltip, Modal } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, ExclamationCircleOutlined, BranchesOutlined, CheckCircleOutlined, StopOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
+// import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
+import { TimezoneUtils } from '../utils/timezoneUtils';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -44,6 +45,7 @@ const WorkflowListPage = () => {
   const [isBatchDeleteModalVisible, setIsBatchDeleteModalVisible] = useState(false);
   const [isBatchStatusModalVisible, setIsBatchStatusModalVisible] = useState(false);
   const [batchStatusAction, setBatchStatusAction] = useState(''); // 'enable' or 'disable'
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -58,12 +60,12 @@ const WorkflowListPage = () => {
     }),
   };
 
-  // columns 狀態化與寬度調整
-  const baseColumns = [
+  // columns 狀態化與寬度調整 - 使用 useMemo 確保時區更新時重新創建
+  const baseColumns = React.useMemo(() => [
     { title: t('workflow.name'), dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: true },
     { title: t('workflow.createdBy'), dataIndex: 'createdBy', key: 'createdBy', width: 120, sorter: true },
-    { title: t('workflow.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
-    { title: t('workflow.updatedAt'), dataIndex: 'updatedAt', key: 'updatedAt', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
+    { title: t('workflow.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 160, sorter: true, render: (text) => text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
+    { title: t('workflow.updatedAt'), dataIndex: 'updatedAt', key: 'updatedAt', width: 160, sorter: true, render: (text) => text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
     { title: t('workflow.status'), dataIndex: 'status', key: 'status', width: 80, sorter: true, render: (text) => <Tag color={text === 'Enabled' ? 'green' : 'red'}>{text === 'Enabled' ? t('workflowDesigner.statusEnabled') : t('workflowDesigner.statusDisabled')}</Tag> },
     {
       title: t('workflow.action'),
@@ -103,10 +105,16 @@ const WorkflowListPage = () => {
         </Space>
       ),
     },
-  ];
+  ], [t, userTimezoneOffset]); // 依賴 userTimezoneOffset 和 t
   const [resizableColumns, setResizableColumns] = useState(
     baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
   );
+  
+  // 當 baseColumns 改變時，更新 resizableColumns
+  useEffect(() => {
+    setResizableColumns(baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 })));
+  }, [baseColumns]);
+  
   const handleResize = index => (e, { size }) => {
     const nextColumns = [...resizableColumns];
     nextColumns[index] = { ...nextColumns[index], width: size.width };
@@ -163,6 +171,21 @@ const WorkflowListPage = () => {
       setLoading(false);
     }
   };
+
+  // 獲取用戶時區信息
+  useEffect(() => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      try {
+        const parsedUserInfo = JSON.parse(userInfo);
+        if (parsedUserInfo.timezone) {
+          setUserTimezoneOffset(parsedUserInfo.timezone);
+        }
+      } catch (error) {
+        console.error('解析用戶信息失敗:', error);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchData();

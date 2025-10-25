@@ -275,7 +275,7 @@ namespace PurpleRice.Services
 
             delivery.confirmed = true;
             delivery.approved_by = approvedBy;
-            delivery.approved_date = DateTime.Now;
+            delivery.approved_date = DateTime.UtcNow;
             delivery.approval_remarks = remarks;
             delivery.status = "已確認";
 
@@ -296,7 +296,7 @@ namespace PurpleRice.Services
             {
                 delivery.confirmed = true;
                 delivery.approved_by = approvedBy;
-                delivery.approved_date = DateTime.Now;
+                delivery.approved_date = DateTime.UtcNow;
                 delivery.approval_remarks = remarks;
                 delivery.status = "已確認";
             }
@@ -361,7 +361,7 @@ namespace PurpleRice.Services
 
             delivery.confirmed = false;
             delivery.approved_by = approvedBy;
-            delivery.approved_date = DateTime.Now;
+            delivery.approved_date = DateTime.UtcNow;
             delivery.approval_remarks = remarks;
             delivery.status = "已拒絕";
 
@@ -374,7 +374,7 @@ namespace PurpleRice.Services
             var total = await _context.DeliveryReceipt.CountAsync();
             var confirmed = await _context.DeliveryReceipt.CountAsync(d => d.confirmed);
             var pending = await _context.DeliveryReceipt.CountAsync(d => !d.confirmed);
-            var today = await _context.DeliveryReceipt.CountAsync(d => d.upload_date.Date == DateTime.Today);
+            var today = await _context.DeliveryReceipt.CountAsync(d => d.upload_date.Date == DateTime.UtcNow.Date);
 
             return new
             {

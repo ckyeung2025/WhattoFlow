@@ -31,7 +31,7 @@ namespace PurpleRice.Services.WebhookServices
             {
                 // 清理過期的消息記錄
                 var expiredKeys = _processedMessages
-                    .Where(kvp => DateTime.Now - kvp.Value > _messageExpiry)
+                    .Where(kvp => DateTime.UtcNow - kvp.Value > _messageExpiry)
                     .Select(kvp => kvp.Key)
                     .ToList();
                 
@@ -58,9 +58,9 @@ namespace PurpleRice.Services.WebhookServices
         {
             lock (_lockObject)
             {
-                _processedMessages[messageId] = DateTime.Now;
+                _processedMessages[messageId] = DateTime.UtcNow;
             }
-            _loggingService.LogInformation($"消息 {messageId} 已標記為已處理，時間: {DateTime.Now}");
+            _loggingService.LogInformation($"消息 {messageId} 已標記為已處理，時間: {DateTime.UtcNow}");
             return Task.CompletedTask;
         }
 

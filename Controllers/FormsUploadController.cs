@@ -56,7 +56,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
                 var filePath = Path.Combine(_uploadPath, fileName);
 
                 // 確保目錄存在
@@ -104,7 +104,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
                 var filePath = Path.Combine(_uploadPath, "Documents", fileName);
 
                 // 確保目錄存在
@@ -169,7 +169,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
                 var filePath = Path.Combine(_uploadPath, "Documents", fileName);
 
                 // 確保目錄存在
@@ -234,7 +234,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
                 var filePath = Path.Combine(_uploadPath, "Documents", fileName);
 
                 // 確保目錄存在
@@ -299,7 +299,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid()}{fileExtension}";
                 var filePath = Path.Combine(_uploadPath, "Documents", fileName);
 
                 // 確保目錄存在

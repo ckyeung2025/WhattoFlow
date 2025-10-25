@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Space, message, Modal, Input, Tag, Spin, Alert } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
+import { TimezoneUtils } from '../utils/timezoneUtils';
 
 const { TextArea } = Input;
 
@@ -17,8 +18,40 @@ const EFormInstancePage = () => {
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
   const [rejectNote, setRejectNote] = useState('');
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
+  const [isTokenAccess, setIsTokenAccess] = useState(false); // 是否為 token 訪問模式
 
   const { t } = useLanguage();
+
+  // 獲取用戶時區信息
+  useEffect(() => {
+    // 從 URL 參數中獲取 Token
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    
+    if (urlToken) {
+      // Token 訪問模式：使用瀏覽器時區
+      setIsTokenAccess(true);
+      const browserTimezone = TimezoneUtils.getBrowserTimezoneOffset();
+      setUserTimezoneOffset(browserTimezone);
+      console.log('Token 訪問模式，使用瀏覽器時區:', browserTimezone);
+    } else {
+      // 正常登錄模式：使用用戶設置的時區
+      setIsTokenAccess(false);
+      const userInfo = localStorage.getItem('userInfo');
+      if (userInfo) {
+        try {
+          const parsedUserInfo = JSON.parse(userInfo);
+          if (parsedUserInfo.timezone) {
+            setUserTimezoneOffset(parsedUserInfo.timezone);
+            console.log('登錄模式，使用用戶時區:', parsedUserInfo.timezone);
+          }
+        } catch (error) {
+          console.error('解析用戶信息失敗:', error);
+        }
+      }
+    }
+  }, []);
 
   // 檢查訪問權限（支持 Token 驗證）
   useEffect(() => {
@@ -714,7 +747,7 @@ const EFormInstancePage = () => {
                     borderRadius: '6px',
                     border: '1px solid #e8e8e8'
                   }}>
-                    {new Date(instance.createdAt).toLocaleString('zh-TW')}
+                    {TimezoneUtils.formatDateWithTimezone(instance.createdAt, userTimezoneOffset)}
                   </span>
                 </div>
                 

@@ -32,10 +32,10 @@ namespace PurpleRice.Services
             {
                 UserWaId = userWaId,
                 Status = "Active",
-                SessionStartTime = DateTime.Now,
-                LastActivityTime = DateTime.Now,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now
+                SessionStartTime = DateTime.UtcNow,
+                LastActivityTime = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
             _context.UserSessions.Add(newSession);
@@ -66,15 +66,15 @@ namespace PurpleRice.Services
                 {
                     oldExecution.Status = "Cancelled";
                     oldExecution.IsWaiting = false;
-                    oldExecution.EndedAt = DateTime.Now;
+                    oldExecution.EndedAt = DateTime.UtcNow;
                 }
                 }
             }
 
             // 更新會話
             session.CurrentWorkflowExecutionId = workflowExecutionId;
-            session.LastActivityTime = DateTime.Now;
-            session.UpdatedAt = DateTime.Now;
+            session.LastActivityTime = DateTime.UtcNow;
+            session.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
         }
@@ -124,7 +124,7 @@ namespace PurpleRice.Services
             if (session != null)
             {
                 session.CurrentWorkflowExecutionId = null;
-                session.UpdatedAt = DateTime.Now;
+                session.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
         }
@@ -140,7 +140,7 @@ namespace PurpleRice.Services
             if (session != null)
             {
                 session.Status = "Inactive";
-                session.UpdatedAt = DateTime.Now;
+                session.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
         }

@@ -106,7 +106,7 @@ namespace PurpleRice.Controllers
                     email = user.Email,
                     phone = user.Phone,
                     language = user.Language,
-                    timezone = user.Timezone,
+                    timezone = TimezoneService.GetGMTOffsetString(user.Timezone),
                     avatar_url = user.AvatarUrl
                 });
             }

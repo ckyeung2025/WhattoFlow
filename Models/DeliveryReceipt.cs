@@ -42,10 +42,10 @@ namespace PurpleRice.Models
         public string? qr_code_text { get; set; }
         
         [Required]
-        public DateTime receipt_date { get; set; } = DateTime.Now;
+        public DateTime receipt_date { get; set; } = DateTime.UtcNow;
         
         [Required]
-        public DateTime upload_date { get; set; } = DateTime.Now;
+        public DateTime upload_date { get; set; } = DateTime.UtcNow;
         
         [StringLength(50)]
         public string? upload_ip { get; set; }

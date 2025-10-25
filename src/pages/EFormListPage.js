@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Space, Tag, message, Pagination, Card, Typography, Tooltip, Modal, Popconfirm, Form } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, SortAscendingOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, CopyOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
-import dayjs from 'dayjs';
+// import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
+import { TimezoneUtils } from '../utils/timezoneUtils';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 // 新增 EFormDesigner 引入
@@ -153,10 +154,11 @@ const EFormListPage = () => {
   const [batchStatusAction, setBatchStatusAction] = useState(''); // 'enable' 或 'disable'
   const [isCopyModalVisible, setIsCopyModalVisible] = useState(false);
   const [copyingForm, setCopyingForm] = useState(null);
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
 
   const { t } = useLanguage();
 
-  const baseColumns = [
+  const baseColumns = React.useMemo(() => [
     { title: t('eform.name'), dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: true },
     { title: t('eform.description'), dataIndex: 'description', key: 'description', width: 200, ellipsis: true },
     { title: t('eform.status'), dataIndex: 'status', key: 'status', width: 100, sorter: true, render: v => {
@@ -165,8 +167,8 @@ const EFormListPage = () => {
       if (v === 'D') return <Tag color="red">{t('eform.deleted')}</Tag>;
       return v;
     } },
-    { title: t('eform.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
-    { title: t('eform.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, sorter: true, render: (text) => text ? dayjs(text).format('YYYY-MM-DD HH:mm') : '' },
+    { title: t('eform.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, sorter: true, render: (text) => text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
+    { title: t('eform.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, sorter: true, render: (text) => text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
     {
       title: t('eform.action'),
       key: 'action',
@@ -198,10 +200,16 @@ const EFormListPage = () => {
         </Space>
       ),
     },
-  ];
+  ], [t, userTimezoneOffset]); // 依賴 userTimezoneOffset 和 t
   const [resizableColumns, setResizableColumns] = useState(
     baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
   );
+  
+  // 當 baseColumns 改變時，更新 resizableColumns
+  useEffect(() => {
+    setResizableColumns(baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 })));
+  }, [baseColumns]);
+  
   const handleResize = index => (e, { size }) => {
     const nextColumns = [...resizableColumns];
     nextColumns[index] = { ...nextColumns[index], width: size.width };
@@ -305,6 +313,21 @@ const EFormListPage = () => {
       setLoading(false);
     }
   };
+
+  // 獲取用戶時區信息
+  useEffect(() => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      try {
+        const parsedUserInfo = JSON.parse(userInfo);
+        if (parsedUserInfo.timezone) {
+          setUserTimezoneOffset(parsedUserInfo.timezone);
+        }
+      } catch (error) {
+        console.error('解析用戶信息失敗:', error);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // 調試：檢查 localStorage 內容

@@ -3,12 +3,14 @@ import { Table, Input, Button, Modal, Space, Tag, Pagination, Card, Row, Col, Ty
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined, UploadOutlined, CloseOutlined } from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
-import dayjs from 'dayjs';
+// import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
+import { TimezoneUtils } from '../utils/timezoneUtils';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import zhTC from '../locales/zh-TC';
 import en from '../locales/en';
 import MyPreferencesModal from '../components/MyPreferencesModal';
+import { TIMEZONES } from '../configs/timezones';
 
 const { Title } = Typography;
 const { confirm } = Modal;
@@ -63,6 +65,7 @@ const CompanyUserAdminPage = () => {
   const [rolesLoading, setRolesLoading] = useState(false);
   const [userRoles, setUserRoles] = useState({}); // { userId: [roleIds] }
   const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState(null);
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
 
   const { currentLanguage, t } = useLanguage();
 
@@ -73,8 +76,8 @@ const CompanyUserAdminPage = () => {
     { title: t('companyUserAdmin.address'), dataIndex: 'address', key: 'address', width: 180 },
     { title: t('companyUserAdmin.phone'), dataIndex: 'phone', key: 'phone', width: 100 },
     { title: t('companyUserAdmin.website'), dataIndex: 'website', key: 'website', width: 120 },
-    { title: t('companyUserAdmin.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, render: tVal => tVal ? dayjs(tVal).format('YYYY-MM-DD HH:mm') : '' },
-    { title: t('companyUserAdmin.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, render: tVal => tVal ? dayjs(tVal).format('YYYY-MM-DD HH:mm') : '' },
+    { title: t('companyUserAdmin.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, render: tVal => tVal ? TimezoneUtils.formatDateWithTimezone(tVal, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
+    { title: t('companyUserAdmin.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, render: tVal => tVal ? TimezoneUtils.formatDateWithTimezone(tVal, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
     {
       title: t('companyUserAdmin.action'),
       key: 'action',
@@ -157,8 +160,8 @@ const CompanyUserAdminPage = () => {
         );
       }
     },
-    { title: t('companyUserAdmin.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, render: tVal => tVal ? dayjs(tVal).format('YYYY-MM-DD HH:mm') : '' },
-    { title: t('companyUserAdmin.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, render: tVal => tVal ? dayjs(tVal).format('YYYY-MM-DD HH:mm') : '' },
+    { title: t('companyUserAdmin.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 160, render: tVal => tVal ? TimezoneUtils.formatDateWithTimezone(tVal, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
+    { title: t('companyUserAdmin.updatedAt'), dataIndex: 'updated_at', key: 'updated_at', width: 160, render: tVal => tVal ? TimezoneUtils.formatDateWithTimezone(tVal, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
     { title: t('companyUserAdmin.timezone'), dataIndex: 'timezone', key: 'timezone', width: 100 },
     { title: t('companyUserAdmin.language'), dataIndex: 'language', key: 'language', width: 80 },
     {
@@ -176,9 +179,24 @@ const CompanyUserAdminPage = () => {
         </Space>
       ),
     },
-  ], [userRoles, roles, t]);
+  ], [userRoles, roles, t, userTimezoneOffset]); // 添加 userTimezoneOffset 依賴
   const [userColumns, setUserColumns] = useState(() => userBaseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 })));
   
+  // 獲取用戶時區信息
+  useEffect(() => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      try {
+        const parsedUserInfo = JSON.parse(userInfo);
+        if (parsedUserInfo.timezone) {
+          setUserTimezoneOffset(parsedUserInfo.timezone);
+        }
+      } catch (error) {
+        console.error('解析用戶信息失敗:', error);
+      }
+    }
+  }, []);
+
   // 當 userBaseColumns 改變時，更新 userColumns
   useEffect(() => {
     setUserColumns(userBaseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 })));
@@ -868,7 +886,19 @@ const CompanyUserAdminPage = () => {
               
               <Col span={12}>
                 <Form.Item label={t('companyUserAdmin.timezone')} name="timezone">
-                  <Input placeholder="請輸入時區" />
+                  <Select
+                    showSearch
+                    placeholder={t('companyUserAdmin.selectTimezone')}
+                    optionFilterProp="children"
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={TIMEZONES.map(timezone => ({
+                      value: timezone.value,
+                      label: timezone.label
+                    }))}
+                    style={{ width: '100%' }}
+                  />
                 </Form.Item>
               </Col>
               
@@ -913,13 +943,13 @@ const CompanyUserAdminPage = () => {
               
               <Col span={12}>
                 <Form.Item label={t('companyUserAdmin.createdAt')}>
-                  <Input value={editingUser.created_at ? dayjs(editingUser.created_at).format('YYYY-MM-DD HH:mm') : ''} disabled />
+                  <Input value={editingUser.created_at ? TimezoneUtils.formatDateWithTimezone(editingUser.created_at, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : ''} disabled />
                 </Form.Item>
               </Col>
               
               <Col span={12}>
                 <Form.Item label={t('companyUserAdmin.updatedAt')}>
-                  <Input value={editingUser.updated_at ? dayjs(editingUser.updated_at).format('YYYY-MM-DD HH:mm') : ''} disabled />
+                  <Input value={editingUser.updated_at ? TimezoneUtils.formatDateWithTimezone(editingUser.updated_at, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : ''} disabled />
                 </Form.Item>
               </Col>
               

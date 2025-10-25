@@ -102,7 +102,7 @@ namespace PurpleRice.Controllers
                 }
 
                 var messageId = Guid.NewGuid().ToString();
-                var timestamp = DateTime.Now;
+                var timestamp = DateTime.UtcNow;
                 _loggingService.LogInformation($"生成消息ID: {messageId}, 時間戳: {timestamp}");
                 
                 // 1. 先記錄到數據庫
@@ -163,7 +163,7 @@ namespace PurpleRice.Controllers
                     
                     // 更新消息狀態
                     chatMessage.Status = whatsappSent ? "sent" : "failed";
-                    chatMessage.UpdatedAt = DateTime.Now;
+                    chatMessage.UpdatedAt = DateTime.UtcNow;
                     await _db.SaveChangesAsync();
                     _loggingService.LogInformation($"消息狀態已更新: {chatMessage.Status}");
                 }
@@ -173,7 +173,7 @@ namespace PurpleRice.Controllers
                     _loggingService.LogError($"發送 WhatsApp 消息失敗: {ex.Message}", ex);
                     chatMessage.Status = "failed";
                     chatMessage.Metadata = JsonSerializer.Serialize(new { error = ex.Message });
-                    chatMessage.UpdatedAt = DateTime.Now;
+                    chatMessage.UpdatedAt = DateTime.UtcNow;
                     await _db.SaveChangesAsync();
                     _loggingService.LogInformation($"錯誤狀態已保存到數據庫");
                 }
@@ -303,7 +303,7 @@ namespace PurpleRice.Controllers
                     waId = request.WaId,
                     workflowInstanceId = request.WorkflowInstanceId,
                     success = success,
-                    timestamp = DateTime.Now
+                    timestamp = DateTime.UtcNow
                 });
             }
             catch (Exception ex)

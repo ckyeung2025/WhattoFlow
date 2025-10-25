@@ -165,7 +165,7 @@ namespace PurpleRice.Controllers
                 var rejectedReceipts = await _context.DeliveryReceipt.CountAsync(r => r.status == "REJECTED");
 
                 var todayReceipts = await _context.DeliveryReceipt
-                    .CountAsync(r => r.receipt_date.Date == DateTime.Today);
+                    .CountAsync(r => r.receipt_date.Date == DateTime.UtcNow.Date);
 
                 var statistics = new
                 {

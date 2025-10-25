@@ -118,7 +118,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation($"原始圖片已保存到: {originalImagePath}");
 
                 // 5. 轉換為 PDF
-                var receiptDate = DateTime.Now;
+                var receiptDate = DateTime.UtcNow;
                 var groupName = $"DN_{orderInfo.customerno}_{orderInfo.invoiceno}_{receiptDate:yyyyMMddHHmm}";
                 var pdfPath = _pdfService.ConvertImageToPdf(originalImagePath, orderInfo.customerno, orderInfo.invoiceno, groupName);
                 _loggingService.LogInformation($"PDF 已生成: {pdfPath}");
@@ -139,7 +139,7 @@ namespace PurpleRice.Controllers
                     pdf_path = pdfRelPath,
                     qr_code_text = qrCodeText,
                     receipt_date = receiptDate,
-                    upload_date = DateTime.Now,
+                    upload_date = DateTime.UtcNow,
                     upload_ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
                     status = "PENDING",
                     uploaded_by = "DeliveryMan"
@@ -191,7 +191,7 @@ namespace PurpleRice.Controllers
                     _loggingService.LogInformation($"創建客戶目錄: {customerPath}");
                 }
 
-                var fileName = $"DN_{customerNo}_{DateTime.Now:yyyyMMdd_HHmmss}{Path.GetExtension(imageFile.FileName)}";
+                var fileName = $"DN_{customerNo}_{DateTime.UtcNow:yyyyMMdd_HHmmss}{Path.GetExtension(imageFile.FileName)}";
                 var filePath = Path.Combine(customerPath, fileName);
 
                 using (var stream = new FileStream(filePath, FileMode.Create))

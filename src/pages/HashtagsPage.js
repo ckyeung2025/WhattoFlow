@@ -14,7 +14,8 @@ import {
   Col,
   ColorPicker,
   Spin,
-  Tooltip
+  Tooltip,
+  Pagination
 } from 'antd';
 import { 
   PlusOutlined, 
@@ -24,11 +25,37 @@ import {
   UserOutlined,
   PaletteOutlined
 } from '@ant-design/icons';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { hashtagApi, contactApi } from '../services/contactApi';
 import { useLanguage } from '../contexts/LanguageContext';
+import TimezoneUtils from '../utils/timezoneUtils';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// ResizableTitle 組件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
 
 const HashtagsPage = () => {
   const { t } = useLanguage();
@@ -36,6 +63,26 @@ const HashtagsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // 用戶時區偏移狀態
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
+  
+  // 分頁和排序狀態
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState('');
+  const [sortOrder, setSortOrder] = useState('');
+  
+  // 列寬狀態
+  const [columnWidths, setColumnWidths] = useState({
+    name: 200,
+    description: 250,
+    usage: 120,
+    color: 120,
+    createdAt: 150,
+    actions: 150
+  });
   
   // 標籤統計
   const [hashtagStats, setHashtagStats] = useState({});
@@ -56,12 +103,24 @@ const HashtagsPage = () => {
     setError(null);
     
     try {
-      const hashtagsData = await hashtagApi.getHashtags();
-      setHashtags(hashtagsData || []);
+      const params = {
+        page: currentPage,
+        pageSize: pageSize,
+        search: searchTerm || undefined,
+        sortField: sortField || undefined,
+        sortOrder: sortOrder || undefined
+      };
+      
+      const response = await hashtagApi.getHashtags(params);
+      
+      // 處理新的 API 響應格式
+      const hashtagsData = response?.data || response || [];
+      setHashtags(hashtagsData);
+      setTotalCount(response?.total || hashtagsData.length);
       
       // 載入每個標籤的使用次數
       const stats = {};
-      for (const hashtag of hashtagsData || []) {
+      for (const hashtag of hashtagsData) {
         try {
           const contactsResponse = await contactApi.getContacts({
             hashtagFilter: hashtag.name,
@@ -80,16 +139,45 @@ const HashtagsPage = () => {
     }
   };
 
-  // 初始載入
+  // 初始載入和數據重新載入
   useEffect(() => {
     loadHashtags();
+  }, [currentPage, pageSize, sortField, sortOrder, searchTerm]);
+
+  // 獲取用戶時區設置
+  useEffect(() => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.timezone) {
+      setUserTimezoneOffset(userInfo.timezone);
+    }
   }, []);
 
-  // 搜尋過濾
-  const filteredHashtags = hashtags.filter(hashtag =>
-    hashtag.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (hashtag.description && hashtag.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // 列寬調整處理函數
+  const handleResize = (index) => (e, { size }) => {
+    const columnKeys = Object.keys(columnWidths);
+    const columnKey = columnKeys[index];
+    if (columnKey) {
+      setColumnWidths(prev => ({
+        ...prev,
+        [columnKey]: size.width
+      }));
+    }
+  };
+
+  // 表格變更處理函數
+  const handleTableChange = (pagination, filters, sorter) => {
+    // 處理排序
+    if (sorter && sorter.field) {
+      const newSortField = sorter.field;
+      const newSortOrder = sorter.order === 'ascend' ? 'asc' : sorter.order === 'descend' ? 'desc' : '';
+      
+      setSortField(newSortField);
+      setSortOrder(newSortOrder);
+    } else {
+      setSortField('');
+      setSortOrder('');
+    }
+  };
 
   // 開啟新增/編輯模態框
   const handleOpenModal = (hashtag = null) => {
@@ -174,11 +262,14 @@ const HashtagsPage = () => {
   ];
 
   // 表格列定義
-  const columns = [
+  const baseColumns = React.useMemo(() => [
     {
       title: t('hashtags.tagName'),
       dataIndex: 'name',
       key: 'name',
+      width: columnWidths.name,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (text, record) => (
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <Tag 
@@ -194,6 +285,9 @@ const HashtagsPage = () => {
       title: t('hashtags.description'),
       dataIndex: 'description',
       key: 'description',
+      width: columnWidths.description,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (text) => (
         <Text type="secondary">
           {text || '無描述'}
@@ -204,6 +298,7 @@ const HashtagsPage = () => {
       title: t('hashtags.usageCount'),
       dataIndex: 'usage',
       key: 'usage',
+      width: columnWidths.usage,
       render: (_, record) => (
         <Tag icon={<UserOutlined />} color="blue">
           {hashtagStats[record.id] || 0}
@@ -214,6 +309,9 @@ const HashtagsPage = () => {
       title: t('hashtags.color'),
       dataIndex: 'color',
       key: 'color',
+      width: columnWidths.color,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (color) => (
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <div 
@@ -235,16 +333,19 @@ const HashtagsPage = () => {
       title: t('hashtags.createdAt'),
       dataIndex: 'createdAt',
       key: 'createdAt',
+      width: columnWidths.createdAt,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (date) => (
         <Text type="secondary" style={{ fontSize: '12px' }}>
-          {new Date(date).toLocaleDateString('zh-TW')}
+          {date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset) : '-'}
         </Text>
       ),
     },
     {
       title: t('hashtags.actions'),
       key: 'actions',
-      width: 150,
+      width: columnWidths.actions,
       render: (_, record) => (
         <Space>
           <Tooltip title={t('hashtags.edit')}>
@@ -266,7 +367,25 @@ const HashtagsPage = () => {
         </Space>
       ),
     },
-  ];
+  ], [t, userTimezoneOffset, hashtagStats, columnWidths]);
+
+  // 可調整大小的列
+  const resizableColumns = React.useMemo(() => 
+    baseColumns.map((col, index) => ({
+      ...col,
+      onHeaderCell: column => ({
+        width: col.width,
+        onResize: handleResize(index),
+      }),
+    }))
+  , [baseColumns]);
+
+  // 表格組件配置
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -294,7 +413,10 @@ const HashtagsPage = () => {
             <Input
               placeholder={t('hashtags.searchPlaceholder')}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1); // 重置到第一頁
+              }}
               prefix={<TagOutlined />}
             />
           </Col>
@@ -304,16 +426,15 @@ const HashtagsPage = () => {
       {/* 標籤列表 */}
       <Card>
         <Table
-          columns={columns}
-          dataSource={filteredHashtags}
+          columns={resizableColumns}
+          dataSource={hashtags}
           rowKey="id"
           loading={loading}
-          pagination={{
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              t('common.pageRange', { start: range[0], end: range[1], total }),
-          }}
+          onChange={handleTableChange}
+          components={components}
+          pagination={false}
+          scroll={{ x: 1200, y: 'calc(100vh - 400px)' }}
+          sticky={{ offsetHeader: 0 }}
           locale={{
             emptyText: (
               <div style={{ padding: '40px', textAlign: 'center' }}>
@@ -326,6 +447,27 @@ const HashtagsPage = () => {
             ),
           }}
         />
+        <div style={{ marginTop: 16, textAlign: 'left' }}>
+          <Pagination
+            current={currentPage}
+            pageSize={pageSize}
+            total={totalCount}
+            showSizeChanger
+            showQuickJumper
+            pageSizeOptions={['10', '20', '50', '100']}
+            showTotal={(total, range) => 
+              `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`
+            }
+            onChange={(page, pageSize) => {
+              setCurrentPage(page);
+              setPageSize(pageSize);
+            }}
+            onShowSizeChange={(current, size) => {
+              setCurrentPage(1);
+              setPageSize(size);
+            }}
+          />
+        </div>
       </Card>
 
       {/* 新增/編輯標籤模態框 */}

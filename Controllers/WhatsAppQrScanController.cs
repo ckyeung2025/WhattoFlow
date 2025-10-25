@@ -119,7 +119,7 @@ namespace PurpleRice.Controllers
                 var originalImagePath = await SaveOriginalImage(imageFile, orderInfo.customerno);
 
                 // 轉換為 PDF
-                var receiptDate = DateTime.Now;
+                var receiptDate = DateTime.UtcNow;
                 var groupName = $"DN_{orderInfo.customerno}_{orderInfo.invoiceno}_{receiptDate:yyyyMMddHHmm}";
                 var pdfPath = _pdfService.ConvertImageToPdf(originalImagePath, orderInfo.customerno, orderInfo.invoiceno, groupName);
 
@@ -136,7 +136,7 @@ namespace PurpleRice.Controllers
                     pdf_path = _pdfService.GetRelativePath(pdfPath),
                     qr_code_text = qrCodeText,
                     receipt_date = receiptDate,
-                    upload_date = DateTime.Now,
+                    upload_date = DateTime.UtcNow,
                     upload_ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
                     status = "PENDING",
                     uploaded_by = "DeliveryMan"
@@ -569,7 +569,7 @@ namespace PurpleRice.Controllers
                 var invoiceNo = orderInfo.invoiceno;
                 var uploadsPath = Path.Combine(_environment.ContentRootPath, "Uploads");
                 var groupBaseDir = Path.Combine(uploadsPath, "Customer", customerNo, "Original");
-                var groupName = $"DN_{customerNo}_{invoiceNo}_{DateTime.Now:yyyyMMddHHmm}";
+                var groupName = $"DN_{customerNo}_{invoiceNo}_{DateTime.UtcNow:yyyyMMddHHmm}";
                 newGroupDir = Path.Combine(groupBaseDir, groupName);
                 Directory.CreateDirectory(newGroupDir);
                 // 更新 mapping
@@ -586,7 +586,7 @@ namespace PurpleRice.Controllers
                 string pdfRelPath = null;
                 DeliveryReceipt deliveryReceipt = null;
                 ItCustomer customerInfo = null;
-                DateTime receiptDate = DateTime.Now;
+                DateTime receiptDate = DateTime.UtcNow;
 
                 // 產生 PDF
                 originalImagePath = await SaveOriginalImageFromBytes(imageBytes, orderInfo.customerno);
@@ -597,7 +597,7 @@ namespace PurpleRice.Controllers
                 imageRelPath = $"Customer\\{customerNo}\\Original\\{groupName}\\{groupName}_1.jpg"; // 假設只存第一張
                 pdfRelPath = $"Customer\\{customerNo}\\PDF\\{groupName}.pdf";
                 customerInfo = await _erpContext.ItCustomer.Where(c => c.customerno == orderInfo.customerno).FirstOrDefaultAsync();
-                receiptDate = DateTime.Now;
+                receiptDate = DateTime.UtcNow;
                 _loggingService.LogInformation($"寫入 DeliveryReceipt: 發票號碼={orderInfo.invoiceno}, 客戶編號={orderInfo.customerno}");
 
                 deliveryReceipt = new DeliveryReceipt
@@ -612,7 +612,7 @@ namespace PurpleRice.Controllers
                     pdf_path = pdfRelPath,
                     qr_code_text = qrCodeText,
                     receipt_date = receiptDate,
-                    upload_date = DateTime.Now,
+                    upload_date = DateTime.UtcNow,
                     upload_ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
                     status = "PENDING",
                     uploaded_by = "DeliveryMan"
@@ -690,7 +690,7 @@ namespace PurpleRice.Controllers
             var customerPath = Path.Combine(uploadsPath, "Customer", customerNo, "Original");
             Directory.CreateDirectory(customerPath);
 
-            var fileName = $"DN_{customerNo}_{DateTime.Now:yyyyMMdd_HHmmss}{Path.GetExtension(imageFile.FileName)}";
+            var fileName = $"DN_{customerNo}_{DateTime.UtcNow:yyyyMMdd_HHmmss}{Path.GetExtension(imageFile.FileName)}";
             var filePath = Path.Combine(customerPath, fileName);
 
             using (var stream = new FileStream(filePath, FileMode.Create))
@@ -707,7 +707,7 @@ namespace PurpleRice.Controllers
             var uploadsPath = Path.Combine(_environment.ContentRootPath, "Uploads");
             var customerPath = Path.Combine(uploadsPath, "Customer", customerNo, "Original");
             Directory.CreateDirectory(customerPath);
-            var fileName = $"DN_{customerNo}_{DateTime.Now:yyyyMMdd_HHmmss}.jpg";
+            var fileName = $"DN_{customerNo}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.jpg";
             var filePath = Path.Combine(customerPath, fileName);
             await System.IO.File.WriteAllBytesAsync(filePath, imageBytes);
             return filePath;
@@ -761,7 +761,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成文件名：使用時間戳和 GUID 確保唯一性
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 var guid = Guid.NewGuid().ToString("N")[..8]; // 取前8位
                 var fileName = $"qr_scan_{status}_{timestamp}_{guid}.jpg";
                 

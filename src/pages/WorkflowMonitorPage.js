@@ -26,7 +26,8 @@ import {
   Alert,
   Switch,
   TimePicker,
-  DatePicker
+  DatePicker,
+  Pagination
 } from 'antd';
 import { 
   PlayCircleOutlined, 
@@ -71,12 +72,13 @@ import {
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
-import dayjs from 'dayjs';
-import duration from 'dayjs/plugin/duration';
+// import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
+// import duration from 'dayjs/plugin/duration'; // 已替換為 TimezoneUtils
+import { TimezoneUtils } from '../utils/timezoneUtils';
 import WhatsAppChat from '../components/WhatsAppChat';
 import MessageSendStatusModal from '../components/MessageSendStatusModal';
 
-dayjs.extend(duration);
+// dayjs.extend(duration); // 已替換為 TimezoneUtils
 
 const { Header, Content } = Layout;
 const { Search } = Input;
@@ -150,6 +152,7 @@ const WorkflowMonitorPage = () => {
   const [selectedMessageSendId, setSelectedMessageSendId] = useState(null);
   const [selectedWorkflowExecutionId, setSelectedWorkflowExecutionId] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
   
   // 右側詳情面板狀態
   const [detailPanelVisible, setDetailPanelVisible] = useState(false);
@@ -165,6 +168,21 @@ const WorkflowMonitorPage = () => {
   const [loadingEmbeddedForm, setLoadingEmbeddedForm] = useState(false);
 
   // 載入真實數據
+  // 獲取用戶時區信息
+  useEffect(() => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      try {
+        const parsedUserInfo = JSON.parse(userInfo);
+        if (parsedUserInfo.timezone) {
+          setUserTimezoneOffset(parsedUserInfo.timezone);
+        }
+      } catch (error) {
+        console.error('解析用戶信息失敗:', error);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     loadInstances();
     loadStatistics();
@@ -621,7 +639,7 @@ const WorkflowMonitorPage = () => {
       key: 'startedAt',
       width: 150,
       sorter: true,
-      render: (date) => dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+      render: (date) => TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset)
     },
     {
       title: t('workflowMonitor.duration'),
@@ -631,7 +649,7 @@ const WorkflowMonitorPage = () => {
       sorter: true,
       render: (duration, record) => {
         if (record.status === 'running') {
-          const runningDuration = dayjs.duration(dayjs().diff(dayjs(record.startedAt))).asMinutes();
+          const runningDuration = TimezoneUtils.calculateDuration(record.startedAt, new Date());
           return getDurationText(runningDuration);
         }
         return getDurationText(duration);
@@ -918,19 +936,7 @@ const WorkflowMonitorPage = () => {
               dataSource={instances}
               rowKey="id"
               loading={loading}
-              pagination={{
-                ...pagination,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => 
-                  t('workflowMonitor.paginationTotal', { start: range[0], end: range[1], total }),
-                locale: {
-                  items_per_page: t('workflowMonitor.itemsPerPage'),
-                  jump_to: t('workflowMonitor.jumpTo'),
-                  jump_to_confirm: t('workflowMonitor.confirm'),
-                  page: t('workflowMonitor.page')
-                }
-              }}
+              pagination={false}
               rowSelection={{
                 selectedRowKeys: selectedInstances.map(i => i.id),
                 onChange: (selectedRowKeys, selectedRows) => {
@@ -953,6 +959,25 @@ const WorkflowMonitorPage = () => {
                 }
               })}
             />
+            <div style={{ marginTop: 16, textAlign: 'left' }}>
+              <Pagination
+                current={pagination.current || 1}
+                pageSize={pagination.pageSize || 20}
+                total={pagination.total || 0}
+                showSizeChanger
+                showQuickJumper
+                pageSizeOptions={['10', '20', '50', '100']}
+                showTotal={(total, range) => 
+                  t('workflowMonitor.paginationTotal', { start: range[0], end: range[1], total })
+                }
+                onChange={(page, pageSize) => {
+                  setPagination(prev => ({ ...prev, current: page, pageSize }));
+                }}
+                onShowSizeChange={(current, size) => {
+                  setPagination(prev => ({ ...prev, current: 1, pageSize: size }));
+                }}
+              />
+            </div>
           </div>
         </Card>
             </div>
@@ -1002,7 +1027,7 @@ const WorkflowMonitorPage = () => {
           {selectedInstance && (
             <InstanceDetailModal 
               instance={selectedInstance} 
-                    onClose={handleCloseDetailPanel}
+              onClose={handleCloseDetailPanel}
               onViewMessageSend={handleViewMessageSend}
               onViewMessageSendDetail={handleViewMessageSendDetail}
               onViewDataSetQuery={(data) => {
@@ -1013,6 +1038,7 @@ const WorkflowMonitorPage = () => {
                 setSelectedFormInstanceId(formInstanceId);
                 setEmbedFormVisible(true);
               }}
+              userTimezoneOffset={userTimezoneOffset}
             />
           )}
           
@@ -1065,7 +1091,7 @@ const WorkflowMonitorPage = () => {
                         <strong>執行時間:</strong><br/>
                         <span style={{ color: '#666' }}>
                           {dataSetQueryResult.executedAt ? 
-                            new Date(dataSetQueryResult.executedAt).toLocaleString('zh-TW') : 
+                            TimezoneUtils.formatDateWithTimezone(dataSetQueryResult.executedAt, userTimezoneOffset) : 
                             '-'
                           }
                         </span>
@@ -1115,6 +1141,7 @@ const WorkflowMonitorPage = () => {
             <MessageSendDetailModal 
               messageSend={selectedMessageSend} 
               onClose={() => setMessageSendModalVisible(false)}
+              userTimezoneOffset={userTimezoneOffset}
             />
           )}
         </Modal>
@@ -1133,6 +1160,7 @@ const WorkflowMonitorPage = () => {
               onClose={() => setMessageSendDetailModalVisible(false)}
               onViewMessageSend={handleViewMessageSend}
               onViewMessageSendDetail={handleViewMessageSendDetail}
+              userTimezoneOffset={userTimezoneOffset}
             />
           )}
         </Modal>
@@ -1144,6 +1172,7 @@ const WorkflowMonitorPage = () => {
           messageSendId={selectedMessageSendId}
           workflowExecutionId={selectedWorkflowExecutionId}
           nodeId={selectedNodeId}
+          userTimezoneOffset={userTimezoneOffset}
         />
 
         {/* 內嵌表單 Modal */}
@@ -1261,7 +1290,7 @@ const WorkflowMonitorPage = () => {
                         fontSize: '14px',
                         color: '#666'
                       }}>
-                        {new Date(embeddedFormInstance.createdAt).toLocaleString('zh-TW')}
+                        {TimezoneUtils.formatDateWithTimezone(embeddedFormInstance.createdAt, userTimezoneOffset)}
                       </div>
                     </div>
                     
@@ -1374,7 +1403,7 @@ const WorkflowMonitorPage = () => {
 };
 
 // 實例詳情組件
-const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail, onViewDataSetQuery, onViewFormInstance }) => {
+const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessageSendDetail, onViewDataSetQuery, onViewFormInstance, userTimezoneOffset }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('history');
   const [eformInstances, setEformInstances] = useState([]);
@@ -1689,7 +1718,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
 
     switch (dataType.toLowerCase()) {
       case 'datetime':
-        return new Date(value).toLocaleString('zh-TW');
+        return TimezoneUtils.formatDateWithTimezone(value, userTimezoneOffset);
       case 'boolean':
         return value ? t('workflowMonitor.yes') : t('workflowMonitor.no');
       case 'json':
@@ -1911,7 +1940,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
           <Timeline>
             <Timeline.Item color="green">
               <p>{t('workflowMonitor.workflowStarted')}</p>
-              <p>{dayjs(instance.startedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+              <p>{TimezoneUtils.formatDateWithTimezone(instance.startedAt, userTimezoneOffset)}</p>
             </Timeline.Item>
             {instance.stepExecutions && instance.stepExecutions.length > 0 ? (
               instance.stepExecutions.map((step, index) => {
@@ -2077,9 +2106,9 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                         )}
                       </div>
                       <p>{t('workflowMonitor.stepStatus')}: {step.status}</p>
-                      <p>{t('workflowMonitor.stepStartTime')}: {step.startedAt ? dayjs(step.startedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
+                      <p>{t('workflowMonitor.stepStartTime')}: {step.startedAt ? TimezoneUtils.formatDateWithTimezone(step.startedAt, userTimezoneOffset) : '-'}</p>
                       {step.endedAt && (
-                        <p>{t('workflowMonitor.stepEndTime')}: {dayjs(step.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                        <p>{t('workflowMonitor.stepEndTime')}: {TimezoneUtils.formatDateWithTimezone(step.endedAt, userTimezoneOffset)}</p>
                       )}
                         
                         {/* 顯示用戶回覆（waitReply 或 waitForQRCode 節點） */}
@@ -2122,7 +2151,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                       <div key={validation.id} style={{ marginBottom: idx < textValidations.length - 1 ? '8px' : '0' }}>
                                         <Text>{validation.userMessage}</Text>
                                         <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
-                                          {dayjs(validation.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                                          {TimezoneUtils.formatDateWithTimezone(validation.createdAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss')}
                       </div>
                                       </div>
                                     ))}
@@ -2166,7 +2195,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                                   )}
                                                   
                                                   <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>
-                                                    {dayjs(validation.createdAt).format('HH:mm:ss')}
+                                                    {TimezoneUtils.formatDateWithTimezone(validation.createdAt, userTimezoneOffset, 'HH:mm:ss')}
                                                   </span>
                                                 </div>
                                               );
@@ -2182,7 +2211,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                                     <Text>{displayText}</Text>
                                                   )}
                                                   <span style={{ marginLeft: '8px', fontSize: '12px', color: '#666' }}>
-                                                    {dayjs(validation.createdAt).format('HH:mm:ss')}
+                                                    {TimezoneUtils.formatDateWithTimezone(validation.createdAt, userTimezoneOffset, 'HH:mm:ss')}
                                                   </span>
                                                 </div>
                                               ) : null;
@@ -2304,7 +2333,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                             fontSize: '12px', 
                             opacity: 0.7 
                           }}>
-                            {t('workflowMonitor.time')}: {new Date(outputData.timestamp).toLocaleString('zh-TW')}
+                            {t('workflowMonitor.time')}: {TimezoneUtils.formatDateWithTimezone(outputData.timestamp, userTimezoneOffset)}
                           </div>
                         )}
                         
@@ -2483,7 +2512,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
             {instance.status === 'completed' && (
               <Timeline.Item color="green">
                 <p>{t('workflowMonitor.workflowCompleted')}</p>
-                <p>{dayjs(instance.endedAt).format('YYYY-MM-DD HH:mm:ss')}</p>
+                <p>{TimezoneUtils.formatDateWithTimezone(instance.endedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss')}</p>
               </Timeline.Item>
             )}
           </Timeline>
@@ -2626,7 +2655,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                               borderRadius: '4px',
                               border: '1px solid #e8e8e8'
                             }}>
-                              {new Date(variable.setAt).toLocaleString('zh-TW')}
+                              {TimezoneUtils.formatDateWithTimezone(variable.setAt, userTimezoneOffset)}
                             </div>
                           </div>
                         )}
@@ -2980,7 +3009,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                             borderRadius: '4px',
                             border: '1px solid #e8e8e8'
                           }}>
-                            {eform.createdAt ? new Date(eform.createdAt).toLocaleString('zh-TW') : '-'}
+                            {eform.createdAt ? TimezoneUtils.formatDateWithTimezone(eform.createdAt, userTimezoneOffset) : '-'}
                           </div>
                         </div>
                         
@@ -3026,7 +3055,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                               borderRadius: '4px',
                               border: '1px solid #e8e8e8'
                             }}>
-                              {new Date(eform.approvalAt).toLocaleString('zh-TW')}
+                              {TimezoneUtils.formatDateWithTimezone(eform.approvalAt, userTimezoneOffset)}
                             </div>
                           </div>
                         )}
@@ -3309,7 +3338,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
 };
 
 // 消息發送詳情組件
-const MessageSendDetailModal = ({ messageSend, onClose }) => {
+const MessageSendDetailModal = ({ messageSend, onClose, userTimezoneOffset }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('basic');
   const [recipients, setRecipients] = useState([]);
@@ -3409,10 +3438,10 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
             <Descriptions.Item label={t('workflowMonitor.successCount')}>{messageSend.successCount}</Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.failedCount')}>{messageSend.failedCount}</Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.startedAt')}>
-              {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
+              {TimezoneUtils.formatDateWithTimezone(messageSend.startedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss')}
             </Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.completedAt')}>
-              {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
+              {messageSend.completedAt ? TimezoneUtils.formatDateWithTimezone(messageSend.completedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'}
             </Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.createdBy')}>{messageSend.createdBy}</Descriptions.Item>
             <Descriptions.Item label={t('workflowMonitor.sendReason')}>{getSendReasonTag(messageSend.sendReason)}</Descriptions.Item>
@@ -3456,11 +3485,12 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
               <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingRecipientDetails')}</p>
             </div>
           ) : recipients.length > 0 ? (
-            <Table
-              dataSource={recipients}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-              scroll={{ x: 800 }}
+            <>
+              <Table
+                dataSource={recipients}
+                rowKey="id"
+                pagination={false}
+                scroll={{ x: 800 }}
               columns={[
                 {
                   title: t('workflowMonitor.recipient'),
@@ -3501,21 +3531,21 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
                   dataIndex: 'sentAt',
                   key: 'sentAt',
                   width: 150,
-                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.deliveredAt'),
                   dataIndex: 'deliveredAt',
                   key: 'deliveredAt',
                   width: 150,
-                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.readAt'),
                   dataIndex: 'readAt',
                   key: 'readAt',
                   width: 150,
-                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.errorMessage'),
@@ -3527,6 +3557,26 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
                 }
               ]}
             />
+            <div style={{ marginTop: 16, textAlign: 'left' }}>
+              <Pagination
+                current={1}
+                pageSize={10}
+                total={recipients.length}
+                showSizeChanger
+                showQuickJumper
+                pageSizeOptions={['5', '10', '20', '50']}
+                showTotal={(total, range) => 
+                  `第 ${range[0]}-${range[1]} 條，共 ${total} 條記錄`
+                }
+                onChange={(page, pageSize) => {
+                  // 處理分頁變更
+                }}
+                onShowSizeChange={(current, size) => {
+                  // 處理每頁條數變更
+                }}
+              />
+            </div>
+            </>
           ) : (
             <Empty 
               description={t('workflowMonitor.noRecipientRecords')} 
@@ -3541,7 +3591,7 @@ const MessageSendDetailModal = ({ messageSend, onClose }) => {
 };
 
 // 消息發送詳細狀態組件
-const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend, onViewMessageSendDetail }) => {
+const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend, onViewMessageSendDetail, userTimezoneOffset }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('overview');
   const [recipients, setRecipients] = useState([]);
@@ -3751,10 +3801,10 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
               <Descriptions.Item label={t('workflowMonitor.successCount')}>{messageSend.successCount}</Descriptions.Item>
               <Descriptions.Item label={t('workflowMonitor.failedCount')}>{messageSend.failedCount}</Descriptions.Item>
               <Descriptions.Item label={t('workflowMonitor.startedAt')}>
-                {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
+                {TimezoneUtils.formatDateWithTimezone(messageSend.startedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss')}
               </Descriptions.Item>
               <Descriptions.Item label={t('workflowMonitor.completedAt')}>
-                {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}
+                {messageSend.completedAt ? TimezoneUtils.formatDateWithTimezone(messageSend.completedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('workflowMonitor.createdBy')}>{messageSend.createdBy}</Descriptions.Item>
               <Descriptions.Item label={t('workflowMonitor.sendReason')}>{getSendReasonTag(messageSend.sendReason)}</Descriptions.Item>
@@ -3885,7 +3935,7 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
                     dataIndex: 'startedAt',
                     key: 'startedAt',
                     width: 120,
-                    render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                    render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'MM-DD HH:mm:ss') : '-'
                   },
                   {
                     title: t('workflowMonitor.actions'),
@@ -3925,6 +3975,7 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
             <Table
               dataSource={recipients}
               rowKey="id"
+              className="pagination-left-table"
               pagination={{ pageSize: 10 }}
               scroll={{ x: 1000 }}
               columns={[
@@ -3967,21 +4018,21 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
                   dataIndex: 'sentAt',
                   key: 'sentAt',
                   width: 150,
-                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.deliveredAt'),
                   dataIndex: 'deliveredAt',
                   key: 'deliveredAt',
                   width: 150,
-                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.readAt'),
                   dataIndex: 'readAt',
                   key: 'readAt',
                   width: 150,
-                  render: (date) => date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.retryCount'),
@@ -4092,20 +4143,20 @@ const MessageSendStatusDetailModal = ({ messageSend, onClose, onViewMessageSend,
                   <div>
                     <Text strong>{t('workflowMonitor.sendStartTime')}:</Text>
                     <div style={{ marginTop: '4px', color: '#666' }}>
-                      {dayjs(messageSend.startedAt).format('YYYY-MM-DD HH:mm:ss')}
+                      {TimezoneUtils.formatDateWithTimezone(messageSend.startedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss')}
                     </div>
                   </div>
                   <div>
                     <Text strong>{t('workflowMonitor.sendCompleteTime')}:</Text>
                     <div style={{ marginTop: '4px', color: '#666' }}>
-                      {messageSend.completedAt ? dayjs(messageSend.completedAt).format('YYYY-MM-DD HH:mm:ss') : t('workflowMonitor.inProgress')}
+                      {messageSend.completedAt ? TimezoneUtils.formatDateWithTimezone(messageSend.completedAt, userTimezoneOffset, 'YYYY-MM-DD HH:mm:ss') : t('workflowMonitor.inProgress')}
                     </div>
                   </div>
                   <div>
                     <Text strong>{t('workflowMonitor.totalSendTime')}:</Text>
                     <div style={{ marginTop: '4px', color: '#666' }}>
                       {messageSend.completedAt ? 
-                        `${dayjs.duration(dayjs(messageSend.completedAt).diff(dayjs(messageSend.startedAt))).asMinutes().toFixed(1)} ${t('workflowMonitor.minutes')}` : 
+                        `${TimezoneUtils.calculateDurationInMinutes(messageSend.startedAt, messageSend.completedAt).toFixed(1)} ${t('workflowMonitor.minutes')}` : 
                         t('workflowMonitor.inProgress')
                       }
                     </div>
@@ -4235,14 +4286,7 @@ const DataSetQueryResultTable = ({ data, recordCount }) => {
           key: index
         }))}
         columns={columns}
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => 
-            `第 ${range[0]}-${range[1]} 條，共 ${total} 條記錄`,
-          pageSizeOptions: ['10', '20', '50', '100']
-        }}
+        pagination={false}
         scroll={{ x: 'max-content', y: 400 }}
         size="small"
         bordered

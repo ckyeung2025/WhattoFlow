@@ -9,12 +9,13 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useLanguage } from '../contexts/LanguageContext';
+import { TimezoneUtils } from '../utils/timezoneUtils';
 
 const { TabPane } = Tabs;
 const { Text } = Typography;
 
 // 消息發送狀態模態框組件
-const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecutionId, nodeId }) => {
+const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecutionId, nodeId, userTimezoneOffset }) => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('normal');
   const [loading, setLoading] = useState(false);
@@ -350,7 +351,7 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
                   dataIndex: 'startedAt',
                   key: 'startedAt',
                   width: 120,
-                  render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.operation'),

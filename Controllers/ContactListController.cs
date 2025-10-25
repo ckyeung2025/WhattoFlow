@@ -62,7 +62,9 @@ namespace PurpleRice.Controllers
             [FromQuery] int pageSize = 20,
             [FromQuery] string? search = null,
             [FromQuery] Guid? broadcastGroupId = null,
-            [FromQuery] string? hashtagFilter = null)
+            [FromQuery] string? hashtagFilter = null,
+            [FromQuery] string? sortField = null,
+            [FromQuery] string? sortOrder = null)
         {
             try
             {
@@ -80,7 +82,7 @@ namespace PurpleRice.Controllers
                 }
 
                 var (contacts, totalCount) = await _contactListService.GetContactsAsync(
-                    companyId, page, pageSize, search, broadcastGroupId, hashtagFilter);
+                    companyId, page, pageSize, search, broadcastGroupId, hashtagFilter, sortField, sortOrder);
 
                 _logger.LogInformation("查詢結果 - 聯絡人數量: {ContactCount}, 總數量: {TotalCount}", 
                     contacts?.Count ?? 0, totalCount);
@@ -409,7 +411,12 @@ namespace PurpleRice.Controllers
         /// 獲取廣播群組列表
         /// </summary>
         [HttpGet("groups")]
-        public async Task<IActionResult> GetBroadcastGroups()
+        public async Task<IActionResult> GetBroadcastGroups(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? search = null,
+            [FromQuery] string? sortField = null,
+            [FromQuery] string? sortOrder = null)
         {
             try
             {
@@ -417,10 +424,20 @@ namespace PurpleRice.Controllers
                 if (companyId == Guid.Empty)
                     return Unauthorized("無法識別公司資訊");
 
-                var groups = await _contactListService.GetBroadcastGroupsAsync(companyId);
-                _logger.LogInformation("廣播群組查詢結果 - 數量: {GroupCount}", groups?.Count ?? 0);
-                _logger.LogInformation("廣播群組數據: {Groups}", System.Text.Json.JsonSerializer.Serialize(groups));
-                return Ok(groups);
+                var (groups, totalCount) = await _contactListService.GetBroadcastGroupsAsync(
+                    companyId, page, pageSize, search, sortField, sortOrder);
+                
+                _logger.LogInformation("廣播群組查詢結果 - 數量: {GroupCount}, 總計: {TotalCount}", 
+                    groups?.Count ?? 0, totalCount);
+                
+                return Ok(new
+                {
+                    data = groups,
+                    total = totalCount,
+                    page = page,
+                    pageSize = pageSize,
+                    totalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+                });
             }
             catch (Exception ex)
             {
@@ -442,7 +459,7 @@ namespace PurpleRice.Controllers
                     return Unauthorized("無法識別公司資訊");
 
                 // 先獲取所有群組，然後找到指定的群組
-                var allGroups = await _contactListService.GetBroadcastGroupsAsync(companyId);
+                var (allGroups, _) = await _contactListService.GetBroadcastGroupsAsync(companyId);
                 var group = allGroups.FirstOrDefault(g => g.Id == id);
                 if (group == null)
                     return NotFound("廣播群組不存在");
@@ -525,7 +542,7 @@ namespace PurpleRice.Controllers
                     return BadRequest("群組名稱為必填欄位");
 
                 // 先獲取所有群組，然後找到指定的群組
-                var allGroups = await _contactListService.GetBroadcastGroupsAsync(companyId);
+                var (allGroups, _) = await _contactListService.GetBroadcastGroupsAsync(companyId);
                 var existingGroup = allGroups.FirstOrDefault(g => g.Id == id);
                 if (existingGroup == null)
                     return NotFound("廣播群組不存在");
@@ -619,10 +636,15 @@ namespace PurpleRice.Controllers
         }
 
         /// <summary>
-        /// 獲取標籤列表
+        /// 獲取標籤列表（支持分頁、排序、搜索）
         /// </summary>
         [HttpGet("hashtags")]
-        public async Task<IActionResult> GetHashtags()
+        public async Task<IActionResult> GetHashtags(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? search = null,
+            [FromQuery] string? sortField = null,
+            [FromQuery] string? sortOrder = null)
         {
             try
             {
@@ -630,10 +652,17 @@ namespace PurpleRice.Controllers
                 if (companyId == Guid.Empty)
                     return Unauthorized("無法識別公司資訊");
 
-                var hashtags = await _contactListService.GetHashtagsAsync(companyId);
-                _logger.LogInformation("標籤查詢結果 - 數量: {HashtagCount}", hashtags?.Count ?? 0);
-                _logger.LogInformation("標籤數據: {Hashtags}", System.Text.Json.JsonSerializer.Serialize(hashtags));
-                return Ok(hashtags);
+                var (hashtags, totalCount) = await _contactListService.GetHashtagsAsync(companyId, page, pageSize, search, sortField, sortOrder);
+                
+                _logger.LogInformation("標籤查詢結果 - 數量: {HashtagCount}, 總數: {TotalCount}", hashtags?.Count ?? 0, totalCount);
+                
+                return Ok(new {
+                    data = hashtags,
+                    total = totalCount,
+                    page = page,
+                    pageSize = pageSize,
+                    totalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+                });
             }
             catch (Exception ex)
             {
@@ -709,7 +738,7 @@ namespace PurpleRice.Controllers
                     return BadRequest("標籤名稱為必填欄位");
 
                 // 先獲取所有標籤，然後找到指定的標籤
-                var allHashtags = await _contactListService.GetHashtagsAsync(companyId);
+                var (allHashtags, _) = await _contactListService.GetHashtagsAsync(companyId);
                 var existingHashtag = allHashtags.FirstOrDefault(h => h.Id == id);
                 if (existingHashtag == null)
                     return NotFound("標籤不存在");
