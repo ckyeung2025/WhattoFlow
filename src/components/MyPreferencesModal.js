@@ -3,8 +3,46 @@ import { Modal, Tabs, Form, Input, Button, Select, Upload, message, Avatar } fro
 import { UploadOutlined } from '@ant-design/icons';
 import apiClient from '../services/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
+import { TIMEZONES, getGMTOffsetString } from '../configs/timezones';
 
 const { TabPane } = Tabs;
+
+// 將 UTC+8 格式轉換為 IANA 時區標識符
+const convertGMTOffsetToIANA = (gmtOffset) => {
+  if (!gmtOffset) return 'Asia/Hong_Kong';
+  
+  // 如果已經是 IANA 格式，直接返回
+  if (TIMEZONES.some(tz => tz.value === gmtOffset)) {
+    return gmtOffset;
+  }
+  
+  // 如果是 UTC+8 格式，找到對應的 IANA 時區
+  const timezone = TIMEZONES.find(tz => {
+    const tzOffset = getGMTOffsetString(tz.value);
+    return tzOffset === gmtOffset;
+  });
+  
+  // 如果找到多個匹配的時區，優先選擇 Asia/Hong_Kong
+  if (timezone) {
+    return timezone.value;
+  }
+  
+  // 默認返回香港時區
+  return 'Asia/Hong_Kong';
+};
+
+// 將 IANA 時區標識符轉換為 UTC+8 格式
+const convertIANAToGMTOffset = (ianaTimezone) => {
+  if (!ianaTimezone) return 'UTC+8';
+  
+  // 如果已經是 UTC+8 格式，直接返回
+  if (ianaTimezone.startsWith('UTC')) {
+    return ianaTimezone;
+  }
+  
+  // 如果是 IANA 格式，轉換為 UTC+8 格式
+  return getGMTOffsetString(ianaTimezone);
+};
 
 const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, showUserAdminFields = false }) => {
   const [form] = Form.useForm();
@@ -23,7 +61,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
         email: userInfo.email || '',
         phone: userInfo.phone || '',
         language: userInfo.language || 'zh-TC',
-        timezone: userInfo.timezone || 'Asia/Hong_Kong',
+        timezone: convertGMTOffsetToIANA(userInfo.timezone), // 轉換時區格式
         avatar_url: userInfo.avatar_url || '',
         is_active: typeof userInfo.is_active !== 'undefined' ? userInfo.is_active : (typeof userInfo.isActive !== 'undefined' ? userInfo.isActive : undefined),
         is_owner: typeof userInfo.is_owner !== 'undefined' ? userInfo.is_owner : (typeof userInfo.isOwner !== 'undefined' ? userInfo.isOwner : undefined),
@@ -72,7 +110,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
         email: values.email,
         phone: values.phone,
         language: values.language,
-        timezone: values.timezone,
+        timezone: convertIANAToGMTOffset(values.timezone), // 轉換回 UTC+8 格式
         AvatarUrl: avatarUrl
       };
       
@@ -96,7 +134,7 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
             email: res.data.email || '',
             phone: res.data.phone || '',
             language: res.data.language || 'zh-TC',
-            timezone: res.data.timezone || 'Asia/Hong_Kong',
+            timezone: convertGMTOffsetToIANA(res.data.timezone), // 轉換時區格式
             avatar_url: res.data.avatar_url || ''
           });
         }
@@ -178,11 +216,17 @@ const MyPreferencesModal = ({ visible, onClose, userInfo, onUserInfoUpdate, show
             </Form.Item>
             <Form.Item label={t('preferences.timezone')} name="timezone">
               <Select
-                options={[
-                  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong' },
-                  { value: 'Asia/Taipei', label: 'Asia/Taipei' },
-                  { value: 'UTC', label: 'UTC' }
-                ]}
+                showSearch
+                placeholder={t('preferences.selectTimezone')}
+                optionFilterProp="children"
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={TIMEZONES.map(timezone => ({
+                  value: timezone.value,
+                  label: timezone.label
+                }))}
+                style={{ width: '100%' }}
               />
             </Form.Item>
             <Form.Item label={t('preferences.password')} name="password_hash" rules={[{ min: 6, message: t('preferences.password') + ' ' + t('common.minLength', { min: 6 }) }]}>

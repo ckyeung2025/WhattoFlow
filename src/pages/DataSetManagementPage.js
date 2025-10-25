@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Button, Modal, Form, Input, Select, Upload, message, 
   Card, Tag, Space, Typography, Drawer, Tooltip, Popconfirm,
-  Tabs, Switch, InputNumber, Divider, Alert, Row, Col, Collapse, Radio, Progress
+  Tabs, Switch, InputNumber, Divider, Alert, Row, Col, Collapse, Radio, Progress, Pagination
 } from 'antd';
 import { 
   PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined,
@@ -14,6 +14,7 @@ import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
+import TimezoneUtils from '../utils/timezoneUtils';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -87,6 +88,9 @@ const DataSetManagementPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
+  // 用戶時區偏移狀態
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
+
   useEffect(() => {
     console.log('DataSetManagementPage: 組件已掛載，開始獲取數據');
     fetchDataSets();
@@ -100,6 +104,14 @@ const DataSetManagementPage = () => {
         clearInterval(syncStatusInterval);
       }
     };
+  }, []);
+
+  // 獲取用戶時區設置
+  useEffect(() => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.timezone) {
+      setUserTimezoneOffset(userInfo.timezone);
+    }
   }, []);
 
   // 處理 URL 參數中的 edit 參數
@@ -806,7 +818,7 @@ const DataSetManagementPage = () => {
   };
 
   // 基礎表格列定義
-  const baseColumns = [
+  const baseColumns = React.useMemo(() => [
     {
       title: t('dataSetManagement.name'),
       dataIndex: 'name',
@@ -863,7 +875,7 @@ const DataSetManagementPage = () => {
       key: 'lastDataSyncTime',
       width: 180,
       sorter: true,
-      render: (time) => time ? new Date(time).toLocaleString('zh-TW') : t('dataSetManagement.neverSynced')
+      render: (time) => time ? TimezoneUtils.formatDateWithTimezone(time, userTimezoneOffset) : t('dataSetManagement.neverSynced')
     },
     {
       title: t('dataSetManagement.syncProgress'),
@@ -1090,16 +1102,14 @@ const DataSetManagementPage = () => {
         </Space>
       )
     }
-  ];
+  ], [t, userTimezoneOffset]);
 
   // 初始化可調整列寬的列配置
   useEffect(() => {
-    if (resizableColumns.length === 0) {
-      setResizableColumns(
-        baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
-      );
-    }
-  }, [baseColumns, resizableColumns.length]);
+    setResizableColumns(
+      baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+    );
+  }, [baseColumns]);
 
   // 合併列配置，添加調整功能
   const mergedColumns = resizableColumns.map((col, index) => ({
@@ -1164,7 +1174,7 @@ const DataSetManagementPage = () => {
         // 修正：使用正確的屬性名稱
         switch (col.dataType) {
           case 'datetime':
-            return value.dateValue ? new Date(value.dateValue).toLocaleString('zh-TW') : 
+            return value.dateValue ? TimezoneUtils.formatDateWithTimezone(value.dateValue, userTimezoneOffset) : 
                    (value.stringValue || '-');
           case 'decimal':
           case 'int':
@@ -1722,19 +1732,24 @@ const DataSetManagementPage = () => {
           dataSource={dataSets}
           loading={loading}
           rowKey="id"
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => t('dataSetManagement.totalRecords', { total }),
-            pageSizeOptions: t('dataSetManagement.pageSizeOptions'),
-            showSizeChanger: true,
-            showQuickJumper: true
-          }}
+          pagination={false}
+          size="small"
+          style={{ width: '100%' }}
           onChange={handleTableChange}
+          scroll={{ x: 1200, y: 'calc(100vh - 280px)' }}
         />
+        <div style={{ marginTop: 16, textAlign: 'left' }}>
+          <Pagination
+            current={pagination.current || 1}
+            pageSize={pagination.pageSize || 10}
+            total={pagination.total || 0}
+            showSizeChanger
+            pageSizeOptions={['10', '20', '50', '100']}
+            showTotal={(total, range) => `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`}
+            onChange={(page, pageSize) => fetchDataSets(page, pageSize)}
+            onShowSizeChange={(current, size) => fetchDataSets(1, size)}
+          />
+        </div>
       </Card>
 
       {/* 創建/編輯 Modal */}
@@ -2437,7 +2452,7 @@ const DataSetManagementPage = () => {
                   key: 'createdAt',
                   width: 150,
                   ellipsis: true,
-                  render: (time) => new Date(time).toLocaleString('zh-TW')
+                  render: (time) => TimezoneUtils.formatDateWithTimezone(time, userTimezoneOffset)
                 },
                 ...renderRecordColumns()
               ]}

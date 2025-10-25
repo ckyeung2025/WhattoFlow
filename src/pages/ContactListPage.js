@@ -20,6 +20,8 @@ import {
   Checkbox,
   Tooltip
 } from 'antd';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { 
   PlusOutlined, 
   SearchOutlined, 
@@ -38,10 +40,34 @@ import {
 import { contactApi, broadcastGroupApi, hashtagApi } from '../services/contactApi';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
+import TimezoneUtils from '../utils/timezoneUtils';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
 const { Option } = Select;
+
+// ResizableTitle 組件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
 
 const ContactListPage = () => {
   console.log('🚀 ContactListPage 組件已載入！');
@@ -52,6 +78,9 @@ const ContactListPage = () => {
   console.log('✅ useNavigate 成功');
   console.log('✅ useLanguage 成功，t 函數:', typeof t);
   console.log('🔧 組件初始化完成');
+
+  // 用戶時區偏移狀態
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
   
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -60,11 +89,28 @@ const ContactListPage = () => {
   
   // 分頁和搜尋
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('');
   const [selectedHashtag, setSelectedHashtag] = useState('');
+  
+  // 排序狀態
+  const [sortField, setSortField] = useState('');
+  const [sortOrder, setSortOrder] = useState('');
+  
+  // 列寬度管理
+  const [columnWidths, setColumnWidths] = useState({
+    select: 50,
+    name: 200,
+    contact: 200,
+    company: 180,
+    broadcastGroup: 150,
+    hashtags: 200,
+    createdAt: 150,
+    updatedAt: 150,
+    actions: 100
+  });
   
   // 群組和標籤選項
   const [groups, setGroups] = useState([]);
@@ -96,7 +142,9 @@ const ContactListPage = () => {
         pageSize: pageSize,
         search: searchTerm || undefined,
         broadcastGroupId: selectedGroup || undefined,
-        hashtagFilter: selectedHashtag || undefined
+        hashtagFilter: selectedHashtag || undefined,
+        sortField: sortField || undefined,
+        sortOrder: sortOrder || undefined
       };
       
       console.log('API 請求參數:', params);
@@ -174,8 +222,9 @@ const ContactListPage = () => {
       console.log('群組 API 響應:', groupsResponse);
       console.log('標籤 API 響應:', hashtagsResponse);
       
-      const groups = groupsResponse || [];
-      const hashtags = hashtagsResponse || [];
+      // 處理新的 API 響應格式
+      const groups = groupsResponse?.data || groupsResponse || [];
+      const hashtags = hashtagsResponse?.data || hashtagsResponse || [];
       
       console.log('解析後的群組數量:', groups.length);
       console.log('解析後的標籤數量:', hashtags.length);
@@ -205,7 +254,7 @@ const ContactListPage = () => {
   useEffect(() => {
     console.log('🔥🔥🔥 useEffect 觸發！🔥🔥🔥');
     console.log('=== ContactListPage 載入檢查 ===');
-    console.log('依賴項變化:', { currentPage, searchTerm, selectedGroup, selectedHashtag });
+    console.log('依賴項變化:', { currentPage, searchTerm, selectedGroup, selectedHashtag, sortField, sortOrder });
     console.log('🔥🔥🔥 useEffect 開始執行 🔥🔥🔥');
     
     // 檢查用戶是否已登入
@@ -259,7 +308,15 @@ const ContactListPage = () => {
     }
     
     console.log('=== ContactListPage 載入檢查結束 ===');
-  }, [currentPage, searchTerm, selectedGroup, selectedHashtag]);
+  }, [currentPage, searchTerm, selectedGroup, selectedHashtag, sortField, sortOrder]);
+
+  // 獲取用戶時區設置
+  useEffect(() => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.timezone) {
+      setUserTimezoneOffset(userInfo.timezone);
+    }
+  }, []);
 
   // 搜尋處理
   const handleSearch = (value) => {
@@ -324,11 +381,35 @@ const ContactListPage = () => {
     return hashtags.split(',').map(tag => tag.trim()).filter(tag => tag);
   };
 
+  // 列調整大小處理
+  const handleResize = index => (e, { size }) => {
+    const column = resizableColumns[index];
+    setColumnWidths(prev => ({
+      ...prev,
+      [column.key]: size.width
+    }));
+  };
+
+  // 表格排序處理
+  const handleTableChange = (pagination, filters, sorter) => {
+    // 處理排序
+    if (sorter && sorter.field) {
+      const newSortField = sorter.field;
+      const newSortOrder = sorter.order === 'ascend' ? 'asc' : sorter.order === 'descend' ? 'desc' : '';
+      
+      setSortField(newSortField);
+      setSortOrder(newSortOrder);
+    } else {
+      setSortField('');
+      setSortOrder('');
+    }
+  };
+
   // 分頁計算
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  // 表格列定義
-  const columns = [
+  // 表格列定義 - 基礎列
+  const baseColumns = React.useMemo(() => [
     {
       title: (
         <Checkbox
@@ -338,7 +419,7 @@ const ContactListPage = () => {
       ),
       dataIndex: 'id',
       key: 'select',
-      width: 50,
+      width: columnWidths.select,
       render: (id) => (
         <Checkbox
           checked={selectedContacts.includes(id)}
@@ -350,6 +431,9 @@ const ContactListPage = () => {
       title: t('contactList.name'),
       dataIndex: 'name',
       key: 'name',
+      width: columnWidths.name,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (text, record) => (
         <div>
           <div style={{ fontWeight: 'bold' }}>{text}</div>
@@ -365,6 +449,9 @@ const ContactListPage = () => {
       title: t('contactList.contactInfo'),
       dataIndex: 'contact',
       key: 'contact',
+      width: columnWidths.contact,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => (
         <div>
           {record.whatsAppNumber && (
@@ -388,6 +475,9 @@ const ContactListPage = () => {
       title: t('contactList.company'),
       dataIndex: 'company',
       key: 'company',
+      width: columnWidths.company,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => (
         <div>
           {record.companyName && (
@@ -408,6 +498,9 @@ const ContactListPage = () => {
       title: t('contactList.group'),
       dataIndex: 'broadcastGroup',
       key: 'broadcastGroup',
+      width: columnWidths.broadcastGroup,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (group, record) => {
         // 如果沒有群組數據，顯示群組ID作為備用
         if (!group && record.broadcastGroupId) {
@@ -422,6 +515,7 @@ const ContactListPage = () => {
       title: t('contactList.tags'),
       dataIndex: 'hashtags',
       key: 'hashtags',
+      width: columnWidths.hashtags,
       render: (hashtags) => (
         <Space wrap>
           {formatHashtags(hashtags).map((tag, index) => (
@@ -431,9 +525,27 @@ const ContactListPage = () => {
       ),
     },
     {
+      title: t('contactList.createdAt'),
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: columnWidths.createdAt,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
+      render: (time) => time ? TimezoneUtils.formatDateWithTimezone(time, userTimezoneOffset) : '-',
+    },
+    {
+      title: t('contactList.updatedAt'),
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      width: columnWidths.updatedAt,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
+      render: (time) => time ? TimezoneUtils.formatDateWithTimezone(time, userTimezoneOffset) : '-',
+    },
+    {
       title: t('contactList.actions'),
       key: 'actions',
-      width: 100,
+      width: columnWidths.actions,
       render: (_, record) => (
         <Space>
           <Tooltip title={t('contactList.edit')}>
@@ -457,7 +569,25 @@ const ContactListPage = () => {
         </Space>
       ),
     },
-  ];
+  ], [t, userTimezoneOffset, selectedContacts, contacts, navigate, columnWidths]);
+
+  // 可調整大小的列
+  const resizableColumns = React.useMemo(() => 
+    baseColumns.map((col, index) => ({
+      ...col,
+      onHeaderCell: column => ({
+        width: col.width,
+        onResize: handleResize(index),
+      }),
+    }))
+  , [baseColumns]);
+
+  // 表格組件配置
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -573,19 +703,19 @@ const ContactListPage = () => {
       {/* 聯絡人列表 */}
       <Card>
         <Table
-          columns={columns}
+          components={components}
+          columns={resizableColumns}
           dataSource={contacts}
           rowKey="id"
           loading={loading}
-          pagination={{
-            current: currentPage,
-            pageSize: pageSize,
-            total: totalCount,
-            onChange: setCurrentPage,
-            showSizeChanger: false,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              t('common.pageRange', { start: range[0], end: range[1], total }),
+          onChange={handleTableChange}
+          pagination={false}
+          scroll={{ 
+            x: 1200,
+            y: 'calc(100vh - 400px)'
+          }}
+          sticky={{
+            offsetHeader: 0
           }}
           locale={{
             emptyText: (
@@ -597,6 +727,27 @@ const ContactListPage = () => {
             ),
           }}
         />
+        <div style={{ marginTop: 16, textAlign: 'left' }}>
+          <Pagination
+            current={currentPage}
+            pageSize={pageSize}
+            total={totalCount}
+            showSizeChanger
+            showQuickJumper
+            pageSizeOptions={['10', '20', '50', '100']}
+            showTotal={(total, range) => 
+              `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`
+            }
+            onChange={(page, pageSize) => {
+              setCurrentPage(page);
+              setPageSize(pageSize);
+            }}
+            onShowSizeChange={(current, size) => {
+              setCurrentPage(1);
+              setPageSize(size);
+            }}
+          />
+        </div>
       </Card>
 
       {/* 刪除確認對話框 */}

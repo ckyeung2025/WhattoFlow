@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table, Button, Form, Input, Select, message, Tag, Modal,
-  Space, Card, Divider, Row, Col, Tooltip, Popconfirm, Badge, Steps, Radio
+  Space, Card, Divider, Row, Col, Tooltip, Popconfirm, Badge, Steps, Radio, Pagination
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, ReloadOutlined, EyeOutlined,
@@ -10,6 +10,7 @@ import {
   StrikethroughOutlined, CodeOutlined, NumberOutlined, SmileOutlined
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
+import TimezoneUtils from '../utils/timezoneUtils';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -23,6 +24,9 @@ const MetaTemplatePanel = () => {
   const [form] = Form.useForm();
   
   const { t } = useLanguage();
+
+  // 用戶時區偏移狀態
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
 
   // 查詢條件
   const [searchName, setSearchName] = useState('');
@@ -56,6 +60,14 @@ const MetaTemplatePanel = () => {
 
   useEffect(() => {
     fetchMetaTemplates();
+  }, []);
+
+  // 獲取用戶時區設置
+  useEffect(() => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.timezone) {
+      setUserTimezoneOffset(userInfo.timezone);
+    }
   }, []);
 
   // 獲取 Meta 模板列表（支持查詢參數）
@@ -1054,11 +1066,21 @@ const MetaTemplatePanel = () => {
         dataSource={templates}
         rowKey="id"
         loading={loading}
-        pagination={{
-          pageSize: 10,
-          showTotal: (total) => t('whatsappTemplate.metaTemplate.totalTemplates').replace('{count}', total)
-        }}
+        pagination={false}
+        size="small"
+        style={{ width: '100%' }}
+        scroll={{ x: 1200, y: 'calc(100vh - 450px)' }}
       />
+      <div style={{ marginTop: 16, textAlign: 'left' }}>
+        <Pagination
+          current={1}
+          pageSize={10}
+          total={templates.length}
+          showSizeChanger
+          pageSizeOptions={['10', '20', '50', '100']}
+          showTotal={(total, range) => `${t('whatsappTemplate.metaTemplate.pageRange')}${range[0]}-${range[1]}${t('whatsappTemplate.metaTemplate.total')}${total}`}
+        />
+      </div>
 
       {/* 創建模板 Modal */}
       <Modal
@@ -1401,12 +1423,12 @@ const MetaTemplatePanel = () => {
               {/* 顯示創建/更新時間 */}
               {previewTemplate.created_time && (
                 <p style={{ marginTop: 8, fontSize: '12px', color: '#999' }}>
-                  <strong>創建時間：</strong>{new Date(previewTemplate.created_time).toLocaleString('zh-TW')}
+                  <strong>創建時間：</strong>{TimezoneUtils.formatDateWithTimezone(previewTemplate.created_time, userTimezoneOffset)}
                 </p>
               )}
               {previewTemplate.updated_time && (
                 <p style={{ fontSize: '12px', color: '#999' }}>
-                  <strong>更新時間：</strong>{new Date(previewTemplate.updated_time).toLocaleString('zh-TW')}
+                  <strong>更新時間：</strong>{TimezoneUtils.formatDateWithTimezone(previewTemplate.updated_time, userTimezoneOffset)}
                 </p>
               )}
             </Card>

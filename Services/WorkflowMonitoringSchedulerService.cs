@@ -169,8 +169,8 @@ namespace PurpleRice.Services
                         }
 
                         // 計算距離上次活動的時間
-                        var lastActivityTime = step.LastRetryAt ?? step.StartedAt ?? DateTime.Now;
-                        var minutesSinceLastActivity = (DateTime.Now - lastActivityTime).TotalMinutes;
+                        var lastActivityTime = step.LastRetryAt ?? step.StartedAt ?? DateTime.UtcNow;
+                        var minutesSinceLastActivity = (DateTime.UtcNow - lastActivityTime).TotalMinutes;
 
                         loggingService.LogDebug($"步驟 {step.Id} ({step.TaskName}): 距上次活動 {minutesSinceLastActivity:F1} 分鐘，重試間隔 {retryIntervalMinutes} 分鐘，已重試 {step.RetryCount} 次");
 

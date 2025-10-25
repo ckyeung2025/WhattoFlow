@@ -13,6 +13,7 @@ import {
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
+import TimezoneUtils from '../utils/timezoneUtils';
 
 const { Option } = Select;
 
@@ -59,6 +60,9 @@ const InternalTemplatePanel = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [form] = Form.useForm();
 
+  // 用戶時區偏移狀態
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
+
   // New states for dynamic forms
   const [templateType, setTemplateType] = useState('Text');
   const [interactiveType, setInteractiveType] = useState('button');
@@ -100,6 +104,14 @@ const InternalTemplatePanel = () => {
     fetchTemplates();
     fetchCategories();
   }, [currentPage, pageSize, sortField, sortOrder, searchText, categoryFilter, statusFilter]);
+
+  // 獲取用戶時區設置
+  useEffect(() => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.timezone) {
+      setUserTimezoneOffset(userInfo.timezone);
+    }
+  }, []);
 
   // Handle edit parameter in URL
   useEffect(() => {
@@ -1305,7 +1317,7 @@ const InternalTemplatePanel = () => {
   };
 
   // 基礎表格列定義
-  const baseColumns = [
+  const baseColumns = React.useMemo(() => [
     {
       title: t('whatsappTemplate.templateName'),
       dataIndex: 'name',
@@ -1390,7 +1402,7 @@ const InternalTemplatePanel = () => {
       key: 'updatedAt',
       width: 160,
       sorter: true,
-      render: (text) => new Date(text).toLocaleString('zh-TW')
+      render: (text) => TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset)
     },
     {
       title: t('whatsappTemplate.action'),
@@ -1432,16 +1444,14 @@ const InternalTemplatePanel = () => {
         </Space>
       )
     }
-  ];
+  ], [t, userTimezoneOffset]);
 
   // 初始化可調整列寬的列配置
   useEffect(() => {
-    if (resizableColumns.length === 0) {
-      setResizableColumns(
-        baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
-      );
-    }
-  }, [baseColumns, resizableColumns.length]);
+    setResizableColumns(
+      baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+    );
+  }, [baseColumns]);
 
   // 合併列配置，添加調整功能
   const mergedColumns = resizableColumns.map((col, index) => ({
@@ -2089,7 +2099,7 @@ const InternalTemplatePanel = () => {
         style={{ width: '100%' }}
         onChange={handleTableChange}
         rowSelection={rowSelection}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1200, y: 'calc(100vh - 450px)' }}
       />
       <div style={{ marginTop: 16, textAlign: 'right' }}>
         <Pagination

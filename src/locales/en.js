@@ -512,6 +512,7 @@ const en = {
     phone: 'Phone',
     language: 'Language',
     timezone: 'Timezone',
+    selectTimezone: 'Please select timezone',
     password: 'Password',
     passwordPlaceholder: 'Enter new password if you need to change',
     isActive: 'Active',
@@ -548,6 +549,7 @@ const en = {
     batchEnable: "Batch Enable",
     batchDisable: "Batch Disable",
     timezone: "Timezone",
+    selectTimezone: "Please select timezone",
     language: "Language",
     addCompany: "Add Company",
     roles: "Roles",
@@ -589,7 +591,31 @@ const en = {
     waPhoneNoId: "wA_PhoneNo_ID",
     waVerifyToken: "wA_VerifyToken",
     back: "Back",
-    save: "Save"
+    save: "Save",
+    // WhatsApp Menu Settings
+    chatbotMenuConfig: "Chatbot Menu Config",
+    apiSettings: "API Settings",
+    menuConfigHint: "These settings are used to customize WhatsApp chatbot menu text. Leave empty to use system defaults.",
+    welcomeMessage: "Welcome Message",
+    welcomeMessageTooltip: "Welcome text displayed when users first interact",
+    noFunctionMessage: "No Function Message",
+    noFunctionMessageTooltip: "Message displayed when no workflows are available",
+    menuTitle: "Menu Title",
+    menuTitleTooltip: "Title of the WhatsApp list menu",
+    menuButton: "View Button",
+    menuButtonTooltip: "Text for the view options button",
+    menuFooter: "Menu Footer",
+    menuFooterTooltip: "Footer text for WhatsApp list menu",
+    sectionTitle: "Section Title",
+    sectionTitleTooltip: "Category title for service options",
+    defaultOptionDescription: "Default Option Description",
+    defaultOptionDescriptionTooltip: "Default text when workflow has no description",
+    inputErrorMessage: "Input Error Message",
+    inputErrorMessageTooltip: "Message when user input format is incorrect",
+    fallbackMessage: "Fallback Message",
+    fallbackMessageTooltip: "Fallback message when interactive messages fail",
+    systemErrorMessage: "System Error Message",
+    systemErrorMessageTooltip: "General system error message"
   },
   
   // EForm related
@@ -1513,6 +1539,8 @@ const en = {
       
       // Total display
       totalTemplates: "Total {count} templates",
+      pageRange: "Page ",
+      total: " templates",
       
       // Error messages
       validationFailed: "Validation failed",
@@ -2976,6 +3004,8 @@ const en = {
     
     // Pagination
     totalRecords: 'Total {total} records',
+    pageRange: 'Page ',
+    total: ' records',
     pageSizeOptions: ['10', '20', '50', '100'],
     
     // Tabs
@@ -3208,6 +3238,8 @@ const en = {
     company: 'Company/Department',
     group: 'Group',
     tags: 'Tags',
+    createdAt: 'Created At',
+    updatedAt: 'Updated At',
     actions: 'Actions',
     edit: 'Edit',
     delete: 'Delete',
@@ -3273,6 +3305,7 @@ const en = {
     groupColor: 'Group Color',
     contactCount: 'Contact Count',
     createdAt: 'Created At',
+    updatedAt: 'Updated At',
     actions: 'Actions',
     edit: 'Edit',
     delete: 'Delete',
@@ -3309,6 +3342,7 @@ const en = {
     color: 'Color',
     usageCount: 'Usage Count',
     createdAt: 'Created At',
+    updatedAt: 'Updated At',
     actions: 'Actions',
     edit: 'Edit',
     delete: 'Delete',
@@ -3373,15 +3407,27 @@ const en = {
     importDataDesc: 'Confirm and start importing',
     
     // Data source options
+    selectDataSource: 'Select Data Source',
     excelFile: 'Excel File',
+    excelFileDesc: 'Import data from Excel file',
     googleSheets: 'Google Sheets',
     sqlDatabase: 'SQL Database',
     uploadExcel: 'Upload Excel File',
+    uploadExcelFile: 'Upload Excel File',
     connectGoogle: 'Connect Google Sheets',
     connectSQL: 'Connect SQL Database',
     supportedFormats: 'Supports .xlsx, .xls, .csv formats',
     googleSheetsDesc: 'Import data from Google Sheets',
     sqlDatabaseDesc: 'Import data from SQL database',
+    
+    // Excel configuration
+    excelConfig: 'Excel File Configuration',
+    excelFilePath: 'Excel File Path',
+    selectSheet: 'Select Sheet',
+    
+    // Google Docs configuration
+    googleDocsConfig: 'Google Docs Configuration',
+    googleDocsUrl: 'Google Docs URL',
     
     // SQL configuration
     sqlConfig: 'SQL Connection Configuration',
@@ -3393,12 +3439,15 @@ const en = {
     customQuery: 'Custom Query',
     testConnection: 'Test Connection',
     loadData: 'Load Data',
+    nextStep: 'Next Step',
     
     // Field mapping
     dataPreview: 'Data Preview',
     fieldMapping: 'Field Mapping',
     selectColumn: 'Select Column',
     selectGroup: 'Select Group',
+    dataSourceType: 'Data Source Type',
+    sheetName: 'Sheet Name',
     name: 'Name',
     title: 'Title',
     occupation: 'Occupation',
@@ -3419,7 +3468,16 @@ const en = {
     backToList: 'Back to Contact List',
     importMore: 'Import More',
     previous: 'Previous',
-    startImport: 'Start Import'
+    startImport: 'Start Import',
+    
+    // Duplicate confirmation
+    duplicateConfirmation: 'Duplicate Records Confirmation',
+    duplicateWarning: 'Duplicate WhatsApp numbers found',
+    duplicateDescription: 'The following records have WhatsApp numbers that already exist in the system. If you continue, existing records will be overwritten. Please confirm if you want to update these records.',
+    confirmUpdate: 'Confirm Update',
+    rowNumber: 'Row',
+    newData: 'New Data',
+    existingData: 'Existing Data'
   },
 
   // Hashtags Management
@@ -3434,6 +3492,7 @@ const en = {
     color: 'Tag Color',
     usageCount: 'Usage Count',
     createdAt: 'Created At',
+    updatedAt: 'Updated At',
     actions: 'Actions',
     searchPlaceholder: 'Search tags...',
     noTagsFound: 'No tags found',

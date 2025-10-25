@@ -40,7 +40,7 @@ namespace PurpleRice.Controllers
                 Status = "Running",
                 CurrentStep = 0,
                 InputJson = req.Input != null ? JsonSerializer.Serialize(req.Input) : null,
-                StartedAt = DateTime.Now
+                StartedAt = DateTime.UtcNow // 使用 UTC 時間
             };
             _db.WorkflowExecutions.Add(execution);
             await _db.SaveChangesAsync();
@@ -81,7 +81,7 @@ namespace PurpleRice.Controllers
                 {
                     WorkflowDefinitionId = workflow.Id,
                     Status = "Running",
-                    StartedAt = DateTime.Now,
+                    StartedAt = DateTime.UtcNow, // 使用 UTC 時間
                     InputJson = JsonSerializer.Serialize(request.InputData),
                     CreatedBy = User.FindFirst("user_id")?.Value ?? "manual-user"
                 };

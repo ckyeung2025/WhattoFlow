@@ -68,7 +68,9 @@ namespace PurpleRice.Services
             int pageSize = 20, 
             string? search = null, 
             Guid? broadcastGroupId = null, 
-            string? hashtagFilter = null)
+            string? hashtagFilter = null,
+            string? sortField = null,
+            string? sortOrder = null)
         {
             var query = _context.ContactLists
                 .Include(c => c.BroadcastGroup) // 包含群組關聯數據
@@ -102,10 +104,54 @@ namespace PurpleRice.Services
                 query = query.Where(c => hashtags.Any(h => c.Hashtags.Contains(h)));
             }
 
+            // 排序邏輯
+            if (!string.IsNullOrEmpty(sortField))
+            {
+                switch (sortField.ToLower())
+                {
+                    case "name":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.Name) : query.OrderByDescending(c => c.Name);
+                        break;
+                    case "email":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.Email) : query.OrderByDescending(c => c.Email);
+                        break;
+                    case "whatsappnumber":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.WhatsAppNumber) : query.OrderByDescending(c => c.WhatsAppNumber);
+                        break;
+                    case "companyname":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.CompanyName) : query.OrderByDescending(c => c.CompanyName);
+                        break;
+                    case "department":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.Department) : query.OrderByDescending(c => c.Department);
+                        break;
+                    case "position":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.Position) : query.OrderByDescending(c => c.Position);
+                        break;
+                    case "createdat":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.CreatedAt) : query.OrderByDescending(c => c.CreatedAt);
+                        break;
+                    case "updatedat":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.UpdatedAt) : query.OrderByDescending(c => c.UpdatedAt);
+                        break;
+                    case "contact":
+                        // 聯絡人排序 - 按姓名排序
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(c => c.Name) : query.OrderByDescending(c => c.Name);
+                        break;
+                    default:
+                        // 默認按姓名排序
+                        query = query.OrderBy(c => c.Name);
+                        break;
+                }
+            }
+            else
+            {
+                // 默認按姓名排序
+                query = query.OrderBy(c => c.Name);
+            }
+
             var totalCount = await query.CountAsync();
             
             var contacts = await query
-                .OrderBy(c => c.Name)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(c => new ContactListResponseDto
@@ -152,6 +198,32 @@ namespace PurpleRice.Services
         {
             return await _context.ContactLists
                 .FirstOrDefaultAsync(c => c.Id == id && c.CompanyId == companyId);
+        }
+
+        /// <summary>
+        /// 根據標準化的 WhatsApp 號碼查找聯絡人
+        /// </summary>
+        public async Task<ContactList?> FindByNormalizedWhatsAppAsync(Guid companyId, string normalizedNumber)
+        {
+            if (string.IsNullOrEmpty(normalizedNumber))
+                return null;
+
+            // 查找所有該公司的活躍聯絡人，並在內存中進行標準化比較
+            // 這是因為數據庫中的 WhatsApp 號碼可能有不同格式
+            var contacts = await _context.ContactLists
+                .Where(c => c.CompanyId == companyId && c.IsActive && !string.IsNullOrEmpty(c.WhatsAppNumber))
+                .ToListAsync();
+
+            foreach (var contact in contacts)
+            {
+                var contactNormalizedNumber = new string(contact.WhatsAppNumber.Where(char.IsDigit).ToArray());
+                if (contactNormalizedNumber == normalizedNumber)
+                {
+                    return contact;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -341,12 +413,65 @@ namespace PurpleRice.Services
         /// <summary>
         /// 獲取廣播群組列表
         /// </summary>
-        public async Task<List<BroadcastGroup>> GetBroadcastGroupsAsync(Guid companyId)
+        public async Task<(List<BroadcastGroup> groups, int totalCount)> GetBroadcastGroupsAsync(
+            Guid companyId, 
+            int page = 1, 
+            int pageSize = 20, 
+            string? search = null, 
+            string? sortField = null, 
+            string? sortOrder = null)
         {
-            return await _context.BroadcastGroups
+            var query = _context.BroadcastGroups
                 .Where(bg => bg.CompanyId == companyId && bg.IsActive)
-                .OrderBy(bg => bg.Name)
+                .AsQueryable();
+
+            // 搜索功能
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(bg => bg.Name.Contains(search) || 
+                                        (bg.Description != null && bg.Description.Contains(search)));
+            }
+
+            // 排序邏輯
+            if (!string.IsNullOrEmpty(sortField))
+            {
+                switch (sortField.ToLower())
+                {
+                    case "name":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(bg => bg.Name) : query.OrderByDescending(bg => bg.Name);
+                        break;
+                    case "description":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(bg => bg.Description) : query.OrderByDescending(bg => bg.Description);
+                        break;
+                    case "color":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(bg => bg.Color) : query.OrderByDescending(bg => bg.Color);
+                        break;
+                    case "createdat":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(bg => bg.CreatedAt) : query.OrderByDescending(bg => bg.CreatedAt);
+                        break;
+                    case "updatedat":
+                        query = sortOrder?.ToLower() == "asc" ? query.OrderBy(bg => bg.UpdatedAt) : query.OrderByDescending(bg => bg.UpdatedAt);
+                        break;
+                    default:
+                        // 默認按名稱排序
+                        query = query.OrderBy(bg => bg.Name);
+                        break;
+                }
+            }
+            else
+            {
+                // 默認按名稱排序
+                query = query.OrderBy(bg => bg.Name);
+            }
+
+            var totalCount = await query.CountAsync();
+            
+            var groups = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
+
+            return (groups, totalCount);
         }
 
         /// <summary>
@@ -479,14 +604,78 @@ namespace PurpleRice.Services
         }
 
         /// <summary>
-        /// 獲取標籤列表
+        /// 獲取標籤列表（支持分頁、排序、搜索）
         /// </summary>
-        public async Task<List<ContactHashtag>> GetHashtagsAsync(Guid companyId)
+        public async Task<(List<ContactHashtag> hashtags, int totalCount)> GetHashtagsAsync(
+            Guid companyId, 
+            int page = 1, 
+            int pageSize = 20, 
+            string? search = null, 
+            string? sortField = null, 
+            string? sortOrder = null)
         {
-            return await _context.ContactHashtags
-                .Where(h => h.CompanyId == companyId && h.IsActive)
-                .OrderBy(h => h.Name)
+            var query = _context.ContactHashtags
+                .Where(h => h.CompanyId == companyId && h.IsActive);
+
+            // 搜索過濾
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(h => 
+                    h.Name.Contains(search) || 
+                    (h.Description != null && h.Description.Contains(search)));
+            }
+
+            // 獲取總數
+            var totalCount = await query.CountAsync();
+
+            // 排序
+            if (!string.IsNullOrEmpty(sortField) && !string.IsNullOrEmpty(sortOrder))
+            {
+                switch (sortField.ToLower())
+                {
+                    case "name":
+                        query = sortOrder.ToLower() == "desc" 
+                            ? query.OrderByDescending(h => h.Name)
+                            : query.OrderBy(h => h.Name);
+                        break;
+                    case "description":
+                        query = sortOrder.ToLower() == "desc" 
+                            ? query.OrderByDescending(h => h.Description)
+                            : query.OrderBy(h => h.Description);
+                        break;
+                    case "color":
+                        query = sortOrder.ToLower() == "desc" 
+                            ? query.OrderByDescending(h => h.Color)
+                            : query.OrderBy(h => h.Color);
+                        break;
+                    case "createdat":
+                        query = sortOrder.ToLower() == "desc" 
+                            ? query.OrderByDescending(h => h.CreatedAt)
+                            : query.OrderBy(h => h.CreatedAt);
+                        break;
+                    case "updatedat":
+                        // ContactHashtag 沒有 UpdatedAt 欄位，使用 CreatedAt 代替
+                        query = sortOrder.ToLower() == "desc" 
+                            ? query.OrderByDescending(h => h.CreatedAt)
+                            : query.OrderBy(h => h.CreatedAt);
+                        break;
+                    default:
+                        query = query.OrderBy(h => h.Name);
+                        break;
+                }
+            }
+            else
+            {
+                query = query.OrderBy(h => h.Name);
+            }
+
+            // 分頁
+            var hashtags = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
+
+            return (hashtags, totalCount);
         }
 
         /// <summary>

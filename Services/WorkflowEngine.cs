@@ -328,7 +328,7 @@ namespace PurpleRice.Services
             execution.Status = "Running";
             execution.IsWaiting = false;
             execution.WaitingSince = null;
-            execution.LastUserActivity = DateTime.Now;
+            execution.LastUserActivity = DateTime.UtcNow;
             execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
             await SaveExecution(execution);
 
@@ -416,7 +416,7 @@ namespace PurpleRice.Services
                             // 更新執行狀態
                             execution.IsWaiting = false;
                             execution.WaitingSince = null;
-                            execution.LastUserActivity = DateTime.Now;
+                            execution.LastUserActivity = DateTime.UtcNow;
                             execution.Status = "Running";
                             execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
                     await SaveExecution(execution);
@@ -488,7 +488,7 @@ namespace PurpleRice.Services
 
                 // 標記節點完成
                 stepExec.Status = "Completed";
-                stepExec.EndedAt = DateTime.Now;
+                stepExec.EndedAt = DateTime.UtcNow;
                 await SaveStepExecution(stepExec);
 
                 // 根據節點類型選擇執行方式
@@ -506,7 +506,7 @@ namespace PurpleRice.Services
             {
                 WriteLog($"執行節點 {nodeId} 時發生錯誤: {ex.Message}");
                 stepExec.Status = "Failed";
-                stepExec.EndedAt = DateTime.Now;
+                stepExec.EndedAt = DateTime.UtcNow;
                 stepExec.OutputJson = JsonSerializer.Serialize(new { error = ex.Message });
                 await SaveStepExecution(stepExec);
                 
@@ -668,7 +668,7 @@ namespace PurpleRice.Services
                 Status = "Running",
                 InputJson = JsonSerializer.Serialize(inputData),
                 ValidationConfig = validationConfigJson, // 保存標準化的 Validation 配置
-                StartedAt = DateTime.Now
+                StartedAt = DateTime.UtcNow
             };
 
             db.WorkflowStepExecutions.Add(stepExec);
@@ -730,7 +730,7 @@ namespace PurpleRice.Services
             {
                 sendEFormStepExecution.Status = "Completed";
                 sendEFormStepExecution.IsWaiting = false;
-                sendEFormStepExecution.EndedAt = DateTime.Now;
+                sendEFormStepExecution.EndedAt = DateTime.UtcNow;
                 await db.SaveChangesAsync();
                 WriteLog($"sendEForm 步驟已標記為完成");
             }
@@ -757,11 +757,11 @@ namespace PurpleRice.Services
             {
                 waitStepExecution.IsWaiting = false;
                 waitStepExecution.Status = "Completed";
-                waitStepExecution.EndedAt = DateTime.Now;
+                waitStepExecution.EndedAt = DateTime.UtcNow;
                 waitStepExecution.OutputJson = JsonSerializer.Serialize(new { 
                     message = "User replied, continuing workflow",
                     stepType = waitStepExecution.StepType,
-                    timestamp = DateTime.Now,
+                    timestamp = DateTime.UtcNow,
                     userResponse = "User provided response"
                 });
                 await db.SaveChangesAsync();
@@ -1081,16 +1081,16 @@ namespace PurpleRice.Services
             // 設置等待狀態
             execution.Status = "Waiting";
             execution.IsWaiting = true;
-            execution.WaitingSince = DateTime.Now;
+            execution.WaitingSince = DateTime.UtcNow;
             execution.WaitingForUser = actualWaitingUser; // ✅ 使用解析到的收件人
-            execution.LastUserActivity = DateTime.Now;
+            execution.LastUserActivity = DateTime.UtcNow;
             execution.CurrentStep = stepExec.StepIndex;
                         
             stepExec.Status = "Waiting";
             stepExec.IsWaiting = true;
             stepExec.OutputJson = JsonSerializer.Serialize(new { 
                 message = "Waiting for user reply",
-                waitingSince = DateTime.Now,
+                waitingSince = DateTime.UtcNow,
                 waitingForUser = execution.WaitingForUser
             });
             
@@ -1269,9 +1269,9 @@ namespace PurpleRice.Services
             // 設置等待狀態
             execution.Status = "WaitingForQRCode";
             execution.IsWaiting = true;
-            execution.WaitingSince = DateTime.Now;
+            execution.WaitingSince = DateTime.UtcNow;
             execution.WaitingForUser = actualWaitingUser; // ✅ 使用解析到的收件人
-            execution.LastUserActivity = DateTime.Now;
+            execution.LastUserActivity = DateTime.UtcNow;
             execution.CurrentStep = stepExec.StepIndex;
             
             stepExec.Status = "Waiting";
@@ -1280,7 +1280,7 @@ namespace PurpleRice.Services
                 message = "Waiting for QR Code upload",
                 qrCodeVariable = nodeData.QrCodeVariable,
                 timeout = nodeData.Timeout,
-                waitingSince = DateTime.Now,
+                waitingSince = DateTime.UtcNow,
                 waitingForUser = execution.WaitingForUser
             });
             
@@ -1829,7 +1829,7 @@ namespace PurpleRice.Services
                                 WorkflowExecutionId = execution.Id,
                                 WorkflowStepExecutionId = execution.CurrentStep ?? 0,
                                 CompanyId = company.Id,
-                                InstanceName = $"{nodeData.FormName}_{recipient.RecipientName ?? recipient.PhoneNumber}_{DateTime.Now:yyyyMMddHHmmss}",
+                                InstanceName = $"{nodeData.FormName}_{recipient.RecipientName ?? recipient.PhoneNumber}_{DateTime.UtcNow:yyyyMMddHHmmss}",
                                 OriginalHtmlCode = eFormDefinition.HtmlCode,
                                 FilledHtmlCode = null,  // Manual Fill 不預填
                                 UserMessage = null,
@@ -1872,7 +1872,7 @@ namespace PurpleRice.Services
                             message = "Manual Fill forms sent successfully, waiting for submissions",
                             instanceCount = instanceIds.Count,
                             parentInstanceId = parentInstanceId,
-                            waitingSince = DateTime.Now 
+                            waitingSince = DateTime.UtcNow 
                         });
                         
                         await SaveExecution(execution);
@@ -2094,7 +2094,7 @@ namespace PurpleRice.Services
                             WorkflowExecutionId = execution.Id,
                             WorkflowStepExecutionId = execution.CurrentStep ?? 0,
                             CompanyId = company.Id,
-                            InstanceName = $"{nodeData.FormName}_{execution.Id}_{DateTime.Now:yyyyMMddHHmmss}",
+                            InstanceName = $"{nodeData.FormName}_{execution.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}",
                             OriginalHtmlCode = eFormDefinition.HtmlCode,
                             FilledHtmlCode = filledHtmlCode,
                             UserMessage = userMessage,
@@ -2131,7 +2131,7 @@ namespace PurpleRice.Services
                             message = "EForm sent successfully, waiting for approval",
                             formInstanceId = eFormInstance.Id,
                             recipientCount = resolvedRecipients.Count,
-                            waitingSince = DateTime.Now 
+                            waitingSince = DateTime.UtcNow 
                         });
                         
                         // 保存狀態
@@ -2263,7 +2263,7 @@ namespace PurpleRice.Services
             stepExec.OutputJson = JsonSerializer.Serialize(new { 
                 message = "End node reached",
                 nodeId = nodeId,
-                completedAt = DateTime.Now
+                completedAt = DateTime.UtcNow
             });
                     
                     // 檢查是否所有分支都已完成
@@ -2274,7 +2274,7 @@ namespace PurpleRice.Services
                     
             // 標記整個流程為完成
                         execution.Status = "Completed";
-                        execution.EndedAt = DateTime.Now;
+                        execution.EndedAt = DateTime.UtcNow;
             await SaveExecution(execution);
             
             // 清理用戶會話中的已完成流程
@@ -2332,7 +2332,7 @@ namespace PurpleRice.Services
                 {
                     selectedPaths = selectedPaths,
                     selectedPath = selectedPaths.FirstOrDefault(), // 保持向後兼容
-                    evaluatedAt = DateTime.Now,
+                    evaluatedAt = DateTime.UtcNow,
                     conditionGroupsCount = conditionGroups?.Count ?? 0,
                     defaultPathUsed = !selectedPaths.Any() || selectedPaths.Contains(defaultPath)
                 });

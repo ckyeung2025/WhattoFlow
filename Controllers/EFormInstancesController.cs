@@ -320,23 +320,30 @@ namespace PurpleRice.Controllers
 
         // GET: api/eforminstances/statistics/fillType - 獲取 Fill Type 統計數據
         [HttpGet("statistics/fillType")]
-        public async Task<IActionResult> GetFillTypeStatistics()
+        public async Task<IActionResult> GetFillTypeStatistics([FromQuery] string? status = null)
         {
             try
             {
-                _loggingService.LogInformation("獲取 Fill Type 統計數據");
+                _loggingService.LogInformation($"獲取 Fill Type 統計數據 (狀態過濾: {status ?? "全部"})");
                 
-                // 統計所有狀態的 FillType
-                var allFillTypeStatistics = await _db.EFormInstances
+                // 根據狀態過濾（如果提供）
+                var query = _db.EFormInstances.AsQueryable();
+                if (!string.IsNullOrEmpty(status))
+                {
+                    query = query.Where(e => e.Status == status);
+                }
+                
+                // 統計 FillType
+                var fillTypeStatistics = await query
                     .GroupBy(e => e.FillType)
                     .Select(g => new { FillType = g.Key, Count = g.Count() })
                     .ToListAsync();
 
-                _loggingService.LogInformation($"所有狀態的 FillType 統計: {string.Join(", ", allFillTypeStatistics.Select(s => $"{s.FillType}:{s.Count}"))}");
+                _loggingService.LogInformation($"FillType 統計 ({status ?? "全部狀態"}): {string.Join(", ", fillTypeStatistics.Select(s => $"{s.FillType}:{s.Count}"))}");
 
-                var aiFillCount = allFillTypeStatistics.FirstOrDefault(s => s.FillType == "AI")?.Count ?? 0;
-                var dataFillCount = allFillTypeStatistics.FirstOrDefault(s => s.FillType == "Data")?.Count ?? 0;
-                var manualFillCount = allFillTypeStatistics.FirstOrDefault(s => s.FillType == "Manual")?.Count ?? 0;
+                var aiFillCount = fillTypeStatistics.FirstOrDefault(s => s.FillType == "AI")?.Count ?? 0;
+                var dataFillCount = fillTypeStatistics.FirstOrDefault(s => s.FillType == "Data")?.Count ?? 0;
+                var manualFillCount = fillTypeStatistics.FirstOrDefault(s => s.FillType == "Manual")?.Count ?? 0;
 
                 var result = new
                 {

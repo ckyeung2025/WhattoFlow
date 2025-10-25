@@ -22,7 +22,8 @@ import {
   Select,
   Divider,
   Tabs,
-  DatePicker
+  DatePicker,
+  Pagination
 } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
@@ -58,7 +59,8 @@ import {
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
+// import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
+import { TimezoneUtils } from '../utils/timezoneUtils';
 
 const { Header, Content } = Layout;
 const { Search } = Input;
@@ -162,6 +164,7 @@ const PendingTasksPage = () => {
   const [lightboxFile, setLightboxFile] = useState(null);
   const [lightboxFiles, setLightboxFiles] = useState([]);
   const [lightboxCurrentIndex, setLightboxCurrentIndex] = useState(0);
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
   
   // 展開行狀態
   const [expandedRowKeys, setExpandedRowKeys] = useState([]);
@@ -224,6 +227,32 @@ const PendingTasksPage = () => {
     dateRange: null
   });
 
+  // 獲取用戶時區信息
+  useEffect(() => {
+    const userInfo = localStorage.getItem('userInfo');
+    console.log('🔍 PendingTasksPage - 獲取用戶時區信息');
+    console.log('🔍 userInfo:', userInfo);
+    
+    if (userInfo) {
+      try {
+        const parsedUserInfo = JSON.parse(userInfo);
+        console.log('🔍 parsedUserInfo:', parsedUserInfo);
+        console.log('🔍 parsedUserInfo.timezone:', parsedUserInfo.timezone);
+        
+        if (parsedUserInfo.timezone) {
+          setUserTimezoneOffset(parsedUserInfo.timezone);
+          console.log('🔍 設置 userTimezoneOffset 為:', parsedUserInfo.timezone);
+        } else {
+          console.log('🔍 沒有 timezone 字段，使用默認值 UTC+8');
+        }
+      } catch (error) {
+        console.error('解析用戶信息失敗:', error);
+      }
+    } else {
+      console.log('🔍 沒有 userInfo，使用默認值 UTC+8');
+    }
+  }, []);
+
   useEffect(() => {
     loadAllTabData();
     loadStatistics();
@@ -237,6 +266,10 @@ const PendingTasksPage = () => {
   useEffect(() => {
     loadAllEforms();
   }, [activeTab]);
+
+  useEffect(() => {
+    loadFillTypeStatistics();
+  }, [viewMode]);
 
   useEffect(() => {
     // 當視圖模式改變時，重置到第一個 tab 並載入數據
@@ -393,10 +426,10 @@ const PendingTasksPage = () => {
         pending: filteredData.length
       }));
       
-      // 更新計數
+      // 更新計數 - 使用過濾後的數據長度
       setCounts(prev => ({
         ...prev,
-        pending: data.total || 0
+        pending: filteredData.length
       }));
       
     } catch (error) {
@@ -472,10 +505,10 @@ const PendingTasksPage = () => {
       
       setApprovedEforms(formattedData);
       
-      // 更新計數
+      // 更新計數 - 使用實際返回的數據長度
       setCounts(prev => ({
         ...prev,
-        approved: data.total || 0
+        approved: formattedData.length
       }));
       
     } catch (error) {
@@ -544,10 +577,10 @@ const PendingTasksPage = () => {
       
       setRejectedEforms(formattedData);
       
-      // 更新計數
+      // 更新計數 - 使用實際返回的數據長度
       setCounts(prev => ({
         ...prev,
-        rejected: data.total || 0
+        rejected: formattedData.length
       }));
       
     } catch (error) {
@@ -594,7 +627,17 @@ const PendingTasksPage = () => {
     try {
       console.log('Loading Fill Type statistics');
       
-      const response = await fetch('/api/eforminstances/statistics/fillType', {
+      // 根據當前 viewMode 決定要獲取的狀態
+      let statusParam = '';
+      if (viewMode === 'normal') {
+        // Normal mode 顯示 pending 狀態的統計
+        statusParam = '?status=Pending';
+      } else if (viewMode === 'manual') {
+        // Manual mode 顯示 manual 狀態的統計
+        statusParam = '?status=Pending'; // Manual 表單也是 Pending 狀態
+      }
+      
+      const response = await fetch(`/api/eforminstances/statistics/fillType${statusParam}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -677,10 +720,10 @@ const PendingTasksPage = () => {
       
       setManualPendingEforms(formattedData);
       
-      // 更新計數
+      // 更新計數 - 使用實際返回的數據長度
       setCounts(prev => ({
         ...prev,
-        manualPending: data.total || 0
+        manualPending: formattedData.length
       }));
       
     } catch (error) {
@@ -752,10 +795,10 @@ const PendingTasksPage = () => {
       
       setManualRespondedEforms(formattedData);
       
-      // 更新計數
+      // 更新計數 - 使用實際返回的數據長度
       setCounts(prev => ({
         ...prev,
-        manualResponded: data.total || 0
+        manualResponded: formattedData.length
       }));
       
     } catch (error) {
@@ -2045,7 +2088,7 @@ const PendingTasksPage = () => {
       sortDirections: ['ascend', 'descend'],
       render: (text) => (
         <div style={{ fontSize: '12px', color: '#333' }}>
-          {text ? dayjs(text).format('MM-DD HH:mm') : '-'}
+          {text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'MM-DD HH:mm') : '-'}
         </div>
       )
     },
@@ -2058,7 +2101,7 @@ const PendingTasksPage = () => {
       sortDirections: ['ascend', 'descend'],
       render: (text) => (
         <div style={{ fontSize: '12px', color: '#333' }}>
-          {text ? dayjs(text).format('MM-DD HH:mm') : '-'}
+          {text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'MM-DD HH:mm') : '-'}
         </div>
       )
     },
@@ -2163,9 +2206,18 @@ const PendingTasksPage = () => {
          }
        }
     }
-  ], [activeTab, viewMode, t, selectedRowKeys, expandedRowKeys, pendingEforms, approvedEforms, rejectedEforms, manualPendingEforms, manualRespondedEforms]);
+  ], [activeTab, viewMode, t, selectedRowKeys, expandedRowKeys, pendingEforms, approvedEforms, rejectedEforms, manualPendingEforms, manualRespondedEforms, userTimezoneOffset]);
 
   const [columnWidths, setColumnWidths] = useState({});
+  
+  // 分頁狀態
+  const [paginationStates, setPaginationStates] = useState({
+    manualPending: { current: 1, pageSize: 50 },
+    manualResponded: { current: 1, pageSize: 50 },
+    pending: { current: 1, pageSize: 50 },
+    approved: { current: 1, pageSize: 50 },
+    rejected: { current: 1, pageSize: 50 }
+  });
 
   const resizableColumns = React.useMemo(() => 
     baseColumns.map(col => ({ 
@@ -2173,6 +2225,29 @@ const PendingTasksPage = () => {
       width: columnWidths[col.key] || col.width || 120 
     }))
   , [baseColumns, columnWidths]);
+
+  // 分頁處理函數
+  const handlePaginationChange = (tabKey) => (page, pageSize) => {
+    setPaginationStates(prev => ({
+      ...prev,
+      [tabKey]: { current: page, pageSize }
+    }));
+  };
+
+  const handlePageSizeChange = (tabKey) => (current, size) => {
+    setPaginationStates(prev => ({
+      ...prev,
+      [tabKey]: { current: 1, pageSize: size }
+    }));
+  };
+
+  // 獲取分頁後的數據
+  const getPaginatedData = (data, tabKey) => {
+    const { current, pageSize } = paginationStates[tabKey];
+    const startIndex = (current - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return data.slice(startIndex, endIndex);
+  };
 
   const handleResize = index => (e, { size }) => {
     const column = resizableColumns[index];
@@ -2540,9 +2615,10 @@ const PendingTasksPage = () => {
                         <Table
                           components={components}
                           columns={mergedColumns}
-                          dataSource={manualPendingEforms}
+                          dataSource={getPaginatedData(manualPendingEforms, 'manualPending')}
                           rowKey="id"
                           loading={loading}
+                          pagination={false}
                           expandable={{
                             expandedRowKeys: expandedRowKeys,
                             onExpandedRowsChange: setExpandedRowKeys,
@@ -2636,18 +2712,6 @@ const PendingTasksPage = () => {
                             },
                             style: getRowStyle(record)
                           })}
-                          pagination={{
-                            showSizeChanger: true,
-                            showQuickJumper: true,
-                            showTotal: (total, range) => 
-                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total }),
-                            locale: {
-                              items_per_page: t('pendingTasks.itemsPerPage'),
-                              jump_to: t('pendingTasks.jumpTo'),
-                              jump_to_confirm: t('pendingTasks.confirm'),
-                              page: t('pendingTasks.page')
-                            }
-                          }}
                           scroll={{ 
                             x: 1200,
                             y: getTableScrollHeight()
@@ -2664,6 +2728,21 @@ const PendingTasksPage = () => {
                             )
                           }}
                         />
+                        <div style={{ marginTop: 16, textAlign: 'left' }}>
+                          <Pagination
+                            current={paginationStates.manualPending.current}
+                            pageSize={paginationStates.manualPending.pageSize}
+                            total={manualPendingEforms.length}
+                            showSizeChanger
+                            showQuickJumper
+                            pageSizeOptions={['10', '20', '50', '100']}
+                            showTotal={(total, range) => 
+                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
+                            }
+                            onChange={handlePaginationChange('manualPending')}
+                            onShowSizeChange={handlePageSizeChange('manualPending')}
+                          />
+                        </div>
             </div>
                     )
                   },
@@ -2687,9 +2766,10 @@ const PendingTasksPage = () => {
                         <Table
                           components={components}
                           columns={mergedColumns}
-                          dataSource={manualRespondedEforms}
+                          dataSource={getPaginatedData(manualRespondedEforms, 'manualResponded')}
                           rowKey="id"
                           loading={loading}
+                          pagination={false}
                           onRow={(record) => ({
                             onClick: (e) => {
                               // 如果點擊的是選擇列（固定左側列），不觸發打開表單
@@ -2703,18 +2783,6 @@ const PendingTasksPage = () => {
                             },
                             style: getRowStyle(record)
                           })}
-                          pagination={{
-                            showSizeChanger: true,
-                            showQuickJumper: true,
-                            showTotal: (total, range) => 
-                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total }),
-                            locale: {
-                              items_per_page: t('pendingTasks.itemsPerPage'),
-                              jump_to: t('pendingTasks.jumpTo'),
-                              jump_to_confirm: t('pendingTasks.confirm'),
-                              page: t('pendingTasks.page')
-                            }
-                          }}
                           scroll={{ 
                             x: 1200,
                             y: getTableScrollHeight()
@@ -2731,6 +2799,21 @@ const PendingTasksPage = () => {
                             )
                           }}
                         />
+                        <div style={{ marginTop: 16, textAlign: 'left' }}>
+                          <Pagination
+                            current={paginationStates.manualResponded.current}
+                            pageSize={paginationStates.manualResponded.pageSize}
+                            total={manualRespondedEforms.length}
+                            showSizeChanger
+                            showQuickJumper
+                            pageSizeOptions={['10', '20', '50', '100']}
+                            showTotal={(total, range) => 
+                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
+                            }
+                            onChange={handlePaginationChange('manualResponded')}
+                            onShowSizeChange={handlePageSizeChange('manualResponded')}
+                          />
+                        </div>
                       </div>
                     )
                   }
@@ -2755,9 +2838,10 @@ const PendingTasksPage = () => {
               <Table
                 components={components}
                 columns={mergedColumns}
-                dataSource={pendingEforms}
+                dataSource={getPaginatedData(pendingEforms, 'pending')}
                 rowKey="id"
                 loading={loading}
+                pagination={false}
                 expandable={{
                   expandedRowKeys: expandedRowKeys,
                   onExpandedRowsChange: setExpandedRowKeys,
@@ -2851,18 +2935,6 @@ const PendingTasksPage = () => {
                   },
                   style: getRowStyle(record)
                 })}
-                pagination={{
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  showTotal: (total, range) => 
-                    t('pendingTasks.pageRange', { start: range[0], end: range[1], total }),
-                  locale: {
-                    items_per_page: t('pendingTasks.itemsPerPage'),
-                    jump_to: t('pendingTasks.jumpTo'),
-                    jump_to_confirm: t('pendingTasks.confirm'),
-                    page: t('pendingTasks.page')
-                  }
-                }}
                 scroll={{ 
                   x: 1000,
                   y: getTableScrollHeight()
@@ -2879,6 +2951,21 @@ const PendingTasksPage = () => {
                   )
                 }}
               />
+              <div style={{ marginTop: 16, textAlign: 'left' }}>
+                <Pagination
+                  current={paginationStates.pending.current}
+                  pageSize={paginationStates.pending.pageSize}
+                  total={pendingEforms.length}
+                  showSizeChanger
+                  showQuickJumper
+                  pageSizeOptions={['10', '20', '50', '100']}
+                  showTotal={(total, range) => 
+                    t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
+                  }
+                  onChange={handlePaginationChange('pending')}
+                  onShowSizeChange={handlePageSizeChange('pending')}
+                />
+              </div>
             </div>
                     )
                   },
@@ -2902,9 +2989,10 @@ const PendingTasksPage = () => {
                         <Table
                           components={components}
                           columns={mergedColumns}
-                          dataSource={approvedEforms}
+                          dataSource={getPaginatedData(approvedEforms, 'approved')}
                           rowKey="id"
                           loading={loading}
+                          pagination={false}
                           expandable={{
                             expandedRowKeys: expandedRowKeys,
                             onExpandedRowsChange: setExpandedRowKeys,
@@ -2965,18 +3053,6 @@ const PendingTasksPage = () => {
                             },
                             style: getRowStyle(record)
                           })}
-                          pagination={{
-                            showSizeChanger: true,
-                            showQuickJumper: true,
-                            showTotal: (total, range) => 
-                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total }),
-                            locale: {
-                              items_per_page: t('pendingTasks.itemsPerPage'),
-                              jump_to: t('pendingTasks.jumpTo'),
-                              jump_to_confirm: t('pendingTasks.confirm'),
-                              page: t('pendingTasks.page')
-                            }
-                          }}
                           scroll={{ 
                             x: 1200,
                             y: getTableScrollHeight()
@@ -2993,6 +3069,21 @@ const PendingTasksPage = () => {
                             )
                           }}
                         />
+                        <div style={{ marginTop: 16, textAlign: 'left' }}>
+                          <Pagination
+                            current={paginationStates.approved.current}
+                            pageSize={paginationStates.approved.pageSize}
+                            total={approvedEforms.length}
+                            showSizeChanger
+                            showQuickJumper
+                            pageSizeOptions={['10', '20', '50', '100']}
+                            showTotal={(total, range) => 
+                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
+                            }
+                            onChange={handlePaginationChange('approved')}
+                            onShowSizeChange={handlePageSizeChange('approved')}
+                          />
+                        </div>
                       </div>
                     )
                   },
@@ -3016,9 +3107,10 @@ const PendingTasksPage = () => {
                         <Table
                           components={components}
                           columns={mergedColumns}
-                          dataSource={rejectedEforms}
+                          dataSource={getPaginatedData(rejectedEforms, 'rejected')}
                           rowKey="id"
                           loading={loading}
+                          pagination={false}
                           expandable={{
                             expandedRowKeys: expandedRowKeys,
                             onExpandedRowsChange: setExpandedRowKeys,
@@ -3079,18 +3171,6 @@ const PendingTasksPage = () => {
                             },
                             style: getRowStyle(record)
                           })}
-                          pagination={{
-                            showSizeChanger: true,
-                            showQuickJumper: true,
-                            showTotal: (total, range) => 
-                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total }),
-                            locale: {
-                              items_per_page: t('pendingTasks.itemsPerPage'),
-                              jump_to: t('pendingTasks.jumpTo'),
-                              jump_to_confirm: t('pendingTasks.confirm'),
-                              page: t('pendingTasks.page')
-                            }
-                          }}
                           scroll={{ 
                             x: 1200,
                             y: getTableScrollHeight()
@@ -3107,6 +3187,21 @@ const PendingTasksPage = () => {
                             )
                           }}
                         />
+                        <div style={{ marginTop: 16, textAlign: 'left' }}>
+                          <Pagination
+                            current={paginationStates.rejected.current}
+                            pageSize={paginationStates.rejected.pageSize}
+                            total={rejectedEforms.length}
+                            showSizeChanger
+                            showQuickJumper
+                            pageSizeOptions={['10', '20', '50', '100']}
+                            showTotal={(total, range) => 
+                              t('pendingTasks.pageRange', { start: range[0], end: range[1], total })
+                            }
+                            onChange={handlePaginationChange('rejected')}
+                            onShowSizeChange={handlePageSizeChange('rejected')}
+                          />
+                        </div>
                       </div>
                     )
                   }
@@ -3143,7 +3238,7 @@ const PendingTasksPage = () => {
           </div>
           <div style={{ marginTop: 8 }}>
             <Text strong>{t('pendingTasks.applicationTimeLabel')}</Text>
-            <Text>{selectedEform?.createdAt ? dayjs(selectedEform.createdAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</Text>
+            <Text>{selectedEform?.createdAt ? TimezoneUtils.formatDateWithTimezone(selectedEform.createdAt, userTimezoneOffset) : '-'}</Text>
           </div>
           <Divider />
           <div>
@@ -3185,7 +3280,7 @@ const PendingTasksPage = () => {
           </div>
           <div style={{ marginTop: 8 }}>
             <Text strong>{t('pendingTasks.applicationTimeLabel')}</Text>
-            <Text>{selectedEform?.createdAt ? dayjs(selectedEform.createdAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</Text>
+            <Text>{selectedEform?.createdAt ? TimezoneUtils.formatDateWithTimezone(selectedEform.createdAt, userTimezoneOffset) : '-'}</Text>
           </div>
           <Divider />
           <div>
@@ -3235,8 +3330,8 @@ const PendingTasksPage = () => {
                      </div>
                      <div style={{ marginBottom: 12 }}>
                        <Text strong>{t('pendingTasks.decidedAt')}: </Text>
-                       <Text>{statusChangeTarget.eform.approvalAt ? dayjs(statusChangeTarget.eform.approvalAt).format('YYYY-MM-DD HH:mm:ss') : 
-                              statusChangeTarget.eform.rejectedAt ? dayjs(statusChangeTarget.eform.rejectedAt).format('YYYY-MM-DD HH:mm:ss') : '-'}</Text>
+                       <Text>{statusChangeTarget.eform.approvalAt ? TimezoneUtils.formatDateWithTimezone(statusChangeTarget.eform.approvalAt, userTimezoneOffset) : 
+                              statusChangeTarget.eform.rejectedAt ? TimezoneUtils.formatDateWithTimezone(statusChangeTarget.eform.rejectedAt, userTimezoneOffset) : '-'}</Text>
                      </div>
                      <div>
                        <Text strong>{t('pendingTasks.changeTo')}: </Text>
@@ -3562,7 +3657,7 @@ const PendingTasksPage = () => {
                     <div>
                       <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px' }}>Created At</div>
                       <div style={{ fontSize: '10px', color: 'rgb(102, 102, 102)', lineHeight: '1.2' }}>
-                        {dayjs(embeddedFormInstance.createdAt).format('MM/DD HH:mm')}
+                        {TimezoneUtils.formatDateWithTimezone(embeddedFormInstance.createdAt, userTimezoneOffset, 'MM/DD HH:mm')}
                       </div>
                     </div>
                     <div>
@@ -3837,7 +3932,7 @@ const PendingTasksPage = () => {
                                           color: '#999',
                                           marginBottom: '6px'
                                         }}>
-                                          {new Date(file.createdAt).toLocaleDateString('zh-TW')}
+                                          {TimezoneUtils.formatDateWithTimezone(file.createdAt, userTimezoneOffset, 'MM/DD/YYYY')}
                                         </div>
                                       )}
                                       

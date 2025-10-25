@@ -39,13 +39,41 @@ api.interceptors.response.use(
 );
 
 export const contactImportApi = {
+  // 檢查重複的 WhatsApp 號碼
+  checkDuplicateWhatsApp: async (contacts) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始檢查重複 WhatsApp 號碼');
+      console.log('📋 ContactImportApi - 聯絡人數量:', contacts.length);
+      
+      const response = await api.post('/check-duplicates', contacts);
+      
+      console.log('✅ ContactImportApi - 重複檢查完成');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 重複檢查失敗:', error);
+      console.error('📋 ContactImportApi - 錯誤詳情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  },
+
   // 批量創建聯絡人
-  batchCreateContacts: async (contacts) => {
+  batchCreateContacts: async (contacts, allowUpdate = false) => {
     try {
       console.log('🚀 ContactImportApi - 開始批量創建聯絡人');
       console.log('📋 ContactImportApi - 聯絡人數量:', contacts.length);
+      console.log('📋 ContactImportApi - 允許更新:', allowUpdate);
       
-      const response = await api.post('/batch', { contacts });
+      const response = await api.post('/batch', { 
+        contacts,
+        allowUpdate 
+      });
       
       console.log('✅ ContactImportApi - 批量創建成功');
       console.log('📊 ContactImportApi - 響應數據:', response.data);
@@ -101,6 +129,103 @@ export const contactImportApi = {
       return response.data;
     } catch (error) {
       console.error('❌ ContactImportApi - SQL 數據載入失敗:', error);
+      console.error('📋 ContactImportApi - 錯誤詳情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  },
+
+  // 上傳 Excel 文件並獲取工作表列表
+  uploadExcelFile: async (file) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始上傳 Excel 文件');
+      console.log('📋 ContactImportApi - 文件名:', file.name);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await api.post('/upload-excel', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      console.log('✅ ContactImportApi - Excel 文件上傳成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - Excel 文件上傳失敗:', error);
+      throw error;
+    }
+  },
+
+  // 從 Excel 載入數據
+  loadFromExcel: async (config) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始從 Excel 載入數據');
+      console.log('📋 ContactImportApi - Excel 配置:', config);
+      
+      const response = await api.post('/load-from-excel', config);
+      
+      console.log('✅ ContactImportApi - Excel 數據載入成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - Excel 數據載入失敗:', error);
+      console.error('📋 ContactImportApi - 錯誤詳情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  },
+
+  // 上傳 Google Sheets URL 並獲取工作表列表
+  uploadGoogleSheetsUrl: async (url) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始上傳 Google Sheets URL');
+      console.log('📋 ContactImportApi - URL:', url);
+      
+      const response = await api.post('/upload-google-sheets', { url });
+      
+      console.log('✅ ContactImportApi - Google Sheets URL 上傳成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - Google Sheets URL 上傳失敗:', error);
+      console.error('📋 ContactImportApi - 錯誤詳情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  },
+
+  // 從 Google Docs 載入數據
+  loadFromGoogleDocs: async (config) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始從 Google Docs 載入數據');
+      console.log('📋 ContactImportApi - Google Docs 配置:', config);
+      
+      const response = await api.post('/load-from-google-docs', config);
+      
+      console.log('✅ ContactImportApi - Google Docs 數據載入成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - Google Docs 數據載入失敗:', error);
       console.error('📋 ContactImportApi - 錯誤詳情:', {
         status: error.response?.status,
         statusText: error.response?.statusText,

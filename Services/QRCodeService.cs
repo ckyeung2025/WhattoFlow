@@ -248,7 +248,7 @@ namespace PurpleRice.Services
                 }
 
                 // 生成文件名：使用時間戳和 GUID 確保唯一性
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 var guid = Guid.NewGuid().ToString("N")[..8]; // 取前8位
                 var fileName = $"qr_scan_{status}_{timestamp}_{guid}.jpg";
                 

@@ -22,7 +22,7 @@ import {
   FileTextOutlined
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
-import dayjs from 'dayjs';
+import { TimezoneUtils } from '../utils/timezoneUtils';
 
 const { Title, Text } = Typography;
 
@@ -37,12 +37,28 @@ const EFormInstanceViewer = ({
   const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [eformDetails, setEformDetails] = useState(null);
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
 
   useEffect(() => {
     if (visible && eform) {
       loadEformDetails();
     }
   }, [visible, eform]);
+
+  // 獲取用戶時區信息
+  useEffect(() => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      try {
+        const parsedUserInfo = JSON.parse(userInfo);
+        if (parsedUserInfo.timezone) {
+          setUserTimezoneOffset(parsedUserInfo.timezone);
+        }
+      } catch (error) {
+        console.error('解析用戶信息失敗:', error);
+      }
+    }
+  }, [visible]);
 
   const loadEformDetails = async () => {
     if (!eform) return;
@@ -233,7 +249,7 @@ const EFormInstanceViewer = ({
                 <Space>
                   <CalendarOutlined />
                   {currentEform.createdAt ? 
-                    dayjs(currentEform.createdAt).format('YYYY-MM-DD HH:mm:ss') : 
+                    TimezoneUtils.formatDateWithTimezone(currentEform.createdAt, userTimezoneOffset) : 
                     '-'
                   }
                 </Space>
@@ -242,7 +258,7 @@ const EFormInstanceViewer = ({
                 <Descriptions.Item label="截止時間">
                   <Space>
                     <CalendarOutlined />
-                    {dayjs(currentEform.dueDate).format('YYYY-MM-DD HH:mm:ss')}
+                    {TimezoneUtils.formatDateWithTimezone(currentEform.dueDate, userTimezoneOffset)}
                   </Space>
                 </Descriptions.Item>
               )}

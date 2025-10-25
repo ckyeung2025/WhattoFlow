@@ -47,6 +47,71 @@
   backdrop-filter: blur(10px);
 }
 
+/* 分頁控件左對齊樣式 */
+.pagination-left {
+  text-align: left !important;
+}
+
+.pagination-left .ant-pagination {
+  justify-content: flex-start !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+.pagination-left .ant-pagination-total {
+  margin-right: auto !important;
+  order: 1 !important;
+}
+
+.pagination-left .ant-pagination-options {
+  order: 2 !important;
+  margin-left: auto !important;
+}
+
+.pagination-left .ant-pagination-item,
+.pagination-left .ant-pagination-prev,
+.pagination-left .ant-pagination-next,
+.pagination-left .ant-pagination-jump-prev,
+.pagination-left .ant-pagination-jump-next {
+  order: 3 !important;
+}
+
+/* 更強力的分頁左對齊樣式 */
+.pagination-left-table .ant-table-pagination {
+  text-align: left !important;
+  justify-content: flex-start !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+.pagination-left-table .ant-table-pagination .ant-pagination {
+  justify-content: flex-start !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.pagination-left-table .ant-table-pagination .ant-pagination-total {
+  margin-right: auto !important;
+  order: 1 !important;
+}
+
+.pagination-left-table .ant-table-pagination .ant-pagination-options {
+  order: 2 !important;
+  margin-left: auto !important;
+}
+
+.pagination-left-table .ant-table-pagination .ant-pagination-item,
+.pagination-left-table .ant-table-pagination .ant-pagination-prev,
+.pagination-left-table .ant-table-pagination .ant-pagination-next,
+.pagination-left-table .ant-table-pagination .ant-pagination-jump-prev,
+.pagination-left-table .ant-table-pagination .ant-pagination-jump-next {
+  order: 3 !important;
+}
+
 /* 自定義滾動條樣式 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -117,8 +182,60 @@
   background: #f0f2f5;
   border-radius: 0;
   min-height: 100vh;
+  height: 100vh;
+  overflow-y: scroll !important;
+  overflow-x: hidden;
   transition: all 0.2s;
-} 
+  /* Firefox 滾動條樣式 */
+  scrollbar-width: auto;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+/* 確保滾動條可見 */
+.main-content-panel::-webkit-scrollbar {
+  width: 12px !important;
+  background-color: #f1f1f1;
+}
+
+.main-content-panel::-webkit-scrollbar-track {
+  background-color: #f1f1f1;
+  border-radius: 6px;
+}
+
+.main-content-panel::-webkit-scrollbar-thumb {
+  background-color: #c1c1c1;
+  border-radius: 6px;
+  border: 2px solid #f1f1f1;
+}
+
+.main-content-panel::-webkit-scrollbar-thumb:hover {
+  background-color: #a8a8a8;
+}
+
+/* 全局滾動條樣式覆蓋 */
+* {
+  scrollbar-width: auto !important;
+}
+
+*::-webkit-scrollbar {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+*::-webkit-scrollbar-track {
+  background: #f1f1f1 !important;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c1c1c1 !important;
+  border-radius: 6px !important;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8 !important;
+}
+
+/* Firefox 滾動條樣式 - 合併到主樣式中 */ 
 
 /* 登入頁面專用樣式 */
 .login-root {

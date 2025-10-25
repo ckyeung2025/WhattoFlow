@@ -49,7 +49,7 @@ namespace PurpleRice.Services
             try
             {
                 _loggingService.LogInformation($"=== EFormService.FillFormWithAIAsync 開始 ===");
-                _loggingService.LogInformation($"開始時間: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+                _loggingService.LogInformation($"開始時間: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}");
                 _loggingService.LogInformation($"原始 HTML 長度: {originalHtml?.Length ?? 0}");
                 _loggingService.LogInformation($"用戶消息: {userMessage}");
 

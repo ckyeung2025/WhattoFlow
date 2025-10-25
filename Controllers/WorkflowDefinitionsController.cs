@@ -175,7 +175,7 @@ namespace PurpleRice.Controllers
             }
 
             def.CompanyId = companyId.Value; // 設置為當前用戶的公司ID
-            def.CreatedAt = DateTime.Now;
+            def.CreatedAt = DateTime.UtcNow; // 使用 UTC 時間
             _db.WorkflowDefinitions.Add(def);
             await _db.SaveChangesAsync();
             return CreatedAtAction(nameof(Get), new { id = def.Id }, def);
@@ -204,7 +204,7 @@ namespace PurpleRice.Controllers
             item.Description = def.Description;
             item.Json = def.Json;
             item.Status = def.Status;
-            item.UpdatedAt = DateTime.Now;
+            item.UpdatedAt = DateTime.UtcNow; // 使用 UTC 時間
             item.UpdatedBy = def.UpdatedBy;
             // 確保 CompanyId 保持不變
             item.CompanyId = companyId.Value;
@@ -406,8 +406,8 @@ namespace PurpleRice.Controllers
                 Status = "Enabled",
                 CreatedBy = workflow.CreatedBy,
                 UpdatedBy = workflow.UpdatedBy,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now,
+                CreatedAt = DateTime.UtcNow, // 使用 UTC 時間
+                UpdatedAt = DateTime.UtcNow, // 使用 UTC 時間
                 CompanyId = companyId.Value // 設置為當前用戶的公司ID
             };
 
@@ -536,7 +536,7 @@ namespace PurpleRice.Controllers
             foreach (var workflow in workflowsToUpdate)
             {
                 workflow.Status = newStatus;
-                workflow.UpdatedAt = DateTime.Now;
+                workflow.UpdatedAt = DateTime.UtcNow; // 使用 UTC 時間
             }
 
             await _db.SaveChangesAsync();
@@ -580,7 +580,7 @@ namespace PurpleRice.Controllers
                 {
                     WorkflowDefinitionId = workflow.Id,
                     Status = "Running",
-                    StartedAt = DateTime.Now,
+                    StartedAt = DateTime.UtcNow, // 使用 UTC 時間
                     InputJson = JsonSerializer.Serialize(request.InputData),
                     CreatedBy = User.FindFirst("user_id")?.Value ?? "manual-user"
                 };

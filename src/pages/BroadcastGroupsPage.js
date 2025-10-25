@@ -15,7 +15,8 @@ import {
   ColorPicker,
   InputNumber,
   Spin,
-  Tooltip
+  Tooltip,
+  Pagination
 } from 'antd';
 import { 
   PlusOutlined, 
@@ -25,11 +26,37 @@ import {
   UserOutlined,
   PaletteOutlined
 } from '@ant-design/icons';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import { broadcastGroupApi, contactApi } from '../services/contactApi';
 import { useLanguage } from '../contexts/LanguageContext';
+import TimezoneUtils from '../utils/timezoneUtils';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// ResizableTitle 組件
+const ResizableTitle = (props) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      minConstraints={[30, 0]}
+      handle={
+        <span
+          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px', cursor: 'col-resize', zIndex: 1, userSelect: 'none' }}
+          onClick={e => e.stopPropagation()}
+        />
+      }
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} style={{ position: 'relative' }} />
+    </Resizable>
+  );
+};
 
 const BroadcastGroupsPage = () => {
   const { t } = useLanguage();
@@ -37,6 +64,26 @@ const BroadcastGroupsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  
+  // 用戶時區偏移狀態
+  const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
+  
+  // 分頁和排序狀態
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState('');
+  const [sortOrder, setSortOrder] = useState('');
+  
+  // 列寬狀態
+  const [columnWidths, setColumnWidths] = useState({
+    name: 200,
+    color: 120,
+    contactCount: 120,
+    createdAt: 150,
+    updatedAt: 150,
+    actions: 150
+  });
   
   // 模態框狀態
   const [showModal, setShowModal] = useState(false);
@@ -54,8 +101,24 @@ const BroadcastGroupsPage = () => {
     setError(null);
     
     try {
-      const groupsData = await broadcastGroupApi.getGroups();
-      setGroups(groupsData || []);
+      const params = {
+        page: currentPage,
+        pageSize: pageSize,
+        search: undefined, // 可以添加搜索功能
+        sortField: sortField || undefined,
+        sortOrder: sortOrder || undefined
+      };
+      
+      const response = await broadcastGroupApi.getGroups(params);
+      
+      if (response.data && response.total !== undefined) {
+        setGroups(response.data || []);
+        setTotalCount(response.total);
+      } else {
+        // 兼容舊的 API 格式
+        setGroups(response || []);
+        setTotalCount(response?.length || 0);
+      }
     } catch (err) {
       setError(t('broadcastGroups.loadError') + ': ' + (err.response?.data || err.message));
     } finally {
@@ -63,10 +126,33 @@ const BroadcastGroupsPage = () => {
     }
   };
 
-  // 初始載入
+  // 初始載入和數據重新載入
   useEffect(() => {
     loadGroups();
+  }, [currentPage, pageSize, sortField, sortOrder]);
+
+  // 獲取用戶時區設置
+  useEffect(() => {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.timezone) {
+      setUserTimezoneOffset(userInfo.timezone);
+    }
   }, []);
+
+  // 表格變更處理函數
+  const handleTableChange = (pagination, filters, sorter) => {
+    // 處理排序
+    if (sorter && sorter.field) {
+      const newSortField = sorter.field;
+      const newSortOrder = sorter.order === 'ascend' ? 'asc' : sorter.order === 'descend' ? 'desc' : '';
+      
+      setSortField(newSortField);
+      setSortOrder(newSortOrder);
+    } else {
+      setSortField('');
+      setSortOrder('');
+    }
+  };
 
   // 開啟新增/編輯模態框
   const handleOpenModal = (group = null) => {
@@ -151,11 +237,14 @@ const BroadcastGroupsPage = () => {
   ];
 
   // 表格列定義
-  const columns = [
+  const baseColumns = React.useMemo(() => [
     {
       title: t('broadcastGroups.groupName'),
       dataIndex: 'name',
       key: 'name',
+      width: columnWidths.name,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (text, record) => (
         <div>
           <div style={{ fontWeight: 'bold' }}>{text}</div>
@@ -171,6 +260,9 @@ const BroadcastGroupsPage = () => {
       title: t('broadcastGroups.groupColor'),
       dataIndex: 'color',
       key: 'color',
+      width: columnWidths.color,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (color) => (
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <div 
@@ -192,6 +284,7 @@ const BroadcastGroupsPage = () => {
       title: t('broadcastGroups.contactCount'),
       dataIndex: 'contactCount',
       key: 'contactCount',
+      width: columnWidths.contactCount,
       render: (count) => (
         <Tag icon={<UserOutlined />} color="blue">
           {count || 0}
@@ -202,16 +295,32 @@ const BroadcastGroupsPage = () => {
       title: t('broadcastGroups.createdAt'),
       dataIndex: 'createdAt',
       key: 'createdAt',
+      width: columnWidths.createdAt,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
       render: (date) => (
         <Text type="secondary" style={{ fontSize: '12px' }}>
-          {new Date(date).toLocaleDateString('zh-TW')}
+          {date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset) : '-'}
+        </Text>
+      ),
+    },
+    {
+      title: t('broadcastGroups.updatedAt'),
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      width: columnWidths.updatedAt,
+      sorter: true,
+      sortDirections: ['ascend', 'descend'],
+      render: (date) => (
+        <Text type="secondary" style={{ fontSize: '12px' }}>
+          {date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset) : '-'}
         </Text>
       ),
     },
     {
       title: t('broadcastGroups.actions'),
       key: 'actions',
-      width: 150,
+      width: columnWidths.actions,
       render: (_, record) => (
         <Space>
           <Tooltip title={t('broadcastGroups.edit')}>
@@ -232,7 +341,37 @@ const BroadcastGroupsPage = () => {
         </Space>
       ),
     },
-  ];
+  ], [t, userTimezoneOffset, columnWidths]);
+
+  // 列寬調整處理函數
+  const handleResize = (index) => (e, { size }) => {
+    const columnKeys = Object.keys(columnWidths);
+    const columnKey = columnKeys[index];
+    if (columnKey) {
+      setColumnWidths(prev => ({
+        ...prev,
+        [columnKey]: size.width
+      }));
+    }
+  };
+
+  // 可調整大小的列
+  const resizableColumns = React.useMemo(() => 
+    baseColumns.map((col, index) => ({
+      ...col,
+      onHeaderCell: column => ({
+        width: col.width,
+        onResize: handleResize(index),
+      }),
+    }))
+  , [baseColumns]);
+
+  // 表格組件配置
+  const components = {
+    header: {
+      cell: ResizableTitle,
+    },
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -263,16 +402,15 @@ const BroadcastGroupsPage = () => {
       {/* 群組列表 */}
       <Card>
         <Table
-          columns={columns}
+          columns={resizableColumns}
           dataSource={groups}
           rowKey="id"
           loading={loading}
-          pagination={{
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              t('common.pageRange', { start: range[0], end: range[1], total }),
-          }}
+          onChange={handleTableChange}
+          components={components}
+          pagination={false}
+          scroll={{ x: 1200, y: 'calc(100vh - 300px)' }}
+          sticky={{ offsetHeader: 0 }}
           locale={{
             emptyText: (
               <div style={{ padding: '40px', textAlign: 'center' }}>
@@ -283,6 +421,27 @@ const BroadcastGroupsPage = () => {
             ),
           }}
         />
+        <div style={{ marginTop: 16, textAlign: 'left' }}>
+          <Pagination
+            current={currentPage}
+            pageSize={pageSize}
+            total={totalCount}
+            showSizeChanger
+            showQuickJumper
+            pageSizeOptions={['10', '20', '50', '100']}
+            showTotal={(total, range) => 
+              `${t('eform.pageRange')}${range[0]}-${range[1]}${t('eform.total')}${total}`
+            }
+            onChange={(page, pageSize) => {
+              setCurrentPage(page);
+              setPageSize(pageSize);
+            }}
+            onShowSizeChange={(current, size) => {
+              setCurrentPage(1);
+              setPageSize(size);
+            }}
+          />
+        </div>
       </Card>
 
       {/* 新增/編輯群組模態框 */}

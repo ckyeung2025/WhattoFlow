@@ -77,13 +77,25 @@ const ContactEditPageContent = () => {
       console.log('📋 ContactEditPageContent - Groups response:', groupsResponse);
       console.log('📋 ContactEditPageContent - Hashtags response:', hashtagsResponse);
       
-      setGroups(groupsResponse || []);
-      setHashtags(hashtagsResponse || []);
-      setAvailableHashtags(hashtagsResponse || []);
+      // 確保 groups 是數組
+      const groupsData = Array.isArray(groupsResponse) ? groupsResponse : 
+                        (groupsResponse?.data && Array.isArray(groupsResponse.data)) ? groupsResponse.data : [];
+      
+      // 確保 hashtags 是數組
+      const hashtagsData = Array.isArray(hashtagsResponse) ? hashtagsResponse : 
+                          (hashtagsResponse?.data && Array.isArray(hashtagsResponse.data)) ? hashtagsResponse.data : [];
+      
+      setGroups(groupsData);
+      setHashtags(hashtagsData);
+      setAvailableHashtags(hashtagsData);
       
       console.log('📋 ContactEditPageContent - Options loaded successfully');
     } catch (err) {
       console.error('載入選項數據失敗：', err);
+      // 設置默認空數組
+      setGroups([]);
+      setHashtags([]);
+      setAvailableHashtags([]);
     }
   };
 
@@ -403,7 +415,7 @@ const ContactEditPageContent = () => {
                       setFormData(prev => ({ ...prev, broadcast_group_id: value }));
                     }}
                   >
-                    {groups.map(group => (
+                    {Array.isArray(groups) && groups.map(group => (
                       <Option key={group.id} value={group.id}>
                         {group.name}
                       </Option>
@@ -476,7 +488,7 @@ const ContactEditPageContent = () => {
             {/* 快速添加標籤 */}
             <Card title={t('contactList.quickAddTags')} size='small'>
               <Space wrap>
-                {availableHashtags.map(hashtag => (
+                {Array.isArray(availableHashtags) && availableHashtags.map(hashtag => (
                   <Tag
                     key={hashtag.id}
                     color={hashtag.color || 'blue'}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography, Modal, Divider, Tag, Space } from 'antd';
+import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography, Modal, Divider, Tag, Space, Tabs } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined, SafetyOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -37,6 +37,17 @@ const CompanyEditPage = () => {
             wA_VerifyToken: data.wA_VerifyToken,
             wA_WebhookToken: data.wA_WebhookToken,
             wA_WebhookUrl: data.wA_WebhookToken ? `${window.location.origin}/api/MetaWebhook/${data.wA_WebhookToken}` : '',
+            // WhatsApp 菜單設置
+            wA_WelcomeMessage: data.wA_WelcomeMessage,
+            wA_NoFunctionMessage: data.wA_NoFunctionMessage,
+            wA_MenuTitle: data.wA_MenuTitle,
+            wA_MenuFooter: data.wA_MenuFooter,
+            wA_MenuButton: data.wA_MenuButton,
+            wA_SectionTitle: data.wA_SectionTitle,
+            wA_DefaultOptionDescription: data.wA_DefaultOptionDescription,
+            wA_InputErrorMessage: data.wA_InputErrorMessage,
+            wA_FallbackMessage: data.wA_FallbackMessage,
+            wA_SystemErrorMessage: data.wA_SystemErrorMessage,
             createdAt: data.createdAt,
             updatedAt: data.updatedAt,
             logoUrl: data.logoUrl,
@@ -205,7 +216,17 @@ const CompanyEditPage = () => {
   };
 
   return (
-    <div style={{ maxWidth: 1100, margin: '32px auto', padding: 16, position: 'relative' }}>
+    <div style={{ 
+      width: '100%',
+      height: '100%',
+      overflow: 'visible'
+    }}>
+      <div style={{ 
+        maxWidth: 1100, 
+        margin: '32px auto', 
+        padding: '16px 16px 64px 16px',
+        position: 'relative'
+      }}>
       <Row gutter={[32, 16]} justify="center" align="top">
         {/* 左側：公司基本資料 */}
         <Col xs={24} md={15}>
@@ -257,95 +278,234 @@ const CompanyEditPage = () => {
         {/* 右側：WhatsApp 設定 */}
         <Col xs={24} md={9}>
           <Card
-            style={{ borderRadius: 16, boxShadow: '0 2px 12px #eee', minHeight: 300 }}
-            bodyStyle={{ padding: 32 }}
+            style={{ 
+              borderRadius: 16, 
+              boxShadow: '0 2px 12px #eee',
+              minHeight: 600
+            }}
+            bodyStyle={{ 
+              padding: 24
+            }}
           >
             <Title level={5} style={{ color: '#7234CF', marginBottom: 24, letterSpacing: 2 }}>{t('companyEdit.whatsappSetting')}</Title>
-            <Form form={form} layout="vertical">
-              <Form.Item name="wA_API_Key" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waApiKey')}</span>}>
-                <Input style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="wA_PhoneNo_ID" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waPhoneNoId')}</span>}>
-                <Input style={{ width: '100%' }} placeholder="例如: 690383010830837" />
-              </Form.Item>
-              <Form.Item name="wA_Business_Account_ID" label={<span style={{ fontWeight: 600 }}>WhatsApp Business Account ID</span>}>
-                <Input 
-                  style={{ width: '100%' }} 
-                  placeholder="例如: 1102096678464098"
-                  suffix={
-                    <Tooltip title="用於管理 Meta 官方模板">
-                      <span style={{ color: '#666', fontSize: '12px' }}>模板管理</span>
-                    </Tooltip>
-                  }
-                />
-              </Form.Item>
-              
-              {/* 驗證 Token 權限按鈕 */}
-              <Form.Item>
-                <Button 
-                  icon={<SafetyOutlined />}
-                  onClick={handleValidateToken}
-                  style={{ width: '100%' }}
-                  type="dashed"
-                >
-                  驗證 Token 權限
-                </Button>
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
-                  輸入 API Key 和 Business Account ID 後點擊驗證
-                </div>
-              </Form.Item>
-              
-              <Divider style={{ margin: '16px 0' }} />
-              
-              <Form.Item name="wA_VerifyToken" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waVerifyToken')}</span>}>
-                <Input style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="wA_WebhookToken" label={<span style={{ fontWeight: 600 }}>Webhook Token</span>}>
-                <Input 
-                  style={{ width: '100%' }} 
-                  placeholder="自動生成的唯一 Token"
-                  suffix={
-                    <Button 
-                      type="text" 
-                      size="small" 
-                      onClick={() => {
-                        const newToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-                        form.setFieldsValue({ 
-                          wA_WebhookToken: newToken,
-                          wA_WebhookUrl: `${window.location.origin}/api/MetaWebhook/${newToken}`
-                        });
-                        message.success('新的 Token 已生成，URL 已更新');
-                      }}
-                    >
-                      重新生成
-                    </Button>
-                  }
-                />
-              </Form.Item>
-              <Form.Item name="wA_WebhookUrl" label={<span style={{ fontWeight: 600 }}>Meta Webhook URL</span>}>
-                <Input 
-                  style={{ width: '100%' }} 
-                  placeholder="例如: https://your-domain.com/api/MetaWebhook/your-token"
-                  suffix={
-                    <Button 
-                      type="text" 
-                      size="small" 
-                      onClick={() => {
-                        const webhookUrl = form.getFieldValue('wA_WebhookUrl');
-                        if (webhookUrl) {
-                          navigator.clipboard.writeText(webhookUrl);
-                          message.success('Webhook URL 已複製到剪貼簿');
-                        } else {
-                          message.error('請先生成 Webhook Token');
-                        }
-                      }}
-                    >
-                      複製
-                    </Button>
-                  }
-                />
-              </Form.Item>
-            </Form>
+            
+            <Tabs
+              defaultActiveKey="1"
+              items={[
+                {
+                  key: '1',
+                  label: t('companyEdit.apiSettings'),
+                  children: (
+                    <Form form={form} layout="vertical" style={{ paddingRight: '8px' }}>
+                      <Form.Item name="wA_API_Key" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waApiKey')}</span>}>
+                        <Input style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item name="wA_PhoneNo_ID" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waPhoneNoId')}</span>}>
+                        <Input style={{ width: '100%' }} placeholder="例如: 690383010830837" />
+                      </Form.Item>
+                      <Form.Item name="wA_Business_Account_ID" label={<span style={{ fontWeight: 600 }}>WhatsApp Business Account ID</span>}>
+                        <Input 
+                          style={{ width: '100%' }} 
+                          placeholder="例如: 1102096678464098"
+                          suffix={
+                            <Tooltip title="用於管理 Meta 官方模板">
+                              <span style={{ color: '#666', fontSize: '12px' }}>模板管理</span>
+                            </Tooltip>
+                          }
+                        />
+                      </Form.Item>
+                      
+                      {/* 驗證 Token 權限按鈕 */}
+                      <Form.Item>
+                        <Button 
+                          icon={<SafetyOutlined />}
+                          onClick={handleValidateToken}
+                          style={{ width: '100%' }}
+                          type="dashed"
+                        >
+                          驗證 Token 權限
+                        </Button>
+                        <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                          輸入 API Key 和 Business Account ID 後點擊驗證
+                        </div>
+                      </Form.Item>
+                      
+                      <Divider style={{ margin: '16px 0' }} />
+                      
+                      <Form.Item name="wA_VerifyToken" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waVerifyToken')}</span>}>
+                        <Input style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item name="wA_WebhookToken" label={<span style={{ fontWeight: 600 }}>Webhook Token</span>}>
+                        <Input 
+                          style={{ width: '100%' }} 
+                          placeholder="自動生成的唯一 Token"
+                          suffix={
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              onClick={() => {
+                                const newToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                                form.setFieldsValue({ 
+                                  wA_WebhookToken: newToken,
+                                  wA_WebhookUrl: `${window.location.origin}/api/MetaWebhook/${newToken}`
+                                });
+                                message.success('新的 Token 已生成，URL 已更新');
+                              }}
+                            >
+                              重新生成
+                            </Button>
+                          }
+                        />
+                      </Form.Item>
+                      <Form.Item name="wA_WebhookUrl" label={<span style={{ fontWeight: 600 }}>Meta Webhook URL</span>}>
+                        <Input 
+                          style={{ width: '100%' }} 
+                          placeholder="例如: https://your-domain.com/api/MetaWebhook/your-token"
+                          suffix={
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              onClick={() => {
+                                const webhookUrl = form.getFieldValue('wA_WebhookUrl');
+                                if (webhookUrl) {
+                                  navigator.clipboard.writeText(webhookUrl);
+                                  message.success('Webhook URL 已複製到剪貼簿');
+                                } else {
+                                  message.error('請先生成 Webhook Token');
+                                }
+                              }}
+                            >
+                              複製
+                            </Button>
+                          }
+                        />
+                      </Form.Item>
+                    </Form>
+                  ),
+                },
+                {
+                  key: '2',
+                  label: t('companyEdit.chatbotMenuConfig'),
+                  children: (
+                    <Form form={form} layout="vertical" style={{ paddingRight: '8px' }}>
+                      <div style={{ marginBottom: '16px', padding: '12px', background: '#f6f8fa', borderRadius: '6px', fontSize: '12px', color: '#666' }}>
+                        💡 {t('companyEdit.menuConfigHint')}
+                      </div>
+                      
+                      <Form.Item 
+                        name="wA_WelcomeMessage" 
+                        label={<span style={{ fontWeight: 600 }}>{t('companyEdit.welcomeMessage')}</span>}
+                        tooltip={t('companyEdit.welcomeMessageTooltip')}
+                      >
+                        <Input.TextArea 
+                          rows={3} 
+                          placeholder="歡迎使用我們的服務！&#10;&#10;請選擇您需要的功能："
+                          style={{ width: '100%' }} 
+                        />
+                      </Form.Item>
+
+                      <Form.Item 
+                        name="wA_NoFunctionMessage" 
+                        label={<span style={{ fontWeight: 600 }}>{t('companyEdit.noFunctionMessage')}</span>}
+                        tooltip={t('companyEdit.noFunctionMessageTooltip')}
+                      >
+                        <Input.TextArea 
+                          rows={3} 
+                          placeholder="歡迎使用我們的服務！&#10;&#10;目前沒有可用的功能，請聯繫管理員。"
+                          style={{ width: '100%' }} 
+                        />
+                      </Form.Item>
+
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item 
+                            name="wA_MenuTitle" 
+                            label={<span style={{ fontWeight: 600 }}>{t('companyEdit.menuTitle')}</span>}
+                            tooltip={t('companyEdit.menuTitleTooltip')}
+                          >
+                            <Input placeholder="服務選單" style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item 
+                            name="wA_MenuButton" 
+                            label={<span style={{ fontWeight: 600 }}>{t('companyEdit.menuButton')}</span>}
+                            tooltip={t('companyEdit.menuButtonTooltip')}
+                          >
+                            <Input placeholder="查看選項" style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Form.Item 
+                        name="wA_MenuFooter" 
+                        label={<span style={{ fontWeight: 600 }}>{t('companyEdit.menuFooter')}</span>}
+                        tooltip={t('companyEdit.menuFooterTooltip')}
+                      >
+                        <Input placeholder="請選擇您需要的服務" style={{ width: '100%' }} />
+                      </Form.Item>
+
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item 
+                            name="wA_SectionTitle" 
+                            label={<span style={{ fontWeight: 600 }}>{t('companyEdit.sectionTitle')}</span>}
+                            tooltip={t('companyEdit.sectionTitleTooltip')}
+                          >
+                            <Input placeholder="服務選項" style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item 
+                            name="wA_DefaultOptionDescription" 
+                            label={<span style={{ fontWeight: 600 }}>{t('companyEdit.defaultOptionDescription')}</span>}
+                            tooltip={t('companyEdit.defaultOptionDescriptionTooltip')}
+                          >
+                            <Input placeholder="點擊選擇此服務" style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+
+                      <Form.Item 
+                        name="wA_InputErrorMessage" 
+                        label={<span style={{ fontWeight: 600 }}>{t('companyEdit.inputErrorMessage')}</span>}
+                        tooltip={t('companyEdit.inputErrorMessageTooltip')}
+                      >
+                        <Input.TextArea 
+                          rows={2} 
+                          placeholder="輸入不正確，請重新輸入。"
+                          style={{ width: '100%' }} 
+                        />
+                      </Form.Item>
+
+                      <Form.Item 
+                        name="wA_FallbackMessage" 
+                        label={<span style={{ fontWeight: 600 }}>{t('companyEdit.fallbackMessage')}</span>}
+                        tooltip={t('companyEdit.fallbackMessageTooltip')}
+                      >
+                        <Input.TextArea 
+                          rows={2} 
+                          placeholder="&#10;&#10;回覆數字選擇功能，或輸入「選單」重新顯示選單。"
+                          style={{ width: '100%' }} 
+                        />
+                      </Form.Item>
+
+                      <Form.Item 
+                        name="wA_SystemErrorMessage" 
+                        label={<span style={{ fontWeight: 600 }}>{t('companyEdit.systemErrorMessage')}</span>}
+                        tooltip={t('companyEdit.systemErrorMessageTooltip')}
+                      >
+                        <Input.TextArea 
+                          rows={2} 
+                          placeholder="系統錯誤：無法找到 QR Code 節點配置。"
+                          style={{ width: '100%' }} 
+                        />
+                      </Form.Item>
+                    </Form>
+                  ),
+                },
+              ]}
+            />
           </Card>
         </Col>
       </Row>
@@ -371,6 +531,7 @@ const CompanyEditPage = () => {
             aria-label="儲存"
           />
         </Tooltip>
+      </div>
       </div>
     </div>
   );

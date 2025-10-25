@@ -113,8 +113,8 @@ export const contactApi = {
 // 廣播群組 API
 export const broadcastGroupApi = {
   // 獲取群組列表
-  getGroups: async () => {
-    const response = await apiClient.get('/api/contactlist/groups');
+  getGroups: async (params = {}) => {
+    const response = await apiClient.get('/api/contactlist/groups', { params });
     return response.data;
   },
 
@@ -139,8 +139,8 @@ export const broadcastGroupApi = {
 // 標籤 API
 export const hashtagApi = {
   // 獲取標籤列表
-  getHashtags: async () => {
-    const response = await apiClient.get('/api/contactlist/hashtags');
+  getHashtags: async (params = {}) => {
+    const response = await apiClient.get('/api/contactlist/hashtags', { params });
     return response.data;
   },
 

@@ -66,7 +66,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 生成唯一文件名
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid()}_{file.FileName}";
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid()}_{file.FileName}";
                 var filePath = Path.Combine(uploadDir, fileName);
                 _loggingService.LogInformation($"生成的文件名: {fileName}, 完整路徑: {filePath}");
 
