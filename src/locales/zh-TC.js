@@ -540,6 +540,7 @@ const zhTC = {
     hashtagsPlaceholder: '輸入標籤，用逗號分隔',
     // 驗證訊息
     nameRequired: '請輸入姓名',
+    whatsappNumberRequired: '請輸入 WhatsApp 號碼',
     broadcastGroupRequired: '請選擇廣播群組',
     formValidationFailed: '表單驗證失敗，請檢查必填欄位',
     // 按鈕

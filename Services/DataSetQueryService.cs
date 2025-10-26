@@ -317,7 +317,9 @@ namespace PurpleRice.Services
                 var fullQuery = baseQuery;
                 if (!string.IsNullOrEmpty(whereClause))
                 {
-                    if (baseQuery.ToUpper().Contains("WHERE"))
+                    // ✅ 修復：移除註釋後檢查是否包含 WHERE
+                    var queryWithoutComments = RemoveSqlComments(baseQuery);
+                    if (queryWithoutComments.ToUpper().Contains("WHERE"))
                     {
                         fullQuery += $" AND ({whereClause})";
                     }
@@ -378,6 +380,33 @@ namespace PurpleRice.Services
         {
             // TODO: 實現 Excel 查詢邏輯
             return new List<Dictionary<string, object>>();
+        }
+
+        // 移除 SQL 註釋的輔助方法
+        private string RemoveSqlComments(string sql)
+        {
+            if (string.IsNullOrEmpty(sql))
+                return sql;
+
+            var result = sql;
+            
+            // 移除 /* ... */ 格式的多行註釋
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result, 
+                @"/\*[\s\S]*?\*/", 
+                "", 
+                System.Text.RegularExpressions.RegexOptions.Multiline
+            );
+            
+            // 移除 -- 格式的單行註釋
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result, 
+                @"--.*?$", 
+                "", 
+                System.Text.RegularExpressions.RegexOptions.Multiline
+            );
+            
+            return result;
         }
 
         private string GetConnectionString(DataSetDataSource dataSource)

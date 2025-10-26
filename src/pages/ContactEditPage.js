@@ -163,18 +163,31 @@ const ContactEditPageContent = () => {
     console.log('📡 ContactEditPage - broadcast_group_id is null:', values.broadcast_group_id === null);
     console.log('📡 ContactEditPage - broadcast_group_id is undefined:', values.broadcast_group_id === undefined);
     
+    // 清理空字串欄位，轉換為 null 或 undefined
+    const cleanedValues = {
+      ...values,
+      whatsapp_number: values.whatsapp_number?.trim() || '',
+      title: values.title?.trim() || null,
+      occupation: values.occupation?.trim() || null,
+      email: values.email?.trim() || null,
+      company_name: values.company_name?.trim() || null,
+      department: values.department?.trim() || null,
+      position: values.position?.trim() || null,
+      hashtags: values.hashtags?.trim() || null,
+    };
+    
     setSaving(true);
     try {
       if (isEdit) {
         console.log('📤 ContactEditPage - Calling updateContact with ID:', id);
-        console.log('📤 ContactEditPage - Update data being sent:', JSON.stringify(values, null, 2));
-        const updateResult = await contactApi.updateContact(id, values);
+        console.log('📤 ContactEditPage - Update data being sent:', JSON.stringify(cleanedValues, null, 2));
+        const updateResult = await contactApi.updateContact(id, cleanedValues);
         console.log('✅ ContactEditPage - Update result:', updateResult);
         message.success(t('contactList.updateSuccess'));
       } else {
         console.log('📤 ContactEditPage - Calling createContact');
-        console.log('📤 ContactEditPage - Create data being sent:', JSON.stringify(values, null, 2));
-        const createResult = await contactApi.createContact(values);
+        console.log('📤 ContactEditPage - Create data being sent:', JSON.stringify(cleanedValues, null, 2));
+        const createResult = await contactApi.createContact(cleanedValues);
         console.log('✅ ContactEditPage - Create result:', createResult);
         message.success(t('contactList.createSuccess'));
       }
@@ -345,6 +358,7 @@ const ContactEditPageContent = () => {
                     <Form.Item
                       name="whatsapp_number"
                       label={t('contactList.whatsappNumber')}
+                      rules={[{ required: true, message: t('contactList.whatsappNumberRequired') }]}
                     >
                       <Input 
                         placeholder={t('contactList.whatsappPlaceholder')}

@@ -176,6 +176,16 @@ namespace PurpleRice.Controllers
                     return BadRequest("廣播群組為必填欄位");
                 }
                 
+                // 驗證 Email 格式（如果提供的話）
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    var emailAttribute = new System.ComponentModel.DataAnnotations.EmailAddressAttribute();
+                    if (!emailAttribute.IsValid(request.Email))
+                    {
+                        return BadRequest("請輸入有效的電子郵件格式");
+                    }
+                }
+                
                 // 創建聯絡人對象
                 var contact = new ContactList
                 {
@@ -262,6 +272,16 @@ namespace PurpleRice.Controllers
                 if (request.BroadcastGroupId == null || request.BroadcastGroupId == Guid.Empty)
                 {
                     return BadRequest("廣播群組為必填欄位");
+                }
+                
+                // 驗證 Email 格式（如果提供的話）
+                if (!string.IsNullOrWhiteSpace(request.Email))
+                {
+                    var emailAttribute = new System.ComponentModel.DataAnnotations.EmailAddressAttribute();
+                    if (!emailAttribute.IsValid(request.Email))
+                    {
+                        return BadRequest("請輸入有效的電子郵件格式");
+                    }
                 }
                 
                 // 先獲取現有的聯絡人資料以保留原始創建資訊

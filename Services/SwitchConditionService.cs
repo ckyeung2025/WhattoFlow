@@ -84,12 +84,24 @@ namespace PurpleRice.Services
                     .FirstOrDefaultAsync(pvv => pvv.WorkflowExecutionId == workflowExecutionId 
                                              && pvv.VariableName == condition.VariableName);
 
+                // ✅ 修復：處理變量不存在的情況
                 if (variableValue == null)
                 {
                     _logger.LogWarning("Variable not found: {VariableName} for execution {ExecutionId}", 
                         condition.VariableName, workflowExecutionId);
-                    return false;
+                    
+                    // 當變量不存在時，根據操作符決定返回結果
+                    return condition.Operator.ToLower() switch
+                    {
+                        "isempty" => true,    // 變量不存在 = 為空
+                        "isnotempty" => false, // 變量不存在 ≠ 不為空
+                        _ => false            // 其他操作符，變量不存在視為不滿足條件
+                    };
                 }
+                
+                // ✅ 調試日誌：記錄變量值
+                _logger.LogInformation("變量 {VariableName} 的值: 數據類型={DataType}, StringValue='{StringValue}', NumericValue={NumericValue}, BooleanValue={BooleanValue}, DateValue={DateValue}", 
+                    condition.VariableName, variableValue.DataType, variableValue.StringValue, variableValue.NumericValue, variableValue.BooleanValue, variableValue.DateValue);
 
                 // 根據操作符評估條件
                 return condition.Operator.ToLower() switch

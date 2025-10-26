@@ -3279,6 +3279,7 @@ const en = {
     hashtagsPlaceholder: 'Enter tags, separated by commas',
     // Validation messages
     nameRequired: 'Please enter name',
+    whatsappNumberRequired: 'Please enter WhatsApp number',
     broadcastGroupRequired: 'Please select broadcast group',
     formValidationFailed: 'Form validation failed, please check required fields',
     // Buttons

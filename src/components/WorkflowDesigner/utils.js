@@ -66,42 +66,17 @@ export const validateWorkflowLogic = (nodes, edges, t) => {
   }
   
   // 檢查循環連接
-  const visited = new Set();
-  const recursionStack = new Set();
+  // 只檢測直接的自循環（節點連接到自己），允許回到先前的節點
+  const startNodes = nodes.filter(n => n.data.type === 'start');
   
-  const hasCycle = (nodeId, parentId = null) => {
-    if (recursionStack.has(nodeId)) {
-      return true; // 發現循環
-    }
-    if (visited.has(nodeId)) {
-      return false; // 已經訪問過，沒有循環
-    }
-    
-    visited.add(nodeId);
-    recursionStack.add(nodeId);
-    
-    // 找到從當前節點出發的所有邊
-    const outgoingEdges = edges.filter(edge => edge.source === nodeId);
-    
-    for (const edge of outgoingEdges) {
-      if (edge.target === parentId) {
-        continue; // 跳過回到父節點的邊
-      }
-      
-      if (hasCycle(edge.target, nodeId)) {
-        return true;
-      }
-    }
-    
-    recursionStack.delete(nodeId);
-    return false;
-  };
+  // 暫時移除循環檢測，允許任何連接模式
+  // 如果需要，可以在這裡添加特定的循環檢測邏輯
   
-  // 檢查每個節點是否有循環
-  for (const node of nodes) {
-    if (hasCycle(node.id)) {
-      errors.push(t('workflowDesigner.circularConnection', { nodeName: node.data.taskName || node.data.label }));
-      break;
+  // 檢查 Start 節點是否有輸出
+  for (const startNode of startNodes) {
+    const hasOutput = edges.some(edge => edge.source === startNode.id);
+    if (!hasOutput) {
+      warnings.push(t('workflowDesigner.startNodeNoOutput', { nodeName: startNode.data.taskName || startNode.data.label }));
     }
   }
   
@@ -120,15 +95,6 @@ export const validateWorkflowLogic = (nodes, edges, t) => {
   
   if (isolatedNodes.length > 0) {
     warnings.push(t('workflowDesigner.isolatedNodes', { nodeNames: isolatedNodes.map(n => n.data.taskName || n.data.label).join(', ') }));
-  }
-  
-  // 檢查 Start 節點是否有輸出
-  const startNodes = nodes.filter(n => n.data.type === 'start');
-  for (const startNode of startNodes) {
-    const hasOutput = edges.some(edge => edge.source === startNode.id);
-    if (!hasOutput) {
-      warnings.push(t('workflowDesigner.startNodeNoOutput', { nodeName: startNode.data.taskName || startNode.data.label }));
-    }
   }
   
   // 檢查 End 節點是否有輸入

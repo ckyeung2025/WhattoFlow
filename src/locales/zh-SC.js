@@ -537,6 +537,7 @@ const zhSC = {
     hashtagsPlaceholder: '输入标签，用逗号分隔',
     // 验证消息
     nameRequired: '请输入姓名',
+    whatsappNumberRequired: '请输入 WhatsApp 号码',
     broadcastGroupRequired: '请选择广播群组',
     formValidationFailed: '表单验证失败，请检查必填字段',
     // 按钮

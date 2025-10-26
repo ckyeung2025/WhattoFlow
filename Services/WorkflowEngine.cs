@@ -2467,31 +2467,74 @@ namespace PurpleRice.Services
                 .CountAsync();
         }
 
-        // 檢查節點是否已經執行過，防止循環
-        private async Task<bool> IsNodeAlreadyExecuted(int executionId, string nodeId, string nodeType)
+        // 檢查節點執行次數是否超限（防止死循環）
+        private async Task<bool> CheckNodeExecutionLimit(int executionId, string nodeId, string nodeType)
         {
+            // 檢查配置是否啟用監控
+            var enableMonitoring = _configuration.GetValue<bool>("WorkflowEngine:EnableExecutionLimitMonitoring", true);
+            if (!enableMonitoring)
+            {
+                return false; // 未啟用監控，允許執行
+            }
+            
+            var maxExecutions = _configuration.GetValue<int>("WorkflowEngine:MaxExecutionsPerMinute", 100);
+            var timeWindowMinutes = _configuration.GetValue<int>("WorkflowEngine:TimeWindowMinutes", 1);
+            
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-
-            // 檢查是否已經有相同節點ID的執行記錄
-            var existingStep = await db.WorkflowStepExecutions
+            
+            // 檢查過去 N 分鐘內該節點的執行次數
+            var timeWindow = DateTime.UtcNow.AddMinutes(-timeWindowMinutes);
+            
+            var executionCount = await db.WorkflowStepExecutions
                 .Where(s => s.WorkflowExecutionId == executionId && 
                            s.StepType == nodeType &&
-                           s.InputJson.Contains($"\"Id\":\"{nodeId}\""))
-                .FirstOrDefaultAsync();
+                           s.StartedAt.HasValue &&
+                           s.StartedAt.Value > timeWindow)
+                .CountAsync();
             
-            if (existingStep != null)
+            // 如果超過限制，則判定為死循環
+            if (executionCount >= maxExecutions)
             {
-                WriteLog($"發現重複執行: 節點 {nodeId} ({nodeType}) 已經在步驟 {existingStep.Id} 中執行過");
-                return true;
+                WriteLog($"⚠️ 警告：節點 {nodeId} ({nodeType}) 在 {timeWindowMinutes} 分鐘內執行 {executionCount} 次，超過限制 {maxExecutions}，疑似死循環！");
+                
+                // 標記流程為 Blocked
+                var execution = await db.WorkflowExecutions.FindAsync(executionId);
+                if (execution != null)
+                {
+                    execution.Status = "Blocked";
+                    execution.ErrorMessage = $"節點 {nodeType} 執行超過限制（{timeWindowMinutes} 分鐘內 {executionCount} 次），疑似死循環。流程已被自動停止，請檢查流程設計。";
+                    execution.EndedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync();
+                    
+                    WriteLog($"工作流程 {executionId} 已標記為 Blocked");
+                }
+                
+                return true;  // 阻止繼續執行
+            }
+            
+            WriteLog($"節點 {nodeId} ({nodeType}) 執行次數檢查通過：{executionCount}/{maxExecutions}");
+            return false;
+        }
+        
+        // 檢查節點是否已經執行過（簡化版：只檢查 sendEForm 節點的重複創建）
+        private async Task<bool> IsNodeAlreadyExecuted(int executionId, string nodeId, string nodeType)
+        {
+            // 檢查執行次數限制（防止死循環）
+            if (await CheckNodeExecutionLimit(executionId, nodeId, nodeType))
+            {
+                return true;  // 超過執行次數限制
             }
             
             // 特別檢查 sendEForm 節點，防止重複創建表單
             if (nodeType == "sendEForm" || nodeType == "sendeform")
             {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                
                 var existingEFormSteps = await db.WorkflowStepExecutions
                     .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
-                            .CountAsync();
+                    .CountAsync();
                         
                 if (existingEFormSteps > 0)
                 {
@@ -2500,6 +2543,7 @@ namespace PurpleRice.Services
                 }
             }
             
+            // 其他情況：允許執行（不做重入檢查，允許流程自由循環）
             return false;
         }
         
@@ -2892,6 +2936,11 @@ namespace PurpleRice.Services
                     dataSetName = result.DataSetName
                 });
                 WriteLog($"DataSet 查詢成功: {result.Message}");
+                
+                // ✅ 修復：即使查詢返回 0 條記錄，也要繼續執行後續節點
+                // 因為這是一個合法的查詢結果，流程應該繼續進行
+                WriteLog($"查詢結果: 找到 {result.TotalCount} 條記錄，繼續執行後續節點");
+                return true;
             }
             else
             {
@@ -2902,9 +2951,10 @@ namespace PurpleRice.Services
                     message = result.Message
                 });
                 WriteLog($"DataSet 查詢失敗: {result.Message}");
+                
+                // ❌ 只有在查詢真正失敗時才返回 false，阻止流程繼續
+                return false;
             }
-
-            return result.Success;
         }
         catch (Exception ex)
         {
