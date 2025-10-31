@@ -6,6 +6,7 @@ import {
   Table, 
   Form, 
   Input, 
+  InputNumber,
   Select, 
   Space, 
   Typography, 
@@ -29,9 +30,10 @@ import {
   GoogleOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  HistoryOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { broadcastGroupApi, hashtagApi } from '../services/contactApi';
 import { contactImportApi } from '../services/contactImportApi';
@@ -43,7 +45,11 @@ const { Step } = Steps;
 
 const ContactImportPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useLanguage();
+  
+  const searchParams = new URLSearchParams(location.search);
+  const editScheduleId = searchParams.get('editSchedule');
 
   // WhatsApp 號碼標準化函數
   const normalizeWhatsAppNumber = (number) => {
@@ -55,6 +61,12 @@ const ContactImportPage = () => {
   // 步驟狀態
   const [currentStep, setCurrentStep] = useState(0);
   const [importType, setImportType] = useState('excel');
+  
+  // 定時匯入設定
+  const [saveAsSchedule, setSaveAsSchedule] = useState(false);
+  const [scheduleName, setScheduleName] = useState('');
+  const [scheduleType, setScheduleType] = useState('interval');
+  const [intervalMinutes, setIntervalMinutes] = useState(60);
   
   // 文件上傳
   const [fileList, setFileList] = useState([]);
@@ -74,6 +86,9 @@ const ContactImportPage = () => {
   const [importResults, setImportResults] = useState({ success: 0, failed: 0, errors: [] });
   const [duplicateContacts, setDuplicateContacts] = useState([]);
   const [showDuplicateConfirmation, setShowDuplicateConfirmation] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
+  const [editingScheduleData, setEditingScheduleData] = useState(null);
   
   // 選項數據
   const [groups, setGroups] = useState([]);
@@ -127,6 +142,56 @@ const ContactImportPage = () => {
         
         setGroups(groupsData);
         setHashtags(hashtagsData);
+        
+        // 如果有編輯排程 ID，載入排程數據
+        if (editScheduleId) {
+          try {
+            const schedules = await contactImportApi.getSchedules();
+            const schedule = schedules.schedules?.find(s => s.id === editScheduleId);
+            if (schedule) {
+              setEditingScheduleData(schedule);
+              // 設置排程名稱
+              setScheduleName(schedule.name);
+              // 設置保存為排程為勾選且不可取消
+              setSaveAsSchedule(true);
+              // 設置排程類型
+              if (schedule.scheduleType) setScheduleType(schedule.scheduleType);
+              if (schedule.intervalMinutes) setIntervalMinutes(schedule.intervalMinutes);
+              
+              // 解析 sourceConfig 和 fieldMapping
+              if (schedule.sourceConfig) {
+                try {
+                  const sourceConfig = JSON.parse(schedule.sourceConfig);
+                  if (schedule.importType === 'excel') {
+                    setExcelConfig(sourceConfig);
+                    setImportType('excel');
+                  } else if (schedule.importType === 'google') {
+                    setGoogleConfig(sourceConfig);
+                    setImportType('google');
+                  } else if (schedule.importType === 'sql') {
+                    setSqlConfig(sourceConfig);
+                    setImportType('sql');
+                  }
+                  
+                  // 設置字段映射
+                  if (schedule.fieldMapping) {
+                    try {
+                      const fieldMapping = JSON.parse(schedule.fieldMapping);
+                      setFieldMapping(fieldMapping);
+                      mappingForm.setFieldsValue(fieldMapping);
+                    } catch (e) {
+                      console.error('解析字段映射失敗:', e);
+                    }
+                  }
+                } catch (e) {
+                  console.error('解析源配置失敗:', e);
+                }
+              }
+            }
+          } catch (err) {
+            console.error('載入排程數據失敗:', err);
+          }
+        }
       } catch (err) {
         console.error('載入選項數據失敗：', err);
         // 設置默認空數組以防止錯誤
@@ -135,7 +200,7 @@ const ContactImportPage = () => {
       }
     };
     loadOptions();
-  }, []);
+  }, [editScheduleId]);
 
   // 文件上傳處理
   const handleUpload = async (options) => {
@@ -189,7 +254,7 @@ const ContactImportPage = () => {
   // 處理 Google Sheets URL 上傳
   const handleGoogleSheetsUpload = async () => {
     if (!googleConfig.url) {
-      message.error('請先輸入 Google Sheets URL');
+      message.error(t('contactImport.pleaseEnterGoogleSheetsUrl'));
       return;
     }
 
@@ -206,15 +271,15 @@ const ContactImportPage = () => {
         });
         
         if (result.fileType === 'excel') {
-          message.success('檢測到 Excel 文件，將使用默認工作表');
+          message.success(t('contactImport.detectedExcelFile'));
         } else {
-          message.success(result.message || 'Google Sheets URL 驗證成功！');
+          message.success(result.message || t('contactImport.googleSheetsVerified'));
         }
       } else {
-        message.error('Google Sheets URL 驗證失敗：' + result.message);
+        message.error(t('contactImport.googleSheetsVerificationFailed') + result.message);
       }
     } catch (error) {
-      message.error('Google Sheets URL 驗證失敗：' + error.message);
+      message.error(t('contactImport.googleSheetsVerificationFailed') + error.message);
     }
   };
 
@@ -317,9 +382,57 @@ const ContactImportPage = () => {
       // 沒有重複，直接進行批量創建
       await performBatchImport(importData, false);
       
+      // 如果勾選了保存為定時匯入，創建排程
+      if (saveAsSchedule && scheduleName) {
+        await createImportSchedule();
+      }
+      
     } catch (error) {
       setImportStatus('error');
       message.error('匯入失敗：' + error.message);
+    }
+  };
+
+  // 創建定時匯入排程
+  const createImportSchedule = async () => {
+    try {
+      const mappingValues = mappingForm.getFieldsValue();
+      
+      // 構建 sourceConfig 對象
+      let sourceConfig = {};
+      if (importType === 'excel') {
+        sourceConfig = excelConfig;
+      } else if (importType === 'google') {
+        sourceConfig = googleConfig;
+      } else if (importType === 'sql') {
+        sourceConfig = sqlConfig;
+      }
+      
+      const scheduleData = {
+        name: scheduleName,
+        importType: importType,
+        isScheduled: true,
+        scheduleType: scheduleType,
+        intervalMinutes: intervalMinutes,
+        scheduleCron: "", // 暫時不使用 Cron
+        sourceConfig: sourceConfig,
+        fieldMapping: mappingValues,
+        allowUpdateDuplicates: false,
+        broadcastGroupId: mappingValues.broadcastGroupId || null
+      };
+      
+      console.log('🔍 準備創建排程數據:', JSON.stringify(scheduleData, null, 2));
+      
+      const result = await contactImportApi.createSchedule(scheduleData);
+      console.log('✅ 排程創建成功，返回結果:', result);
+      setScheduleSaved(true);
+      setScheduleError('');
+    } catch (error) {
+      console.error('❌ 排程創建失敗:', error);
+      console.error('❌ 錯誤詳情:', error.response?.data);
+      console.error('❌ 驗證錯誤詳情:', JSON.stringify(error.response?.data?.errors, null, 2));
+      const errorMessage = error.response?.data?.message || error.message;
+      setScheduleError(errorMessage);
     }
   };
 
@@ -374,6 +487,11 @@ const ContactImportPage = () => {
       });
       
       await performBatchImport(importData, true);
+      
+      // 如果勾選了保存為定時匯入，創建排程
+      if (saveAsSchedule && scheduleName) {
+        await createImportSchedule();
+      }
     } else {
       // 用戶取消，返回映射頁面
       setImportStatus('idle');
@@ -398,6 +516,7 @@ const ContactImportPage = () => {
   const loadFromSql = async () => {
     try {
       console.log('發送的 SQL 配置:', sqlConfig);
+      console.log('發送的 SQL 配置 (JSON):', JSON.stringify(sqlConfig, null, 2));
       const result = await contactImportApi.loadFromSql(sqlConfig);
       if (result.success) {
         console.log('SQL 查詢結果:', result);
@@ -512,20 +631,29 @@ const ContactImportPage = () => {
       {/* 頁面標題 */}
       <Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
         <Col>
-          <Button 
-            type="primary"
-            shape="square"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate('/contacts')}
-            style={{ 
-              width: '40px', 
-              height: '40px',
-              padding: '0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          />
+          <Space>
+            <Button 
+              type="primary"
+              shape="square"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate('/contacts')}
+              style={{ 
+                width: '40px', 
+                height: '40px',
+                padding: '0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            />
+            <Button 
+              type="default"
+              icon={<HistoryOutlined />}
+              onClick={() => navigate('/contact-import-schedule')}
+            >
+              {t('contactImport.manageSchedule')}
+            </Button>
+          </Space>
         </Col>
         <Col>
           <Title level={2} style={{ margin: 0, textAlign: 'right' }}>
@@ -675,12 +803,12 @@ const ContactImportPage = () => {
                   {excelConfig.filePath ? (
                     <div style={{ color: '#52c41a', display: 'flex', alignItems: 'center' }}>
                       <CheckCircleOutlined style={{ marginRight: '8px' }} />
-                      文件已上傳
+                      {t('contactImport.fileUploaded')}
                     </div>
                   ) : (
                     <div style={{ color: '#666', display: 'flex', alignItems: 'center' }}>
                       <FileExcelOutlined style={{ marginRight: '8px' }} />
-                      請先上傳 Excel 文件
+                      {t('contactImport.pleaseUploadExcelFile')}
                     </div>
                   )}
                 <Upload
@@ -759,11 +887,11 @@ const ContactImportPage = () => {
                       <Select 
                         value={googleConfig.sheetName}
                         onChange={(value) => setGoogleConfig({...googleConfig, sheetName: value})}
-                        placeholder={googleConfig.availableSheets.length > 0 ? t('contactImport.selectSheet') : "請先連接 Google Sheets"}
+                        placeholder={googleConfig.availableSheets.length > 0 ? t('contactImport.selectSheet') : t('contactImport.pleaseConnectGoogleSheets')}
                         disabled={!googleConfig.spreadsheetId}
                         showSearch
                         allowClear
-                        notFoundContent={googleConfig.availableSheets.length === 0 ? "請先連接 Google Sheets 獲取工作表列表" : "沒有找到匹配的工作表"}
+                        notFoundContent={googleConfig.availableSheets.length === 0 ? t('contactImport.getSheetsList') : t('contactImport.noMatchingSheet')}
                       >
                         {googleConfig.availableSheets.map(sheet => (
                           <Option key={sheet} value={sheet}>{sheet}</Option>
@@ -784,8 +912,8 @@ const ContactImportPage = () => {
                 <Row gutter={16}>
                   <Col span={24}>
                     <Alert 
-                      message="檢測到 Excel 文件" 
-                      description="系統將自動使用默認工作表進行數據導入，無需選擇工作表名稱。" 
+                      message={t('contactImport.detectedExcelFile')} 
+                      description={t('contactImport.useDefaultSheet')} 
                       type="info" 
                       showIcon 
                       style={{ marginBottom: '16px' }}
@@ -798,12 +926,12 @@ const ContactImportPage = () => {
                   {googleConfig.spreadsheetId ? (
                     <div style={{ color: '#52c41a', display: 'flex', alignItems: 'center' }}>
                       <CheckCircleOutlined style={{ marginRight: '8px' }} />
-                      URL 已驗證
+                      {t('contactImport.urlVerified')}
                     </div>
                   ) : (
                     <div style={{ color: '#666', display: 'flex', alignItems: 'center' }}>
                       <GoogleOutlined style={{ marginRight: '8px' }} />
-                      請輸入 Google Sheets URL
+                      {t('contactImport.pleaseEnterGoogleSheetsUrl')}
                     </div>
                   )}
                 <Button 
@@ -911,6 +1039,48 @@ const ContactImportPage = () => {
 
       {/* 步驟 2: 字段映射 */}
       {currentStep === 1 && (
+        <>
+        {/* 定時匯入設定 Card */}
+        <Card style={{ marginBottom: '24px' }}>
+          <Checkbox checked={saveAsSchedule} onChange={(e) => !editScheduleId && setSaveAsSchedule(e.target.checked)} disabled={!!editScheduleId}>
+            {t('contactImport.saveAsSchedule')}
+          </Checkbox>
+          
+          {saveAsSchedule && (
+            <div style={{ marginTop: '16px', paddingLeft: '24px' }}>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Input 
+                  placeholder={t('contactImport.scheduleNamePlaceholder')}
+                  value={scheduleName}
+                  onChange={(e) => !editScheduleId && setScheduleName(e.target.value)}
+                  disabled={!!editScheduleId}
+                />
+                <Select 
+                  value={scheduleType} 
+                  onChange={setScheduleType} 
+                  style={{ width: '100%' }}
+                >
+                  <Option value="interval">{t('contactImport.everyXMinutes')}</Option>
+                  <Option value="daily">{t('contactImport.daily')}</Option>
+                  <Option value="weekly">{t('contactImport.weekly')}</Option>
+                </Select>
+                {scheduleType === 'interval' && (
+                  <InputNumber
+                    placeholder={t('common.minutes')}
+                    value={intervalMinutes}
+                    onChange={setIntervalMinutes}
+                    min={1}
+                    max={525600}
+                    style={{ width: '100%' }}
+                    addonBefore={t('common.every')}
+                    addonAfter={t('common.minutes')}
+                  />
+                )}
+              </Space>
+            </div>
+          )}
+        </Card>
+        
         <Row gutter={24}>
           <Col span={12}>
             <Card title={t('contactImport.dataPreview')}>
@@ -968,7 +1138,7 @@ const ContactImportPage = () => {
             <Card 
               title={t('contactImport.fieldMapping')} 
               style={{ height: '500px' }}
-              bodyStyle={{ height: '450px', padding: '16px' }}
+              styles={{ body: { height: '450px', padding: '16px' } }}
             >
               <div style={{ height: '100%', overflowY: 'auto', paddingRight: '8px' }}>
                 <Form form={mappingForm} layout="vertical">
@@ -1076,6 +1246,7 @@ const ContactImportPage = () => {
             </Card>
           </Col>
         </Row>
+        </>
       )}
 
       {/* 步驟 3: 匯入結果 */}
@@ -1102,14 +1273,34 @@ const ContactImportPage = () => {
                 </Title>
                 <Space direction="vertical" size="large">
                   <div>
-                    <Text strong>{t('contactImport.successCount', { count: importResults.success })}</Text>
+                    {importResults.success > 0 && (
+                      <Text strong>{t('contactImport.successCount', { count: importResults.success })}</Text>
+                    )}
+                    {importResults.failed > 0 && importResults.success > 0 && <br />}
                     {importResults.failed > 0 && (
-                      <>
-                    <br />
-                    <Text type="secondary">{t('contactImport.failedCount', { count: importResults.failed })}</Text>
-                      </>
+                      <Text type="secondary">{t('contactImport.failedCount', { count: importResults.failed })}</Text>
                     )}
                   </div>
+                  
+                  {scheduleError && (
+                    <Alert
+                      message={t('contactImport.saveScheduleFailed')}
+                      description={scheduleError}
+                      type="error"
+                      showIcon
+                      style={{ textAlign: 'left' }}
+                    />
+                  )}
+                  
+                  {scheduleSaved && !scheduleError && (
+                    <Alert
+                      message={t('contactImport.scheduleSaved')}
+                      description={t('contactImport.scheduleSavedDesc')}
+                      type="success"
+                      showIcon
+                      style={{ textAlign: 'left' }}
+                    />
+                  )}
                   
                   {importResults.errors.length > 0 && (
                     <Alert
@@ -1136,6 +1327,8 @@ const ContactImportPage = () => {
                       setImportProgress(0);
                       setFileList([]);
                       setPreviewData([]);
+                      setScheduleSaved(false);
+                      setScheduleError('');
                     }}>
                       {t('contactImport.importMore')}
                     </Button>

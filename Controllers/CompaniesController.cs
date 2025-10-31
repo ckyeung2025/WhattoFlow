@@ -137,8 +137,21 @@ namespace PurpleRice.Controllers
                 // 更新 WhatsApp 相關字段
                 existingCompany.WA_API_Key = company.WA_API_Key;
                 existingCompany.WA_PhoneNo_ID = company.WA_PhoneNo_ID;
+                existingCompany.WA_Business_Account_ID = company.WA_Business_Account_ID;  // 添加這行
                 existingCompany.WA_VerifyToken = company.WA_VerifyToken;
                 existingCompany.WA_WebhookToken = company.WA_WebhookToken;
+                
+                // 更新 WhatsApp 菜單設置
+                existingCompany.WA_WelcomeMessage = company.WA_WelcomeMessage;
+                existingCompany.WA_NoFunctionMessage = company.WA_NoFunctionMessage;
+                existingCompany.WA_MenuTitle = company.WA_MenuTitle;
+                existingCompany.WA_MenuFooter = company.WA_MenuFooter;
+                existingCompany.WA_MenuButton = company.WA_MenuButton;
+                existingCompany.WA_SectionTitle = company.WA_SectionTitle;
+                existingCompany.WA_DefaultOptionDescription = company.WA_DefaultOptionDescription;
+                existingCompany.WA_InputErrorMessage = company.WA_InputErrorMessage;
+                existingCompany.WA_FallbackMessage = company.WA_FallbackMessage;
+                existingCompany.WA_SystemErrorMessage = company.WA_SystemErrorMessage;
                 
                 // 更新標誌 URL
                 existingCompany.LogoUrl = company.LogoUrl;

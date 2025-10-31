@@ -368,7 +368,16 @@ const zhTC = {
     ok: '確定',
     required: '必填',
     minLength: '至少 {min} 碼',
-    pageRange: '第 {start}-{end} 項，共 {total} 項'
+    pageRange: '第 {start}-{end} 項，共 {total} 項',
+    status: '狀態',
+    actions: '操作',
+    every: '每',
+    minutes: '分鐘',
+    active: '啟用',
+    inactive: '停用',
+    paused: '已暫停',
+    activate: '啟用',
+    deactivate: '停用'
   },
 
   // 收件人選擇器
@@ -665,6 +674,37 @@ const zhTC = {
     importMore: '繼續匯入',
     previous: '上一步',
     startImport: '開始匯入',
+    
+    // 定時匯入設定
+    saveAsSchedule: '保存為定時匯入',
+    scheduleNamePlaceholder: '請輸入排程名稱',
+    everyXMinutes: '每 N 分鐘',
+    daily: '每天',
+    weekly: '每週',
+    scheduleName: '排程名稱',
+    manageSchedule: '管理定時匯入',
+    scheduleManagement: '聯絡人定時匯入排程',
+    executionFrequency: '執行頻率',
+    importType: '匯入類型',
+    lastExecution: '上次執行',
+    nextExecution: '下次執行',
+    editSchedule: '編輯排程',
+    confirmDeleteSchedule: '確定要刪除這個排程嗎？',
+    scheduleSaved: '已保存為定時匯入排程！',
+    scheduleSavedDesc: '您的匯入已保存為定時任務。您可以在「管理定時匯入」區域中查看和管理。',
+    saveScheduleFailed: '保存排程失敗',
+    pleaseEnterGoogleSheetsUrl: '請先輸入 Google Sheets URL',
+    detectedExcelFile: '檢測到 Excel 文件，將使用默認工作表',
+    googleSheetsVerified: 'Google Sheets URL 驗證成功！',
+    googleSheetsVerificationFailed: 'Google Sheets URL 驗證失敗：',
+    pleaseUploadExcelFile: '請先上傳 Excel 文件',
+    urlVerified: 'URL 已驗證',
+    fileUploaded: '文件已上傳',
+    useDefaultSheet: '系統將自動使用默認工作表進行數據導入，無需選擇工作表名稱。',
+    pleaseConnectGoogleSheets: '請先連接 Google Sheets',
+    getSheetsList: '請先連接 Google Sheets 獲取工作表列表',
+    noMatchingSheet: '沒有找到匹配的工作表',
+    scheduleNameExists: '排程名稱已存在，請使用其他名稱',
     
     // 重複確認
     duplicateConfirmation: '重複記錄確認',
@@ -2326,6 +2366,7 @@ const zhTC = {
     initiator: '流程啟動人',
     specifiedPerson: '指定人員',
     promptMessage: '提示訊息',
+    promptMessageHelp: '在用戶輸入前，系統會發送以下訊息提醒用戶需要輸入',
     validationConfig: '驗證配置',
     validationSettings: '驗證設定',
     enableValidation: '啟用驗證',
@@ -2394,6 +2435,27 @@ const zhTC = {
     // Drawer 全屏相關
     enterFullscreen: '全屏顯示',
     exitFullscreen: '退出全屏',
+    
+    // Send E-Form 相關翻譯
+    sendEForm: {
+      integrateWaitReply: '整合等待回覆',
+      integrateWaitReplyDesc: '表單發送後，系統會等待用戶填寫並回覆表單',
+      integrateDataSetQuery: '整合 DataSet 查詢',
+      integrateDataSetQueryDesc: '從 DataSet Query 節點獲取數據並自動填充表單',
+      manualFill: '手動填寫',
+      manualFillDesc: '用戶需要手動填寫表單',
+      notificationMessage: '通知訊息',
+      selectDataSetQueryNode: '選擇 DataSet Query 節點',
+      selectDataSetQueryNodePlaceholder: '請選擇要整合的 DataSet Query 節點',
+      noDataSetQueryNodes: '暫無可用的 DataSet Query 節點',
+      dataSetQueryNodeHelp: '選擇要整合的 DataSet Query 節點（操作類型為 SELECT）',
+      useDefaultMessage: '使用預設訊息',
+      customMessage: '自定義訊息',
+      notificationMessagePlaceholder: '請輸入通知訊息內容，告知用戶需要填寫表單...',
+      notificationMessageHelp: '當表單發送後，此訊息會自動發送給用戶',
+      defaultNotificationMessage: '請填寫並回覆此表單',
+      promptMessagePlaceholder: '輸入提示訊息，提醒用戶填寫表單前需要了解的信息',
+    },
     
     // Overdue Settings（流程逾期設置 - Start 節點）
     overdueConfig: '流程逾期設置',
@@ -2584,6 +2646,7 @@ const zhTC = {
     
     // sendEForm 節點相關翻譯
     sendEForm: {
+      promptMessagePlaceholder: '輸入提示訊息，提醒用戶填寫表單前需要了解的信息',
       notificationMessage: '通知訊息內容',
       notificationMessagePlaceholder: '請輸入通知訊息內容，可使用 {formName} 和 {formUrl} 變量',
       notificationMessageHelp: '支援的變量：{formName} - 表單名稱，{formUrl} - 表單連結',

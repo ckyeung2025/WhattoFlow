@@ -345,10 +345,11 @@ const PendingTasksPage = () => {
   const loadPendingEforms = async (setLoadingState = true) => {
     if (setLoadingState) setLoading(true);
     try {
-      // Build query parameters
+      // 使用動態分頁參數
+      const { current, pageSize } = paginationStates.pending;
       const params = new URLSearchParams({
-        page: '1',
-        pageSize: '50'
+        page: current.toString(),
+        pageSize: pageSize.toString()
       });
 
       if (filters.searchText) {
@@ -426,10 +427,12 @@ const PendingTasksPage = () => {
         pending: filteredData.length
       }));
       
-      // 更新計數 - 使用過濾後的數據長度
+      // 更新計數 - 使用API返回的總數（過濾 Manual Fill 後的總數）
+      // 注意：這裡需要使用 data.total 減去 Manual Fill 的數量
+      const manualCount = formattedData.length - filteredData.length;
       setCounts(prev => ({
         ...prev,
-        pending: filteredData.length
+        pending: Math.max(0, (data.total || 0) - manualCount)
       }));
       
     } catch (error) {
@@ -451,9 +454,11 @@ const PendingTasksPage = () => {
   const loadApprovedEforms = async (setLoadingState = true) => {
     if (setLoadingState) setLoading(true);
     try {
+      // 使用動態分頁參數
+      const { current, pageSize } = paginationStates.approved;
       const params = new URLSearchParams({
-        page: '1',
-        pageSize: '50'
+        page: current.toString(),
+        pageSize: pageSize.toString()
       });
 
       if (filters.searchText) {
@@ -505,10 +510,10 @@ const PendingTasksPage = () => {
       
       setApprovedEforms(formattedData);
       
-      // 更新計數 - 使用實際返回的數據長度
+      // 更新計數 - 使用API返回的總數
       setCounts(prev => ({
         ...prev,
-        approved: formattedData.length
+        approved: data.total || formattedData.length
       }));
       
     } catch (error) {
@@ -523,9 +528,11 @@ const PendingTasksPage = () => {
   const loadRejectedEforms = async (setLoadingState = true) => {
     if (setLoadingState) setLoading(true);
     try {
+      // 使用動態分頁參數
+      const { current, pageSize } = paginationStates.rejected;
       const params = new URLSearchParams({
-        page: '1',
-        pageSize: '50'
+        page: current.toString(),
+        pageSize: pageSize.toString()
       });
 
       if (filters.searchText) {
@@ -577,10 +584,10 @@ const PendingTasksPage = () => {
       
       setRejectedEforms(formattedData);
       
-      // 更新計數 - 使用實際返回的數據長度
+      // 更新計數 - 使用API返回的總數
       setCounts(prev => ({
         ...prev,
-        rejected: formattedData.length
+        rejected: data.total || formattedData.length
       }));
       
     } catch (error) {
@@ -666,9 +673,11 @@ const PendingTasksPage = () => {
   const loadManualPendingEforms = async (setLoadingState = true) => {
     if (setLoadingState) setLoading(true);
     try {
+      // 使用動態分頁參數
+      const { current, pageSize } = paginationStates.manualPending;
       const params = new URLSearchParams({
-        page: '1',
-        pageSize: '50'
+        page: current.toString(),
+        pageSize: pageSize.toString()
       });
 
       if (filters.searchText) {
@@ -720,10 +729,10 @@ const PendingTasksPage = () => {
       
       setManualPendingEforms(formattedData);
       
-      // 更新計數 - 使用實際返回的數據長度
+      // 更新計數 - 使用API返回的總數
       setCounts(prev => ({
         ...prev,
-        manualPending: formattedData.length
+        manualPending: data.total || formattedData.length
       }));
       
     } catch (error) {
@@ -738,9 +747,11 @@ const PendingTasksPage = () => {
   const loadManualRespondedEforms = async (setLoadingState = true) => {
     if (setLoadingState) setLoading(true);
     try {
+      // 使用動態分頁參數
+      const { current, pageSize } = paginationStates.manualResponded;
       const params = new URLSearchParams({
-        page: '1',
-        pageSize: '50'
+        page: current.toString(),
+        pageSize: pageSize.toString()
       });
 
       if (filters.searchText) {
@@ -795,10 +806,10 @@ const PendingTasksPage = () => {
       
       setManualRespondedEforms(formattedData);
       
-      // 更新計數 - 使用實際返回的數據長度
+      // 更新計數 - 使用API返回的總數
       setCounts(prev => ({
         ...prev,
-        manualResponded: formattedData.length
+        manualResponded: data.total || formattedData.length
       }));
       
     } catch (error) {
@@ -2109,6 +2120,7 @@ const PendingTasksPage = () => {
       title: t('pendingTasks.action'),
       key: 'action',
       width: 180,
+      fixed: 'right',
        render: (_, record) => {
          // Manual Fill 模式不顯示任何操作按鈕
          if (viewMode === 'manual') {
@@ -2226,27 +2238,59 @@ const PendingTasksPage = () => {
     }))
   , [baseColumns, columnWidths]);
 
-  // 分頁處理函數
-  const handlePaginationChange = (tabKey) => (page, pageSize) => {
+  // 分頁處理函數 - 更改頁面時重新加載數據
+  const handlePaginationChange = (tabKey) => async (page, pageSize) => {
     setPaginationStates(prev => ({
       ...prev,
       [tabKey]: { current: page, pageSize }
     }));
+    
+    // 根據 tabKey 調用對應的加載函數
+    if (viewMode === 'manual') {
+      if (tabKey === 'manualPending') {
+        await loadManualPendingEforms();
+      } else if (tabKey === 'manualResponded') {
+        await loadManualRespondedEforms();
+      }
+    } else {
+      if (tabKey === 'pending') {
+        await loadPendingEforms();
+      } else if (tabKey === 'approved') {
+        await loadApprovedEforms();
+      } else if (tabKey === 'rejected') {
+        await loadRejectedEforms();
+      }
+    }
   };
 
-  const handlePageSizeChange = (tabKey) => (current, size) => {
+  const handlePageSizeChange = (tabKey) => async (current, size) => {
     setPaginationStates(prev => ({
       ...prev,
       [tabKey]: { current: 1, pageSize: size }
     }));
+    
+    // 根據 tabKey 調用對應的加載函數
+    if (viewMode === 'manual') {
+      if (tabKey === 'manualPending') {
+        await loadManualPendingEforms();
+      } else if (tabKey === 'manualResponded') {
+        await loadManualRespondedEforms();
+      }
+    } else {
+      if (tabKey === 'pending') {
+        await loadPendingEforms();
+      } else if (tabKey === 'approved') {
+        await loadApprovedEforms();
+      } else if (tabKey === 'rejected') {
+        await loadRejectedEforms();
+      }
+    }
   };
 
-  // 獲取分頁後的數據
+  // 獲取分頁後的數據 - 現在數據已從後端分頁加載，直接返回
   const getPaginatedData = (data, tabKey) => {
-    const { current, pageSize } = paginationStates[tabKey];
-    const startIndex = (current - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return data.slice(startIndex, endIndex);
+    // 數據已從後端分頁加載，直接返回所有數據
+    return data;
   };
 
   const handleResize = index => (e, { size }) => {
@@ -2732,7 +2776,7 @@ const PendingTasksPage = () => {
                           <Pagination
                             current={paginationStates.manualPending.current}
                             pageSize={paginationStates.manualPending.pageSize}
-                            total={manualPendingEforms.length}
+                            total={counts.manualPending}
                             showSizeChanger
                             showQuickJumper
                             pageSizeOptions={['10', '20', '50', '100']}
@@ -2803,7 +2847,7 @@ const PendingTasksPage = () => {
                           <Pagination
                             current={paginationStates.manualResponded.current}
                             pageSize={paginationStates.manualResponded.pageSize}
-                            total={manualRespondedEforms.length}
+                            total={counts.manualResponded}
                             showSizeChanger
                             showQuickJumper
                             pageSizeOptions={['10', '20', '50', '100']}
@@ -2955,7 +2999,7 @@ const PendingTasksPage = () => {
                 <Pagination
                   current={paginationStates.pending.current}
                   pageSize={paginationStates.pending.pageSize}
-                  total={pendingEforms.length}
+                  total={counts.pending}
                   showSizeChanger
                   showQuickJumper
                   pageSizeOptions={['10', '20', '50', '100']}
@@ -3073,7 +3117,7 @@ const PendingTasksPage = () => {
                           <Pagination
                             current={paginationStates.approved.current}
                             pageSize={paginationStates.approved.pageSize}
-                            total={approvedEforms.length}
+                            total={counts.approved}
                             showSizeChanger
                             showQuickJumper
                             pageSizeOptions={['10', '20', '50', '100']}
@@ -3191,7 +3235,7 @@ const PendingTasksPage = () => {
                           <Pagination
                             current={paginationStates.rejected.current}
                             pageSize={paginationStates.rejected.pageSize}
-                            total={rejectedEforms.length}
+                            total={counts.rejected}
                             showSizeChanger
                             showQuickJumper
                             pageSizeOptions={['10', '20', '50', '100']}

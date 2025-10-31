@@ -369,7 +369,16 @@ const en = {
     ok: 'OK',
     required: 'Required',
     minLength: 'at least {min} characters',
-    pageRange: '{start}-{end} of {total} items'
+    pageRange: '{start}-{end} of {total} items',
+    status: 'Status',
+    actions: 'Actions',
+    every: 'Every',
+    minutes: 'Minutes',
+    active: 'Active',
+    inactive: 'Inactive',
+    paused: 'Paused',
+    activate: 'Activate',
+    deactivate: 'Deactivate'
   },
   
   // Recipient Selector
@@ -1912,6 +1921,7 @@ const en = {
     initiator: 'Workflow Initiator',
     specifiedPerson: 'Specified Person',
     promptMessage: 'Prompt Message',
+    promptMessageHelp: 'Before user input, the system will send the following message to remind the user they need to input',
     validationConfig: 'Validation Configuration',
     validationSettings: 'Validation Settings',
     enableValidation: 'Enable Validation',
@@ -1960,6 +1970,27 @@ const en = {
     enterFullscreen: 'Fullscreen',
     exitFullscreen: 'Exit Fullscreen',
     
+    // Send E-Form related translations
+    sendEForm: {
+      integrateWaitReply: 'Integrated Wait Reply',
+      integrateWaitReplyDesc: 'After form is sent, system will wait for user to fill in and reply',
+      integrateDataSetQuery: 'Integrated DataSet Query',
+      integrateDataSetQueryDesc: 'Get data from DataSet Query node and auto-fill form',
+      manualFill: 'Manual Fill',
+      manualFillDesc: 'User needs to manually fill in the form',
+      notificationMessage: 'Notification Message',
+      selectDataSetQueryNode: 'Select DataSet Query Node',
+      selectDataSetQueryNodePlaceholder: 'Please select DataSet Query node to integrate',
+      noDataSetQueryNodes: 'No DataSet Query nodes available',
+      dataSetQueryNodeHelp: 'Select DataSet Query node (operation type: SELECT) to integrate',
+      useDefaultMessage: 'Use Default Message',
+      customMessage: 'Custom Message',
+      notificationMessagePlaceholder: 'Enter notification message to inform user to fill in the form...',
+      notificationMessageHelp: 'This message will be automatically sent to user after form is sent',
+      defaultNotificationMessage: 'Please fill in and reply to this form',
+      promptMessagePlaceholder: 'Enter prompt message to remind user of information needed before filling in the form',
+    },
+    
     // Overdue Settings (workflow overdue settings - Start node)
     overdueConfig: 'Workflow Overdue Settings',
     overdueSettings: 'Overdue Monitoring Settings',
@@ -2005,6 +2036,7 @@ const en = {
     
     // sendEForm node related translations
     sendEForm: {
+      promptMessagePlaceholder: 'Enter prompt message to remind user of information needed before filling in the form',
       fillMode: 'Form Filling Mode',
       integrateWaitReply: 'Integrate Wait Reply Node (AI Fill)',
       integrateDataSetQuery: 'Integrate DataSet Query Node (Data Fill)',
@@ -3470,6 +3502,37 @@ const en = {
     importMore: 'Import More',
     previous: 'Previous',
     startImport: 'Start Import',
+    
+    // Schedule related
+    saveAsSchedule: 'Save as Scheduled Import',
+    scheduleNamePlaceholder: 'Enter schedule name',
+    everyXMinutes: 'Every X Minutes',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    scheduleName: 'Schedule Name',
+    manageSchedule: 'Manage Scheduled Imports',
+    scheduleManagement: 'Contact Import Schedules',
+    executionFrequency: 'Execution Frequency',
+    importType: 'Import Type',
+    lastExecution: 'Last Execution',
+    nextExecution: 'Next Execution',
+    editSchedule: 'Edit Schedule',
+    confirmDeleteSchedule: 'Are you sure you want to delete this schedule?',
+    scheduleSaved: 'Schedule saved successfully!',
+    scheduleSavedDesc: 'Your import has been saved as a scheduled task. You can view and manage it in the "Manage Scheduled Imports" section.',
+    saveScheduleFailed: 'Failed to save schedule',
+    pleaseEnterGoogleSheetsUrl: 'Please enter Google Sheets URL',
+    detectedExcelFile: 'Excel file detected, using default sheet',
+    googleSheetsVerified: 'Google Sheets URL verified successfully!',
+    googleSheetsVerificationFailed: 'Google Sheets URL verification failed: ',
+    pleaseUploadExcelFile: 'Please upload Excel file first',
+    urlVerified: 'URL verified',
+    fileUploaded: 'File uploaded',
+    useDefaultSheet: 'The system will automatically use the default sheet for data import, no need to select sheet name.',
+    pleaseConnectGoogleSheets: 'Please connect to Google Sheets first',
+    getSheetsList: 'Please connect to Google Sheets to get the sheet list',
+    noMatchingSheet: 'No matching sheet found',
+    scheduleNameExists: 'Schedule name already exists, please use a different name',
     
     // Duplicate confirmation
     duplicateConfirmation: 'Duplicate Records Confirmation',

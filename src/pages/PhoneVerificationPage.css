@@ -1,0 +1,68 @@
+.phone-verification-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.phone-verification-container {
+  width: 100%;
+  max-width: 600px;
+}
+
+.verification-card {
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.verification-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.verification-icon {
+  font-size: 64px;
+  color: #1890ff;
+  margin-bottom: 16px;
+}
+
+.verification-step {
+  padding: 24px 0;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.verification-success {
+  text-align: center;
+}
+
+.success-icon {
+  font-size: 80px;
+  color: #52c41a;
+  margin-bottom: 24px;
+}
+
+.error-message {
+  padding: 12px;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 4px;
+  margin-top: 16px;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .phone-verification-container {
+    max-width: 100%;
+  }
+  
+  .verification-card {
+    margin: 0;
+  }
+}
+

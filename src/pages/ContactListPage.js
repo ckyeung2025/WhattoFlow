@@ -307,8 +307,8 @@ const ContactListPage = () => {
       setError('請先登入以訪問聯絡人管理功能');
     }
     
-    console.log('=== ContactListPage 載入檢查結束 ===');
-  }, [currentPage, searchTerm, selectedGroup, selectedHashtag, sortField, sortOrder]);
+      console.log('=== ContactListPage 載入檢查結束 ===');
+  }, [currentPage, pageSize, searchTerm, selectedGroup, selectedHashtag, sortField, sortOrder]);
 
   // 獲取用戶時區設置
   useEffect(() => {

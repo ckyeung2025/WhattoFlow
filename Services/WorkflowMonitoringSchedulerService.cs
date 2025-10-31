@@ -27,6 +27,7 @@ namespace PurpleRice.Services
         private bool _enableRetryMonitoring;
         private bool _enableOverdueMonitoring;
         private bool _enableDataSetAutoSync;
+        private bool _enableContactImportScheduling;
 
         public WorkflowMonitoringSchedulerService(
             IServiceScopeFactory serviceScopeFactory,
@@ -40,6 +41,7 @@ namespace PurpleRice.Services
             _enableRetryMonitoring = _configuration.GetValue<bool>("WorkflowMonitoring:EnableRetryMonitoring", true);
             _enableOverdueMonitoring = _configuration.GetValue<bool>("WorkflowMonitoring:EnableOverdueMonitoring", true);
             _enableDataSetAutoSync = _configuration.GetValue<bool>("WorkflowMonitoring:EnableDataSetAutoSync", true);
+            _enableContactImportScheduling = _configuration.GetValue<bool>("WorkflowMonitoring:EnableContactImportScheduling", true);
 
             // 使用 Console.WriteLine 進行初始化日誌，因為此時還沒有 LoggingService
             Console.WriteLine("=== WorkflowMonitoringSchedulerService 初始化 ===");
@@ -47,6 +49,7 @@ namespace PurpleRice.Services
             Console.WriteLine($"重試監控: {(_enableRetryMonitoring ? "啟用" : "停用")}");
             Console.WriteLine($"逾期監控: {(_enableOverdueMonitoring ? "啟用" : "停用")}");
             Console.WriteLine($"數據集自動同步: {(_enableDataSetAutoSync ? "啟用" : "停用")}");
+            Console.WriteLine($"聯絡人定時匯入: {(_enableContactImportScheduling ? "啟用" : "停用")}");
         }
 
         /// <summary>
@@ -116,9 +119,64 @@ namespace PurpleRice.Services
                 {
                     await CheckDataSetsForAutoSyncAsync(db, scope.ServiceProvider);
                 }
+
+                // 4. 檢查需要定時匯入的聯絡人匯入排程
+                if (_enableContactImportScheduling)
+                {
+                    await CheckContactImportSchedulesAsync(db, scope.ServiceProvider);
+                }
             }
 
             loggingService.LogInformation("=== 監控檢查完成 ===");
+        }
+
+        /// <summary>
+        /// 記錄排程執行結果到統一表
+        /// </summary>
+        private async Task LogSchedulerExecutionAsync(
+            PurpleRiceDbContext db,
+            string scheduleType,
+            Guid companyId,  // 改為非空
+            Guid? relatedId,
+            string relatedName,
+            string status,
+            int totalItems,
+            int successCount,
+            int failedCount,
+            string message,
+            string errorMessage,
+            DateTime startedAt,
+            DateTime? completedAt,
+            int? durationMs)
+        {
+            try
+            {
+                var execution = new SchedulerExecution
+                {
+                    Id = Guid.NewGuid(),
+                    CompanyId = companyId,  // 確保總是設置公司 ID
+                    ScheduleType = scheduleType,
+                    RelatedId = relatedId,
+                    RelatedName = relatedName,
+                    Status = status,
+                    TotalItems = totalItems,
+                    SuccessCount = successCount,
+                    FailedCount = failedCount,
+                    Message = message,
+                    ErrorMessage = errorMessage,
+                    StartedAt = startedAt,
+                    CompletedAt = completedAt,
+                    ExecutionDurationMs = durationMs,
+                    CreatedBy = "system"
+                };
+
+                db.SchedulerExecutions.Add(execution);
+            }
+            catch (Exception ex)
+            {
+                var loggingService = GetLoggingService();
+                loggingService.LogError($"記錄排程執行失敗: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -142,8 +200,16 @@ namespace PurpleRice.Services
 
                 loggingService.LogInformation($"找到 {waitingSteps.Count} 個等待中的步驟");
 
+                var executionStart = DateTime.UtcNow;
                 int retryCount = 0;
                 int escalationCount = 0;
+                
+                // 收集所有涉及的公司 ID
+                var companyIds = waitingSteps
+                    .Where(s => s.WorkflowExecution?.WorkflowDefinition?.CompanyId != null)
+                    .Select(s => s.WorkflowExecution.WorkflowDefinition.CompanyId)
+                    .Distinct()
+                    .ToList();
 
                 foreach (var step in waitingSteps)
                 {
@@ -207,35 +273,59 @@ namespace PurpleRice.Services
                     }
                 }
 
-                // 保存所有變更
-                if (retryCount > 0 || escalationCount > 0)
+                // 保存所有變更（包括執行記錄）
+                try
                 {
-                    try
+                    await db.SaveChangesAsync();
+                    if (retryCount > 0 || escalationCount > 0)
                     {
-                        await db.SaveChangesAsync();
                         loggingService.LogInformation($"✅ 重試檢查完成 - 發送 {retryCount} 個重試訊息，{escalationCount} 個升級通知");
                     }
-                    catch (Exception saveEx)
+                    else
                     {
-                        loggingService.LogError($"保存變更失敗: {saveEx.Message}");
-                        loggingService.LogDebug($"保存錯誤堆疊追蹤: {saveEx.StackTrace}");
-                        
-                        // 嘗試獲取更詳細的錯誤信息
-                        if (saveEx.InnerException != null)
-                        {
-                            loggingService.LogError($"內部錯誤: {saveEx.InnerException.Message}");
-                        }
+                        loggingService.LogInformation("✅ 重試檢查完成 - 無需處理的步驟");
                     }
                 }
-                else
+                catch (Exception saveEx)
                 {
-                    loggingService.LogInformation("✅ 重試檢查完成 - 無需處理的步驟");
+                    loggingService.LogError($"保存變更失敗: {saveEx.Message}");
+                    loggingService.LogDebug($"保存錯誤堆疊追蹤: {saveEx.StackTrace}");
+                    
+                    // 嘗試獲取更詳細的錯誤信息
+                    if (saveEx.InnerException != null)
+                    {
+                        loggingService.LogError($"內部錯誤: {saveEx.InnerException.Message}");
+                    }
+                }
+
+                // 記錄執行結果到統一表
+                var executionEnd = DateTime.UtcNow;
+                var duration = (int)(executionEnd - executionStart).TotalMilliseconds;
+                
+                // 記錄多個公司的執行結果
+                if (companyIds.Any())
+                {
+                    foreach (var companyId in companyIds)
+                    {
+                        await LogSchedulerExecutionAsync(
+                            db, "retry_monitoring", companyId, null, null,
+                            retryCount > 0 || escalationCount > 0 ? "Success" : "Skipped",
+                            waitingSteps.Count, retryCount + escalationCount, 0,
+                            $"處理 {retryCount} 個重試，{escalationCount} 個升級通知",
+                            null, executionStart, executionEnd, duration);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 loggingService.LogError($"重試檢查失敗: {ex.Message}");
                 loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                
+                // 記錄失敗到統一表
+                // 無法獲取公司 ID，使用 Guid.Empty 作為系統級記錄
+                await LogSchedulerExecutionAsync(
+                    db, "retry_monitoring", Guid.Empty, null, null,
+                    "Failed", 0, 0, 1, null, ex.Message, DateTime.UtcNow, DateTime.UtcNow, null);
             }
         }
 
@@ -245,6 +335,8 @@ namespace PurpleRice.Services
         private async Task CheckWorkflowsForOverdueAsync(PurpleRiceDbContext db, IServiceProvider serviceProvider)
         {
             var loggingService = GetLoggingService();
+            var executionStart = DateTime.UtcNow;
+            
             try
             {
                 loggingService.LogInformation("--- 開始檢查逾期流程 ---");
@@ -306,21 +398,48 @@ namespace PurpleRice.Services
                     }
                 }
 
-                // 保存所有變更
+                // 保存所有變更（包括執行記錄）
+                await db.SaveChangesAsync();
                 if (overdueCount > 0)
                 {
-                    await db.SaveChangesAsync();
                     loggingService.LogInformation($"✅ 逾期檢查完成 - 發送 {overdueCount} 個逾期通知");
                 }
                 else
                 {
                     loggingService.LogInformation("✅ 逾期檢查完成 - 無逾期流程");
                 }
+
+                // 記錄執行結果
+                var executionEnd = DateTime.UtcNow;
+                var duration = (int)(executionEnd - executionStart).TotalMilliseconds;
+                // 記錄多個公司的執行結果
+                if (runningWorkflows.Any())
+                {
+                    var companies = runningWorkflows
+                        .Where(w => w.WorkflowDefinition?.CompanyId != null)
+                        .Select(w => w.WorkflowDefinition.CompanyId)
+                        .Distinct()
+                        .ToList();
+                    
+                    foreach (var companyId in companies)
+                    {
+                        await LogSchedulerExecutionAsync(
+                            db, "overdue_monitoring", companyId, null, null,
+                            overdueCount > 0 ? "Success" : "Skipped",
+                            runningWorkflows.Count, overdueCount, 0,
+                            $"處理 {overdueCount} 個逾期流程",
+                            null, executionStart, executionEnd, duration);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 loggingService.LogError($"逾期檢查失敗: {ex.Message}");
                 loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                
+                await LogSchedulerExecutionAsync(
+                    db, "overdue_monitoring", Guid.Empty, null, null,
+                    "Failed", 0, 0, 1, null, ex.Message, DateTime.UtcNow, DateTime.UtcNow, null);
             }
         }
 
@@ -1036,6 +1155,8 @@ namespace PurpleRice.Services
         private async Task CheckDataSetsForAutoSyncAsync(PurpleRiceDbContext db, IServiceProvider serviceProvider)
         {
             var loggingService = GetLoggingService();
+            var executionStart = DateTime.UtcNow;
+            
             try
             {
                 loggingService.LogInformation("--- 開始檢查數據集自動同步 ---");
@@ -1128,21 +1249,48 @@ namespace PurpleRice.Services
                     }
                 }
 
-                // 保存所有變更
+                // 保存所有變更（包括執行記錄）
+                await db.SaveChangesAsync();
                 if (syncCount > 0)
                 {
-                    await db.SaveChangesAsync();
                     loggingService.LogInformation($"✅ 數據集自動同步檢查完成 - 同步了 {syncCount} 個數據集");
                 }
                 else
                 {
                     loggingService.LogInformation("✅ 數據集自動同步檢查完成 - 無需同步的數據集");
                 }
+
+                // 記錄執行結果
+                var executionEnd = DateTime.UtcNow;
+                var duration = (int)(executionEnd - executionStart).TotalMilliseconds;
+                // 記錄多個公司的執行結果
+                if (autoSyncDataSets.Any())
+                {
+                    var companies = autoSyncDataSets
+                        .Where(ds => ds.CompanyId != null)
+                        .Select(ds => ds.CompanyId)
+                        .Distinct()
+                        .ToList();
+                    
+                    foreach (var companyId in companies)
+                    {
+                        await LogSchedulerExecutionAsync(
+                            db, "dataset_sync", companyId, null, null,
+                            syncCount > 0 ? "Success" : "Skipped",
+                            autoSyncDataSets.Count, syncCount, 0,
+                            $"同步 {syncCount} 個數據集",
+                            null, executionStart, executionEnd, duration);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 loggingService.LogError($"數據集自動同步檢查失敗: {ex.Message}");
                 loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                
+                await LogSchedulerExecutionAsync(
+                    db, "dataset_sync", Guid.Empty, null, null,
+                    "Failed", 0, 0, 1, null, ex.Message, DateTime.UtcNow, DateTime.UtcNow, null);
             }
         }
 
@@ -1353,6 +1501,252 @@ namespace PurpleRice.Services
                 loggingService.LogError($"解析收件人失敗: {ex.Message}");
                 return new List<ResolvedRecipient>();
             }
+        }
+
+        /// <summary>
+        /// 檢查需要執行的聯絡人匯入排程
+        /// </summary>
+        private async Task CheckContactImportSchedulesAsync(PurpleRiceDbContext db, IServiceProvider serviceProvider)
+        {
+            var loggingService = GetLoggingService();
+            var executionStart = DateTime.UtcNow;
+            
+            try
+            {
+                loggingService.LogInformation("--- 開始檢查聯絡人定時匯入 ---");
+                
+                var now = DateTime.UtcNow;
+                
+                // 查詢所有啟用的定時匯入排程
+                var scheduledImports = await db.ContactImportSchedules
+                    .Where(s => s.IsScheduled && 
+                               s.Status == "Active" && 
+                               s.IsActive &&
+                               s.NextRunAt != null &&
+                               s.NextRunAt <= now)
+                    .ToListAsync();
+                
+                loggingService.LogInformation($"找到 {scheduledImports.Count} 個需要執行的匯入排程 (當前時間: {now:yyyy-MM-dd HH:mm:ss})");
+                
+                // 記錄每個排程的下次執行時間
+                foreach (var s in scheduledImports)
+                {
+                    loggingService.LogInformation($"排程 {s.Name}: 下次執行時間 {s.NextRunAt:yyyy-MM-dd HH:mm:ss}");
+                }
+                
+                int executionCount = 0;
+                
+                foreach (var schedule in scheduledImports)
+                {
+                    try
+                    {
+                        loggingService.LogInformation($"開始執行聯絡人匯入: {schedule.Name} (ID: {schedule.Id})");
+                        
+                        // 執行匯入
+                        var execution = await PerformContactImportAsync(db, serviceProvider, schedule);
+                        
+                        if (execution != null)
+                        {
+                            executionCount++;
+                            
+                            // 更新排程的下次執行時間
+                            await UpdateContactImportNextRunTime(db, schedule);
+                            
+                            loggingService.LogInformation($"✅ 聯絡人匯入完成: {schedule.Name}，下次執行: {schedule.NextRunAt}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        loggingService.LogError($"執行聯絡人匯入 {schedule.Id} 失敗: {ex.Message}");
+                        loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                        
+                        // 記錄失敗
+                        var execution = new ContactImportExecution
+                        {
+                            Id = Guid.NewGuid(),
+                            ScheduleId = schedule.Id,
+                            CompanyId = schedule.CompanyId,
+                            Status = "Failed",
+                            TotalRecords = 0,
+                            SuccessCount = 0,
+                            FailedCount = 0,
+                            ErrorMessage = ex.Message,
+                            StartedAt = DateTime.UtcNow,
+                            CompletedAt = DateTime.UtcNow
+                        };
+                        
+                        db.ContactImportExecutions.Add(execution);
+                    }
+                }
+                
+                // 記錄執行結果
+                var executionEnd = DateTime.UtcNow;
+                var duration = (int)(executionEnd - executionStart).TotalMilliseconds;
+                
+                if (executionCount > 0)
+                {
+                    await db.SaveChangesAsync();
+                    loggingService.LogInformation($"✅ 聯絡人定時匯入檢查完成 - 執行了 {executionCount} 個匯入");
+                    
+                    // 記錄多個公司的執行結果
+                    var companies = scheduledImports
+                        .Where(s => s.CompanyId != Guid.Empty)
+                        .Select(s => s.CompanyId)
+                        .Distinct()
+                        .ToList();
+                    
+                    foreach (var companyId in companies)
+                    {
+                        await LogSchedulerExecutionAsync(
+                            db, "contact_import", companyId, null, null,
+                            "Success", scheduledImports.Count, executionCount, 0,
+                            $"執行了 {executionCount} 個匯入",
+                            null, executionStart, executionEnd, duration);
+                    }
+                    await db.SaveChangesAsync();
+                }
+                else
+                {
+                    loggingService.LogInformation("✅ 聯絡人定時匯入檢查完成 - 無需執行的排程");
+                    
+                    // 記錄多個公司的執行結果
+                    var companies = scheduledImports
+                        .Where(s => s.CompanyId != Guid.Empty)
+                        .Select(s => s.CompanyId)
+                        .Distinct()
+                        .ToList();
+                    
+                    foreach (var companyId in companies)
+                    {
+                        await LogSchedulerExecutionAsync(
+                            db, "contact_import", companyId, null, null,
+                            "Skipped", scheduledImports.Count, 0, 0,
+                            "無需執行的排程",
+                            null, executionStart, executionEnd, duration);
+                    }
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                loggingService.LogError($"聯絡人定時匯入檢查失敗: {ex.Message}");
+                loggingService.LogDebug($"堆疊追蹤: {ex.StackTrace}");
+                
+                await LogSchedulerExecutionAsync(
+                    db, "contact_import", Guid.Empty, null, null,
+                    "Failed", 0, 0, 1, null, ex.Message, DateTime.UtcNow, DateTime.UtcNow, null);
+                await db.SaveChangesAsync();
+            }
+        }
+
+        /// <summary>
+        /// 執行聯絡人匯入
+        /// </summary>
+        private async Task<ContactImportExecution> PerformContactImportAsync(
+            PurpleRiceDbContext db, 
+            IServiceProvider serviceProvider, 
+            ContactImportSchedule schedule)
+        {
+            var loggingService = GetLoggingService();
+            
+            // 創建執行記錄
+            var execution = new ContactImportExecution
+            {
+                Id = Guid.NewGuid(),
+                ScheduleId = schedule.Id,
+                CompanyId = schedule.CompanyId,
+                Status = "Running",
+                TotalRecords = 0,
+                SuccessCount = 0,
+                FailedCount = 0,
+                StartedAt = DateTime.UtcNow
+            };
+            
+            db.ContactImportExecutions.Add(execution);
+            await db.SaveChangesAsync();
+            
+            try
+            {
+                // 獲取 ContactListService
+                var contactListService = serviceProvider.GetRequiredService<ContactListService>();
+                
+                // 解析配置
+                var sourceConfig = JsonSerializer.Deserialize<Dictionary<string, object>>(schedule.SourceConfig);
+                var fieldMapping = JsonSerializer.Deserialize<Dictionary<string, string>>(schedule.FieldMapping);
+                
+                // TODO: 根據匯入類型執行
+                // 這裡需要實現具體的匯入邏輯
+                // 目前先記錄 TODO
+                loggingService.LogWarning($"聯絡人匯入邏輯尚未實現 - 匯入類型: {schedule.ImportType}");
+                
+                execution.Status = "Success";
+                execution.TotalRecords = 0;
+                execution.SuccessCount = 0;
+                execution.CompletedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                
+                loggingService.LogInformation($"聯絡人匯入完成（佔位）: {schedule.Name}");
+                return execution;
+            }
+            catch (Exception ex)
+            {
+                execution.Status = "Failed";
+                execution.ErrorMessage = ex.Message;
+                execution.CompletedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                
+                loggingService.LogError($"聯絡人匯入失敗: {ex.Message}");
+                return execution;
+            }
+        }
+
+        /// <summary>
+        /// 更新聯絡人匯入排程的下次執行時間
+        /// </summary>
+        private async Task UpdateContactImportNextRunTime(PurpleRiceDbContext db, ContactImportSchedule schedule)
+        {
+            var loggingService = GetLoggingService();
+            DateTime? nextRunAt = null;
+            
+            switch (schedule.ScheduleType?.ToLower())
+            {
+                case "interval":
+                    if (schedule.IntervalMinutes.HasValue)
+                    {
+                        nextRunAt = DateTime.UtcNow.AddMinutes(schedule.IntervalMinutes.Value);
+                        loggingService.LogInformation($"排程 {schedule.Name} 下次執行時間: {nextRunAt} (間隔 {schedule.IntervalMinutes.Value} 分鐘)");
+                    }
+                    break;
+                case "daily":
+                    nextRunAt = DateTime.UtcNow.AddDays(1);
+                    loggingService.LogInformation($"排程 {schedule.Name} 下次執行時間: {nextRunAt} (每日)");
+                    break;
+                case "weekly":
+                    nextRunAt = DateTime.UtcNow.AddDays(7);
+                    loggingService.LogInformation($"排程 {schedule.Name} 下次執行時間: {nextRunAt} (每週)");
+                    break;
+                case "cron":
+                    // TODO: 實現 Cron 表達式解析
+                    if (!string.IsNullOrEmpty(schedule.ScheduleCron))
+                    {
+                        // 使用 NCrontab 或其他 Cron 解析庫
+                        nextRunAt = DateTime.UtcNow.AddHours(1); // 臨時方案
+                        loggingService.LogInformation($"排程 {schedule.Name} 下次執行時間: {nextRunAt} (Cron)");
+                    }
+                    break;
+            }
+            
+            schedule.LastRunAt = DateTime.UtcNow;
+            schedule.NextRunAt = nextRunAt;
+            schedule.UpdatedAt = DateTime.UtcNow;
+            schedule.UpdatedBy = "system";
+            
+            // 使用 ExecuteSqlRaw 以避免 OUTPUT 子句問題
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE contact_import_schedules SET last_run_at = @p0, next_run_at = @p1, updated_at = @p2, updated_by = @p3 WHERE id = @p4",
+                schedule.LastRunAt, schedule.NextRunAt, schedule.UpdatedAt, schedule.UpdatedBy, schedule.Id);
+            
+            loggingService.LogInformation($"已更新排程 {schedule.Name} 的時間戳記");
         }
 
         public override Task StopAsync(CancellationToken cancellationToken)

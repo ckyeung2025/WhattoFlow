@@ -167,6 +167,13 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
           icon: <UserOutlined />,
           label: t('menu.companyUserAdmin'),
           url: '/company-user-admin',
+        },
+        // WhatsApp 電話號碼驗證管理
+        {
+          key: 'phoneVerificationAdmin',
+          icon: <MessageOutlined />,
+          label: '電話號碼驗證',
+          url: '/phone-verification-admin',
         }
       ]
     },
@@ -272,8 +279,9 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
               }
               return;
             } else {
-              // 在收合狀態下，keyPath 會包含實際的子菜單 key
-              const actualKey = keyPath && keyPath.length > 0 ? keyPath[0] : key;
+              // keyPath 數組的最後一個元素才是實際點擊的子菜單 key
+              // keyPath 格式: [父菜單key, 子菜單key] 或 [子菜單key]
+              const actualKey = key; // 直接使用點擊的 key，因為這已經是子菜單的 key
               console.log('Calling onMenuSelect with:', actualKey);
               onMenuSelect(actualKey);
             }

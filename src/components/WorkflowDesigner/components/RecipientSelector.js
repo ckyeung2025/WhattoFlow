@@ -351,9 +351,10 @@ const RecipientSelector = ({
       console.log('✅ 標籤響應:', hashtagsRes);
       console.log('✅ 聯絡人響應:', contactsRes);
 
-      // 廣播群組和標籤直接返回數組，聯絡人返回包裝對象
-      const groups = Array.isArray(groupsRes) ? groupsRes : [];
-      const hashtags = Array.isArray(hashtagsRes) ? hashtagsRes : [];
+      // 廣播群組和標籤可能返回對象格式 {data: [], total: ...} 或數組格式
+      // 聯絡人返回包裝對象 {contacts: [], totalCount: ...}
+      const groups = Array.isArray(groupsRes) ? groupsRes : (groupsRes?.data || []);
+      const hashtags = Array.isArray(hashtagsRes) ? hashtagsRes : (hashtagsRes?.data || []);
       const contacts = contactsRes.contacts || [];
       const totalCount = contactsRes.totalCount || 0;
       

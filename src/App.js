@@ -25,11 +25,14 @@ import DataSetManagementPage from './pages/DataSetManagementPage';
 import ContactListPage from './pages/ContactListPage';
 import ContactEditPage from './pages/ContactEditPage';
 import ContactImportPage from './pages/ContactImportPage';
+import ContactImportSchedulePage from './pages/ContactImportSchedulePage';
 import BroadcastGroupsPage from './pages/BroadcastGroupsPage';
 import HashtagsPage from './pages/HashtagsPage';
 import OnboardingTrigger from './components/OnboardingTrigger';
 import OnboardingManagementPage from './pages/OnboardingManagementPage';
 import OnboardingTest from './components/OnboardingTest';
+import PhoneVerificationPage from './pages/PhoneVerificationPage';
+import CompanyPhoneVerificationAdminPage from './pages/CompanyPhoneVerificationAdminPage';
 
 const { Content } = Layout;
 
@@ -49,11 +52,13 @@ const pathToMenuKey = {
   '/contacts': 'contactList',
   '/contacts/new': 'contactList',
   '/contacts/edit/:id': 'contactList',
-  '/contacts/import': 'contactList',
+  '/contacts/import': 'contactImport',
+  '/contact-import-schedule': 'contactImportSchedule',
   '/broadcast-groups': 'broadcastGroups',
   '/hashtags': 'hashtags',
   '/onboarding': 'onboarding',
   '/onboarding-test': 'onboarding-test',
+  '/phone-verification-admin': 'phoneVerificationAdmin',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -111,6 +116,9 @@ function MainLayout({ userInfo, onLogout }) {
       case 'hashtags':
         navigate('/hashtags');
         break;
+      case 'phoneVerificationAdmin':
+        navigate('/phone-verification-admin');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -146,8 +154,10 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/contacts/new" element={<ContactEditPage />} />
             <Route path="/contacts/edit/:id" element={<ContactEditPage />} />
             <Route path="/contacts/import" element={<ContactImportPage />} />
+            <Route path="/contact-import-schedule" element={<ContactImportSchedulePage />} />
             <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
             <Route path="/hashtags" element={<HashtagsPage />} />
+            <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -170,6 +180,7 @@ function AppContent() {
 
   // 檢查是否是表單實例頁面（允許匿名訪問）
   const isEFormInstancePage = location.pathname.startsWith('/eform-instance/');
+  const isPhoneVerificationPage = location.pathname.startsWith('/phone-verification/');
 
   const handleMenuSelect = (key) => {
     setSelectedMenuKey(key);
@@ -210,11 +221,20 @@ function AppContent() {
       case 'contactList':
         navigate('/contacts');
         break;
+      case 'contactImport':
+        navigate('/contacts/import');
+        break;
+      case 'contactImportSchedule':
+        navigate('/contact-import-schedule');
+        break;
       case 'broadcastGroups':
         navigate('/broadcast-groups');
         break;
       case 'hashtags':
         navigate('/hashtags');
+        break;
+      case 'phoneVerificationAdmin':
+        navigate('/phone-verification-admin');
         break;
       case 'onboarding':
         navigate('/onboarding');
@@ -358,11 +378,12 @@ function AppContent() {
     message.success(t('login.logoutSuccess'));
   };
 
-  // 如果是表單實例頁面，允許匿名訪問（不需要登入）
-  if (isEFormInstancePage) {
+  // 如果是表單實例頁面或電話驗證頁面，允許匿名訪問（不需要登入）
+  if (isEFormInstancePage || isPhoneVerificationPage) {
     return (
       <Routes>
         <Route path="/eform-instance/:id" element={<EFormInstancePage />} />
+        <Route path="/phone-verification/:verificationId" element={<PhoneVerificationPage />} />
       </Routes>
     );
   }
@@ -399,8 +420,10 @@ function AppContent() {
               <Route path="/contacts/new" element={<ContactEditPage />} />
               <Route path="/contacts/edit/:id" element={<ContactEditPage />} />
               <Route path="/contacts/import" element={<ContactImportPage />} />
+              <Route path="/contact-import-schedule" element={<ContactImportSchedulePage />} />
               <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
               <Route path="/hashtags" element={<HashtagsPage />} />
+              <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
               <Route path="/onboarding" element={<OnboardingManagementPage />} />
               <Route path="/onboarding-test" element={<OnboardingTest />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />

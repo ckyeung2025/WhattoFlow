@@ -260,6 +260,124 @@ export const contactImportApi = {
       console.error('❌ ContactImportApi - Excel 文件解析失敗:', error);
       throw error;
     }
+  },
+
+  // ==================== 排程管理相關 API ====================
+
+  // 創建聯絡人匯入排程
+  createSchedule: async (scheduleData) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始創建聯絡人匯入排程');
+      console.log('📋 ContactImportApi - 排程數據:', scheduleData);
+      console.log('📋 ContactImportApi - 排程數據 (JSON):', JSON.stringify(scheduleData, null, 2));
+      
+      const response = await api.post('/schedule', scheduleData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('✅ ContactImportApi - 排程創建成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 排程創建失敗:', error);
+      console.error('❌ ContactImportApi - 錯誤 response:', error.response);
+      console.error('❌ ContactImportApi - 錯誤 response.data:', error.response?.data);
+      throw error;
+    }
+  },
+
+  // 獲取聯絡人匯入排程列表
+  getSchedules: async () => {
+    try {
+      console.log('🚀 ContactImportApi - 開始獲取聯絡人匯入排程列表');
+      
+      const response = await api.get('/schedule');
+      
+      console.log('✅ ContactImportApi - 排程列表獲取成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 排程列表獲取失敗:', error);
+      throw error;
+    }
+  },
+
+  // 更新聯絡人匯入排程
+  updateSchedule: async (scheduleId, scheduleData) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始更新聯絡人匯入排程');
+      console.log('📋 ContactImportApi - 排程ID:', scheduleId);
+      console.log('📋 ContactImportApi - 排程數據:', scheduleData);
+      
+      const response = await api.put(`/schedule/${scheduleId}`, scheduleData);
+      
+      console.log('✅ ContactImportApi - 排程更新成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 排程更新失敗:', error);
+      throw error;
+    }
+  },
+
+  // 刪除聯絡人匯入排程
+  deleteSchedule: async (scheduleId) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始刪除聯絡人匯入排程');
+      console.log('📋 ContactImportApi - 排程ID:', scheduleId);
+      
+      const response = await api.delete(`/schedule/${scheduleId}`);
+      
+      console.log('✅ ContactImportApi - 排程刪除成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 排程刪除失敗:', error);
+      throw error;
+    }
+  },
+
+  // 更新聯絡人匯入排程狀態
+  updateScheduleStatus: async (scheduleId, statusData) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始更新聯絡人匯入排程狀態');
+      console.log('📋 ContactImportApi - 排程ID:', scheduleId);
+      console.log('📋 ContactImportApi - 狀態數據:', statusData);
+      
+      const response = await api.put(`/schedule/${scheduleId}/status`, statusData);
+      
+      console.log('✅ ContactImportApi - 排程狀態更新成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 排程狀態更新失敗:', error);
+      throw error;
+    }
+  },
+
+  // 獲取聯絡人匯入執行記錄
+  getScheduleExecutions: async (scheduleId) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始獲取聯絡人匯入執行記錄');
+      console.log('📋 ContactImportApi - 排程ID:', scheduleId);
+      
+      const response = await api.get(`/schedule/${scheduleId}/executions`);
+      
+      console.log('✅ ContactImportApi - 執行記錄獲取成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 執行記錄獲取失敗:', error);
+      throw error;
+    }
   }
 };
 

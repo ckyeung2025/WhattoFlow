@@ -1660,6 +1660,7 @@ const zhSC = {
     initiator: '流程启动人',
     specifiedPerson: '指定人员',
     promptMessage: '提示消息',
+    promptMessageHelp: '在用户输入前，系统会发送以下消息提醒用户需要输入',
     validationConfig: '验证配置',
     validationSettings: '验证设置',
     enableValidation: '启用验证',
@@ -1702,6 +1703,27 @@ const zhSC = {
       escalationMessage: '升级通知消息',
       retryMessageSaved: '提醒消息配置已保存',
       escalationSaved: '升级通知配置已保存',
+    },
+    
+    // Send E-Form 相关翻译
+    sendEForm: {
+      integrateWaitReply: '整合等待回复',
+      integrateWaitReplyDesc: '表单发送后，系统会等待用户填写并回复表单',
+      integrateDataSetQuery: '整合 DataSet 查询',
+      integrateDataSetQueryDesc: '从 DataSet Query 节点获取数据并自动填充表单',
+      manualFill: '手动填写',
+      manualFillDesc: '用户需要手动填写表单',
+      notificationMessage: '通知消息',
+      selectDataSetQueryNode: '选择 DataSet Query 节点',
+      selectDataSetQueryNodePlaceholder: '请选择要整合的 DataSet Query 节点',
+      noDataSetQueryNodes: '暂无可用的 DataSet Query 节点',
+      dataSetQueryNodeHelp: '选择要整合的 DataSet Query 节点（操作类型为 SELECT）',
+      useDefaultMessage: '使用预设消息',
+      customMessage: '自定义消息',
+      notificationMessagePlaceholder: '请输入通知消息内容，告知用户需要填写表单...',
+      notificationMessageHelp: '当表单发送后，此消息会自动发送给用户',
+      defaultNotificationMessage: '请填写并回复此表单',
+      promptMessagePlaceholder: '输入提示消息，提醒用户填写表单前需要了解的信息',
     },
     
     // Drawer 全屏相关
@@ -2490,6 +2512,7 @@ const zhSC = {
     initiator: '流程启动人',
     specifiedPerson: '指定人员',
     promptMessage: '提示消息',
+    promptMessageHelp: '在用户输入前，系统会发送以下消息提醒用户需要输入',
     validationConfig: '验证配置',
     validationSettings: '验证设置',
     enableValidation: '启用验证',
@@ -2534,7 +2557,6 @@ const zhSC = {
       escalationSaved: '升级通知配置已保存',
     },
     
-    // Drawer 全屏相关
     enterFullscreen: '全屏显示',
     exitFullscreen: '退出全屏',
     

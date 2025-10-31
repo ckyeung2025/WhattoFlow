@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
-import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs } from 'antd';
+import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs, Divider } from 'antd';
 import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined, BellOutlined, FullscreenOutlined, FullscreenExitOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
@@ -1009,6 +1009,16 @@ const NodePropertyDrawer = ({
                 </Form.Item>
               )}
               
+              {/* 提示訊息標籤 */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
+                  {t('workflowDesigner.promptMessage')}
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
+                  {t('workflowDesigner.promptMessageHelp')}
+                </div>
+              </div>
+              
               {/* 訊息模式 Tab 切換（共用組件） */}
               <MessageModeTabsComponent
                 selectedNode={selectedNode}
@@ -1017,7 +1027,7 @@ const NodePropertyDrawer = ({
                 processVariables={processVariables}
                 form={form}
                 t={t}
-                messageLabel={t('workflowDesigner.promptMessage')}
+                messageLabel={null}
                 messagePlaceholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
                 messageRows={3}
               />
@@ -1284,6 +1294,16 @@ const NodePropertyDrawer = ({
                 </Select>
               </Form.Item>
               
+              {/* 提示訊息標籤 */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
+                  {t('workflowDesigner.promptMessage')}
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
+                  {t('workflowDesigner.promptMessageHelp')}
+                </div>
+              </div>
+              
               {/* 訊息模式 Tab 切換（共用組件） */}
               <MessageModeTabsComponent
                 selectedNode={selectedNode}
@@ -1292,7 +1312,7 @@ const NodePropertyDrawer = ({
                 processVariables={processVariables}
                 form={form}
                 t={t}
-                messageLabel={t('workflowDesigner.promptMessage')}
+                messageLabel={null}
                 messagePlaceholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
                 messageRows={3}
               />
@@ -1852,6 +1872,29 @@ const NodePropertyDrawer = ({
                   </div>
                 )}
               </Form.Item>
+
+              {/* 提示訊息配置 */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
+                  {t('workflowDesigner.promptMessage')}
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
+                  {t('workflowDesigner.promptMessageHelp')}
+                </div>
+              </div>
+              
+              {/* 訊息模式 Tab 切換（共用組件） - 提示訊息 */}
+              <Form.Item 
+                name="promptMessage"
+                initialValue={selectedNode.data.promptMessage || ''}
+              >
+                <Input.TextArea 
+                  rows={3} 
+                  placeholder={t('workflowDesigner.sendEForm.promptMessagePlaceholder')}
+                />
+              </Form.Item>
+
+              <Divider />
 
               {/* 通知訊息配置 */}
               <Form.Item label={t('workflowDesigner.sendEForm.notificationMessage')}>

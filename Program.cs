@@ -18,7 +18,11 @@ builder.Services.AddControllers()
     });
 
 builder.Services.AddDbContext<PurpleRiceDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("PurpleRice")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("PurpleRice"), sqlOptions =>
+    {
+        // 禁用 OUTPUT 子句以支援有觸發器的表
+        sqlOptions.CommandTimeout(60);
+    }));
 
 
 

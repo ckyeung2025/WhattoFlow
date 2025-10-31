@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using PurpleRice.Models;
 
 namespace PurpleRice.Data
@@ -51,6 +52,15 @@ namespace PurpleRice.Data
         // Workflow DataSet Query 相關 DbSet
         public DbSet<WorkflowDataSetQueryResult> WorkflowDataSetQueryResults { get; set; }
         public DbSet<WorkflowDataSetQueryRecord> WorkflowDataSetQueryRecords { get; set; }
+        
+        // Contact Import Schedule 相關 DbSet
+        public DbSet<ContactImportSchedule> ContactImportSchedules { get; set; }
+        public DbSet<ContactImportExecution> ContactImportExecutions { get; set; }
+        public DbSet<SchedulerExecution> SchedulerExecutions { get; set; }
+        
+        // Company Phone Verification 相關 DbSet
+        public DbSet<CompanyPhoneVerification> CompanyPhoneVerifications { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -679,6 +689,38 @@ namespace PurpleRice.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
             
+            // CompanyPhoneVerification 配置
+            modelBuilder.Entity<CompanyPhoneVerification>(entity =>
+            {
+                entity.ToTable("CompanyPhoneVerification");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("Id");
+                entity.Property(e => e.CompanyId).HasColumnName("CompanyId").IsRequired();
+                entity.Property(e => e.PhoneNumber).HasColumnName("PhoneNumber").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.Certificate).HasColumnName("Certificate").IsRequired();
+                entity.Property(e => e.CertificateExpiry).HasColumnName("CertificateExpiry");
+                entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(50).IsRequired().HasDefaultValue("Pending");
+                entity.Property(e => e.VerificationCode).HasColumnName("VerificationCode").HasMaxLength(10);
+                entity.Property(e => e.CodeExpiry).HasColumnName("CodeExpiry");
+                entity.Property(e => e.CodeMethod).HasColumnName("CodeMethod").HasMaxLength(20);
+                entity.Property(e => e.PhoneNumberId).HasColumnName("PhoneNumberId").HasMaxLength(200);
+                entity.Property(e => e.RequestId).HasColumnName("RequestId").HasMaxLength(200);
+                entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+                entity.Property(e => e.CreatedBy).HasColumnName("CreatedBy").HasMaxLength(100);
+                entity.Property(e => e.ErrorMessage).HasColumnName("ErrorMessage");
+                
+                // 索引配置
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.Status);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+            
             // WorkflowMessageSend 配置
             modelBuilder.Entity<WorkflowMessageSend>(entity =>
             {
@@ -769,6 +811,110 @@ namespace PurpleRice.Data
                       .WithMany()
                       .HasForeignKey(e => e.CompanyId)
                       .OnDelete(DeleteBehavior.NoAction);
+            });
+            
+            // Contact Import Schedule 相關配置
+            modelBuilder.Entity<ContactImportSchedule>(entity =>
+            {
+                entity.ToTable("contact_import_schedules");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+                entity.Property(e => e.ImportType).HasColumnName("import_type").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.IsScheduled).HasColumnName("is_scheduled");
+                entity.Property(e => e.ScheduleType).HasColumnName("schedule_type").HasMaxLength(20);
+                entity.Property(e => e.IntervalMinutes).HasColumnName("interval_minutes");
+                entity.Property(e => e.ScheduleCron).HasColumnName("schedule_cron").HasMaxLength(100);
+                entity.Property(e => e.LastRunAt).HasColumnName("last_run_at");
+                entity.Property(e => e.NextRunAt).HasColumnName("next_run_at");
+                entity.Property(e => e.SourceConfig).HasColumnName("source_config").IsRequired();
+                entity.Property(e => e.FieldMapping).HasColumnName("field_mapping").IsRequired();
+                entity.Property(e => e.AllowUpdateDuplicates).HasColumnName("allow_update_duplicates");
+                entity.Property(e => e.BroadcastGroupId).HasColumnName("broadcast_group_id");
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("Active");
+                entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").HasMaxLength(100);
+                
+                // 索引配置
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.NextRunAt);
+                entity.HasIndex(e => e.IsScheduled);
+                entity.HasIndex(e => e.ImportType);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            modelBuilder.Entity<ContactImportExecution>(entity =>
+            {
+                entity.ToTable("contact_import_executions");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ScheduleId).HasColumnName("schedule_id").IsRequired();
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.TotalRecords).HasColumnName("total_records").HasDefaultValue(0);
+                entity.Property(e => e.SuccessCount).HasColumnName("success_count").HasDefaultValue(0);
+                entity.Property(e => e.FailedCount).HasColumnName("failed_count").HasDefaultValue(0);
+                entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+                entity.Property(e => e.StartedAt).HasColumnName("started_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+                
+                // 索引配置
+                entity.HasIndex(e => e.ScheduleId);
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.StartedAt);
+                entity.HasIndex(e => e.Status);
+                
+                // 外鍵關係
+                entity.HasOne(e => e.Schedule)
+                      .WithMany()
+                      .HasForeignKey(e => e.ScheduleId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+            
+            // SchedulerExecution 配置
+            modelBuilder.Entity<SchedulerExecution>(entity =>
+            {
+                entity.ToTable("scheduler_executions");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CompanyId).HasColumnName("company_id").IsRequired();
+                entity.Property(e => e.ScheduleType).HasColumnName("schedule_type").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.RelatedId).HasColumnName("related_id");
+                entity.Property(e => e.RelatedName).HasColumnName("related_name").HasMaxLength(200);
+                entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).IsRequired();
+                entity.Property(e => e.TotalItems).HasColumnName("total_items").HasDefaultValue(0);
+                entity.Property(e => e.SuccessCount).HasColumnName("success_count").HasDefaultValue(0);
+                entity.Property(e => e.FailedCount).HasColumnName("failed_count").HasDefaultValue(0);
+                entity.Property(e => e.Message).HasColumnName("message").HasMaxLength(500);
+                entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+                entity.Property(e => e.StartedAt).HasColumnName("started_at").HasDefaultValueSql("GETUTCDATE()");
+                entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+                entity.Property(e => e.ExecutionDurationMs).HasColumnName("execution_duration_ms");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(100).HasDefaultValue("system");
+                
+                entity.HasIndex(e => e.ScheduleType);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.StartedAt);
+                entity.HasIndex(e => e.CompanyId);
+                entity.HasIndex(e => e.RelatedId);
+                
+                if (modelBuilder.Entity<Company>() != null)
+                {
+                    entity.HasOne(e => e.Company)
+                          .WithMany()
+                          .HasForeignKey(e => e.CompanyId)
+                          .OnDelete(DeleteBehavior.SetNull);
+                }
             });
             
         }

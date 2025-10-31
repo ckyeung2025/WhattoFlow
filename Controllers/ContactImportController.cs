@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using PurpleRice.Models;
 using PurpleRice.Models.DTOs;
+using PurpleRice.Data;
 using PurpleRice.Services;
 using System.Security.Claims;
 using System.Linq;
@@ -19,12 +21,18 @@ namespace PurpleRice.Controllers
         private readonly ContactListService _contactListService;
         private readonly ILogger<ContactImportController> _logger;
         private readonly IConfiguration _configuration;
+        private readonly PurpleRiceDbContext _context;
 
-        public ContactImportController(ContactListService contactListService, ILogger<ContactImportController> logger, IConfiguration configuration)
+        public ContactImportController(
+            ContactListService contactListService, 
+            ILogger<ContactImportController> logger, 
+            IConfiguration configuration,
+            PurpleRiceDbContext context)
         {
             _contactListService = contactListService;
             _logger = logger;
             _configuration = configuration;
+            _context = context;
         }
 
         /// <summary>
@@ -1486,6 +1494,296 @@ namespace PurpleRice.Controllers
                 return BadRequest(new { success = false, message = "文件解析失敗: " + ex.Message });
             }
         }
+
+        #region Contact Import Schedule API
+
+        /// <summary>
+        /// 創建聯絡人匯入排程
+        /// </summary>
+        [HttpPost("schedule")]
+        public async Task<IActionResult> CreateSchedule([FromBody] CreateScheduleRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("📥 收到創建聯絡人匯入排程請求");
+                _logger.LogInformation($"📋 排程名稱: {request?.Name}");
+                _logger.LogInformation($"📋 匯入類型: {request?.ImportType}");
+                
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                    return Unauthorized("無法識別公司資訊");
+
+                var userId = GetCurrentUserId();
+                
+                _logger.LogInformation($"👤 公司ID: {companyId}, 用戶ID: {userId}");
+
+                // 檢查排程名稱是否已存在
+                var existingSchedule = await _context.ContactImportSchedules
+                    .FirstOrDefaultAsync(s => s.CompanyId == companyId && s.Name == request.Name);
+                
+                if (existingSchedule != null)
+                {
+                    _logger.LogWarning($"⚠️ 排程名稱已存在: {request.Name}");
+                    return BadRequest(new { success = false, message = "排程名稱已存在，請使用其他名稱" });
+                }
+
+                var schedule = new ContactImportSchedule
+                {
+                    Id = Guid.NewGuid(),
+                    CompanyId = companyId,
+                    Name = request.Name,
+                    ImportType = request.ImportType,
+                    IsScheduled = request.IsScheduled,
+                    ScheduleType = request.ScheduleType,
+                    IntervalMinutes = request.IntervalMinutes,
+                    ScheduleCron = request.ScheduleCron,
+                    SourceConfig = JsonSerializer.Serialize(request.SourceConfig),
+                    FieldMapping = JsonSerializer.Serialize(request.FieldMapping),
+                    AllowUpdateDuplicates = request.AllowUpdateDuplicates,
+                    BroadcastGroupId = request.BroadcastGroupId,
+                    Status = "Active",
+                    IsActive = true,
+                    CreatedBy = userId,
+                    UpdatedBy = userId
+                };
+                
+                // 計算第一次執行時間
+                if (request.IsScheduled && request.ScheduleType == "interval" && request.IntervalMinutes.HasValue)
+                {
+                    schedule.NextRunAt = DateTime.UtcNow.AddMinutes(request.IntervalMinutes.Value);
+                }
+
+                _logger.LogInformation($"✅ 準備保存排程: {schedule.Name}, ID: {schedule.Id}");
+                
+                _context.ContactImportSchedules.Add(schedule);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation($"🎉 排程創建成功: {schedule.Id}");
+
+                return Ok(new { success = true, scheduleId = schedule.Id });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "創建聯絡人匯入排程失敗");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 獲取聯絡人匯入排程列表
+        /// </summary>
+        [HttpGet("schedule")]
+        public async Task<IActionResult> GetSchedules()
+        {
+            try
+            {
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                    return Unauthorized("無法識別公司資訊");
+
+                var schedulesList = await _context.ContactImportSchedules
+                    .Where(s => s.CompanyId == companyId)
+                    .OrderByDescending(s => s.CreatedAt)
+                    .ToListAsync();
+
+                var schedules = schedulesList.Select(s => new
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    ImportType = s.ImportType,
+                    IsScheduled = s.IsScheduled,
+                    ScheduleType = s.ScheduleType,
+                    IntervalMinutes = s.IntervalMinutes,
+                    ScheduleCron = s.ScheduleCron,
+                    LastRunAt = s.LastRunAt,
+                    NextRunAt = s.NextRunAt,
+                    Status = s.Status,
+                    IsActive = s.IsActive,
+                    SourceConfig = s.SourceConfig,
+                    FieldMapping = s.FieldMapping,
+                    AllowUpdateDuplicates = s.AllowUpdateDuplicates,
+                    BroadcastGroupId = s.BroadcastGroupId,
+                    CreatedAt = s.CreatedAt,
+                    UpdatedAt = s.UpdatedAt
+                }).ToList();
+
+                _logger.LogInformation("返回排程列表，共 {Count} 條記錄", schedules.Count);
+                foreach (var s in schedules)
+                {
+                    _logger.LogInformation("排程 {Name}: SourceConfig={SourceConfig}, FieldMapping={FieldMapping}", 
+                        s.Name, s.SourceConfig?.Substring(0, Math.Min(100, s.SourceConfig?.Length ?? 0)), 
+                        s.FieldMapping?.Substring(0, Math.Min(100, s.FieldMapping?.Length ?? 0)));
+                }
+
+                return Ok(new { success = true, schedules });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "獲取聯絡人匯入排程列表失敗");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 更新聯絡人匯入排程
+        /// </summary>
+        [HttpPut("schedule/{id}")]
+        public async Task<IActionResult> UpdateSchedule(Guid id, [FromBody] UpdateScheduleRequest request)
+        {
+            try
+            {
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                    return Unauthorized("無法識別公司資訊");
+
+                var schedule = await _context.ContactImportSchedules
+                    .FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == companyId);
+
+                if (schedule == null)
+                    return NotFound(new { success = false, message = "排程不存在" });
+
+                // 檢查新名稱是否與現有排程重複（排除當前排程）
+                if (schedule.Name != request.Name)
+                {
+                    var existingSchedule = await _context.ContactImportSchedules
+                        .FirstOrDefaultAsync(s => s.CompanyId == companyId && s.Name == request.Name && s.Id != id);
+                    
+                    if (existingSchedule != null)
+                    {
+                        return BadRequest(new { success = false, message = "排程名稱已存在，請使用其他名稱" });
+                    }
+                }
+
+                schedule.Name = request.Name;
+                schedule.IsScheduled = request.IsScheduled;
+                schedule.ScheduleType = request.ScheduleType;
+                schedule.IntervalMinutes = request.IntervalMinutes;
+                schedule.ScheduleCron = request.ScheduleCron;
+                schedule.SourceConfig = JsonSerializer.Serialize(request.SourceConfig);
+                schedule.FieldMapping = JsonSerializer.Serialize(request.FieldMapping);
+                schedule.AllowUpdateDuplicates = request.AllowUpdateDuplicates;
+                schedule.BroadcastGroupId = request.BroadcastGroupId;
+                schedule.UpdatedAt = DateTime.UtcNow;
+                schedule.UpdatedBy = GetCurrentUserId();
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "更新聯絡人匯入排程失敗");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 刪除聯絡人匯入排程
+        /// </summary>
+        [HttpDelete("schedule/{id}")]
+        public async Task<IActionResult> DeleteSchedule(Guid id)
+        {
+            try
+            {
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                    return Unauthorized("無法識別公司資訊");
+
+                var schedule = await _context.ContactImportSchedules
+                    .FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == companyId);
+
+                if (schedule == null)
+                    return NotFound(new { success = false, message = "排程不存在" });
+
+                _context.ContactImportSchedules.Remove(schedule);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "刪除聯絡人匯入排程失敗");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 更新聯絡人匯入排程狀態
+        /// </summary>
+        [HttpPut("schedule/{id}/status")]
+        public async Task<IActionResult> UpdateScheduleStatus(Guid id, [FromBody] UpdateStatusRequest request)
+        {
+            try
+            {
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                    return Unauthorized("無法識別公司資訊");
+
+                var schedule = await _context.ContactImportSchedules
+                    .FirstOrDefaultAsync(s => s.Id == id && s.CompanyId == companyId);
+
+                if (schedule == null)
+                    return NotFound(new { success = false, message = "排程不存在" });
+
+                if (!string.IsNullOrEmpty(request.Status))
+                    schedule.Status = request.Status;
+                
+                if (request.IsActive.HasValue)
+                    schedule.IsActive = request.IsActive.Value;
+
+                schedule.UpdatedAt = DateTime.UtcNow;
+                schedule.UpdatedBy = GetCurrentUserId();
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "更新聯絡人匯入排程狀態失敗");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 獲取聯絡人匯入執行記錄
+        /// </summary>
+        [HttpGet("schedule/{id}/executions")]
+        public async Task<IActionResult> GetScheduleExecutions(Guid id)
+        {
+            try
+            {
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                    return Unauthorized("無法識別公司資訊");
+
+                var executions = await _context.ContactImportExecutions
+                    .Where(e => e.ScheduleId == id && e.CompanyId == companyId)
+                    .OrderByDescending(e => e.StartedAt)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        e.Status,
+                        e.TotalRecords,
+                        e.SuccessCount,
+                        e.FailedCount,
+                        e.ErrorMessage,
+                        e.StartedAt,
+                        e.CompletedAt
+                    })
+                    .Take(50)
+                    .ToListAsync();
+
+                return Ok(new { success = true, executions });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "獲取聯絡人匯入執行記錄失敗");
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        #endregion
     }
 
     /// <summary>
@@ -1574,5 +1872,47 @@ namespace PurpleRice.Controllers
     {
         public string Url { get; set; }
         public string SheetName { get; set; }
+    }
+
+    /// <summary>
+    /// 創建聯絡人匯入排程請求
+    /// </summary>
+    public class CreateScheduleRequest
+    {
+        public string Name { get; set; } = "";
+        public string ImportType { get; set; } = ""; // 'excel', 'google', 'sql'
+        public bool IsScheduled { get; set; }
+        public string ScheduleType { get; set; } = ""; // 'interval', 'daily', 'weekly', 'cron'
+        public int? IntervalMinutes { get; set; }
+        public string? ScheduleCron { get; set; } = null; // Nullable
+        public object SourceConfig { get; set; }
+        public object FieldMapping { get; set; } // Changed from Dictionary<string, string> to object
+        public bool AllowUpdateDuplicates { get; set; }
+        public Guid? BroadcastGroupId { get; set; }
+    }
+
+    /// <summary>
+    /// 更新聯絡人匯入排程請求
+    /// </summary>
+    public class UpdateScheduleRequest
+    {
+        public string Name { get; set; }
+        public bool IsScheduled { get; set; }
+        public string ScheduleType { get; set; }
+        public int? IntervalMinutes { get; set; }
+        public string ScheduleCron { get; set; }
+        public object SourceConfig { get; set; }
+        public Dictionary<string, string> FieldMapping { get; set; }
+        public bool AllowUpdateDuplicates { get; set; }
+        public Guid? BroadcastGroupId { get; set; }
+    }
+
+    /// <summary>
+    /// 更新狀態請求
+    /// </summary>
+    public class UpdateStatusRequest
+    {
+        public string Status { get; set; }
+        public bool? IsActive { get; set; }
     }
 }

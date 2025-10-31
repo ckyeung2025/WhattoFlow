@@ -28,16 +28,26 @@ const MessageModeTabsComponent = ({
       return directMessageContent;
     }
     
+    // 處理 messagePlaceholder：如果包含點（.），則視為語言鍵並翻譯
+    let finalPlaceholder;
+    if (messagePlaceholder && messagePlaceholder.includes('.')) {
+      // 視為語言鍵並翻譯
+      finalPlaceholder = t(messagePlaceholder);
+    } else {
+      // 直接使用提供的字符串或默認值
+      finalPlaceholder = messagePlaceholder || t('workflowDesigner.messageWithVariablesPlaceholder');
+    }
+    
     // 默認的直接訊息輸入界面
     return (
       <>
         <Form.Item 
-          label={messageLabel || t('workflow.message')} 
+          label={messageLabel === null ? null : (messageLabel || t('workflow.message'))} 
           name="message"
         >
           <Input.TextArea 
             rows={messageRows} 
-            placeholder={messagePlaceholder || t('workflowDesigner.messageWithVariablesPlaceholder')}
+            placeholder={finalPlaceholder}
           />
         </Form.Item>
         
