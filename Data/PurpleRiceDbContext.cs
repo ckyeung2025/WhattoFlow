@@ -19,6 +19,7 @@ namespace PurpleRice.Data
         public DbSet<User> Users { get; set; }
         public DbSet<Role> Roles { get; set; }
         public DbSet<UserRole> UserRoles { get; set; }
+        public DbSet<RolesInterface> RolesInterfaces { get; set; }
         public DbSet<delivery_receipt> delivery_receipt { get; set; }
         public DbSet<PurpleRice.Models.eFormDefinition> eFormDefinitions { get; set; }
         public DbSet<WhatsAppTemplate> WhatsAppTemplates { get; set; }
@@ -177,9 +178,13 @@ namespace PurpleRice.Data
                 entity.Property(e => e.Description).HasColumnName("Description").HasMaxLength(500);
                 entity.Property(e => e.Category).HasColumnName("Category").HasMaxLength(100);
                 entity.Property(e => e.TemplateType).HasColumnName("TemplateType").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.TemplateSource).HasColumnName("TemplateSource").HasMaxLength(20);
                 entity.Property(e => e.Content).HasColumnName("Content").IsRequired();
                 entity.Property(e => e.Variables).HasColumnName("Variables");
                 entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
+                entity.Property(e => e.HeaderUrl).HasColumnName("HeaderUrl").HasMaxLength(1000);
+                entity.Property(e => e.HeaderType).HasColumnName("HeaderType").HasMaxLength(50);
+                entity.Property(e => e.HeaderFilename).HasColumnName("HeaderFilename").HasMaxLength(500);
                 entity.Property(e => e.Language).HasColumnName("Language").HasMaxLength(10);
                 entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
                 entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");

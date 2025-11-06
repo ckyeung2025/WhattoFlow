@@ -52,16 +52,16 @@ namespace PurpleRice.Services.WebhookServices
             var defaults = GetDefaults();
             return new WhatsAppMenuSettings
             {
-                WelcomeMessage = company.WA_WelcomeMessage ?? defaults.WelcomeMessage,
-                NoFunctionMessage = company.WA_NoFunctionMessage ?? defaults.NoFunctionMessage,
-                MenuTitle = company.WA_MenuTitle ?? defaults.MenuTitle,
-                MenuFooter = company.WA_MenuFooter ?? defaults.MenuFooter,
-                MenuButton = company.WA_MenuButton ?? defaults.MenuButton,
-                SectionTitle = company.WA_SectionTitle ?? defaults.SectionTitle,
-                DefaultOptionDescription = company.WA_DefaultOptionDescription ?? defaults.DefaultOptionDescription,
-                InputErrorMessage = company.WA_InputErrorMessage ?? defaults.InputErrorMessage,
-                FallbackMessage = company.WA_FallbackMessage ?? defaults.FallbackMessage,
-                SystemErrorMessage = company.WA_SystemErrorMessage ?? defaults.SystemErrorMessage
+                WelcomeMessage = string.IsNullOrWhiteSpace(company.WA_WelcomeMessage) ? defaults.WelcomeMessage : company.WA_WelcomeMessage,
+                NoFunctionMessage = string.IsNullOrWhiteSpace(company.WA_NoFunctionMessage) ? defaults.NoFunctionMessage : company.WA_NoFunctionMessage,
+                MenuTitle = string.IsNullOrWhiteSpace(company.WA_MenuTitle) ? defaults.MenuTitle : company.WA_MenuTitle,
+                MenuFooter = string.IsNullOrWhiteSpace(company.WA_MenuFooter) ? defaults.MenuFooter : company.WA_MenuFooter,
+                MenuButton = string.IsNullOrWhiteSpace(company.WA_MenuButton) ? defaults.MenuButton : company.WA_MenuButton,
+                SectionTitle = string.IsNullOrWhiteSpace(company.WA_SectionTitle) ? defaults.SectionTitle : company.WA_SectionTitle,
+                DefaultOptionDescription = string.IsNullOrWhiteSpace(company.WA_DefaultOptionDescription) ? defaults.DefaultOptionDescription : company.WA_DefaultOptionDescription,
+                InputErrorMessage = string.IsNullOrWhiteSpace(company.WA_InputErrorMessage) ? defaults.InputErrorMessage : company.WA_InputErrorMessage,
+                FallbackMessage = string.IsNullOrWhiteSpace(company.WA_FallbackMessage) ? defaults.FallbackMessage : company.WA_FallbackMessage,
+                SystemErrorMessage = string.IsNullOrWhiteSpace(company.WA_SystemErrorMessage) ? defaults.SystemErrorMessage : company.WA_SystemErrorMessage
             };
         }
     }
@@ -864,8 +864,30 @@ namespace PurpleRice.Services.WebhookServices
             {
                 _loggingService.LogInformation($"開始發送選單給用戶 {waId}，公司: {company.Name}");
                 
+                // 記錄從數據庫讀取的公司設置值（用於調試）
+                _loggingService.LogInformation($"=== 公司菜單設置調試信息 ===");
+                _loggingService.LogInformation($"WA_WelcomeMessage: '{company.WA_WelcomeMessage ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_NoFunctionMessage: '{company.WA_NoFunctionMessage ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_MenuTitle: '{company.WA_MenuTitle ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_MenuFooter: '{company.WA_MenuFooter ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_MenuButton: '{company.WA_MenuButton ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_SectionTitle: '{company.WA_SectionTitle ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_DefaultOptionDescription: '{company.WA_DefaultOptionDescription ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_InputErrorMessage: '{company.WA_InputErrorMessage ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_FallbackMessage: '{company.WA_FallbackMessage ?? "(null)"}'");
+                _loggingService.LogInformation($"WA_SystemErrorMessage: '{company.WA_SystemErrorMessage ?? "(null)"}'");
+                
                 // 獲取 WhatsApp 菜單設置
                 var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                
+                // 記錄最終使用的設置值
+                _loggingService.LogInformation($"=== 最終使用的菜單設置 ===");
+                _loggingService.LogInformation($"WelcomeMessage: '{menuSettings.WelcomeMessage}'");
+                _loggingService.LogInformation($"MenuTitle: '{menuSettings.MenuTitle}'");
+                _loggingService.LogInformation($"MenuFooter: '{menuSettings.MenuFooter}'");
+                _loggingService.LogInformation($"MenuButton: '{menuSettings.MenuButton}'");
+                _loggingService.LogInformation($"SectionTitle: '{menuSettings.SectionTitle}'");
+                _loggingService.LogInformation($"=================================");
                 
                 // 獲取當前公司的所有啟用的 webhook 流程
                 var allEnabledWorkflows = await _context.WorkflowDefinitions

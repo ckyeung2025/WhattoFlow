@@ -20,16 +20,29 @@ export class ApiService {
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
-          return result.data;
+          // 正常返回數據（即使是空數組），不應該使用 mock data
+          return result.data || [];
         } else {
-          throw new Error(result.message || 'Unknown error');
+          // API 返回錯誤，但這是業務邏輯錯誤，不是網絡錯誤，不應該使用 mock data
+          console.warn('獲取模板列表 API 返回錯誤:', result.message);
+          return [];
         }
       } else {
-        throw new Error(response.statusText);
+        // HTTP 錯誤狀態碼，但這是服務器錯誤響應，不是網絡連接失敗
+        // 只有在真正的網絡錯誤時才使用 mock data
+        console.warn('獲取模板列表 HTTP 錯誤:', response.status, response.statusText);
+        return [];
       }
     } catch (error) {
-      console.error('獲取模板列表錯誤:', error);
-      return MOCK_DATA.templates;
+      // 這是真正的網絡錯誤（連接失敗、超時等），可以使用 mock data 作為後備
+      console.error('獲取模板列表網絡錯誤（連接失敗）:', error);
+      // 只有在網絡連接失敗時才使用 mock data
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.warn('⚠️ 網絡連接失敗，使用模擬數據作為後備');
+        return MOCK_DATA.templates;
+      }
+      // 其他錯誤（如解析錯誤），返回空數組
+      return [];
     }
   }
 

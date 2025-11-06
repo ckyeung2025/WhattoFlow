@@ -33,6 +33,7 @@ import OnboardingManagementPage from './pages/OnboardingManagementPage';
 import OnboardingTest from './components/OnboardingTest';
 import PhoneVerificationPage from './pages/PhoneVerificationPage';
 import CompanyPhoneVerificationAdminPage from './pages/CompanyPhoneVerificationAdminPage';
+import PermissionManagementPage from './pages/PermissionManagementPage';
 
 const { Content } = Layout;
 
@@ -59,6 +60,7 @@ const pathToMenuKey = {
   '/onboarding': 'onboarding',
   '/onboarding-test': 'onboarding-test',
   '/phone-verification-admin': 'phoneVerificationAdmin',
+  '/permission-management': 'permissionManagement',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -119,6 +121,9 @@ function MainLayout({ userInfo, onLogout }) {
       case 'phoneVerificationAdmin':
         navigate('/phone-verification-admin');
         break;
+      case 'permissionManagement':
+        navigate('/permission-management');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -158,6 +163,7 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
             <Route path="/hashtags" element={<HashtagsPage />} />
             <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
+            <Route path="/permission-management" element={<PermissionManagementPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -235,6 +241,9 @@ function AppContent() {
         break;
       case 'phoneVerificationAdmin':
         navigate('/phone-verification-admin');
+        break;
+      case 'permissionManagement':
+        navigate('/permission-management');
         break;
       case 'onboarding':
         navigate('/onboarding');
@@ -320,7 +329,8 @@ function AppContent() {
               language: userData.language,
               timezone: userData.timezone,
               avatar_url: userData.avatar_url,
-              company_id: data.user.companyId // 從登入響應中獲取
+              company_id: userData.company_id || data.user.companyId, // 優先使用 /api/auth/me 返回的值
+              roles: userData.roles || [] // 從 /api/auth/me 獲取角色
             };
             
             setUserInfo(fullUserInfo);
@@ -424,6 +434,7 @@ function AppContent() {
               <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
               <Route path="/hashtags" element={<HashtagsPage />} />
               <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
+              <Route path="/permission-management" element={<PermissionManagementPage />} />
               <Route path="/onboarding" element={<OnboardingManagementPage />} />
               <Route path="/onboarding-test" element={<OnboardingTest />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />

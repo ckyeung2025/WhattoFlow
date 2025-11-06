@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Layout, Menu, Avatar, Typography, Divider } from 'antd';
 import { 
   DashboardOutlined, 
@@ -20,10 +20,12 @@ import {
   ContactsOutlined,  // 添加聯絡人圖標
   TeamOutlined,  // 添加群組圖標
   TagsOutlined,  // 添加標籤圖標
-  SendOutlined  // 添加發送圖標
+  SendOutlined,  // 添加發送圖標
+  SafetyOutlined  // 添加安全圖標用於權限管理
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
+import { filterMenuItemsByPermission, getUserInterfacesFromStorage } from '../utils/permissionUtils';
 
 const { Sider } = Layout;
 const { Text } = Typography;
@@ -31,7 +33,25 @@ const { Text } = Typography;
 const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [openKeys, setOpenKeys] = useState([]);
+  const [userInterfaces, setUserInterfaces] = useState([]);
   const { t } = useLanguage();
+
+  // 獲取用戶權限
+  useEffect(() => {
+    const loadUserInterfaces = async () => {
+      try {
+        const interfaces = await getUserInterfacesFromStorage();
+        setUserInterfaces(interfaces);
+      } catch (error) {
+        console.error('載入用戶權限失敗:', error);
+        setUserInterfaces([]);
+      }
+    };
+
+    if (userInfo) {
+      loadUserInterfaces();
+    }
+  }, [userInfo]);
 
   // 處理選單展開/收合 - 手風琴效果
   const handleOpenChange = (keys) => {
@@ -57,136 +77,166 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
     }
   };
 
-  const menuItems = [
-    {
-      key: 'dashboard',
-      icon: <DashboardOutlined />,
-      label: t('menu.dashboard'),
-    },
-    {
-      type: 'divider',
-    },
-    // Application 應用區域
-    {
-      key: 'application',
-      icon: <AppstoreOutlined />,
-      label: t('menu.application'),
-      children: [
+  // 構建基礎菜單項
+  const baseMenuItems = useMemo(() => {
+    const adminToolsChildren = [
+      // 聯絡人管理
+      {
+        key: 'contactList',
+        icon: <ContactsOutlined />,
+        label: t('menu.contactList'),
+        url: '/contacts',
+      },
+      // 廣播群組管理
+      {
+        key: 'broadcastGroups',
+        icon: <TeamOutlined />,
+        label: t('menu.broadcastGroups'),
+        url: '/broadcast-groups',
+      },
+      // 標籤管理
+      {
+        key: 'hashtags',
+        icon: <TagsOutlined />,
+        label: t('menu.hashtags'),
+        url: '/hashtags',
+      },
+      // 公司/用戶管理
+      {
+        key: 'companyUserAdmin',
+        icon: <UserOutlined />,
+        label: t('menu.companyUserAdmin'),
+        url: '/company-user-admin',
+      },
+      // 權限管理（會根據用戶權限自動過濾）
+      {
+        key: 'permissionManagement',
+        icon: <SafetyOutlined />,
+        label: t('menu.permissionManagement'),
+        url: '/permission-management',
+      },
+      // WhatsApp 電話號碼驗證管理
+      {
+        key: 'phoneVerificationAdmin',
+        icon: <MessageOutlined />,
+        label: t('menu.phoneVerificationAdmin'),
+        url: '/phone-verification-admin',
+      }
+    ];
+
+    return [
+      {
+        key: 'dashboard',
+        icon: <DashboardOutlined />,
+        label: t('menu.dashboard'),
+      },
+      {
+        type: 'divider',
+      },
+      // Application 應用區域
+      {
+        key: 'application',
+        icon: <AppstoreOutlined />,
+        label: t('menu.application'),
+        children: [
+          {
+            key: 'publishedApps',
+            icon: <RocketOutlined />,
+            label: t('menu.publishedApps'),
+            url: '/published-apps',
+          },
+          {
+            key: 'pendingTasks',
+            icon: <ClockCircleOutlined />,
+            label: t('menu.pendingTasks'),
+            url: '/pending-tasks',
+          },
+          {
+            key: 'workflowMonitor',
+            icon: <BarChartOutlined />,
+            label: t('menu.runningApps'),
+            url: '/workflow-monitor',
+          }
+        ]
+      },
+      {
+        type: 'divider',
+      },
+      // Studio 工作室區域
+      {
+        key: 'studio',
+        icon: <ToolOutlined />,
+        label: t('menu.studio'),
+        children: [
+          // 表單管理
+          {
+            key: 'eformList',
+            icon: <FileTextOutlined />,
+            label: t('menu.eformList'),
+            url: '/eform-list',
+          },
+          // 訊息模版
+          {
+            key: 'whatsappTemplates',
+            icon: <MessageOutlined />,
+            label: t('menu.whatsappTemplates'),
+            url: '/whatsapp-templates',
+          },
+          // 工作流程設計
+          {
+            key: 'whatsappWorkflow',
+            icon: <BranchesOutlined />,
+            label: t('menu.whatsappWorkflow'),
+            url: '/workflow-list',
+          },
+          // 數據集管理
+          {
+            key: 'dataSets',
+            icon: <DatabaseOutlined />,
+            label: t('dataSetManagement.title'),
+            url: '/data-sets',
+          }
+        ]
+      },
+      {
+        type: 'divider',
+      },
+      // Administrator Tools 管理工具區域
+      {
+        key: 'adminTools',
+        icon: <SettingOutlined />,
+        label: t('menu.adminTools'),
+        children: adminToolsChildren
+      },
+      {
+        type: 'divider',
+      },
+      {
+        key: 'logout',
+        icon: <LogoutOutlined />,
+        label: t('menu.logout'),
+        onClick: onLogout,
+      }
+    ];
+  }, [userInfo, t]);
+
+  // 根據權限過濾菜單項
+  const menuItems = useMemo(() => {
+    if (!userInterfaces || userInterfaces.length === 0) {
+      // 如果還沒有載入權限，返回空菜單或僅顯示 logout
+      return [
         {
-          key: 'publishedApps',
-          icon: <RocketOutlined />,
-          label: t('menu.publishedApps'),
-          url: '/published-apps',
-        },
-        {
-          key: 'pendingTasks',
-          icon: <ClockCircleOutlined />,
-          label: t('menu.pendingTasks'),
-          url: '/pending-tasks',
-        },
-        {
-          key: 'workflowMonitor',
-          icon: <BarChartOutlined />,
-          label: t('menu.runningApps'),
-          url: '/workflow-monitor',
+          key: 'logout',
+          icon: <LogoutOutlined />,
+          label: t('menu.logout'),
+          onClick: onLogout,
         }
-      ]
-    },
-    {
-      type: 'divider',
-    },
-    // Studio 工作室區域
-    {
-      key: 'studio',
-      icon: <ToolOutlined />,
-      label: t('menu.studio'),
-      children: [
-        // 表單管理
-        {
-          key: 'eformList',
-          icon: <FileTextOutlined />,
-          label: t('menu.eformList'),
-          url: '/eform-list',
-        },
-        // 訊息模版
-        {
-          key: 'whatsappTemplates',
-          icon: <MessageOutlined />,
-          label: t('menu.whatsappTemplates'),
-          url: '/whatsapp-templates',
-        },
-        // 工作流程設計
-        {
-          key: 'whatsappWorkflow',
-          icon: <BranchesOutlined />,
-          label: t('menu.whatsappWorkflow'),
-          url: '/workflow-list',
-        },
-        // 數據集管理
-        {
-          key: 'dataSets',
-          icon: <DatabaseOutlined />,
-          label: t('dataSetManagement.title'),
-          url: '/data-sets',
-        }
-      ]
-    },
-    {
-      type: 'divider',
-    },
-    // Administrator Tools 管理工具區域
-    {
-      key: 'adminTools',
-      icon: <SettingOutlined />,
-      label: t('menu.adminTools'),
-      children: [
-        // 聯絡人管理
-        {
-          key: 'contactList',
-          icon: <ContactsOutlined />,
-          label: t('menu.contactList'),
-          url: '/contacts',
-        },
-        // 廣播群組管理
-        {
-          key: 'broadcastGroups',
-          icon: <TeamOutlined />,
-          label: t('menu.broadcastGroups'),
-          url: '/broadcast-groups',
-        },
-        // 標籤管理
-        {
-          key: 'hashtags',
-          icon: <TagsOutlined />,
-          label: t('menu.hashtags'),
-          url: '/hashtags',
-        },
-        // 公司/用戶管理
-        {
-          key: 'companyUserAdmin',
-          icon: <UserOutlined />,
-          label: t('menu.companyUserAdmin'),
-          url: '/company-user-admin',
-        },
-        // WhatsApp 電話號碼驗證管理
-        {
-          key: 'phoneVerificationAdmin',
-          icon: <MessageOutlined />,
-          label: '電話號碼驗證',
-          url: '/phone-verification-admin',
-        }
-      ]
-    },
-    {
-      type: 'divider',
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: t('menu.logout'),
-      onClick: onLogout,
+      ];
     }
-  ];
+
+    // 傳入 userInfo 以便進行角色檢查（特別是 phoneVerificationAdmin 需要 Tenant_Admin 角色）
+    return filterMenuItemsByPermission(baseMenuItems, userInterfaces, userInfo);
+  }, [baseMenuItems, userInterfaces, userInfo, t, onLogout]);
 
   return (
     <Sider 

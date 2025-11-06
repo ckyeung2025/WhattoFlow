@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography, Modal, Divider, Tag, Space, Tabs } from 'antd';
+import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography, Modal, Divider, Tag, Space, Tabs, Alert } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined, SafetyOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -10,6 +10,7 @@ import en from '../locales/en';
 const CompanyEditPage = () => {
   const [form] = Form.useForm();
   const [logoUrl, setLogoUrl] = useState('');
+  const [originalData, setOriginalData] = useState(null); // 保存原始數據，用於確保未進入的 tab 字段不會丟失
   const [searchParams] = useSearchParams();
   const id = searchParams.get('id');
   const navigate = useNavigate();
@@ -24,6 +25,8 @@ const CompanyEditPage = () => {
     })
       .then(res => res.json())
       .then(data => {
+        // 保存原始數據
+        setOriginalData(data);
         setTimeout(() => {
           form.setFieldsValue({
             name: data.name,
@@ -68,17 +71,48 @@ const CompanyEditPage = () => {
 
   const handleSave = async () => {
     try {
-      const values = form.getFieldsValue();
-      values.logoUrl = logoUrl;
+      const formValues = form.getFieldsValue();
+      
+      // 合併原始數據，確保未進入過的 tab 的字段不會丟失
+      // 優先使用表單中的值（已修改的），如果沒有則使用原始數據的值
+      const values = {
+        // 基本資料
+        name: formValues.name ?? originalData?.name,
+        email: formValues.email ?? originalData?.email,
+        address: formValues.address ?? originalData?.address,
+        phone: formValues.phone ?? originalData?.phone,
+        website: formValues.website ?? originalData?.website,
+        logoUrl: logoUrl,
+        
+        // API 設置
+        wA_API_Key: formValues.wA_API_Key ?? originalData?.wA_API_Key,
+        wA_PhoneNo_ID: formValues.wA_PhoneNo_ID ?? originalData?.wA_PhoneNo_ID,
+        wA_Business_Account_ID: formValues.wA_Business_Account_ID ?? originalData?.wA_Business_Account_ID,
+        wA_VerifyToken: formValues.wA_VerifyToken ?? originalData?.wA_VerifyToken,
+        wA_WebhookToken: formValues.wA_WebhookToken ?? originalData?.wA_WebhookToken,
+        
+        // WhatsApp 菜單設置 - 確保這些字段不會因為未進入 tab 而丟失
+        wA_WelcomeMessage: formValues.wA_WelcomeMessage ?? originalData?.wA_WelcomeMessage,
+        wA_NoFunctionMessage: formValues.wA_NoFunctionMessage ?? originalData?.wA_NoFunctionMessage,
+        wA_MenuTitle: formValues.wA_MenuTitle ?? originalData?.wA_MenuTitle,
+        wA_MenuFooter: formValues.wA_MenuFooter ?? originalData?.wA_MenuFooter,
+        wA_MenuButton: formValues.wA_MenuButton ?? originalData?.wA_MenuButton,
+        wA_SectionTitle: formValues.wA_SectionTitle ?? originalData?.wA_SectionTitle,
+        wA_DefaultOptionDescription: formValues.wA_DefaultOptionDescription ?? originalData?.wA_DefaultOptionDescription,
+        wA_InputErrorMessage: formValues.wA_InputErrorMessage ?? originalData?.wA_InputErrorMessage,
+        wA_FallbackMessage: formValues.wA_FallbackMessage ?? originalData?.wA_FallbackMessage,
+        wA_SystemErrorMessage: formValues.wA_SystemErrorMessage ?? originalData?.wA_SystemErrorMessage,
+      };
+      
       await fetch(`/api/companies/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
         body: JSON.stringify(values)
       });
-      message.success('儲存成功');
+      message.success(t('companyEdit.saveSuccess'));
       navigate('/company-user-admin');
     } catch {
-      message.error('儲存失敗');
+      message.error(t('companyEdit.saveFailed'));
     }
   };
 
@@ -92,16 +126,16 @@ const CompanyEditPage = () => {
 
       // 驗證必填欄位
       if (!waApiKey) {
-        message.warning('請先輸入 WA API Key (Access Token)');
+        message.warning(t('companyEdit.apiKeyRequired'));
         return;
       }
 
       if (!waBusinessAccountId) {
-        message.warning('請先輸入 WhatsApp Business Account ID');
+        message.warning(t('companyEdit.businessAccountIdRequired'));
         return;
       }
 
-      message.loading('正在驗證 Token 權限...', 0);
+      message.loading(t('companyEdit.validateTokenLoading'), 0);
 
       const token = localStorage.getItem('token');
       const response = await fetch('/api/whatsapptokenvalidation/validate-permissions', {
@@ -115,8 +149,8 @@ const CompanyEditPage = () => {
         console.error('❌ Token 驗證 API 錯誤:', errorResult);
         
         Modal.error({
-          title: '❌ 驗證失敗',
-          content: errorResult.error || errorResult.message || '無法驗證 Token 權限，請檢查您的設定'
+          title: t('companyEdit.validateTokenError'),
+          content: errorResult.error || errorResult.message || t('companyEdit.validateTokenErrorMsg')
         });
         return;
       }
@@ -129,22 +163,22 @@ const CompanyEditPage = () => {
 
       if (result.success) {
         Modal.info({
-          title: '🔐 Token 權限檢查結果',
+          title: t('companyEdit.validateTokenCheckResult'),
           width: 600,
           content: (
             <div>
-              <p><strong>Token 狀態：</strong>{result.tokenValid ? '✅ 有效' : '❌ 無效'}</p>
-              {result.company && <p><strong>公司：</strong>{result.company.name}</p>}
+              <p><strong>{t('companyEdit.tokenStatus')}</strong>{result.tokenValid ? t('companyEdit.tokenValid') : t('companyEdit.tokenInvalid')}</p>
+              {result.company && <p><strong>{t('companyEdit.companyLabel')}</strong>{result.company.name}</p>}
               <Divider />
               
               {result.capabilities && (
                 <>
-                  <p><strong>功能權限：</strong></p>
+                  <p><strong>{t('companyEdit.capabilitiesTitle')}</strong></p>
                   <ul>
-                    <li>發送訊息：{result.capabilities.canSendMessages ? '✅ 可用' : '❌ 不可用'}</li>
-                    <li>接收 Webhook：{result.capabilities.canReceiveWebhooks ? '✅ 可用' : '❌ 不可用'}</li>
-                    <li>管理 Meta 範本：{result.capabilities.canManageTemplates ? '✅ 可用' : '❌ 不可用'}</li>
-                    <li>建立 WhatsApp Flow：{result.capabilities.canCreateFlows ? '✅ 可用' : '❌ 不可用'}</li>
+                    <li>{t('companyEdit.sendMessageLabel')}{result.capabilities.canSendMessages ? t('companyEdit.available') : t('companyEdit.unavailable')}</li>
+                    <li>{t('companyEdit.receiveWebhookLabel')}{result.capabilities.canReceiveWebhooks ? t('companyEdit.available') : t('companyEdit.unavailable')}</li>
+                    <li>{t('companyEdit.manageTemplatesLabel')}{result.capabilities.canManageTemplates ? t('companyEdit.available') : t('companyEdit.unavailable')}</li>
+                    <li>{t('companyEdit.createFlowLabel')}{result.capabilities.canCreateFlows ? t('companyEdit.available') : t('companyEdit.unavailable')}</li>
                   </ul>
                   <Divider />
                 </>
@@ -152,7 +186,7 @@ const CompanyEditPage = () => {
               
               {result.permissions && result.permissions.length > 0 && (
                 <>
-                  <p><strong>詳細權限：</strong></p>
+                  <p><strong>{t('companyEdit.permissionsTitle')}</strong></p>
                   <ul>
                     {result.permissions.map((p, i) => (
                       <li key={i}>
@@ -166,7 +200,7 @@ const CompanyEditPage = () => {
               
               {result.recommendations && result.recommendations.length > 0 && (
                 <>
-                  <p><strong>建議：</strong></p>
+                  <p><strong>{t('companyEdit.recommendationsTitle')}</strong></p>
                   <ul>
                     {result.recommendations.map((r, i) => (
                       <li key={i}>{r}</li>
@@ -179,15 +213,15 @@ const CompanyEditPage = () => {
         });
       } else {
         Modal.error({
-          title: '❌ 權限檢查失敗',
-          content: result.error || '無法驗證 Token 權限，請檢查您的設定'
+          title: t('companyEdit.validateTokenFailed'),
+          content: result.error || t('companyEdit.permissionCheckFailed')
         });
       }
     } catch (error) {
       message.destroy();
       Modal.error({
-        title: '❌ 驗證失敗',
-        content: error.message || '檢查 Token 權限時發生錯誤，請稍後重試'
+        title: t('companyEdit.validateTokenError'),
+        content: error.message || t('companyEdit.validateTokenCheckError')
       });
     }
   };
@@ -206,12 +240,12 @@ const CompanyEditPage = () => {
       });
       if (res.data.url) {
         setLogoUrl(res.data.url);
-        message.success('上傳成功');
+        message.success(t('companyEdit.uploadSuccess'));
       } else {
-        message.error('上傳失敗');
+        message.error(t('companyEdit.uploadFailed'));
       }
     } catch {
-      message.error('上傳失敗');
+      message.error(t('companyEdit.uploadFailed'));
     }
   };
 
@@ -301,19 +335,50 @@ const CompanyEditPage = () => {
                         <Input style={{ width: '100%' }} />
                       </Form.Item>
                       <Form.Item name="wA_PhoneNo_ID" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waPhoneNoId')}</span>}>
-                        <Input style={{ width: '100%' }} placeholder="例如: 690383010830837" />
+                        <Input style={{ width: '100%' }} placeholder={t('companyEdit.phoneNoIdPlaceholder')} />
                       </Form.Item>
-                      <Form.Item name="wA_Business_Account_ID" label={<span style={{ fontWeight: 600 }}>WhatsApp Business Account ID</span>}>
+                      <Form.Item name="wA_Business_Account_ID" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waBusinessAccountId')}</span>}>
                         <Input 
                           style={{ width: '100%' }} 
-                          placeholder="例如: 1102096678464098"
+                          placeholder={t('companyEdit.businessAccountIdPlaceholder')}
                           suffix={
-                            <Tooltip title="用於管理 Meta 官方模板">
-                              <span style={{ color: '#666', fontSize: '12px' }}>模板管理</span>
+                            <Tooltip title={t('companyEdit.waBusinessAccountIdTooltip')}>
+                              <span style={{ color: '#666', fontSize: '12px' }}>{t('companyEdit.waBusinessAccountIdSuffix')}</span>
                             </Tooltip>
                           }
                         />
                       </Form.Item>
+                      
+                      {/* 重要警告提示 */}
+                      <Alert
+                        message={t('companyEdit.configWarningTitle')}
+                        description={
+                          <div style={{ fontSize: '12px', lineHeight: '1.6' }}>
+                            <div style={{ marginBottom: '4px' }}>
+                              <strong>{t('companyEdit.configWarningDescription')}</strong>
+                            </div>
+                            <div style={{ marginBottom: '4px' }}>
+                              {t('companyEdit.configWarningPhoneIdUse')}
+                            </div>
+                            <div style={{ marginBottom: '4px' }}>
+                              {t('companyEdit.configWarningBusinessIdUse')}
+                            </div>
+                            <div style={{ color: '#ff4d4f', marginTop: '8px' }}>
+                              {t('companyEdit.configWarningMismatchTitle')}
+                              <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                                <li>{t('companyEdit.configWarningMismatchItem1')}</li>
+                                <li>{t('companyEdit.configWarningMismatchItem2')}</li>
+                              </ul>
+                            </div>
+                            <div style={{ marginTop: '8px', color: '#1890ff' }}>
+                              {t('companyEdit.configWarningSolution')}
+                            </div>
+                          </div>
+                        }
+                        type="warning"
+                        showIcon
+                        style={{ marginBottom: 16, marginTop: 8 }}
+                      />
                       
                       {/* 驗證 Token 權限按鈕 */}
                       <Form.Item>
@@ -323,10 +388,10 @@ const CompanyEditPage = () => {
                           style={{ width: '100%' }}
                           type="dashed"
                         >
-                          驗證 Token 權限
+                          {t('companyEdit.validateTokenButton')}
                         </Button>
                         <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
-                          輸入 API Key 和 Business Account ID 後點擊驗證
+                          {t('companyEdit.validateTokenHint')}
                         </div>
                       </Form.Item>
                       
@@ -335,10 +400,10 @@ const CompanyEditPage = () => {
                       <Form.Item name="wA_VerifyToken" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.waVerifyToken')}</span>}>
                         <Input style={{ width: '100%' }} />
                       </Form.Item>
-                      <Form.Item name="wA_WebhookToken" label={<span style={{ fontWeight: 600 }}>Webhook Token</span>}>
+                      <Form.Item name="wA_WebhookToken" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.webhookToken')}</span>}>
                         <Input 
                           style={{ width: '100%' }} 
-                          placeholder="自動生成的唯一 Token"
+                          placeholder={t('companyEdit.webhookTokenPlaceholder')}
                           suffix={
                             <Button 
                               type="text" 
@@ -349,18 +414,18 @@ const CompanyEditPage = () => {
                                   wA_WebhookToken: newToken,
                                   wA_WebhookUrl: `${window.location.origin}/api/MetaWebhook/${newToken}`
                                 });
-                                message.success('新的 Token 已生成，URL 已更新');
+                                message.success(t('companyEdit.tokenGenerated'));
                               }}
                             >
-                              重新生成
+                              {t('companyEdit.regenerateToken')}
                             </Button>
                           }
                         />
                       </Form.Item>
-                      <Form.Item name="wA_WebhookUrl" label={<span style={{ fontWeight: 600 }}>Meta Webhook URL</span>}>
+                      <Form.Item name="wA_WebhookUrl" label={<span style={{ fontWeight: 600 }}>{t('companyEdit.webhookUrl')}</span>}>
                         <Input 
                           style={{ width: '100%' }} 
-                          placeholder="例如: https://your-domain.com/api/MetaWebhook/your-token"
+                          placeholder={t('companyEdit.webhookUrlPlaceholder')}
                           suffix={
                             <Button 
                               type="text" 
@@ -369,13 +434,13 @@ const CompanyEditPage = () => {
                                 const webhookUrl = form.getFieldValue('wA_WebhookUrl');
                                 if (webhookUrl) {
                                   navigator.clipboard.writeText(webhookUrl);
-                                  message.success('Webhook URL 已複製到剪貼簿');
+                                  message.success(t('companyEdit.webhookUrlCopied'));
                                 } else {
-                                  message.error('請先生成 Webhook Token');
+                                  message.error(t('companyEdit.generateTokenFirst'));
                                 }
                               }}
                             >
-                              複製
+                              {t('companyEdit.copyWebhookUrl')}
                             </Button>
                           }
                         />
@@ -399,7 +464,7 @@ const CompanyEditPage = () => {
                       >
                         <Input.TextArea 
                           rows={3} 
-                          placeholder="歡迎使用我們的服務！&#10;&#10;請選擇您需要的功能："
+                          placeholder={t('companyEdit.welcomeMessagePlaceholder')}
                           style={{ width: '100%' }} 
                         />
                       </Form.Item>
@@ -411,7 +476,7 @@ const CompanyEditPage = () => {
                       >
                         <Input.TextArea 
                           rows={3} 
-                          placeholder="歡迎使用我們的服務！&#10;&#10;目前沒有可用的功能，請聯繫管理員。"
+                          placeholder={t('companyEdit.noFunctionMessagePlaceholder')}
                           style={{ width: '100%' }} 
                         />
                       </Form.Item>
@@ -423,7 +488,7 @@ const CompanyEditPage = () => {
                             label={<span style={{ fontWeight: 600 }}>{t('companyEdit.menuTitle')}</span>}
                             tooltip={t('companyEdit.menuTitleTooltip')}
                           >
-                            <Input placeholder="服務選單" style={{ width: '100%' }} />
+                            <Input placeholder={t('companyEdit.menuTitlePlaceholder')} style={{ width: '100%' }} />
                           </Form.Item>
                         </Col>
                         <Col span={12}>
@@ -432,7 +497,7 @@ const CompanyEditPage = () => {
                             label={<span style={{ fontWeight: 600 }}>{t('companyEdit.menuButton')}</span>}
                             tooltip={t('companyEdit.menuButtonTooltip')}
                           >
-                            <Input placeholder="查看選項" style={{ width: '100%' }} />
+                            <Input placeholder={t('companyEdit.menuButtonPlaceholder')} style={{ width: '100%' }} />
                           </Form.Item>
                         </Col>
                       </Row>
@@ -442,7 +507,7 @@ const CompanyEditPage = () => {
                         label={<span style={{ fontWeight: 600 }}>{t('companyEdit.menuFooter')}</span>}
                         tooltip={t('companyEdit.menuFooterTooltip')}
                       >
-                        <Input placeholder="請選擇您需要的服務" style={{ width: '100%' }} />
+                        <Input placeholder={t('companyEdit.menuFooterPlaceholder')} style={{ width: '100%' }} />
                       </Form.Item>
 
                       <Row gutter={16}>
@@ -452,7 +517,7 @@ const CompanyEditPage = () => {
                             label={<span style={{ fontWeight: 600 }}>{t('companyEdit.sectionTitle')}</span>}
                             tooltip={t('companyEdit.sectionTitleTooltip')}
                           >
-                            <Input placeholder="服務選項" style={{ width: '100%' }} />
+                            <Input placeholder={t('companyEdit.sectionTitlePlaceholder')} style={{ width: '100%' }} />
                           </Form.Item>
                         </Col>
                         <Col span={12}>
@@ -461,7 +526,7 @@ const CompanyEditPage = () => {
                             label={<span style={{ fontWeight: 600 }}>{t('companyEdit.defaultOptionDescription')}</span>}
                             tooltip={t('companyEdit.defaultOptionDescriptionTooltip')}
                           >
-                            <Input placeholder="點擊選擇此服務" style={{ width: '100%' }} />
+                            <Input placeholder={t('companyEdit.defaultOptionDescriptionPlaceholder')} style={{ width: '100%' }} />
                           </Form.Item>
                         </Col>
                       </Row>
@@ -473,7 +538,7 @@ const CompanyEditPage = () => {
                       >
                         <Input.TextArea 
                           rows={2} 
-                          placeholder="輸入不正確，請重新輸入。"
+                          placeholder={t('companyEdit.inputErrorMessagePlaceholder')}
                           style={{ width: '100%' }} 
                         />
                       </Form.Item>
@@ -485,7 +550,7 @@ const CompanyEditPage = () => {
                       >
                         <Input.TextArea 
                           rows={2} 
-                          placeholder="&#10;&#10;回覆數字選擇功能，或輸入「選單」重新顯示選單。"
+                          placeholder={t('companyEdit.fallbackMessagePlaceholder')}
                           style={{ width: '100%' }} 
                         />
                       </Form.Item>
@@ -497,7 +562,7 @@ const CompanyEditPage = () => {
                       >
                         <Input.TextArea 
                           rows={2} 
-                          placeholder="系統錯誤：無法找到 QR Code 節點配置。"
+                          placeholder={t('companyEdit.systemErrorMessagePlaceholder')}
                           style={{ width: '100%' }} 
                         />
                       </Form.Item>
@@ -518,7 +583,7 @@ const CompanyEditPage = () => {
             type="primary"
             size="middle"
             style={{ borderRadius: 8, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-            aria-label="返回"
+            aria-label={t('companyEdit.back')}
           />
         </Tooltip>
         <Tooltip title={t('companyEdit.save')}>
@@ -528,7 +593,7 @@ const CompanyEditPage = () => {
             type="primary"
             size="middle"
             style={{ borderRadius: 8, width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-            aria-label="儲存"
+            aria-label={t('companyEdit.save')}
           />
         </Tooltip>
       </div>

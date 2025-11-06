@@ -38,7 +38,11 @@ namespace PurpleRice.Services
             _minLogLevel = Enum.Parse<LogLevel>(logSection.GetValue<string>("LogLevel", "Debug"));
             
             var logPathTemplate = logSection.GetValue<string>("LogFilePath", $"logs/{serviceName.ToLower()}_{{0:yyyyMMdd}}.log");
-            var logDir = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+            
+            // 使用應用程序目錄而不是當前目錄（Windows Service 模式下很重要）
+            // AppContext.BaseDirectory 在服務模式下會返回應用程序目錄
+            var appBasePath = AppContext.BaseDirectory;
+            var logDir = Path.Combine(appBasePath, "logs");
             if (!Directory.Exists(logDir))
             {
                 Directory.CreateDirectory(logDir);

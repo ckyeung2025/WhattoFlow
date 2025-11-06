@@ -54,9 +54,22 @@ export const useDataFetching = () => {
   const fetchTemplates = useCallback(async () => {
     try {
       const templates = await apiService.fetchTemplates();
-      setTemplates(templates);
+      // apiService.fetchTemplates() 已經處理了錯誤情況
+      // 如果網絡連接失敗，會返回 MOCK_DATA.templates
+      // 如果 API 正常返回空數據，會返回 []
+      setTemplates(templates || []);
     } catch (error) {
-      handleApiError(error, MOCK_DATA.templates, setTemplates, '獲取模板列表錯誤');
+      // 只有在真正的未預期錯誤時才使用 mock data
+      // 但 apiService 已經處理了大部分情況，這裡應該很少執行到
+      console.error('獲取模板列表未預期錯誤:', error);
+      // 只有在網絡連接失敗時才使用 mock data
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.warn('⚠️ 網絡連接失敗，使用模擬數據作為後備');
+        setTemplates(MOCK_DATA.templates);
+      } else {
+        // 其他錯誤，返回空數組
+        setTemplates([]);
+      }
     }
   }, []);
 

@@ -1,0 +1,425 @@
+{
+  "onboarding": {
+    "welcome": {
+      "title": "歡迎來到 WhatoFlow！",
+      "subtitle": "讓我們一起探索這個強大的 AI WhatsApp 工作流管理平台，學習如何創建自動化業務流程",
+      "startTour": "開始導覽",
+      "skipTour": "跳過導覽",
+      "tourInfo": "導覽約需 5-10 分鐘，您隨時可以跳過"
+    },
+    "features": {
+      "workflow": {
+        "title": "AI 流程及表單管理",
+        "subtitle": "自動化工作流與智能表單生成",
+        "description": "員工發送「我要請假 3 天」→ AI 自動生成標準請假 E-Form"
+      },
+      "customer": {
+        "title": "客戶服務",
+        "subtitle": "即時查詢回覆與問題解決",
+        "description": "銀行聊天機器人回覆餘額查詢「發送餘額查看」"
+      },
+      "order": {
+        "title": "訂單與交易更新",
+        "subtitle": "自動發送確認與物流追蹤",
+        "description": "Amazon 發送「您的訂單已發貨，掃描 QR Code 查看物流進度」"
+      },
+      "appointment": {
+        "title": "預約與提醒管理",
+        "subtitle": "自動排程與提醒通知",
+        "description": "美容院發送「您的預約：明天 3 PM」提醒，減少缺席率"
+      },
+      "promotion": {
+        "title": "廣告與行銷推廣",
+        "subtitle": "批量個性化訊息與智能營銷",
+        "description": "Westside 發送生日優惠「John，生日快樂！享 20% 折扣」"
+      },
+      "survey": {
+        "title": "調查與反饋收集",
+        "subtitle": "問卷調查與滿意度分析",
+        "description": "餐廳發送「請評價用餐體驗(1-5分)」，自動分析結果"
+      },
+      "default": {
+        "title": "WhatoFlow 智能平台",
+        "subtitle": "企業級自動化解決方案",
+        "description": "節省 80% 客服人力成本，提升 300% 客戶響應速度"
+      }
+    },
+    "steps": {
+      "interactiveDemo": "互動演示",
+      "watchDemo": "觀看實際操作演示",
+      "startDemo": "開始演示",
+      "demoInProgress": "演示進行中...",
+      "demoVideo": "演示視頻",
+      "demoVideoTitle": "步驟 {step} 演示視頻",
+      "watchDemoVideo": "觀看完整的操作演示視頻",
+      "preparingDemoVideo": "正在準備步驟 {step} 的操作演示視頻",
+      "videoNote": "視頻將展示完整的操作流程，比文字說明更直觀易懂",
+      "dashboard": {
+        "title": "儀表板 - 系統控制中心",
+        "description": "了解儀表板的核心功能快捷方式和系統狀態概覽",
+        "alert": {
+          "message": "儀表板功能說明",
+          "description": "儀表板是 WhatoFlow 的控制中心，提供系統核心功能的快捷入口和實時狀態監控。"
+        },
+        "cards": {
+          "analytics": "數據分析區域",
+          "modules": "功能模組快捷入口"
+        },
+        "miniDashboard": {
+          "application": {
+            "title": "應用",
+            "published": "已發布",
+            "running": "運行中",
+            "completed": "已完成"
+          },
+          "dataAnalysis": {
+            "title": "數據分析",
+            "trends": "趨勢",
+            "popular": "熱門",
+            "status": "狀態"
+          },
+          "studio": {
+            "title": "工作室",
+            "forms": "表單",
+            "templates": "模板",
+            "workflows": "流程",
+            "datasets": "數據"
+          },
+          "management": {
+            "title": "管理工具",
+            "contacts": "聯絡人",
+            "groups": "群組",
+            "tags": "標籤",
+            "admin": "管理"
+          }
+        },
+        "stats": {
+          "contacts": "聯絡人統計",
+          "workflows": "工作流程狀態",
+          "total": "總數",
+          "new": "新增",
+          "running": "運行中",
+          "completed": "已完成"
+        },
+        "modules": {
+          "workflow": "工作流程設計",
+          "eform": "電子表單管理",
+          "dataset": "數據集管理",
+          "template": "訊息模版管理"
+        },
+        "demoSteps": [
+          { "title": "查看儀表板統計", "description": "系統顯示各功能模組的實時統計數據" },
+          { "title": "點擊智能按鈕", "description": "點擊聯絡人管理按鈕查看詳細數據" },
+          { "title": "進入功能模組", "description": "從儀表板直接進入對應的功能頁面" }
+        ]
+      },
+      "messageTemplates": {
+        "title": "訊息模版管理",
+        "description": "學習如何管理內部模板和 Meta 官方模板",
+        "alert": {
+          "message": "模板類型說明",
+          "description": "系統支持兩種模板類型：內部模板（無需審核）和 Meta 官方模板（需要審核）。WhatsApp 設有 24 小時客戶服務窗口限制，在此時間外發送訊息必須使用經 Meta 官方審核通過的模板，因此需要事先提交模板進行審核以確保合規性和發送權限。"
+        },
+        "cards": {
+          "internal": "內部模板",
+          "meta": "Meta 官方模板"
+        },
+        "actions": {
+          "addInternal": "新增內部模板",
+          "addMeta": "新增 Meta 模板"
+        },
+        "usage": "使用 {count} 次",
+        "internalTemplates": {
+          "welcome": "歡迎訊息",
+          "orderConfirm": "訂單確認",
+          "payment": "付款通知"
+        },
+        "metaTemplates": {
+          "welcome_message": "歡迎訊息",
+          "order_confirmation": "訂單確認",
+          "payment_reminder": "付款提醒"
+        },
+        "demoSteps": [
+          { "title": "選擇模板類型", "description": "選擇內部模板或 Meta 官方模板" },
+          { "title": "填寫模板內容", "description": "輸入模板名稱和訊息內容" },
+          { "title": "設置變量", "description": "配置動態變量如 {{name}}、{{orderId}}" },
+          { "title": "保存模板", "description": "保存模板並可立即使用" }
+        ]
+      },
+      "contactManagement": {
+        "title": "聯絡人管理",
+        "description": "學習如何管理聯絡人、廣播群組和標籤",
+        "alert": {
+          "message": "聯絡人管理功能",
+          "description": "系統提供完整的聯絡人管理功能，包括個人聯絡人、廣播群組和標籤分類。通過精準的客戶分群和標籤管理，您可以輕鬆進行群發推廣活動，並根據客戶行為和偏好實現個性化互動，提升客戶參與度和轉換率。"
+        },
+        "cards": {
+          "contacts": "聯絡人列表",
+          "groups": "廣播群組",
+          "tags": "標籤管理",
+          "stats": "聯絡人統計"
+        },
+        "status": {
+          "active": "活躍",
+          "inactive": "非活躍"
+        },
+        "actions": {
+          "addContact": "新增聯絡人",
+          "addGroup": "新增群組",
+          "addTag": "新增標籤"
+        },
+        "stats": {
+          "totalContacts": "總聯絡人",
+          "activeContacts": "活躍聯絡人",
+          "groups": "廣播群組",
+          "tags": "標籤數量"
+        },
+        "members": "位成員",
+        "contacts": "個聯絡人",
+        "sampleContacts": {
+          "zhang": "張小明",
+          "li": "李美華",
+          "wang": "王大偉",
+          "chen": "陳小芳"
+        },
+        "sampleGroups": {
+          "vip": "VIP 客戶群",
+          "general": "一般客戶群",
+          "potential": "潛在客戶群"
+        },
+        "groupTypes": {
+          "vip": "VIP",
+          "general": "一般",
+          "potential": "潛在"
+        },
+        "sampleTags": {
+          "highValue": "高價值客戶",
+          "newCustomer": "新客戶",
+          "churnRisk": "流失風險",
+          "activeUser": "活躍用戶"
+        },
+        "demoSteps": [
+          { "title": "查看聯絡人列表", "description": "瀏覽和管理所有聯絡人信息" },
+          { "title": "創建廣播群組", "description": "設置群組並添加成員" },
+          { "title": "管理標籤", "description": "為聯絡人添加標籤分類" },
+          { "title": "查看統計數據", "description": "了解聯絡人管理概況" }
+        ]
+      },
+      "datasetManagement": {
+        "title": "數據集管理",
+        "description": "學習如何創建和管理多種數據源",
+        "alert": {
+          "message": "數據源類型與用途",
+          "description": "系統支持 SQL 數據庫、Excel 文件和 Google Docs 三種數據源類型。數據集可用於 WhatsApp 流程中即時查找核對客戶資料、訂單狀態、庫存數量等資訊，並可無縫整合 ERP、CRM 等第三方系統數據，實現自動化數據驅動的對話流程。"
+        },
+        "cards": {
+          "sql": "SQL 數據庫",
+          "excel": "Excel 文件",
+          "googleDocs": "Google Docs"
+        },
+        "features": {
+          "sql": {
+            "0": "預設連接",
+            "1": "自定義連接", 
+            "2": "SQL 查詢",
+            "3": "參數化查詢"
+          },
+          "excel": {
+            "0": "文件上傳",
+            "1": "自動欄位檢測",
+            "2": "數據驗證", 
+            "3": "定時同步"
+          },
+          "googleDocs": {
+            "0": "Google 認證",
+            "1": "實時同步",
+            "2": "協作編輯",
+            "3": "版本控制"
+          }
+        },
+        "actions": {
+          "configureSql": "配置 SQL 數據源",
+          "uploadExcel": "上傳 Excel 文件",
+          "connectGoogleDocs": "連接 Google Docs"
+        },
+        "demoSteps": [
+          { "title": "選擇數據源", "description": "選擇 SQL、Excel 或 Google Docs" },
+          { "title": "配置連接", "description": "設置數據源連接參數" },
+          { "title": "測試連接", "description": "測試數據源連接是否正常" },
+          { "title": "創建數據集", "description": "成功創建數據集並同步數據" }
+        ]
+      },
+      "formManagement": {
+        "title": "表單管理系統",
+        "description": "學習如何創建和管理動態表單",
+        "alert": {
+          "message": "表單創建方式",
+          "description": "系統支持 AI 智能生成、文件上傳轉換和拖拽設計三種創建方式。eForm 支持自然語言填寫，可無縫整合 dataset 數據源，便於發展無需學習的 WhatsApp 作為主介面，並易於整合 ERP、CRM、HRM 等企業系統。"
+        },
+        "cards": {
+          "ai": "AI 智能生成",
+          "upload": "文件上傳轉換",
+          "design": "拖拽設計器"
+        },
+        "features": {
+          "ai": {
+            "0": "自然語言輸入",
+            "1": "智能欄位推斷",
+            "2": "自動樣式設計",
+            "3": "響應式佈局"
+          },
+          "upload": {
+            "0": "Word 文檔轉換",
+            "1": "Excel 表格轉換",
+            "2": "PDF 文件處理",
+            "3": "圖片識別"
+          },
+          "design": {
+            "0": "拖拽組件",
+            "1": "實時預覽",
+            "2": "響應式設計",
+            "3": "自定義樣式"
+          }
+        },
+        "actions": {
+          "generateForm": "AI 生成表單",
+          "uploadFile": "上傳文件",
+          "designForm": "設計表單"
+        },
+        "demoSteps": [
+          { "title": "選擇創建方式", "description": "選擇 AI 生成、文件上傳或拖拽設計" },
+          { "title": "AI 生成表單", "description": "輸入需求描述，AI 自動生成表單" },
+          { "title": "調整設計", "description": "手動調整表單樣式和佈局" },
+          { "title": "預覽發布", "description": "預覽表單效果並發布" }
+        ]
+      },
+      "workflowDesign": {
+        "title": "工作流程設計",
+        "description": "學習如何設計複雜的工作流程",
+        "alert": {
+          "message": "節點類型說明",
+          "description": "工作流程由多種節點組成，每個節點都有特定的功能和配置選項。"
+        },
+        "cards": {
+          "basic": "基本節點",
+          "advanced": "高級節點"
+        },
+        "nodes": {
+          "start": { "title": "開始節點", "description": "工作流程的起始點" },
+          "sendMessage": { "title": "發送訊息節點", "description": "發送 WhatsApp 訊息" },
+          "waitReply": { "title": "等待回覆節點", "description": "等待用戶回覆訊息" },
+          "end": { "title": "結束節點", "description": "工作流程的終止點" },
+          "condition": { "title": "條件分支節點", "description": "根據條件執行不同分支" },
+          "dataQuery": { "title": "數據查詢節點", "description": "查詢和處理數據" },
+          "formProcess": { "title": "表單處理節點", "description": "處理表單提交數據" },
+          "custom": { "title": "自定義節點", "description": "執行自定義邏輯" }
+        },
+        "connection": {
+          "message": "連接流程線技巧",
+          "description": "從節點的輸出點拖拽到目標節點的輸入點，綠色連接點表示正常連接，紅色表示錯誤連接。"
+        },
+        "demoSteps": [
+          { "title": "添加開始節點", "description": "設置工作流程的起始點" },
+          { "title": "添加發送節點", "description": "配置 WhatsApp 訊息發送" },
+          { "title": "添加等待節點", "description": "設置等待用戶回覆" },
+          { "title": "添加條件分支", "description": "根據回覆內容執行不同分支" },
+          { "title": "連接節點", "description": "拖拽連接線連接各個節點" },
+          { "title": "測試發布", "description": "測試流程並發布" }
+        ]
+      },
+      "systemOverview": {
+        "title": "系統概覽",
+        "description": "了解 WhattoFlow 的核心功能和界面佈局",
+        "subSteps": {
+          "welcome": "歡迎界面",
+          "welcomeDesc": "熟悉系統的主要功能模組",
+          "menu": "導航選單",
+          "menuDesc": "學習如何使用側邊選單導航",
+          "cards": "功能卡片",
+          "cardsDesc": "查看各功能模組的統計信息"
+        }
+      },
+      "workflowCreation": {
+        "title": "工作流創建",
+        "description": "學習如何創建和設計工作流程",
+        "subSteps": {
+          "navigate": "進入工作流頁面",
+          "navigateDesc": "點擊左側選單的「工作流程設計」",
+          "create": "創建新工作流",
+          "createDesc": "點擊「新增工作流」按鈕開始創建",
+          "design": "設計工作流",
+          "designDesc": "拖拽節點到畫布上創建流程邏輯",
+          "save": "保存工作流",
+          "saveDesc": "點擊保存按鈕完成工作流創建"
+        }
+      },
+      "eformDesign": {
+        "title": "表單設計",
+        "description": "學習如何設計電子表單",
+        "subSteps": {
+          "navigate": "進入表單頁面",
+          "navigateDesc": "點擊左側選單的「電子表單」",
+          "create": "創建新表單",
+          "createDesc": "點擊「新增表單」按鈕",
+          "design": "設計表單",
+          "designDesc": "使用表單設計器添加欄位和樣式",
+          "preview": "預覽表單",
+          "previewDesc": "預覽表單效果並發布"
+        }
+      },
+      "whatsappIntegration": {
+        "title": "WhatsApp 集成",
+        "description": "學習如何設置 WhatsApp 業務流程",
+        "subSteps": {
+          "navigate": "進入模板頁面",
+          "navigateDesc": "點擊左側選單的「訊息模版」",
+          "template": "創建消息模板",
+          "templateDesc": "設計 WhatsApp 消息模板",
+          "workflow": "創建工作流",
+          "workflowDesc": "設置消息觸發的工作流程",
+          "test": "測試發送",
+          "testDesc": "測試消息發送功能"
+        }
+      }
+    },
+    "navigation": {
+      "previous": "上一步",
+      "next": "下一步",
+      "nextStep": "下一關",
+      "nextSubStep": "繼續",
+      "complete": "完成導覽"
+    },
+    "achievements": {
+      "firstWorkflow": {
+        "title": "工作流新手",
+        "description": "創建了第一個工作流",
+        "points": 100
+      },
+      "formMaster": {
+        "title": "表單大師",
+        "description": "設計了第一個電子表單",
+        "points": 150
+      },
+      "dataWizard": {
+        "title": "數據巫師",
+        "description": "設置了第一個數據集",
+        "points": 200
+      },
+      "whatsappExpert": {
+        "title": "WhatsApp 專家",
+        "description": "完成了 WhatsApp 集成設置",
+        "points": 250
+      },
+      "tourComplete": {
+        "title": "導覽完成者",
+        "description": "完成了所有導覽步驟",
+        "points": 500
+      }
+    },
+    "celebration": {
+      "congratulations": "恭喜獲得成就！",
+      "achievementUnlocked": "成就解鎖",
+      "pointsEarned": "獲得積分"
+    }
+  }
+}

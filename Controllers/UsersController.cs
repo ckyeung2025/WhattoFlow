@@ -67,6 +67,19 @@ namespace PurpleRice.Controllers
             {
                 user.Id = Guid.NewGuid();
                 user.CreatedAt = DateTime.UtcNow;
+                user.UpdatedAt = DateTime.UtcNow; // 設置 UpdatedAt，因為數據庫不允許 NULL
+                
+                // 如果提供了密碼，則進行 hash
+                if (!string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    // 如果傳入的密碼不是已經 hash 的格式，則進行 hash
+                    if (!PasswordService.IsHashed(user.PasswordHash))
+                    {
+                        user.PasswordHash = PasswordService.HashPassword(user.PasswordHash);
+                    }
+                    // 如果已經是 hash 格式，直接使用（不建議，但為了兼容性保留）
+                }
+                
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
                 
@@ -100,6 +113,20 @@ namespace PurpleRice.Controllers
                 existingUser.Name = user.Name;
                 existingUser.Phone = user.Phone;
                 existingUser.Language = user.Language;
+                // 如果提供了密碼，則更新密碼
+                if (!string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    // 如果傳入的密碼不是已經 hash 的格式，則進行 hash
+                    if (!PasswordService.IsHashed(user.PasswordHash))
+                    {
+                        existingUser.PasswordHash = PasswordService.HashPassword(user.PasswordHash);
+                    }
+                    else
+                    {
+                        // 如果已經是 hash 格式，直接使用（不建議，但為了兼容性保留）
+                        existingUser.PasswordHash = user.PasswordHash;
+                    }
+                }
                 existingUser.UpdatedAt = DateTime.UtcNow;
                 
                 await _context.SaveChangesAsync();

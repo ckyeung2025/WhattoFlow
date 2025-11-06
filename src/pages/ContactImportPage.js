@@ -37,6 +37,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { broadcastGroupApi, hashtagApi } from '../services/contactApi';
 import { contactImportApi } from '../services/contactImportApi';
+import ContactImportFieldMapping from '../components/ContactImportFieldMapping';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -1140,109 +1141,12 @@ const ContactImportPage = () => {
               style={{ height: '500px' }}
               styles={{ body: { height: '450px', padding: '16px' } }}
             >
-              <div style={{ height: '100%', overflowY: 'auto', paddingRight: '8px' }}>
-                <Form form={mappingForm} layout="vertical">
-                <Form.Item label={t('contactImport.name')} name="name">
-                  <Select placeholder={t('contactImport.selectColumn')}>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.title')} name="title">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.occupation')} name="occupation">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.position')} name="position">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.whatsappNumber')} name="whatsappNumber">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.email')} name="email">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.companyName')} name="companyName">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.department')} name="department">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.hashtags')} name="hashtags">
-                  <Select placeholder={t('contactImport.selectColumn')} allowClear>
-                    {previewColumns.map(col => (
-                      <Option key={col.dataIndex} value={col.dataIndex}>
-                        {col.title}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                
-                <Form.Item label={t('contactImport.broadcastGroup')} name="broadcastGroupId">
-                  <Select placeholder={t('contactImport.selectGroup')}>
-                    {Array.isArray(groups) && groups.map(group => (
-                      <Option key={group.id} value={group.id}>
-                        {group.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Form>
-              </div>
+              <ContactImportFieldMapping
+                form={mappingForm}
+                columns={previewColumns}
+                groups={groups}
+                hashtags={hashtags}
+              />
             </Card>
           </Col>
         </Row>

@@ -12,6 +12,37 @@ import en from '../locales/en';
 import MyPreferencesModal from '../components/MyPreferencesModal';
 import { TIMEZONES } from '../configs/timezones';
 
+// 獲取瀏覽器時區的輔助函數
+const getBrowserTimezone = () => {
+  try {
+    // 獲取瀏覽器的 IANA 時區標識符
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    // 檢查是否在 TIMEZONES 列表中
+    const foundTimezone = TIMEZONES.find(tz => tz.value === browserTimezone);
+    if (foundTimezone) {
+      return foundTimezone.value;
+    }
+    
+    // 如果不在列表中，根據偏移值找到最接近的時區
+    const now = new Date();
+    const offsetMinutes = now.getTimezoneOffset();
+    const offsetHours = -offsetMinutes / 60; // getTimezoneOffset() 返回的是相反的符號
+    
+    // 找到相同偏移值的時區（優先選擇第一個）
+    const matchingTimezone = TIMEZONES.find(tz => tz.offset === offsetHours);
+    if (matchingTimezone) {
+      return matchingTimezone.value;
+    }
+    
+    // 如果找不到，返回 UTC
+    return 'UTC';
+  } catch (error) {
+    console.error('獲取瀏覽器時區失敗:', error);
+    return 'Asia/Hong_Kong'; // 默認香港時區
+  }
+};
+
 const { Title } = Typography;
 const { confirm } = Modal;
 
@@ -290,7 +321,7 @@ const CompanyUserAdminPage = () => {
       const currentUserInfo = getUserInfo();
       const currentCompanyId = currentUserInfo.company_id || currentUserInfo.companyId || currentUserInfo.companyID || '';
       const currentUserRoles = currentUserInfo.roles || [];
-      const currentIsTenantAdmin = currentUserRoles.some(role => role.name === 'Tenant_Admin');
+      const currentIsTenantAdmin = currentUserRoles.some(role => (typeof role === 'string' ? role : role.name) === 'Tenant_Admin');
       
       console.log('Current User info:', currentUserInfo);
       console.log('Current My company ID:', currentCompanyId);
@@ -304,21 +335,34 @@ const CompanyUserAdminPage = () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         const retryUserInfo = getUserInfo();
         const retryCompanyId = retryUserInfo.company_id || retryUserInfo.companyId || retryUserInfo.companyID || '';
+        const retryUserRoles = retryUserInfo.roles || [];
+        const retryIsTenantAdmin = retryUserRoles.some(role => (typeof role === 'string' ? role : role.name) === 'Tenant_Admin');
         
-        if (retryCompanyId) {
+        if (retryIsTenantAdmin) {
+          // Tenant_Admin 可以看到所有公司
+          console.log('Retry - Tenant Admin, showing all companies');
+        } else if (retryCompanyId) {
+          // 非 Tenant_Admin 且有自己的公司，只顯示自己公司
           console.log('Retry - Found company ID:', retryCompanyId);
           data = data.filter(c => c.id === retryCompanyId);
           console.log('Retry - Filtered data:', data);
         } else {
-          console.log('Retry - Still no company ID, showing all companies');
+          // 非 Tenant_Admin 且沒有公司，不顯示任何公司
+          console.log('Retry - No company ID and not Tenant Admin, showing empty list');
+          data = [];
         }
-      } else if (!currentIsTenantAdmin && currentCompanyId) {
-        // 如果不是租戶管理員，過濾只顯示自己公司
-        console.log('Filtering companies to show only:', currentCompanyId);
+      } else if (currentIsTenantAdmin) {
+        // Tenant_Admin 可以看到所有公司
+        console.log('Tenant Admin - Showing all companies');
+      } else if (currentCompanyId) {
+        // 非 Tenant_Admin 且有自己的公司，只顯示自己公司
+        console.log('Non-Tenant Admin - Filtering companies to show only:', currentCompanyId);
         data = data.filter(c => c.id === currentCompanyId);
         console.log('Filtered data:', data);
       } else {
-        console.log('Showing all companies (Tenant Admin or no company filter)');
+        // 非 Tenant_Admin 且沒有公司，不顯示任何公司
+        console.log('No company ID and not Tenant Admin - Showing empty list');
+        data = [];
       }
       // 將後端駝峰 key 轉成前端底線 key
       data = data.map(c => ({
@@ -476,7 +520,7 @@ const CompanyUserAdminPage = () => {
         headers: { Authorization: 'Bearer ' + token }
       });
       const raw = await res.json();
-      const data = raw.map(u => ({
+      let data = raw.map(u => ({
         ...u,
         is_active: u.isActive,
         is_owner: u.isOwner,
@@ -484,6 +528,27 @@ const CompanyUserAdminPage = () => {
         updated_at: u.updatedAt,
         avatar_url: u.avatarUrl, // 添加頭像字段映射
       }));
+      
+      // 根據用戶角色過濾用戶列表
+      const currentUserInfo = getUserInfo();
+      const currentCompanyId = currentUserInfo.company_id || currentUserInfo.companyId || currentUserInfo.companyID || '';
+      const currentUserRoles = currentUserInfo.roles || [];
+      const currentIsTenantAdmin = currentUserRoles.some(role => (typeof role === 'string' ? role : role.name) === 'Tenant_Admin');
+      
+      if (currentIsTenantAdmin) {
+        // Tenant_Admin 可以看到所有用戶
+        console.log('Tenant Admin - Showing all users');
+      } else if (currentCompanyId) {
+        // 非 Tenant_Admin 且有自己的公司，只顯示自己公司的用戶
+        console.log('Non-Tenant Admin - Filtering users to show only company:', currentCompanyId);
+        data = data.filter(u => u.companyId === currentCompanyId);
+        console.log('Filtered users:', data.length);
+      } else {
+        // 非 Tenant_Admin 且沒有公司，不顯示任何用戶
+        console.log('No company ID and not Tenant Admin - Showing empty user list');
+        data = [];
+      }
+      
       setUsers(data);
       setUserPagination({ current: 1, pageSize, total: data.length });
 
@@ -559,13 +624,43 @@ const CompanyUserAdminPage = () => {
     }
   };
   const handleEditUser = (record) => {
-    setEditingUser(record);
+    // 如果是新增用戶（record 為 null），創建一個空對象
+    const browserTimezone = getBrowserTimezone(); // 獲取瀏覽器時區
+    const userData = record || {
+      id: null,
+      account: '',
+      email: '',
+      name: '',
+      phone: '',
+      is_active: true,
+      timezone: browserTimezone, // 使用瀏覽器時區作為默認值
+      language: currentLanguage,
+      companyId: myCompanyId,
+      avatar_url: null
+    };
+    setEditingUser(userData);
     setUploadedAvatarUrl(null); // 重置上傳的頭像狀態
     setUserEditModalVisible(true);
     
     // 立即設置表單值，確保頭像正確顯示
     setTimeout(() => {
-      form.setFieldsValue(record);
+      if (record) {
+        form.setFieldsValue(record);
+      } else {
+        // 新增模式：設置默認值
+        form.setFieldsValue({
+          account: '',
+          email: '',
+          name: '',
+          phone: '',
+          is_active: true,
+          timezone: browserTimezone, // 使用瀏覽器時區作為默認值
+          language: currentLanguage,
+          password: '',
+          confirmPassword: '',
+          avatar_url: null
+        });
+      }
     }, 0);
   };
 
@@ -574,56 +669,66 @@ const CompanyUserAdminPage = () => {
     try {
       const values = await form.validateFields();
       const token = localStorage.getItem('token');
+      const isNewUser = !editingUser || !editingUser.id;
+      
+      // 獲取當前用戶的公司 ID
+      const currentUserInfo = getUserInfo();
+      const currentCompanyId = currentUserInfo.company_id || currentUserInfo.companyId || currentUserInfo.companyID || '';
       
       // 只發送必要的字段，轉換字段名稱以匹配後端期望的格式
       const requestData = {
         // 基本用戶信息 - 使用正確的字段名稱
-        id: editingUser.id,
-        companyId: editingUser.companyId,
-        account: editingUser.account, // 不允許修改
+        ...(isNewUser ? {} : { id: editingUser.id }),
+        companyId: isNewUser ? currentCompanyId : (editingUser.companyId || currentCompanyId),
+        account: isNewUser ? values.account : editingUser.account, // 新增時可設置，編輯時不允許修改
         email: values.email,
-        googleId: editingUser.google_id || null, // 確保不是 undefined
-        passwordHash: editingUser.passwordHash || null, // 確保不是 undefined
-        isActive: values.is_active !== undefined ? values.is_active : editingUser.is_active,
-        isOwner: editingUser.is_owner, // 不允許修改
+        googleId: isNewUser ? null : (editingUser.google_id || null), // 確保不是 undefined
+        isActive: values.is_active !== undefined ? values.is_active : (isNewUser ? true : editingUser.is_active),
+        isOwner: isNewUser ? false : (editingUser.is_owner || false), // 新增用戶默認為 false
         avatarUrl: values.avatar_url || null,
         timezone: values.timezone || null,
         name: values.name || null,
         phone: values.phone || null,
         language: values.language || null,
-        // 不發送 createdAt，讓後端保持原值
-        // createdAt: editingUser.created_at,
+        // 如果用戶填寫了密碼，則發送密碼（後端會處理哈希）
+        // 新增用戶時，密碼是必需的
+        ...(values.password && values.password.trim() ? { PasswordHash: values.password } : {}),
       };
       
-      console.log('發送用戶更新請求:', requestData);
+      console.log(isNewUser ? '發送用戶創建請求:' : '發送用戶更新請求:', requestData);
       
-      const response = await fetch(`/api/users/${editingUser.id}`, {
-        method: 'PUT',
+      // 新增用戶時使用 POST，編輯時使用 PUT
+      const url = isNewUser ? '/api/users' : `/api/users/${editingUser.id}`;
+      const method = isNewUser ? 'POST' : 'PUT';
+      
+      const response = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
         body: JSON.stringify(requestData)
       });
       
       if (!response.ok) {
         const errorData = await response.text();
-        console.error('更新用戶失敗 - 響應狀態:', response.status);
+        console.error(`${isNewUser ? '創建' : '更新'}用戶失敗 - 響應狀態:`, response.status);
         console.error('錯誤詳情:', errorData);
         throw new Error(`HTTP ${response.status}: ${errorData}`);
       }
       
-      const updatedUser = await response.json();
-      console.log('用戶更新成功:', updatedUser);
+      const resultUser = await response.json();
+      console.log(`用戶${isNewUser ? '創建' : '更新'}成功:`, resultUser);
       
-       message.success('用戶信息更新成功');
-       setUserEditModalVisible(false);
-       setUploadedAvatarUrl(null); // 重置上傳狀態
-       form.resetFields(); // 清除表單緩存
-       fetchUsers(); // 重新載入用戶列表
+      message.success(`用戶信息${isNewUser ? '創建' : '更新'}成功`);
+      setUserEditModalVisible(false);
+      setUploadedAvatarUrl(null); // 重置上傳狀態
+      setEditingUser(null); // 清除編輯狀態
+      form.resetFields(); // 清除表單緩存
+      fetchUsers(); // 重新載入用戶列表
     } catch (error) {
       if (error.errorFields) {
         message.error('請檢查表單輸入');
       } else {
-        console.error('更新用戶信息失敗:', error);
-        message.error(`更新用戶信息失敗: ${error.message}`);
+        console.error(`${!editingUser || !editingUser.id ? '創建' : '更新'}用戶信息失敗:`, error);
+        message.error(`${!editingUser || !editingUser.id ? '創建' : '更新'}用戶信息失敗: ${error.message}`);
       }
     }
   };
@@ -640,13 +745,34 @@ const CompanyUserAdminPage = () => {
 
   // 當用戶編輯 Modal 打開且 editingUser 改變時，更新表單值
   useEffect(() => {
-    if (userEditModalVisible && editingUser) {
+    if (userEditModalVisible) {
       // 延遲設置表單值，確保 Modal 已完全渲染
       setTimeout(() => {
-        form.setFieldsValue(editingUser);
+        if (editingUser && editingUser.id) {
+          // 編輯模式：設置現有用戶的值
+          form.setFieldsValue(editingUser);
+        } else {
+          // 新增模式：設置默認值，使用瀏覽器時區
+          const browserTimezone = getBrowserTimezone();
+          form.setFieldsValue({
+            account: '',
+            email: '',
+            name: '',
+            phone: '',
+            is_active: true,
+            timezone: browserTimezone, // 使用瀏覽器時區作為默認值
+            language: currentLanguage,
+            password: '',
+            confirmPassword: '',
+            avatar_url: null
+          });
+        }
       }, 50);
+    } else {
+      // Modal 關閉時重置表單
+      form.resetFields();
     }
-  }, [userEditModalVisible, editingUser, form]);
+  }, [userEditModalVisible, editingUser, form, currentLanguage]);
 
   return (
     <div style={{ padding: '8px' }}>
@@ -749,19 +875,21 @@ const CompanyUserAdminPage = () => {
       )}
       
       {/* 用戶編輯彈出視窗 */}
-      {userEditModalVisible && editingUser && (
+      {userEditModalVisible && (
         <Modal
-          title={`${t('companyUserAdmin.editUser')} - ${editingUser.name || editingUser.account}`}
+          title={editingUser && editingUser.id ? `${t('companyUserAdmin.editUser')} - ${editingUser.name || editingUser.account}` : t('companyUserAdmin.addUser')}
           open={userEditModalVisible}
            onCancel={() => {
              setUserEditModalVisible(false);
              setUploadedAvatarUrl(null);
+             setEditingUser(null); // 清除編輯狀態
              form.resetFields(); // 清除表單緩存
            }}
           footer={[
             <Button key="cancel" onClick={() => {
               setUserEditModalVisible(false);
               setUploadedAvatarUrl(null);
+              setEditingUser(null); // 清除編輯狀態
               form.resetFields(); // 清除表單緩存
             }}>
               {t('common.cancel')}
@@ -842,10 +970,10 @@ const CompanyUserAdminPage = () => {
                     >
                       {(() => {
                         // 優先使用新上傳的頭像，然後是當前編輯用戶的頭像，最後是表單值
-                        const currentAvatarUrl = uploadedAvatarUrl || editingUser.avatar_url || form.getFieldValue('avatar_url');
+                        const currentAvatarUrl = uploadedAvatarUrl || (editingUser && editingUser.avatar_url) || form.getFieldValue('avatar_url');
                         console.log('頭像顯示邏輯:', {
                           uploadedAvatarUrl,
-                          editingUserAvatar: editingUser.avatar_url,
+                          editingUserAvatar: editingUser ? editingUser.avatar_url : null,
                           formAvatar: form.getFieldValue('avatar_url'),
                           currentAvatarUrl
                         });
@@ -867,8 +995,18 @@ const CompanyUserAdminPage = () => {
               </Col>
               
               <Col span={12}>
-                <Form.Item label={t('companyUserAdmin.account')}>
-                  <Input value={editingUser.account} disabled />
+                <Form.Item 
+                  label={t('companyUserAdmin.account')} 
+                  name="account"
+                  rules={[
+                    { required: !editingUser || !editingUser.id, message: '請輸入帳號' },
+                    { min: 3, message: '帳號長度至少 3 個字符' }
+                  ]}
+                >
+                  <Input 
+                    placeholder="請輸入帳號" 
+                    disabled={editingUser && editingUser.id} // 編輯模式下禁用
+                  />
                 </Form.Item>
               </Col>
               
@@ -881,6 +1019,70 @@ const CompanyUserAdminPage = () => {
               <Col span={12}>
                 <Form.Item label={t('companyUserAdmin.phone')} name="phone">
                   <Input placeholder="請輸入手機號碼" />
+                </Form.Item>
+              </Col>
+              
+              <Col span={12}>
+                <Form.Item 
+                  label={t('companyUserAdmin.password')} 
+                  name="password"
+                  rules={[
+                    { required: !editingUser || !editingUser.id, message: '請輸入密碼' }, // 新增用戶時密碼必填
+                    { min: 6, message: t('companyUserAdmin.passwordMinLength') }
+                  ]}
+                >
+                  <Input.Password 
+                    autoComplete="new-password"
+                    placeholder={t('companyUserAdmin.passwordPlaceholder')} 
+                  />
+                </Form.Item>
+              </Col>
+              
+              <Col span={12}>
+                <Form.Item 
+                  label={t('companyUserAdmin.confirmPassword')} 
+                  name="confirmPassword"
+                  dependencies={['password']}
+                  rules={[
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        const password = getFieldValue('password');
+                        const isNewUser = !editingUser || !editingUser.id;
+                        
+                        // 新增用戶時，密碼和確認密碼都必須填寫
+                        if (isNewUser) {
+                          if (!password || !password.trim()) {
+                            return Promise.reject(new Error('請輸入密碼'));
+                          }
+                          if (!value || value.trim() === '') {
+                            return Promise.reject(new Error(t('companyUserAdmin.confirmPasswordRequired')));
+                          }
+                          if (password !== value) {
+                            return Promise.reject(new Error(t('companyUserAdmin.passwordMismatch')));
+                          }
+                          return Promise.resolve();
+                        }
+                        
+                        // 編輯模式：如果密碼為空，確認密碼也可以為空（不修改密碼）
+                        if (!password || !password.trim()) {
+                          return Promise.resolve();
+                        }
+                        // 如果密碼有值，確認密碼也必須有值且匹配
+                        if (!value || value.trim() === '') {
+                          return Promise.reject(new Error(t('companyUserAdmin.confirmPasswordRequired')));
+                        }
+                        if (password === value) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(new Error(t('companyUserAdmin.passwordMismatch')));
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password 
+                    autoComplete="new-password"
+                    placeholder={t('companyUserAdmin.confirmPasswordPlaceholder')} 
+                  />
                 </Form.Item>
               </Col>
               
@@ -921,91 +1123,99 @@ const CompanyUserAdminPage = () => {
                 </Form.Item>
               </Col>
               
-              {/* 只讀字段 */}
-              <Col span={12}>
-                <Form.Item label="Google ID">
-                  <Input value={editingUser.google_id || '無'} disabled />
-                </Form.Item>
-              </Col>
+              {/* 只讀字段 - 只在編輯模式下顯示 */}
+              {editingUser && editingUser.id && (
+                <>
+                  <Col span={12}>
+                    <Form.Item label="Google ID">
+                      <Input value={editingUser.google_id || '無'} disabled />
+                    </Form.Item>
+                  </Col>
+                  
+                  <Col span={12}>
+                    <Form.Item label={
+                      <span>
+                        {t('companyUserAdmin.isMainAccount')}
+                        <Tooltip title={t('companyUserAdmin.mainAccountNote')}>
+                          <span style={{ marginLeft: 4, color: '#999', fontSize: '12px', cursor: 'help' }}>ℹ️</span>
+                        </Tooltip>
+                      </span>
+                    }>
+                      <Input value={editingUser.is_owner ? t('companyUserAdmin.yes') : t('companyUserAdmin.no')} disabled />
+                    </Form.Item>
+                  </Col>
+                  
+                  <Col span={12}>
+                    <Form.Item label={t('companyUserAdmin.createdAt')}>
+                      <Input value={editingUser.created_at ? TimezoneUtils.formatDateWithTimezone(editingUser.created_at, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : ''} disabled />
+                    </Form.Item>
+                  </Col>
+                  
+                  <Col span={12}>
+                    <Form.Item label={t('companyUserAdmin.updatedAt')}>
+                      <Input value={editingUser.updated_at ? TimezoneUtils.formatDateWithTimezone(editingUser.updated_at, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : ''} disabled />
+                    </Form.Item>
+                  </Col>
+                </>
+              )}
               
-              <Col span={12}>
-                <Form.Item label={
-                  <span>
-                    {t('companyUserAdmin.isMainAccount')}
-                    <Tooltip title={t('companyUserAdmin.mainAccountNote')}>
-                      <span style={{ marginLeft: 4, color: '#999', fontSize: '12px', cursor: 'help' }}>ℹ️</span>
-                    </Tooltip>
-                  </span>
-                }>
-                  <Input value={editingUser.is_owner ? t('companyUserAdmin.yes') : t('companyUserAdmin.no')} disabled />
-                </Form.Item>
-              </Col>
-              
-              <Col span={12}>
-                <Form.Item label={t('companyUserAdmin.createdAt')}>
-                  <Input value={editingUser.created_at ? TimezoneUtils.formatDateWithTimezone(editingUser.created_at, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : ''} disabled />
-                </Form.Item>
-              </Col>
-              
-              <Col span={12}>
-                <Form.Item label={t('companyUserAdmin.updatedAt')}>
-                  <Input value={editingUser.updated_at ? TimezoneUtils.formatDateWithTimezone(editingUser.updated_at, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : ''} disabled />
-                </Form.Item>
-              </Col>
-              
-              {/* 角色管理 */}
-              <Col span={24}>
-                <div style={{ marginBottom: 16, fontSize: '16px', fontWeight: 'bold', marginTop: 24 }}>
-                  {t('companyUserAdmin.roleManagement')}
-                </div>
-              </Col>
-              
-              <Col span={24}>
-                <Form.Item label={t('companyUserAdmin.selectRoles')}>
-                  <Select
-                    mode="multiple"
-                    placeholder={t('companyUserAdmin.selectRoles')}
-                    style={{ width: '100%' }}
-                    value={userRoles[editingUser.id] || []}
-                    onChange={(value) => handleUpdateUserRoles(editingUser.id, value)}
-                    options={roles.map(role => ({
-                      value: role.id,
-                      label: getRoleDisplayName(role.name)
-                    }))}
-                    loading={rolesLoading}
-                  />
-                </Form.Item>
-              </Col>
-              
-              {/* 當前角色顯示 */}
-              <Col span={24}>
-                <Form.Item label={t('companyUserAdmin.currentRoles')}>
-                  <div style={{ minHeight: 40, padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', backgroundColor: '#fafafa' }}>
-                    {userRoles[editingUser.id] && userRoles[editingUser.id].length > 0 ? (
-                      <Space wrap>
-                        {userRoles[editingUser.id].map(roleId => {
-                          const role = roles.find(r => r.id === roleId);
-                          return role ? (
-                            <Tag 
-                              key={role.id} 
-                              color={getRoleColor(role.name)}
-                              closable
-                              onClose={(e) => {
-                                e.preventDefault();
-                                handleRemoveUserRole(editingUser.id, role.id);
-                              }}
-                            >
-                              {getRoleDisplayName(role.name)}
-                            </Tag>
-                          ) : null;
-                        })}
-                      </Space>
-                    ) : (
-                      <span style={{ color: '#999' }}>{t('companyUserAdmin.noRoles')}</span>
-                    )}
-                  </div>
-                </Form.Item>
-              </Col>
+              {/* 角色管理 - 只在編輯模式下顯示 */}
+              {editingUser && editingUser.id && (
+                <>
+                  <Col span={24}>
+                    <div style={{ marginBottom: 16, fontSize: '16px', fontWeight: 'bold', marginTop: 24 }}>
+                      {t('companyUserAdmin.roleManagement')}
+                    </div>
+                  </Col>
+                  
+                  <Col span={24}>
+                    <Form.Item label={t('companyUserAdmin.selectRoles')}>
+                      <Select
+                        mode="multiple"
+                        placeholder={t('companyUserAdmin.selectRoles')}
+                        style={{ width: '100%' }}
+                        value={userRoles[editingUser.id] || []}
+                        onChange={(value) => handleUpdateUserRoles(editingUser.id, value)}
+                        options={roles.map(role => ({
+                          value: role.id,
+                          label: getRoleDisplayName(role.name)
+                        }))}
+                        loading={rolesLoading}
+                      />
+                    </Form.Item>
+                  </Col>
+                  
+                  {/* 當前角色顯示 */}
+                  <Col span={24}>
+                    <Form.Item label={t('companyUserAdmin.currentRoles')}>
+                      <div style={{ minHeight: 40, padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', backgroundColor: '#fafafa' }}>
+                        {userRoles[editingUser.id] && userRoles[editingUser.id].length > 0 ? (
+                          <Space wrap>
+                            {userRoles[editingUser.id].map(roleId => {
+                              const role = roles.find(r => r.id === roleId);
+                              return role ? (
+                                <Tag 
+                                  key={role.id} 
+                                  color={getRoleColor(role.name)}
+                                  closable
+                                  onClose={(e) => {
+                                    e.preventDefault();
+                                    handleRemoveUserRole(editingUser.id, role.id);
+                                  }}
+                                >
+                                  {getRoleDisplayName(role.name)}
+                                </Tag>
+                              ) : null;
+                            })}
+                          </Space>
+                        ) : (
+                          <span style={{ color: '#999' }}>{t('companyUserAdmin.noRoles')}</span>
+                        )}
+                      </div>
+                    </Form.Item>
+                  </Col>
+                </>
+              )}
             </Row>
           </Form>
         </Modal>

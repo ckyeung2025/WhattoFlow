@@ -11,7 +11,7 @@ const TemplateModal = ({
   t 
 }) => {
   console.log('🚀 TemplateModal 渲染:', { visible, templatesCount: templates?.length, metaTemplatesCount: metaTemplates?.length });
-  const [activeTab, setActiveTab] = useState('internal');
+  const [activeTab, setActiveTab] = useState('meta');
 
   // 渲染模板列表
   const renderTemplateList = (templateList, isMetaTemplate = false) => (
@@ -66,21 +66,6 @@ const TemplateModal = ({
 
   const items = [
     {
-      key: 'internal',
-      label: (
-        <span>
-          {t('workflowDesigner.internalTemplate')}
-          {templates.length > 0 && (
-            <Badge 
-              count={templates.length} 
-              style={{ marginLeft: 8, backgroundColor: '#52c41a' }} 
-            />
-          )}
-        </span>
-      ),
-      children: renderTemplateList(templates, false)
-    },
-    {
       key: 'meta',
       label: (
         <span>
@@ -94,6 +79,21 @@ const TemplateModal = ({
         </span>
       ),
       children: renderTemplateList(metaTemplates, true)
+    },
+    {
+      key: 'internal',
+      label: (
+        <span>
+          {t('workflowDesigner.internalTemplate')}
+          {templates.length > 0 && (
+            <Badge 
+              count={templates.length} 
+              style={{ marginLeft: 8, backgroundColor: '#52c41a' }} 
+            />
+          )}
+        </span>
+      ),
+      children: renderTemplateList(templates, false)
     }
   ];
 

@@ -32,7 +32,8 @@ const RetryMessageModal = ({
         setSelectedTemplate({
           id: initialConfig.templateId,
           name: initialConfig.templateName,
-          isMetaTemplate: initialConfig.isMetaTemplate || false
+          isMetaTemplate: initialConfig.isMetaTemplate || false,
+          language: initialConfig.templateLanguage || null  // 載入模板語言
         });
         setTemplateVariables(initialConfig.templateVariables || []);
       } else {
@@ -62,6 +63,7 @@ const RetryMessageModal = ({
         templateId: selectedTemplate?.id || '',
         templateName: selectedTemplate?.name || '',
         isMetaTemplate: selectedTemplate?.isMetaTemplate || false,
+        templateLanguage: selectedTemplate?.language || null,  // 添加模板語言代碼
         templateVariables: templateVariables
       };
       console.log('🎯 RetryMessageModal 保存配置:', config);
@@ -71,11 +73,12 @@ const RetryMessageModal = ({
   };
 
   const handleTemplateSelect = (template, isMetaTemplate) => {
-    console.log('🎯 RetryMessageModal 模板選擇:', { template: template.name, isMetaTemplate, templateId: template.id });
+    console.log('🎯 RetryMessageModal 模板選擇:', { template: template.name, isMetaTemplate, templateId: template.id, language: template.language });
     setSelectedTemplate({
       id: template.id,
       name: template.name,
-      isMetaTemplate
+      isMetaTemplate,
+      language: template.language  // 保存模板語言
     });
   };
 

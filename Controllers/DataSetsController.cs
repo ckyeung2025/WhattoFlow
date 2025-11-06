@@ -3698,31 +3698,38 @@ namespace PurpleRice.Controllers
 
                 _loggingService.LogInformation($"找到 DataSet: {dataSet.Name}, 數據源數量: {dataSet.DataSources?.Count ?? 0}");
 
-                // 獲取主要數據源
-                var primaryDataSource = dataSet.DataSources?.FirstOrDefault();
-                if (primaryDataSource == null)
+                // ✅ 修復：始終使用內部同步後的表查詢，不查詢外部數據源
+                // 這樣可以避免連接外部數據庫的問題，提高查詢速度和穩定性
+                _loggingService.LogInformation($"使用內部 DataSet 記錄查詢（data_set_records 和 data_set_record_values）進行預覽");
+                
+                // ✅ 修復：使用 DataSetQueryService 查詢內部表（與實際執行邏輯一致）
+                var queryService = HttpContext.RequestServices.GetRequiredService<Services.DataSetQueryService>();
+                
+                // 將 whereClause 解析為條件組
+                var conditionGroups = ParseWhereClauseToConditionGroups(request.WhereClause, dataSet);
+                
+                // 記錄解析結果以便調試
+                _loggingService.LogInformation($"解析 whereClause '{request.WhereClause}' 為 {conditionGroups.Count} 個條件組，包含 {conditionGroups.Sum(g => g.Conditions.Count)} 個條件");
+                
+                var queryRequest = new Models.DTOs.DataSetQueryRequest
                 {
-                    _loggingService.LogWarning($"DataSet {dataSet.Name} 沒有配置數據源");
-                    return BadRequest(new { success = false, message = "DataSet 沒有配置數據源" });
-                }
-
-                _loggingService.LogInformation($"使用數據源類型: {primaryDataSource.SourceType}");
-
-                // 根據數據源類型執行查詢
-                List<Dictionary<string, object>> queryResults = new List<Dictionary<string, object>>();
-
-                if (primaryDataSource.SourceType == "Database" || primaryDataSource.SourceType == "SQL")
+                    DataSetId = request.DataSetId,
+                    OperationType = "SELECT",
+                    QueryConditionGroups = conditionGroups,
+                    ProcessVariableValues = request.ProcessVariableValues ?? new Dictionary<string, object>()
+                };
+                
+                // ✅ 修復：測試操作時不保存結果（workflowExecutionId=0 表示測試）
+                // 直接調用內部查詢方法，跳過保存邏輯
+                var result = await queryService.ExecuteDataSetQueryAsync(0, 0, queryRequest, skipSave: true);
+                
+                if (!result.Success)
                 {
-                    queryResults = await ExecuteDatabaseQuery(primaryDataSource, request.WhereClause, request.Limit);
+                    _loggingService.LogError($"DataSet 查詢預覽失敗: {result.Message}");
+                    return StatusCode(500, new { success = false, message = $"查詢預覽失敗: {result.Message}" });
                 }
-                else if (primaryDataSource.SourceType == "Excel")
-                {
-                    queryResults = await ExecuteExcelQuery(primaryDataSource, request.WhereClause, request.Limit);
-                }
-                else
-                {
-                    return BadRequest(new { success = false, message = $"不支持的數據源類型: {primaryDataSource.SourceType}" });
-                }
+                
+                var queryResults = result.Data.Take(request.Limit).ToList();
 
                 _loggingService.LogInformation($"DataSet 查詢預覽成功，返回 {queryResults.Count} 條記錄");
 
@@ -3930,6 +3937,116 @@ namespace PurpleRice.Controllers
                 throw;
             }
 
+            return results;
+        }
+        
+        // 將 whereClause (SQL) 解析為條件組（簡化處理）
+        private List<Models.DTOs.QueryConditionGroup> ParseWhereClauseToConditionGroups(string whereClause, Models.DataSet dataSet)
+        {
+            var conditionGroups = new List<Models.DTOs.QueryConditionGroup>();
+            
+            if (string.IsNullOrEmpty(whereClause))
+            {
+                return conditionGroups;
+            }
+            
+            try
+            {
+                // 簡單的 SQL WHERE 子句解析
+                // 支持格式：[fieldName] LIKE '%value%', [fieldName] = 'value' 等
+                // 處理可能包含括號的情況，如 ([invoiceno] LIKE '%value%')
+                // 改進正則表達式以支持更複雜的情況
+                var pattern = @"\[(\w+)\]\s+(LIKE|=\s*|!=|>|>=|<|<=)\s*'([^']*)'";
+                var matches = System.Text.RegularExpressions.Regex.Matches(whereClause, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                _loggingService.LogInformation($"解析 whereClause: '{whereClause}'，找到 {matches.Count} 個匹配");
+                
+                var conditions = new List<Models.DTOs.QueryCondition>();
+                foreach (System.Text.RegularExpressions.Match match in matches)
+                {
+                    var fieldName = match.Groups[1].Value;
+                    var operatorStr = match.Groups[2].Value.Trim();
+                    var value = match.Groups[3].Value;
+                    
+                    // 轉換 SQL 操作符為條件操作符
+                    string operatorType = operatorStr.ToUpper() switch
+                    {
+                        "LIKE" => "contains",
+                        "=" => "equals",
+                        "!=" => "notEquals",
+                        ">" => "greaterThan",
+                        ">=" => "greaterThanOrEqual",
+                        "<" => "lessThan",
+                        "<=" => "lessThanOrEqual",
+                        _ => "equals"
+                    };
+                    
+                    // 處理 LIKE '%value%' 的情況，提取實際值
+                    if (operatorType == "contains" && value.StartsWith("%") && value.EndsWith("%"))
+                    {
+                        value = value.Substring(1, value.Length - 2);
+                    }
+                    
+                    conditions.Add(new Models.DTOs.QueryCondition
+                    {
+                        Id = $"condition_{Guid.NewGuid()}",
+                        FieldName = fieldName,
+                        Operator = operatorType,
+                        Value = value,
+                        Label = $"{fieldName} {operatorType} {value}"
+                    });
+                }
+                
+                if (conditions.Any())
+                {
+                    conditionGroups.Add(new Models.DTOs.QueryConditionGroup
+                    {
+                        Id = $"group_{Guid.NewGuid()}",
+                        Relation = "and",
+                        Conditions = conditions
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"解析 whereClause 失敗: {ex.Message}，將使用空條件組");
+            }
+            
+            return conditionGroups;
+        }
+        
+        // 轉換記錄為結果格式（從 DataSetQueryService 複製）
+        private List<Dictionary<string, object>> ConvertRecordsToResultFormat(List<Models.DataSetRecord> records)
+        {
+            var results = new List<Dictionary<string, object>>();
+            
+            foreach (var record in records)
+            {
+                var result = new Dictionary<string, object>
+                {
+                    ["__record_id"] = record.Id,
+                    ["__primary_key"] = record.PrimaryKeyValue ?? string.Empty,
+                    ["__status"] = record.Status ?? string.Empty,
+                    ["__created_at"] = record.CreatedAt,
+                    ["__updated_at"] = record.UpdatedAt
+                };
+                
+                // 添加所有欄位值
+                foreach (var value in record.Values)
+                {
+                    object fieldValue = value.StringValue ?? 
+                                      (value.NumericValue?.ToString()) ?? 
+                                      (value.DateValue?.ToString()) ?? 
+                                      (value.BooleanValue?.ToString()) ?? 
+                                      value.TextValue ?? 
+                                      string.Empty;
+                    
+                    result[value.ColumnName] = fieldValue;
+                }
+                
+                results.Add(result);
+            }
+            
             return results;
         }
     }

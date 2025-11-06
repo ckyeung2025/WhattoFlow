@@ -312,8 +312,13 @@ export const contactImportApi = {
       console.log('🚀 ContactImportApi - 開始更新聯絡人匯入排程');
       console.log('📋 ContactImportApi - 排程ID:', scheduleId);
       console.log('📋 ContactImportApi - 排程數據:', scheduleData);
+      console.log('📋 ContactImportApi - 排程數據 (JSON):', JSON.stringify(scheduleData, null, 2));
       
-      const response = await api.put(`/schedule/${scheduleId}`, scheduleData);
+      const response = await api.put(`/schedule/${scheduleId}`, scheduleData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       
       console.log('✅ ContactImportApi - 排程更新成功');
       console.log('📊 ContactImportApi - 響應數據:', response.data);
@@ -321,6 +326,18 @@ export const contactImportApi = {
       return response.data;
     } catch (error) {
       console.error('❌ ContactImportApi - 排程更新失敗:', error);
+      console.error('❌ ContactImportApi - 錯誤 response:', error.response);
+      console.error('❌ ContactImportApi - 錯誤 response.data:', error.response?.data);
+      console.error('❌ ContactImportApi - 錯誤 response.status:', error.response?.status);
+      console.error('❌ ContactImportApi - 錯誤 response.statusText:', error.response?.statusText);
+      
+      // 提供更詳細的錯誤信息
+      if (error.response?.data?.message) {
+        const errorWithMessage = new Error(error.response.data.message);
+        errorWithMessage.response = error.response;
+        throw errorWithMessage;
+      }
+      
       throw error;
     }
   },
@@ -376,6 +393,36 @@ export const contactImportApi = {
       return response.data;
     } catch (error) {
       console.error('❌ ContactImportApi - 執行記錄獲取失敗:', error);
+      throw error;
+    }
+  },
+
+  // 手動執行排程
+  executeSchedule: async (scheduleId) => {
+    try {
+      console.log('🚀 ContactImportApi - 開始手動執行排程');
+      console.log('📋 ContactImportApi - 排程ID:', scheduleId);
+      
+      const response = await api.post(`/schedule/${scheduleId}/execute`);
+      
+      console.log('✅ ContactImportApi - 排程執行成功');
+      console.log('📊 ContactImportApi - 響應數據:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ ContactImportApi - 排程執行失敗:', error);
+      console.error('📋 ContactImportApi - 錯誤詳情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      
+      if (error.response?.data?.message) {
+        const errorWithMessage = new Error(error.response.data.message);
+        errorWithMessage.response = error.response;
+        throw errorWithMessage;
+      }
       throw error;
     }
   }

@@ -20,6 +20,9 @@ namespace PurpleRice.Models
         [MaxLength(50)]
         public string TemplateType { get; set; } = "Text"; // Text, Media, Interactive, Template
         
+        [MaxLength(20)]
+        public string TemplateSource { get; set; } = "Internal"; // Internal, Meta - 區分內部模板和 Meta 官方模板
+        
         [Required]
         public string Content { get; set; } // JSON 格式存儲模板內容
         
@@ -27,6 +30,16 @@ namespace PurpleRice.Models
         
         [MaxLength(20)]
         public string Status { get; set; } = "Active"; // Active, Inactive, Draft
+        
+        // Meta 模板的 Header 相關字段（用於 IMAGE/VIDEO/DOCUMENT）
+        [MaxLength(1000)]
+        public string HeaderUrl { get; set; } // Meta template 的 header URL（用於發送消息時）
+        
+        [MaxLength(50)]
+        public string HeaderType { get; set; } // image, video, document
+        
+        [MaxLength(500)]
+        public string HeaderFilename { get; set; } // 僅 document 需要
         
         [MaxLength(10)]
         public string Language { get; set; } = "zh-TW";

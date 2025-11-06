@@ -46,6 +46,8 @@ const WorkflowListPage = () => {
   const [isBatchStatusModalVisible, setIsBatchStatusModalVisible] = useState(false);
   const [batchStatusAction, setBatchStatusAction] = useState(''); // 'enable' or 'disable'
   const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
+  const [batchRelatedRecords, setBatchRelatedRecords] = useState(null);
+  const [loadingBatchRelatedRecords, setLoadingBatchRelatedRecords] = useState(false);
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -211,7 +213,204 @@ const WorkflowListPage = () => {
     navigate(`/whatsapp-workflow?id=${record.id}`);
   };
 
-  const handleDelete = (record) => {
+  const handleDelete = async (record) => {
+    try {
+      // 先查詢相關記錄
+      const token = localStorage.getItem('token');
+      const relatedRecordsRes = await fetch(`/api/workflowdefinitions/${record.id}/related-records`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      let relatedRecords = null;
+      if (relatedRecordsRes.ok) {
+        relatedRecords = await relatedRecordsRes.json();
+      }
+
+      // 計算總記錄數
+      const totalRecords = relatedRecords ? (
+        relatedRecords.executionCount +
+        relatedRecords.stepExecutionCount +
+        relatedRecords.messageSendCount +
+        relatedRecords.messageRecipientCount +
+        relatedRecords.queryResultCount +
+        relatedRecords.queryRecordCount +
+        relatedRecords.eformInstanceCount +
+        relatedRecords.messageValidationCount +
+        relatedRecords.chatMsgCount +
+        relatedRecords.processVariableValueCount +
+        relatedRecords.processVariableDefinitionCount
+      ) : 0;
+
+      // 構建確認對話框內容
+      const buildContent = () => {
+        // 即使沒有相關記錄，也要顯示警告
+        if (!relatedRecords || totalRecords === 0) {
+          return (
+            <div>
+              <div style={{ 
+                background: '#fff2e8', 
+                border: '2px solid #ff7875', 
+                borderRadius: '6px', 
+                padding: '16px', 
+                marginBottom: '16px' 
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                  <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '20px', marginRight: '8px' }} />
+                  <strong style={{ color: '#ff4d4f', fontSize: '16px' }}>
+                    {t('workflowList.warningDeleteTitle')}
+                  </strong>
+                </div>
+                <p style={{ color: '#d4380d', fontSize: '14px', margin: 0, lineHeight: '1.6' }}>
+                  {t('workflowList.warningDeleteDescription')}
+                </p>
+              </div>
+              
+              <div style={{ 
+                background: '#ffebe8', 
+                borderLeft: '4px solid #ff4d4f', 
+                padding: '12px', 
+                marginTop: '16px' 
+              }}>
+                <p style={{ color: '#ff4d4f', fontSize: '14px', fontWeight: 'bold', margin: 0 }}>
+                  {t('workflowList.criticalWarning')}
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        const recordItems = [];
+        if (relatedRecords.executionCount > 0) {
+          recordItems.push(
+            <li key="executions">{t('workflowList.executionInstances')}: {relatedRecords.executionCount}</li>
+          );
+        }
+        if (relatedRecords.stepExecutionCount > 0) {
+          recordItems.push(
+            <li key="steps">{t('workflowList.stepExecutions')}: {relatedRecords.stepExecutionCount}</li>
+          );
+        }
+        if (relatedRecords.messageSendCount > 0) {
+          recordItems.push(
+            <li key="messages">{t('workflowList.messageSends')}: {relatedRecords.messageSendCount}</li>
+          );
+        }
+        if (relatedRecords.messageRecipientCount > 0) {
+          recordItems.push(
+            <li key="recipients">{t('workflowList.messageRecipients')}: {relatedRecords.messageRecipientCount}</li>
+          );
+        }
+        if (relatedRecords.queryResultCount > 0) {
+          recordItems.push(
+            <li key="queryResults">{t('workflowList.queryResults')}: {relatedRecords.queryResultCount}</li>
+          );
+        }
+        if (relatedRecords.queryRecordCount > 0) {
+          recordItems.push(
+            <li key="queryRecords">{t('workflowList.queryRecords')}: {relatedRecords.queryRecordCount}</li>
+          );
+        }
+        if (relatedRecords.eformInstanceCount > 0) {
+          recordItems.push(
+            <li key="eforms">{t('workflowList.eformInstances')}: {relatedRecords.eformInstanceCount}</li>
+          );
+        }
+        if (relatedRecords.messageValidationCount > 0) {
+          recordItems.push(
+            <li key="validations">{t('workflowList.messageValidations')}: {relatedRecords.messageValidationCount}</li>
+          );
+        }
+        if (relatedRecords.chatMsgCount > 0) {
+          recordItems.push(
+            <li key="chats">{t('workflowList.chatMessages')}: {relatedRecords.chatMsgCount}</li>
+          );
+        }
+        if (relatedRecords.processVariableValueCount > 0) {
+          recordItems.push(
+            <li key="varValues">{t('workflowList.processVariableValues')}: {relatedRecords.processVariableValueCount}</li>
+          );
+        }
+        if (relatedRecords.processVariableDefinitionCount > 0) {
+          recordItems.push(
+            <li key="varDefs">{t('workflowList.processVariableDefinitions')}: {relatedRecords.processVariableDefinitionCount}</li>
+          );
+        }
+
+        return (
+          <div>
+            <div style={{ 
+              background: '#fff2e8', 
+              border: '2px solid #ff7875', 
+              borderRadius: '6px', 
+              padding: '16px', 
+              marginBottom: '16px' 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '20px', marginRight: '8px' }} />
+                <strong style={{ color: '#ff4d4f', fontSize: '16px' }}>
+                  {t('workflowList.warningDeleteTitle')}
+                </strong>
+              </div>
+              <p style={{ color: '#d4380d', fontSize: '14px', margin: 0, lineHeight: '1.6' }}>
+                {t('workflowList.warningDeleteDescription')}
+              </p>
+            </div>
+            
+            <p style={{ fontWeight: 'bold', marginBottom: '8px' }}>{t('workflowList.relatedRecordsWillBeDeleted')}</p>
+            <ul style={{ marginTop: '8px', paddingLeft: '20px', marginBottom: '16px' }}>
+              {recordItems}
+            </ul>
+            
+            <div style={{ 
+              background: '#ffebe8', 
+              borderLeft: '4px solid #ff4d4f', 
+              padding: '12px', 
+              marginTop: '16px' 
+            }}>
+              <p style={{ color: '#ff4d4f', fontSize: '14px', fontWeight: 'bold', margin: 0 }}>
+                {t('workflowList.criticalWarning')}
+              </p>
+            </div>
+          </div>
+        );
+      };
+
+      confirm({
+        title: t('workflowList.deleteWithRelatedRecords'),
+        icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+        content: buildContent(),
+        okText: t('workflow.confirmDeleteOk'),
+        okType: 'danger',
+        cancelText: t('workflow.confirmDeleteCancel'),
+        width: 600,
+        style: { top: 100 },
+        async onOk() {
+          try {
+            const deleteRes = await fetch(`/api/workflowdefinitions/${record.id}`, { 
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+
+            if (!deleteRes.ok) {
+              const errorData = await deleteRes.json().catch(() => ({}));
+              throw new Error(errorData.error || errorData.details || '刪除失敗');
+            }
+
+            message.success(t('workflow.deleteSuccess'));
+            fetchData(pagination.current, pagination.pageSize, searchText);
+          } catch (err) {
+            console.error('刪除流程失敗:', err);
+            message.error(err.message || t('workflow.deleteFailed'));
+          }
+        },
+      });
+    } catch (err) {
+      console.error('查詢相關記錄失敗:', err);
+      // 如果查詢失敗，仍然顯示基本確認對話框
     confirm({
       title: t('workflow.confirmDeleteTitle'),
       icon: <ExclamationCircleOutlined />,
@@ -222,19 +421,27 @@ const WorkflowListPage = () => {
       async onOk() {
         try {
           const token = localStorage.getItem('token');
-          await fetch(`/api/workflowdefinitions/${record.id}`, { 
+            const deleteRes = await fetch(`/api/workflowdefinitions/${record.id}`, { 
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${token}`
             }
           });
+
+            if (!deleteRes.ok) {
+              const errorData = await deleteRes.json().catch(() => ({}));
+              throw new Error(errorData.error || errorData.details || '刪除失敗');
+            }
+
           message.success(t('workflow.deleteSuccess'));
           fetchData(pagination.current, pagination.pageSize, searchText);
-        } catch {
-          message.error(t('workflow.deleteFailed'));
+          } catch (err) {
+            console.error('刪除流程失敗:', err);
+            message.error(err.message || t('workflow.deleteFailed'));
         }
       },
     });
+    }
   };
 
   const handleCopy = async (record) => {
@@ -288,6 +495,43 @@ const WorkflowListPage = () => {
     navigate('/whatsapp-workflow');
   };
 
+  // 打開批量刪除確認對話框
+  const handleOpenBatchDeleteModal = async () => {
+    if (selectedWorkflows.length === 0) {
+      message.warning(t('workflowList.pleaseSelectWorkflows'));
+      return;
+    }
+
+    // 先查詢相關記錄
+    setLoadingBatchRelatedRecords(true);
+    try {
+      const token = localStorage.getItem('token');
+      const relatedRecordsRes = await fetch('/api/workflowdefinitions/batch-related-records', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ids: selectedWorkflows
+        }),
+      });
+
+      if (relatedRecordsRes.ok) {
+        const relatedRecords = await relatedRecordsRes.json();
+        setBatchRelatedRecords(relatedRecords);
+      } else {
+        setBatchRelatedRecords(null);
+      }
+    } catch (err) {
+      console.error('查詢相關記錄失敗:', err);
+      setBatchRelatedRecords(null);
+    } finally {
+      setLoadingBatchRelatedRecords(false);
+      setIsBatchDeleteModalVisible(true);
+    }
+  };
+
   // 批量刪除
   const handleBatchDelete = async () => {
     if (selectedWorkflows.length === 0) {
@@ -312,11 +556,14 @@ const WorkflowListPage = () => {
         message.success(`${t('workflowList.successfullyDeleted')} ${selectedWorkflows.length} ${t('workflowList.workflows')}`);
         setSelectedWorkflows([]);
         setIsBatchDeleteModalVisible(false);
+        setBatchRelatedRecords(null);
         fetchData(pagination.current, pagination.pageSize, searchText);
       } else {
-        message.error(t('workflowList.batchDeleteFailed'));
+        const errorData = await response.json().catch(() => ({}));
+        message.error(errorData.error || errorData.details || t('workflowList.batchDeleteFailed'));
       }
     } catch (error) {
+      console.error('批量刪除失敗:', error);
       message.error(t('workflowList.batchDeleteFailed'));
     }
   };
@@ -368,7 +615,7 @@ const WorkflowListPage = () => {
             <Button 
               type="default" 
               icon={<DeleteOutlined />} 
-              onClick={() => setIsBatchDeleteModalVisible(true)}
+              onClick={handleOpenBatchDeleteModal}
               disabled={selectedWorkflows.length === 0}
               title={t('workflowList.batchDelete')}
             >
@@ -459,16 +706,189 @@ const WorkflowListPage = () => {
 
       {/* 批量刪除確認對話框 */}
       <Modal
-        title={t('workflowList.confirmBatchDelete')}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '20px' }} />
+            <span>{t('workflowList.deleteWithRelatedRecords')}</span>
+          </div>
+        }
         open={isBatchDeleteModalVisible}
         onOk={handleBatchDelete}
-        onCancel={() => setIsBatchDeleteModalVisible(false)}
+        onCancel={() => {
+          setIsBatchDeleteModalVisible(false);
+          setBatchRelatedRecords(null);
+        }}
         okText={t('workflowList.confirmDelete')}
         cancelText={t('workflowList.cancel')}
         okType="danger"
+        width={650}
+        style={{ top: 100 }}
       >
+        {loadingBatchRelatedRecords ? (
+          <p>{t('workflowList.loadingRelatedRecords')}</p>
+        ) : (
+          <div>
         <p>{t('workflowList.confirmDeleteSelected')} {selectedWorkflows.length} {t('workflowList.workflows')}？</p>
-        <p style={{ color: '#ff4d4f', fontSize: '12px' }}>{t('workflowList.cannotBeUndone')}</p>
+            
+            {batchRelatedRecords && (() => {
+              const totalRecords = 
+                batchRelatedRecords.executionCount +
+                batchRelatedRecords.stepExecutionCount +
+                batchRelatedRecords.messageSendCount +
+                batchRelatedRecords.messageRecipientCount +
+                batchRelatedRecords.queryResultCount +
+                batchRelatedRecords.queryRecordCount +
+                batchRelatedRecords.eformInstanceCount +
+                batchRelatedRecords.messageValidationCount +
+                batchRelatedRecords.chatMsgCount +
+                batchRelatedRecords.processVariableValueCount +
+                batchRelatedRecords.processVariableDefinitionCount;
+
+              if (totalRecords === 0) {
+                return <p style={{ marginTop: '12px' }}>{t('workflowList.noRelatedRecords')}</p>;
+              }
+
+              const recordItems = [];
+              if (batchRelatedRecords.executionCount > 0) {
+                recordItems.push(
+                  <li key="executions">{t('workflowList.executionInstances')}: {batchRelatedRecords.executionCount}</li>
+                );
+              }
+              if (batchRelatedRecords.stepExecutionCount > 0) {
+                recordItems.push(
+                  <li key="steps">{t('workflowList.stepExecutions')}: {batchRelatedRecords.stepExecutionCount}</li>
+                );
+              }
+              if (batchRelatedRecords.messageSendCount > 0) {
+                recordItems.push(
+                  <li key="messages">{t('workflowList.messageSends')}: {batchRelatedRecords.messageSendCount}</li>
+                );
+              }
+              if (batchRelatedRecords.messageRecipientCount > 0) {
+                recordItems.push(
+                  <li key="recipients">{t('workflowList.messageRecipients')}: {batchRelatedRecords.messageRecipientCount}</li>
+                );
+              }
+              if (batchRelatedRecords.queryResultCount > 0) {
+                recordItems.push(
+                  <li key="queryResults">{t('workflowList.queryResults')}: {batchRelatedRecords.queryResultCount}</li>
+                );
+              }
+              if (batchRelatedRecords.queryRecordCount > 0) {
+                recordItems.push(
+                  <li key="queryRecords">{t('workflowList.queryRecords')}: {batchRelatedRecords.queryRecordCount}</li>
+                );
+              }
+              if (batchRelatedRecords.eformInstanceCount > 0) {
+                recordItems.push(
+                  <li key="eforms">{t('workflowList.eformInstances')}: {batchRelatedRecords.eformInstanceCount}</li>
+                );
+              }
+              if (batchRelatedRecords.messageValidationCount > 0) {
+                recordItems.push(
+                  <li key="validations">{t('workflowList.messageValidations')}: {batchRelatedRecords.messageValidationCount}</li>
+                );
+              }
+              if (batchRelatedRecords.chatMsgCount > 0) {
+                recordItems.push(
+                  <li key="chats">{t('workflowList.chatMessages')}: {batchRelatedRecords.chatMsgCount}</li>
+                );
+              }
+              if (batchRelatedRecords.processVariableValueCount > 0) {
+                recordItems.push(
+                  <li key="varValues">{t('workflowList.processVariableValues')}: {batchRelatedRecords.processVariableValueCount}</li>
+                );
+              }
+              if (batchRelatedRecords.processVariableDefinitionCount > 0) {
+                recordItems.push(
+                  <li key="varDefs">{t('workflowList.processVariableDefinitions')}: {batchRelatedRecords.processVariableDefinitionCount}</li>
+                );
+              }
+
+              return (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ 
+                    background: '#fff2e8', 
+                    border: '2px solid #ff7875', 
+                    borderRadius: '6px', 
+                    padding: '16px', 
+                    marginBottom: '16px' 
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                      <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '20px', marginRight: '8px' }} />
+                      <strong style={{ color: '#ff4d4f', fontSize: '16px' }}>
+                        {t('workflowList.warningDeleteTitle')}
+                      </strong>
+                    </div>
+                    <p style={{ color: '#d4380d', fontSize: '14px', margin: 0, lineHeight: '1.6' }}>
+                      {t('workflowList.warningDeleteDescription')}
+                    </p>
+                  </div>
+                  
+                  <p style={{ fontWeight: 'bold', marginBottom: '8px' }}>{t('workflowList.relatedRecordsWillBeDeleted')}</p>
+                  <ul style={{ marginTop: '8px', paddingLeft: '20px', marginBottom: '16px' }}>
+                    {recordItems}
+                  </ul>
+                  
+                  <div style={{ 
+                    background: '#ffebe8', 
+                    borderLeft: '4px solid #ff4d4f', 
+                    padding: '12px', 
+                    marginTop: '16px' 
+                  }}>
+                    <p style={{ color: '#ff4d4f', fontSize: '14px', fontWeight: 'bold', margin: 0 }}>
+                      {t('workflowList.criticalWarning')}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {!batchRelatedRecords || (
+              batchRelatedRecords.executionCount +
+              batchRelatedRecords.stepExecutionCount +
+              batchRelatedRecords.messageSendCount +
+              batchRelatedRecords.messageRecipientCount +
+              batchRelatedRecords.queryResultCount +
+              batchRelatedRecords.queryRecordCount +
+              batchRelatedRecords.eformInstanceCount +
+              batchRelatedRecords.messageValidationCount +
+              batchRelatedRecords.chatMsgCount +
+              batchRelatedRecords.processVariableValueCount +
+              batchRelatedRecords.processVariableDefinitionCount
+            ) === 0 ? (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ 
+                  background: '#fff2e8', 
+                  border: '2px solid #ff7875', 
+                  borderRadius: '6px', 
+                  padding: '16px', 
+                  marginBottom: '16px' 
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                    <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: '20px', marginRight: '8px' }} />
+                    <strong style={{ color: '#ff4d4f', fontSize: '16px' }}>
+                      {t('workflowList.warningDeleteTitle')}
+                    </strong>
+                  </div>
+                  <p style={{ color: '#d4380d', fontSize: '14px', margin: 0, lineHeight: '1.6' }}>
+                    {t('workflowList.warningDeleteDescription')}
+                  </p>
+                </div>
+                
+                <div style={{ 
+                  background: '#ffebe8', 
+                  borderLeft: '4px solid #ff4d4f', 
+                  padding: '12px' 
+                }}>
+                  <p style={{ color: '#ff4d4f', fontSize: '14px', fontWeight: 'bold', margin: 0 }}>
+                    {t('workflowList.criticalWarning')}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
       </Modal>
 
       {/* 批量啟用/停用確認對話框 */}

@@ -37,11 +37,33 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                // 先根據帳號查找用戶
                 var user = await _context.Users
-                    .FirstOrDefaultAsync(u => u.Account == req.Account && u.PasswordHash == req.Password);
+                    .FirstOrDefaultAsync(u => u.Account == req.Account);
 
-                if (user == null)
+                if (user == null || string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    _loggingService.LogWarning($"登入失敗：找不到用戶或密碼為空，帳號: {req.Account}");
                     return Unauthorized(new { success = false, message = "帳號或密碼錯誤" });
+                }
+
+                // 驗證密碼（支持舊的明文密碼和新的 hash 密碼）
+                bool isPasswordValid = PasswordService.VerifyPassword(req.Password, user.PasswordHash);
+
+                if (!isPasswordValid)
+                {
+                    _loggingService.LogWarning($"登入失敗：密碼錯誤，帳號: {req.Account}");
+                    return Unauthorized(new { success = false, message = "帳號或密碼錯誤" });
+                }
+
+                // 如果密碼驗證成功，且是舊的明文密碼，則更新為 hash 密碼
+                if (!PasswordService.IsHashed(user.PasswordHash))
+                {
+                    user.PasswordHash = PasswordService.HashPassword(req.Password);
+                    user.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    _loggingService.LogInformation($"已將用戶 {user.Account} 的明文密碼更新為 hash 密碼");
+                }
 
                 // 產生 JWT token
                 var claims = new[]
@@ -98,6 +120,16 @@ namespace PurpleRice.Controllers
                 if (user == null)
                     return NotFound();
 
+                // 獲取用戶的角色
+                var userRoles = await _context.UserRoles
+                    .Where(ur => ur.UserId == user.Id && ur.IsActive)
+                    .Include(ur => ur.Role)
+                    .Select(ur => new
+                    {
+                        name = ur.Role.Name
+                    })
+                    .ToListAsync();
+
                 return Ok(new
                 {
                     user_id = user.Id,
@@ -107,7 +139,9 @@ namespace PurpleRice.Controllers
                     phone = user.Phone,
                     language = user.Language,
                     timezone = TimezoneService.GetGMTOffsetString(user.Timezone),
-                    avatar_url = user.AvatarUrl
+                    avatar_url = user.AvatarUrl,
+                    company_id = user.CompanyId,
+                    roles = userRoles
                 });
             }
             catch (Exception ex)
@@ -144,7 +178,18 @@ namespace PurpleRice.Controllers
                 if (!string.IsNullOrEmpty(req.AvatarUrl))
                     user.AvatarUrl = req.AvatarUrl;
                 if (!string.IsNullOrEmpty(req.PasswordHash))
-                    user.PasswordHash = req.PasswordHash;
+                {
+                    // 如果傳入的密碼不是已經 hash 的格式，則進行 hash
+                    if (!PasswordService.IsHashed(req.PasswordHash))
+                    {
+                        user.PasswordHash = PasswordService.HashPassword(req.PasswordHash);
+                    }
+                    else
+                    {
+                        // 如果已經是 hash 格式，直接使用（不建議，但為了兼容性保留）
+                        user.PasswordHash = req.PasswordHash;
+                    }
+                }
 
                 user.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();

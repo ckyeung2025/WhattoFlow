@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table, Button, Form, Input, Select, message, Tag, Modal,
-  Space, Card, Divider, Row, Col, Tooltip, Popconfirm, Badge, Steps, Radio, Pagination
+  Space, Card, Divider, Row, Col, Tooltip, Popconfirm, Badge, Steps, Radio, Pagination, Upload
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, ReloadOutlined, EyeOutlined,
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
   FileTextOutlined, SearchOutlined, BoldOutlined, ItalicOutlined,
-  StrikethroughOutlined, CodeOutlined, NumberOutlined, SmileOutlined
+  StrikethroughOutlined, CodeOutlined, NumberOutlined, SmileOutlined,
+  UploadOutlined, FileImageOutlined, VideoCameraOutlined, FileOutlined, EnvironmentOutlined
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import TimezoneUtils from '../utils/timezoneUtils';
@@ -40,6 +41,13 @@ const MetaTemplatePanel = () => {
   const [footerText, setFooterText] = useState('');
   const [buttons, setButtons] = useState([]);
   
+  // Header 格式相關狀態
+  const [headerFormat, setHeaderFormat] = useState('NONE'); // NONE, TEXT, IMAGE, VIDEO, DOCUMENT
+  const [headerFile, setHeaderFile] = useState(null); // 上傳的檔案
+  const [headerFileUrl, setHeaderFileUrl] = useState(''); // 檔案 URL（HTTP/HTTPS URL，用於提交）
+  const [headerFilePreviewUrl, setHeaderFilePreviewUrl] = useState(''); // 預覽 URL（object URL，僅用於預覽）
+  const [headerLocation, setHeaderLocation] = useState({ latitude: '', longitude: '' }); // 地點座標
+  
   // 變數示例
   const [bodyVariables, setBodyVariables] = useState([]);
   
@@ -58,9 +66,23 @@ const MetaTemplatePanel = () => {
   const [variableType, setVariableType] = useState('number'); // 'number' 或 'name'
   const [variableName, setVariableName] = useState('');
 
+  // 全屏預覽狀態
+  const [isFullscreenPreviewVisible, setIsFullscreenPreviewVisible] = useState(false);
+  const [fullscreenMediaUrl, setFullscreenMediaUrl] = useState('');
+  const [fullscreenMediaType, setFullscreenMediaType] = useState(''); // 'image' 或 'video'
+
   useEffect(() => {
     fetchMetaTemplates();
   }, []);
+
+  // 清理 object URL 的 useEffect
+  useEffect(() => {
+    return () => {
+      if (headerFilePreviewUrl) {
+        URL.revokeObjectURL(headerFilePreviewUrl);
+      }
+    };
+  }, [headerFilePreviewUrl]);
 
   // 獲取用戶時區設置
   useEffect(() => {
@@ -161,12 +183,136 @@ const MetaTemplatePanel = () => {
       const components = [];
       
       // Header 組件
-      if (values.headerText) {
-        components.push({
+      if (headerFormat !== 'NONE') {
+        const headerComponent = {
           type: 'HEADER',
-          format: values.headerFormat || 'TEXT',
-          text: values.headerText
-        });
+          format: headerFormat
+        };
+        
+        if (headerFormat === 'TEXT' && values.headerText) {
+          headerComponent.text = values.headerText;
+          // 如果有變數，添加示例
+          const headerMatches = values.headerText.match(/\{\{(\d+)\}\}/g);
+          if (headerMatches && headerMatches.length > 0) {
+            const headerVars = headerMatches.map(match => {
+              const index = parseInt(match.replace(/\{\{|\}\}/g, ''));
+              return `示例${index}`;
+            });
+            headerComponent.example = {
+              header_text: [headerVars]
+            };
+          }
+        } else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat)) {
+          // 對於媒體類型，需要上傳檔案到 Meta 並獲得 handle
+          // Meta API 不接受 data URL (base64)，必須是 HTTP/HTTPS URL
+          if (headerFileUrl) {
+            // 檢查是否為 data URL（base64 格式）
+            if (headerFileUrl.startsWith('data:')) {
+              message.error(t('whatsappTemplate.metaTemplate.dataUrlNotSupported'));
+              return;
+            }
+            
+            // 驗證 URL 格式
+            try {
+              const url = new URL(headerFileUrl);
+              if (!['http:', 'https:'].includes(url.protocol)) {
+                message.error(t('whatsappTemplate.metaTemplate.urlMustBeHttp'));
+                return;
+              }
+              
+              // 檢查是否為 localhost 或本地 IP（Meta API 無法訪問）
+              if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || 
+                  url.hostname.startsWith('192.168.') || url.hostname.startsWith('10.') ||
+                  url.hostname.startsWith('172.')) {
+                message.warning(t('whatsappTemplate.metaTemplate.localhostNotAccessible'));
+                // 不阻止，但提示用戶
+              }
+            } catch (e) {
+              message.error(t('whatsappTemplate.metaTemplate.invalidUrlFormat'));
+              return;
+            }
+            
+            // Meta API 要求 header_url 是字符串格式（不是數組）
+            // 格式應該是：header_url: "https://example.com/image.jpg"
+            headerComponent.example = {
+              header_url: headerFileUrl
+            };
+            
+            // 保存原始 URL 到 localStorage，以便預覽時使用
+            const templateName = form.getFieldValue('name');
+            if (templateName) {
+              localStorage.setItem(`meta_template_media_${templateName}`, headerFileUrl);
+            }
+          } else if (headerFile) {
+            // 用戶選擇了檔案但沒有提供 URL，需要先上傳到服務器
+            // 使用專門的 Meta 模板媒體上傳端點，檔案會存儲在 /public 目錄（公開可訪問）
+            message.loading(t('whatsappTemplate.metaTemplate.uploadingFile'), 0);
+            
+            try {
+              const formData = new FormData();
+              formData.append('file', headerFile);
+              
+              // 根據格式確定媒體類型
+              const mediaType = headerFormat === 'IMAGE' ? 'image' :
+                               headerFormat === 'VIDEO' ? 'video' :
+                               'document';
+              
+              // 使用專門的 Meta 模板媒體上傳端點
+              const uploadEndpoint = `/api/metatemplatemedia/upload?mediaType=${mediaType}`;
+              
+              const uploadResponse = await fetch(uploadEndpoint, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                },
+                body: formData
+              });
+              
+              message.destroy();
+              
+              if (!uploadResponse.ok) {
+                const errorResult = await uploadResponse.json();
+                message.error(t('whatsappTemplate.metaTemplate.fileUploadFailed') + ': ' + (errorResult.error || uploadResponse.statusText));
+                return;
+              }
+              
+              const uploadResult = await uploadResponse.json();
+              
+              if (uploadResult.success) {
+                // 使用後端返回的 publicUrl（已根據當前 domain 生成）
+                // 格式：{scheme}://{host}/public/meta-templates/{fileName}
+                const fileUrl = uploadResult.publicUrl;
+                setHeaderFileUrl(fileUrl);
+                
+                // 使用上傳後的 URL（字符串格式）
+                headerComponent.example = {
+                  header_url: fileUrl
+                };
+                
+                // 保存原始 URL 到 localStorage，以便預覽時使用
+                // 注意：只有在創建模板成功後才保存，這裡先保存，成功後會清除
+                // 格式：meta_template_media_{templateName}
+                const templateName = form.getFieldValue('name');
+                if (templateName) {
+                  localStorage.setItem(`meta_template_media_${templateName}`, fileUrl);
+                }
+              } else {
+                message.error(t('whatsappTemplate.metaTemplate.fileUploadFailed'));
+                return;
+              }
+            } catch (error) {
+              message.destroy();
+              console.error('上傳檔案錯誤:', error);
+              message.error(t('whatsappTemplate.metaTemplate.fileUploadFailed') + ': ' + error.message);
+              return;
+            }
+          } else {
+            message.error(t('whatsappTemplate.metaTemplate.pleaseUploadFileOrUrl'));
+            return;
+          }
+        }
+        
+        components.push(headerComponent);
       }
       
       // Body 組件（必須）
@@ -271,6 +417,22 @@ const MetaTemplatePanel = () => {
       
       console.log('✅ 創建成功 - 伺服器返回:', result);
       
+      // 如果後端返回了 header_url，保存到 localStorage 以便發送時自動使用
+      if (result.data && result.data.headerUrl) {
+        const templateName = values.name;
+        localStorage.setItem(`meta_template_media_${templateName}`, result.data.headerUrl);
+        
+        // 同時保存 header_type 和 header_filename（如果有的話）
+        if (result.data.headerType) {
+          localStorage.setItem(`meta_template_header_type_${templateName}`, result.data.headerType);
+        }
+        if (result.data.headerFilename) {
+          localStorage.setItem(`meta_template_header_filename_${templateName}`, result.data.headerFilename);
+        }
+        
+        console.log(`💾 已保存 Header URL 到 localStorage: ${result.data.headerUrl}`);
+      }
+      
       if (result.success) {
         if (result.data) {
           console.log('📋 Meta 返回的模板數據:', {
@@ -338,7 +500,28 @@ const MetaTemplatePanel = () => {
       created_time: template.created_time,
       updated_time: template.updated_time
     });
+    
+    // 嘗試從 localStorage 獲取保存的媒體 URL（如果有的話）
+    // 格式：meta_template_media_{templateName}
+    const savedMediaUrl = localStorage.getItem(`meta_template_media_${template.name}`);
+    if (savedMediaUrl) {
+      // 將保存的 URL 添加到 template 對象中，用於預覽
+      const templateWithMedia = { ...template };
+      if (templateWithMedia.components) {
+        const headerComponent = templateWithMedia.components.find(c => c.type === 'HEADER');
+        if (headerComponent && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComponent.format)) {
+          if (!headerComponent.example) {
+            headerComponent.example = {};
+          }
+          // 保存原始 URL 供預覽使用
+          headerComponent.example._preview_url = savedMediaUrl;
+        }
+      }
+      setPreviewTemplate(templateWithMedia);
+    } else {
     setPreviewTemplate(template);
+    }
+    
     setIsPreviewModalVisible(true);
   };
 
@@ -1091,6 +1274,10 @@ const MetaTemplatePanel = () => {
           form.resetFields();
           setBodyVariables([]);
           setButtons([]);
+          setHeaderFormat('NONE');
+          setHeaderFile(null);
+          setHeaderFileUrl('');
+          setHeaderLocation({ latitude: '', longitude: '' });
         }}
         width={800}
         footer={null}
@@ -1184,20 +1371,150 @@ const MetaTemplatePanel = () => {
             </div>
           </Card>
 
+          {/* Header 格式選擇 */}
           <Form.Item
-            name="headerText"
             label={t('whatsappTemplate.metaTemplate.headerOptional')}
           >
-            <CustomInput
-              fieldName="headerText" 
-              textareaRef={headerTextRef} 
-              placeholder={t('whatsappTemplate.metaTemplate.headerPlaceholder')}
-              maxLength={60}
-              rows={1}
-              showFormatButtons={false}
-              showVariableButton={true}
-            />
+            <Select
+              value={headerFormat}
+              onChange={(value) => {
+                setHeaderFormat(value);
+                  if (value === 'NONE') {
+                  form.setFieldsValue({ headerText: '' });
+                  // 清理預覽 URL
+                  if (headerFilePreviewUrl) {
+                    URL.revokeObjectURL(headerFilePreviewUrl);
+                  }
+                  setHeaderFile(null);
+                  setHeaderFilePreviewUrl('');
+                  setHeaderFileUrl('');
+                  setHeaderLocation({ latitude: '', longitude: '' });
+                }
+              }}
+              style={{ width: '100%', marginBottom: 16 }}
+            >
+              <Option value="NONE">
+                <Space>
+                  <span>{t('whatsappTemplate.metaTemplate.headerNone')}</span>
+                </Space>
+              </Option>
+              <Option value="TEXT">
+                <Space>
+                  <FileTextOutlined />
+                  <span>{t('whatsappTemplate.metaTemplate.headerText')}</span>
+                </Space>
+              </Option>
+              <Option value="IMAGE">
+                <Space>
+                  <FileImageOutlined />
+                  <span>{t('whatsappTemplate.metaTemplate.headerImage')}</span>
+                </Space>
+              </Option>
+              <Option value="VIDEO">
+                <Space>
+                  <VideoCameraOutlined />
+                  <span>{t('whatsappTemplate.metaTemplate.headerVideo')}</span>
+                </Space>
+              </Option>
+              <Option value="DOCUMENT">
+                <Space>
+                  <FileOutlined />
+                  <span>{t('whatsappTemplate.metaTemplate.headerDocument')}</span>
+                </Space>
+              </Option>
+            </Select>
           </Form.Item>
+
+          {/* Header 內容 - 根據格式顯示不同輸入 */}
+          {headerFormat === 'TEXT' && (
+            <Form.Item
+              name="headerText"
+              label={t('whatsappTemplate.metaTemplate.headerText')}
+            >
+              <CustomInput
+                fieldName="headerText" 
+                textareaRef={headerTextRef} 
+                placeholder={t('whatsappTemplate.metaTemplate.headerPlaceholder')}
+                maxLength={60}
+                rows={1}
+                showFormatButtons={false}
+                showVariableButton={true}
+              />
+            </Form.Item>
+          )}
+
+          {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && (
+            <>
+              <Form.Item
+                label={headerFormat === 'IMAGE' ? t('whatsappTemplate.metaTemplate.headerImage') :
+                       headerFormat === 'VIDEO' ? t('whatsappTemplate.metaTemplate.headerVideo') :
+                       t('whatsappTemplate.metaTemplate.headerDocument')}
+              >
+                <Upload.Dragger
+                  name="file"
+                  accept={headerFormat === 'IMAGE' ? '.jpg,.jpeg,.png,.gif,.bmp,.webp' :
+                         headerFormat === 'VIDEO' ? '.mp4,.avi,.mov,.wmv' :
+                         '.pdf,.doc,.docx,.txt'}
+                  beforeUpload={(file) => {
+                    setHeaderFile(file);
+                    // 創建 object URL 用於預覽（僅用於顯示，不提交）
+                    const previewUrl = URL.createObjectURL(file);
+                    setHeaderFilePreviewUrl(previewUrl);
+                    return false; // 阻止自動上傳
+                  }}
+                  onRemove={() => {
+                    // 清理 object URL
+                    if (headerFilePreviewUrl) {
+                      URL.revokeObjectURL(headerFilePreviewUrl);
+                    }
+                    setHeaderFile(null);
+                    setHeaderFilePreviewUrl('');
+                    setHeaderFileUrl(''); // 也清除手動輸入的 URL
+                  }}
+                  maxCount={1}
+                >
+                  <p className="ant-upload-drag-icon">
+                    {headerFormat === 'IMAGE' ? <FileImageOutlined /> :
+                     headerFormat === 'VIDEO' ? <VideoCameraOutlined /> :
+                     <FileOutlined />}
+                  </p>
+                  <p className="ant-upload-text">
+                    {t('whatsappTemplate.metaTemplate.dragOrClickToUpload')}
+                  </p>
+                  <p className="ant-upload-hint">
+                    {headerFormat === 'IMAGE' ? t('whatsappTemplate.metaTemplate.imageUploadHint') :
+                     headerFormat === 'VIDEO' ? t('whatsappTemplate.metaTemplate.videoUploadHint') :
+                     t('whatsappTemplate.metaTemplate.documentUploadHint')}
+                  </p>
+                </Upload.Dragger>
+              </Form.Item>
+
+              {/* 預覽：優先顯示上傳的檔案預覽，否則顯示 URL 的圖片 */}
+              {headerFormat === 'IMAGE' && (headerFilePreviewUrl || (headerFileUrl && !headerFileUrl.startsWith('data:'))) && (
+                <div style={{ marginBottom: 16 }}>
+                  <img 
+                    src={headerFilePreviewUrl || headerFileUrl} 
+                    alt="預覽" 
+                    style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: 4 }}
+                  />
+                </div>
+              )}
+
+              <Form.Item
+                label={t('whatsappTemplate.metaTemplate.orEnterUrl')}
+                help={t('whatsappTemplate.metaTemplate.urlHelp')}
+              >
+                <Input
+                  placeholder={t('whatsappTemplate.metaTemplate.enterFileUrl')}
+                  value={headerFileUrl}
+                  onChange={(e) => {
+                    setHeaderFileUrl(e.target.value);
+                    // 如果輸入 URL，不清除檔案，讓用戶可以選擇使用哪個
+                  }}
+                />
+              </Form.Item>
+            </>
+          )}
 
           <Form.Item
             name="bodyText"
@@ -1433,7 +1750,348 @@ const MetaTemplatePanel = () => {
               )}
             </Card>
 
-            <Card title={t('whatsappTemplate.metaTemplate.templateContent')} size="small">
+            {/* 圖形化預覽 */}
+            <Card title={t('whatsappTemplate.metaTemplate.templateContent')} size="small" style={{ marginBottom: 16 }}>
+              <div style={{
+                background: 'linear-gradient(to bottom, #e5ddd5 0%, #e5ddd5 50%, #d4edda 50%, #d4edda 100%)',
+                padding: '40px 20px',
+                borderRadius: 8,
+                minHeight: '400px',
+                position: 'relative',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'flex-start'
+              }}>
+                {/* WhatsApp 消息氣泡 */}
+                <div style={{
+                  maxWidth: '85%',
+                  width: '100%',
+                  background: '#ffffff',
+                  borderRadius: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                  overflow: 'hidden',
+                  position: 'relative'
+                }}>
+                  {/* Header 部分 */}
+                  {previewTemplate.components?.find(c => c.type === 'HEADER') && (() => {
+                    const headerComponent = previewTemplate.components.find(c => c.type === 'HEADER');
+                    const format = headerComponent.format?.toUpperCase();
+                    
+                    if (format === 'IMAGE') {
+                      // 嘗試從多個來源獲取圖片 URL：
+                      // 1. 從 _preview_url（我們保存的原始 URL）
+                      // 2. 從 header_url（如果有的話）
+                      // 3. 從 header_handle（Meta 返回的，無法直接使用）
+                      const headerExample = headerComponent.example;
+                      const imageUrl = headerExample?._preview_url || 
+                                     headerExample?.header_url || 
+                                     (headerExample?.header_handle?.[0] && !headerExample.header_handle[0].startsWith('4:') ? headerExample.header_handle[0] : null);
+                      
+                      // 如果沒有有效的 URL，顯示提示
+                      const hasValidUrl = imageUrl && !imageUrl.startsWith('4:') && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'));
+                      
+                      return (
+                        <div style={{ width: '100%', background: '#f0f0f0' }}>
+                          <div style={{
+                            width: '100%',
+                            aspectRatio: '16/9',
+                            background: '#e0e0e0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#999',
+                            fontSize: '12px',
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}>
+                            {hasValidUrl ? (
+                              <div 
+                                style={{ 
+                                  width: '100%', 
+                                  height: '100%', 
+                                  position: 'relative',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => {
+                                  setFullscreenMediaUrl(imageUrl);
+                                  setFullscreenMediaType('image');
+                                  setIsFullscreenPreviewVisible(true);
+                                }}
+                              >
+                                <img 
+                                  src={imageUrl} 
+                                  alt="Header" 
+                                  style={{ 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    objectFit: 'contain',
+                                    display: 'block'
+                                  }}
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    const errorDiv = document.createElement('div');
+                                    errorDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #999; font-size: 12px; flex-direction: column; gap: 8px;';
+                                    errorDiv.innerHTML = '<FileImageOutlined style="font-size: 24px;" /><span>圖片無法載入</span><span style="font-size: 10px;">Meta API 限制</span>';
+                                    e.target.parentElement.appendChild(errorDiv);
+                                  }}
+                                />
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '8px',
+                                  right: '8px',
+                                  background: 'rgba(0,0,0,0.6)',
+                                  color: '#fff',
+                                  padding: '4px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  <EyeOutlined /> 點擊全屏
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px' }}>
+                                <FileImageOutlined style={{ fontSize: 32, color: '#999' }} />
+                                <span style={{ fontSize: '12px' }}>圖片 Header</span>
+                                <span style={{ fontSize: '10px', color: '#bbb', textAlign: 'center' }}>
+                                  Meta API 僅返回 handle，<br />無法直接預覽圖片
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    } else if (format === 'VIDEO') {
+                      // 嘗試獲取影片 URL
+                      const headerExample = headerComponent.example;
+                      const videoUrl = headerExample?._preview_url || 
+                                     headerExample?.header_url || 
+                                     (headerExample?.header_handle?.[0] && !headerExample.header_handle[0].startsWith('4:') ? headerExample.header_handle[0] : null);
+                      const hasValidUrl = videoUrl && !videoUrl.startsWith('4:') && (videoUrl.startsWith('http://') || videoUrl.startsWith('https://'));
+                      
+                      return (
+                        <div style={{
+                          width: '100%',
+                          aspectRatio: '16/9',
+                          background: '#000',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          fontSize: '12px',
+                          position: 'relative'
+                        }}>
+                          {hasValidUrl ? (
+                            <div
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                position: 'relative',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => {
+                                setFullscreenMediaUrl(videoUrl);
+                                setFullscreenMediaType('video');
+                                setIsFullscreenPreviewVisible(true);
+                              }}
+                            >
+                              <video 
+                                src={videoUrl}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'contain',
+                                  display: 'block'
+                                }}
+                                controls={false}
+                                muted
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  const errorDiv = document.createElement('div');
+                                  errorDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #fff; font-size: 12px; flex-direction: column; gap: 8px;';
+                                  errorDiv.innerHTML = '<VideoCameraOutlined style="font-size: 32px;" /><span>影片無法載入</span><span style="font-size: 10px;">Meta API 限制</span>';
+                                  e.target.parentElement.appendChild(errorDiv);
+                                }}
+                              />
+                              <div style={{
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                                background: 'rgba(0,0,0,0.6)',
+                                color: '#fff',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <EyeOutlined /> 點擊全屏
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                              <VideoCameraOutlined style={{ fontSize: 32 }} />
+                              <span>影片 Header</span>
+                              <span style={{ fontSize: '10px', color: '#bbb', textAlign: 'center' }}>
+                                Meta API 僅返回 handle，<br />無法直接預覽影片
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else if (format === 'DOCUMENT') {
+                      return (
+                        <div style={{
+                          width: '100%',
+                          padding: '16px',
+                          background: '#f0f0f0',
+                          borderBottom: '1px solid #e0e0e0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12
+                        }}>
+                          <FileOutlined style={{ fontSize: 32, color: '#1890ff' }} />
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '14px' }}>文件</div>
+                            <div style={{ fontSize: '12px', color: '#666' }}>PDF 文件</div>
+                          </div>
+                        </div>
+                      );
+                    } else if (format === 'TEXT' && headerComponent.text) {
+                      return (
+                        <div style={{
+                          padding: '12px 16px',
+                          background: '#f0f0f0',
+                          borderBottom: '1px solid #e0e0e0',
+                          fontSize: '16px',
+                          fontWeight: 'bold',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word'
+                        }}>
+                          {headerComponent.text.replace(/\{\{(\d+)\}\}/g, (match, num) => `{{${num}}}`)}
+                        </div>
+                      );
+                    } else if (format === 'LOCATION') {
+                      return (
+                        <div style={{
+                          width: '100%',
+                          aspectRatio: '16/9',
+                          background: '#e8f5e9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#4caf50',
+                          fontSize: '12px',
+                          borderBottom: '1px solid #e0e0e0'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <EnvironmentOutlined style={{ fontSize: 24 }} />
+                            <span>位置 Header</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  
+                  {/* Body 部分 */}
+                  {previewTemplate.components?.find(c => c.type === 'BODY') && (() => {
+                    const bodyComponent = previewTemplate.components.find(c => c.type === 'BODY');
+                    if (!bodyComponent.text) return null;
+                    
+                    // 處理格式化文字（*粗體*, _斜體_, ~刪除線~, ```代碼```）
+                    let formattedText = bodyComponent.text;
+                    formattedText = formattedText.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+                    formattedText = formattedText.replace(/_([^_]+)_/g, '<em>$1</em>');
+                    formattedText = formattedText.replace(/~([^~]+)~/g, '<del>$1</del>');
+                    formattedText = formattedText.replace(/```([^`]+)```/g, '<code style="background: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
+                    
+                    return (
+                      <div style={{
+                        padding: '12px 16px',
+                        fontSize: '14px',
+                        lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        color: '#111b21'
+                      }} dangerouslySetInnerHTML={{ __html: formattedText }} />
+                    );
+                  })()}
+                  
+                  {/* Footer 部分 */}
+                  {previewTemplate.components?.find(c => c.type === 'FOOTER') && (() => {
+                    const footerComponent = previewTemplate.components.find(c => c.type === 'FOOTER');
+                    if (!footerComponent.text) return null;
+                    
+                    return (
+                      <div style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        color: '#667781',
+                        borderTop: '1px solid #e0e0e0',
+                        background: '#f9f9f9'
+                      }}>
+                        {footerComponent.text}
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Buttons 部分 */}
+                  {previewTemplate.components?.find(c => c.type === 'BUTTONS') && (() => {
+                    const buttonsComponent = previewTemplate.components.find(c => c.type === 'BUTTONS');
+                    if (!buttonsComponent.buttons || buttonsComponent.buttons.length === 0) return null;
+                    
+                    return (
+                      <div style={{
+                        padding: '8px',
+                        borderTop: '1px solid #e0e0e0',
+                        background: '#f9f9f9'
+                      }}>
+                        {buttonsComponent.buttons.map((button, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              marginBottom: idx < buttonsComponent.buttons.length - 1 ? '8px' : 0,
+                              padding: '10px 12px',
+                              background: '#ffffff',
+                              border: '1px solid #e0e0e0',
+                              borderRadius: '4px',
+                              fontSize: '13px',
+                              textAlign: 'center',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = '#f0f0f0'}
+                            onMouseLeave={(e) => e.target.style.background = '#ffffff'}
+                          >
+                            {button.type === 'QUICK_REPLY' && '💬 '}
+                            {button.type === 'URL' && '🔗 '}
+                            {button.type === 'PHONE_NUMBER' && '📞 '}
+                            {button.text}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* 時間戳 */}
+                  <div style={{
+                    padding: '4px 16px 8px',
+                    fontSize: '11px',
+                    color: '#667781',
+                    textAlign: 'right'
+                  }}>
+                    10:40
+                  </div>
+                </div>
+              </div>
+            </Card>
+            
+            {/* 原始數據（可選，用於調試） */}
+            <Card title="原始數據" size="small" style={{ display: 'none' }}>
               {previewTemplate.components?.map((component, index) => (
                 <div key={index} style={{ marginBottom: 12 }}>
                   <strong>{component.type}：</strong>
@@ -1452,6 +2110,77 @@ const MetaTemplatePanel = () => {
             </Card>
           </div>
         )}
+      </Modal>
+
+      {/* 全屏預覽 Modal */}
+      <Modal
+        open={isFullscreenPreviewVisible}
+        onCancel={() => setIsFullscreenPreviewVisible(false)}
+        footer={null}
+        width="100%"
+        style={{ top: 0, paddingBottom: 0, maxWidth: '100vw' }}
+        bodyStyle={{ 
+          padding: 0, 
+          height: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0, 0, 0, 0.95)'
+        }}
+        closable={true}
+        maskClosable={true}
+        centered
+      >
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          padding: '40px'
+        }}>
+          {fullscreenMediaType === 'image' && (
+            <img
+              src={fullscreenMediaUrl}
+              alt="Fullscreen Preview"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                borderRadius: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #fff; font-size: 16px; flex-direction: column; gap: 12px;';
+                errorDiv.innerHTML = '<div style="font-size: 48px;">📷</div><span>圖片無法載入</span>';
+                e.target.parentElement.appendChild(errorDiv);
+              }}
+            />
+          )}
+          {fullscreenMediaType === 'video' && (
+            <video
+              src={fullscreenMediaUrl}
+              controls
+              autoPlay
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                borderRadius: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #fff; font-size: 16px; flex-direction: column; gap: 12px;';
+                errorDiv.innerHTML = '<div style="font-size: 48px;">🎬</div><span>影片無法載入</span>';
+                e.target.parentElement.appendChild(errorDiv);
+              }}
+            />
+          )}
+        </div>
       </Modal>
 
       {/* 變數插入 Modal */}

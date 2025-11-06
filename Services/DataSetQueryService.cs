@@ -25,7 +25,8 @@ namespace PurpleRice.Services
         public async Task<DataSetQueryResult> ExecuteDataSetQueryAsync(
             int workflowExecutionId,
             int stepExecutionId,
-            DataSetQueryRequest request)
+            DataSetQueryRequest request,
+            bool skipSave = false)
         {
             try
             {
@@ -72,35 +73,42 @@ namespace PurpleRice.Services
                     _ => throw new Exception($"不支持的操作類型: {request.OperationType}")
                 };
 
-                // 4. 保存查詢結果到數據庫
-                var queryResult = new WorkflowDataSetQueryResult
+                // 4. 保存查詢結果到數據庫（測試操作時跳過）
+                if (!skipSave && workflowExecutionId > 0)
                 {
-                    WorkflowExecutionId = workflowExecutionId,
-                    StepExecutionId = stepExecutionId,
-                    DataSetId = request.DataSetId,
-                    OperationType = request.OperationType,
-                    QueryConditions = JsonSerializer.Serialize(processedConditionGroups),
-                    QueryResult = JsonSerializer.Serialize(result.Data),
-                    MappedFields = JsonSerializer.Serialize(request.MappedFields),
-                    ProcessVariablesUsed = JsonSerializer.Serialize(request.ProcessVariableValues),
-                    Status = result.Success ? "Success" : "Failed",
-                    ErrorMessage = result.Success ? null : result.Message,
-                    TotalRecords = result.TotalCount,
-                    RecordsProcessed = result.Data.Count
-                };
+                    var queryResult = new WorkflowDataSetQueryResult
+                    {
+                        WorkflowExecutionId = workflowExecutionId,
+                        StepExecutionId = stepExecutionId,
+                        DataSetId = request.DataSetId,
+                        OperationType = request.OperationType,
+                        QueryConditions = JsonSerializer.Serialize(processedConditionGroups),
+                        QueryResult = JsonSerializer.Serialize(result.Data),
+                        MappedFields = JsonSerializer.Serialize(request.MappedFields),
+                        ProcessVariablesUsed = JsonSerializer.Serialize(request.ProcessVariableValues),
+                        Status = result.Success ? "Success" : "Failed",
+                        ErrorMessage = result.Success ? null : result.Message,
+                        TotalRecords = result.TotalCount,
+                        RecordsProcessed = result.Data.Count
+                    };
 
-                _context.WorkflowDataSetQueryResults.Add(queryResult);
-                await _context.SaveChangesAsync();
+                    _context.WorkflowDataSetQueryResults.Add(queryResult);
+                    await _context.SaveChangesAsync();
 
-                result.QueryResultId = queryResult.Id;
+                    result.QueryResultId = queryResult.Id;
 
-                // 5. 處理欄位映射到流程變量（無論是否有映射都要創建記錄關聯）
-                if (result.Success)
-                {
-                    await ProcessFieldMappings(queryResult.Id, result.Data, request.MappedFields, workflowExecutionId);
+                    // 5. 處理欄位映射到流程變量（無論是否有映射都要創建記錄關聯）
+                    if (result.Success)
+                    {
+                        await ProcessFieldMappings(queryResult.Id, result.Data, request.MappedFields, workflowExecutionId);
+                    }
+
+                    _loggingService.LogInformation($"DataSet 查詢執行完成，結果 ID: {queryResult.Id}");
                 }
-
-                _loggingService.LogInformation($"DataSet 查詢執行完成，結果 ID: {queryResult.Id}");
+                else
+                {
+                    _loggingService.LogInformation($"DataSet 查詢完成（測試模式，跳過保存）");
+                }
                 return result;
             }
             catch (Exception ex)
@@ -154,52 +162,25 @@ namespace PurpleRice.Services
 
                 List<Dictionary<string, object>> results;
 
-                // 檢查是否有外部數據源
-                var dataSource = dataSet.DataSources?.FirstOrDefault();
+                // ✅ 修復：始終使用內部同步後的表查詢，不查詢外部數據源
+                // 這樣可以避免連接外部數據庫的問題，提高查詢速度和穩定性
+                _loggingService.LogInformation($"使用內部 DataSet 記錄查詢（data_set_records 和 data_set_record_values）");
                 
-                if (dataSource != null && (dataSource.SourceType == "Database" || dataSource.SourceType == "SQL"))
-                {
-                    _loggingService.LogInformation($"使用外部數據源查詢: {dataSource.SourceType}");
-                    
-                    // 生成 WHERE 子句
-                    var whereClause = GenerateWhereClause(conditionGroups);
-                    _loggingService.LogInformation($"生成的 WHERE 子句: {whereClause}");
-                    
-                    // 查詢外部數據庫
-                    results = await ExecuteDatabaseQuery(dataSource, whereClause, 1000);
-                    _loggingService.LogInformation($"外部數據庫查詢成功，找到 {results.Count} 條記錄");
-                }
-                else if (dataSource != null && dataSource.SourceType == "Excel")
-                {
-                    _loggingService.LogInformation($"使用 Excel 數據源查詢");
-                    
-                    // 生成 WHERE 子句
-                    var whereClause = GenerateWhereClause(conditionGroups);
-                    
-                    // 查詢 Excel（目前未實現，使用內部記錄）
-                    results = await ExecuteExcelQuery(dataSource, whereClause);
-                    _loggingService.LogInformation($"Excel 查詢成功，找到 {results.Count} 條記錄");
-                }
-                else
-                {
-                    _loggingService.LogInformation($"使用內部 DataSet 記錄查詢");
-                    
-                    // 1. 查詢 data_set_records 表
-                    var records = await _context.DataSetRecords
-                        .Where(r => r.DataSetId == dataSet.Id)
-                        .Include(r => r.Values)
-                        .ToListAsync();
+                // 1. 查詢 data_set_records 表
+                var records = await _context.DataSetRecords
+                    .Where(r => r.DataSetId == dataSet.Id)
+                    .Include(r => r.Values)
+                    .ToListAsync();
 
-                    _loggingService.LogInformation($"找到 {records.Count} 條 DataSet 記錄");
+                _loggingService.LogInformation($"找到 {records.Count} 條 DataSet 記錄");
 
-                    // 2. 根據條件過濾記錄
-                    var filteredRecords = FilterRecordsByConditions(records, conditionGroups);
-                    _loggingService.LogInformation($"條件過濾後剩餘 {filteredRecords.Count} 條記錄");
+                // 2. 根據條件過濾記錄
+                var filteredRecords = FilterRecordsByConditions(records, conditionGroups);
+                _loggingService.LogInformation($"條件過濾後剩餘 {filteredRecords.Count} 條記錄");
 
-                    // 3. 轉換為結果格式
-                    results = ConvertRecordsToResultFormat(filteredRecords);
-                    _loggingService.LogInformation($"轉換為結果格式，共 {results.Count} 條記錄");
-                }
+                // 3. 轉換為結果格式
+                results = ConvertRecordsToResultFormat(filteredRecords);
+                _loggingService.LogInformation($"轉換為結果格式，共 {results.Count} 條記錄");
 
                 return new DataSetQueryResult
                 {

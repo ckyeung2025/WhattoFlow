@@ -661,7 +661,7 @@ namespace PurpleRice.Services
                                     templateParams,  // 使用解析的模板變量
                                     messageConfig.IsMetaTemplate,
                                     messageConfig.TemplateName,
-                                    null
+                                    messageConfig.TemplateLanguage  // 傳遞模板語言代碼
                                 );
                                 
                                 // 更新收件人狀態為已發送
@@ -850,7 +850,7 @@ namespace PurpleRice.Services
                                     templateParams,  // 使用解析的模板變量
                                     escalationConfig.IsMetaTemplate,
                                     escalationConfig.TemplateName,
-                                    null
+                                    escalationConfig.TemplateLanguage  // 傳遞模板語言代碼
                                 );
                                 
                                 // 更新收件人狀態為已發送
@@ -1038,7 +1038,7 @@ namespace PurpleRice.Services
                                     templateParams,  // 使用解析的模板變量
                                     escalationConfig.IsMetaTemplate,
                                     escalationConfig.TemplateName,
-                                    null
+                                    escalationConfig.TemplateLanguage  // 傳遞模板語言代碼
                                 );
                                 
                                 // 更新收件人狀態為已發送
@@ -1784,6 +1784,7 @@ namespace PurpleRice.Services
         public string TemplateId { get; set; } = string.Empty;
         public string TemplateName { get; set; } = string.Empty;
         public bool IsMetaTemplate { get; set; }
+        public string TemplateLanguage { get; set; } = null;  // 添加模板語言代碼
         public List<TemplateVariableMapping> TemplateVariables { get; set; } = new List<TemplateVariableMapping>();
     }
 
@@ -1799,6 +1800,7 @@ namespace PurpleRice.Services
         public string TemplateId { get; set; } = string.Empty;
         public string TemplateName { get; set; } = string.Empty;
         public bool IsMetaTemplate { get; set; }
+        public string TemplateLanguage { get; set; } = null;  // 添加模板語言代碼
         public List<TemplateVariableMapping> TemplateVariables { get; set; } = new List<TemplateVariableMapping>();
     }
 

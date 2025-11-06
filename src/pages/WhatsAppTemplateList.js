@@ -8,20 +8,10 @@ import InternalTemplatePanel from './InternalTemplatePanel';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const WhatsAppTemplateList = () => {
-  const [activeTab, setActiveTab] = useState('internal');
+  const [activeTab, setActiveTab] = useState('meta');
   const { t } = useLanguage();
 
   const tabItems = [
-    {
-      key: 'internal',
-      label: (
-        <span>
-          <DatabaseOutlined />
-          {t('whatsappTemplate.templateList.internalTemplates')}
-        </span>
-      ),
-      children: <InternalTemplatePanel />
-    },
     {
       key: 'meta',
       label: (
@@ -31,6 +21,16 @@ const WhatsAppTemplateList = () => {
         </span>
       ),
       children: <MetaTemplatePanel />
+    },
+    {
+      key: 'internal',
+      label: (
+        <span>
+          <DatabaseOutlined />
+          {t('whatsappTemplate.templateList.internalTemplates')}
+        </span>
+      ),
+      children: <InternalTemplatePanel />
     }
   ];
 

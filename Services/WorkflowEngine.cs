@@ -1150,6 +1150,7 @@ namespace PurpleRice.Services
                     }
                     
                     // 發送模板訊息
+                    WriteLog($"🔍 [DEBUG] waitReply 模板配置: TemplateName={nodeData.TemplateName}, IsMetaTemplate={nodeData.IsMetaTemplate}, TemplateLanguage={nodeData.TemplateLanguage ?? "null"}");
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                         recipientValue,
                         recipientDetailsJson,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   Card, 
   Row, 
@@ -34,6 +34,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import ReactECharts from 'echarts-for-react';
+import { getUserInterfacesFromStorage, hasInterfacePermission, expandInterfacesWithChildren } from '../utils/permissionUtils';
 import './Dashboard.css';
 
 const { Title, Text } = Typography;
@@ -81,6 +82,8 @@ const Dashboard = ({ onMenuSelect }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
+  const [userInterfaces, setUserInterfaces] = useState([]);
+  const [loadingUserInterfaces, setLoadingUserInterfaces] = useState(true);
   const [chartData, setChartData] = useState({
     messageTrend: { dates: [], totalSent: [], success: [], failed: [] },
     topWorkflows: [],
@@ -108,17 +111,108 @@ const Dashboard = ({ onMenuSelect }) => {
     totalCompanies: 0
   });
 
+  // 使用 ref 追蹤組件是否仍然掛載
+  const isMountedRef = useRef(true);
+
   useEffect(() => {
+    isMountedRef.current = true;
+    
+    // 載入用戶權限
+    const loadUserInterfaces = async () => {
+      setLoadingUserInterfaces(true);
+      try {
+        // 檢查 userInfo 是否存在且有 userId
+        const userInfoStr = localStorage.getItem('userInfo');
+        if (!userInfoStr) {
+          console.log('Dashboard: userInfo 不存在，等待載入...');
+          // 如果 userInfo 不存在，等待一下再重試
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const retryUserInfoStr = localStorage.getItem('userInfo');
+          if (!retryUserInfoStr) {
+            console.warn('Dashboard: 重試後仍然沒有 userInfo');
+            if (isMountedRef.current) {
+              setUserInterfaces([]);
+              setLoadingUserInterfaces(false);
+            }
+            return;
+          }
+        }
+        
+        let userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+        let userId = userInfo.user_id || userInfo.userId || userInfo.id;
+        
+        // 如果 userInfo 沒有 roles，可能需要等待登入流程完成
+        if (!userInfo.roles || userInfo.roles.length === 0) {
+          console.log('Dashboard: userInfo 沒有 roles，等待登入流程完成...');
+          // 等待最多 2 秒，每 200ms 檢查一次
+          let retries = 0;
+          const maxRetries = 10;
+          while (retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            const updatedUserInfoStr = localStorage.getItem('userInfo');
+            if (updatedUserInfoStr) {
+              const updatedUserInfo = JSON.parse(updatedUserInfoStr);
+              if (updatedUserInfo.roles && updatedUserInfo.roles.length > 0) {
+                console.log('Dashboard: 檢測到 roles，繼續載入權限');
+                userInfo = updatedUserInfo;
+                userId = userInfo.user_id || userInfo.userId || userInfo.id;
+                break;
+              }
+            }
+            retries++;
+          }
+        }
+        
+        // 確保有 userId 才繼續
+        if (!userId) {
+          console.warn('Dashboard: 無法獲取 userId，無法載入權限');
+          if (isMountedRef.current) {
+            setUserInterfaces([]);
+            setLoadingUserInterfaces(false);
+          }
+          return;
+        }
+        
+        const interfaces = await getUserInterfacesFromStorage();
+        if (isMountedRef.current) {
+          setUserInterfaces(interfaces);
+          console.log('Dashboard: 權限載入完成，interfaces:', interfaces);
+        }
+      } catch (error) {
+        console.error('載入用戶權限失敗:', error);
+        if (isMountedRef.current) {
+          setUserInterfaces([]);
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setLoadingUserInterfaces(false);
+        }
+      }
+    };
+    
+    loadUserInterfaces();
     loadDashboardData();
+    
+    // 清理函數：組件卸載時設置標誌
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadDashboardData = async () => {
+    // 檢查組件是否仍然掛載
+    if (!isMountedRef.current) {
+      return;
+    }
+    
     setLoading(true);
     try {
       // 檢查是否已登入
       const token = localStorage.getItem('token');
       if (!token) {
          console.log('❌ 用戶未登入，使用模擬數據');
+         // 檢查組件是否仍然掛載
+         if (!isMountedRef.current) return;
          setStats({
            publishedWorkflows: 3,
            runningInstances: 2,
@@ -200,6 +294,11 @@ const Dashboard = ({ onMenuSelect }) => {
         axios.get('/api/workflowexecutions/top-workflows?limit=5', { headers: authHeaders }),
         axios.get('/api/eforminstances/statistics/by-status', { headers: authHeaders })
       ]);
+
+      // 檢查組件是否仍然掛載
+      if (!isMountedRef.current) {
+        return;
+      }
 
       // 調試信息：打印 API 響應
       console.log('API 響應狀態:', {
@@ -387,10 +486,20 @@ const Dashboard = ({ onMenuSelect }) => {
       const companyUserStats = companyUserStatsRes.status === 'fulfilled' ? companyUserStatsRes.value.data : {};
       console.log('🏢 公司用戶統計:', companyUserStats);
       
+      // 檢查組件是否仍然掛載
+      if (!isMountedRef.current) {
+        return;
+      }
+
       // 處理圖表數據
       const messageTrend = messageTrendRes.status === 'fulfilled' ? messageTrendRes.value.data : { dates: [], totalSent: [], success: [], failed: [] };
       const topWorkflows = topWorkflowsRes.status === 'fulfilled' ? topWorkflowsRes.value.data : [];
       const formStatus = formStatusRes.status === 'fulfilled' ? formStatusRes.value.data : { pending: 0, approved: 0, rejected: 0 };
+      
+      // 檢查組件是否仍然掛載
+      if (!isMountedRef.current) {
+        return;
+      }
       
       setChartData({
         messageTrend,
@@ -454,6 +563,8 @@ const Dashboard = ({ onMenuSelect }) => {
       // 如果 API 調用失敗，使用模擬數據
       if (instancesRes.status === 'rejected' || templatesStatsRes.status === 'rejected') {
          console.log('⚠️ API 調用失敗，使用模擬數據');
+         // 檢查組件是否仍然掛載
+         if (!isMountedRef.current) return;
          setStats({
            publishedWorkflows: 3,
            runningInstances: 2,
@@ -490,6 +601,11 @@ const Dashboard = ({ onMenuSelect }) => {
           totalCompanies: 2
         });
         setLoading(false);
+        return;
+      }
+
+      // 檢查組件是否仍然掛載
+      if (!isMountedRef.current) {
         return;
       }
 
@@ -545,7 +661,10 @@ const Dashboard = ({ onMenuSelect }) => {
     } catch (error) {
       console.error('載入儀表板數據失敗:', error);
     } finally {
-      setLoading(false);
+      // 只有在組件仍然掛載時才更新 loading 狀態
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -837,7 +956,40 @@ const Dashboard = ({ onMenuSelect }) => {
     </Card>
   );
 
-  if (loading) {
+  // 展開用戶權限（包含父子級關係）
+  const expandedInterfaces = expandInterfacesWithChildren(userInterfaces);
+  
+  // 檢查是否有權限顯示各個區域
+  const hasApplicationPermission = hasInterfacePermission(userInterfaces, 'application') || 
+                                   hasInterfacePermission(userInterfaces, 'publishedApps') ||
+                                   hasInterfacePermission(userInterfaces, 'pendingTasks') ||
+                                   hasInterfacePermission(userInterfaces, 'workflowMonitor');
+  
+  const hasStudioPermission = hasInterfacePermission(userInterfaces, 'studio') ||
+                              hasInterfacePermission(userInterfaces, 'eformList') ||
+                              hasInterfacePermission(userInterfaces, 'whatsappTemplates') ||
+                              hasInterfacePermission(userInterfaces, 'whatsappWorkflow') ||
+                              hasInterfacePermission(userInterfaces, 'dataSets');
+  
+  const hasAdminToolsPermission = hasInterfacePermission(userInterfaces, 'adminTools') ||
+                                  hasInterfacePermission(userInterfaces, 'contactList') ||
+                                  hasInterfacePermission(userInterfaces, 'broadcastGroups') ||
+                                  hasInterfacePermission(userInterfaces, 'hashtags') ||
+                                  hasInterfacePermission(userInterfaces, 'companyUserAdmin') ||
+                                  hasInterfacePermission(userInterfaces, 'phoneVerificationAdmin') ||
+                                  hasInterfacePermission(userInterfaces, 'permissionManagement');
+  
+  // 檢查是否有任何權限（用於顯示空狀態）
+  const hasAnyPermission = hasApplicationPermission || hasStudioPermission || hasAdminToolsPermission;
+  
+  // 計算動態佈局：根據權限決定每個區域的寬度
+  // 如果兩個區域都有權限，則 Application 佔 8/24，Studio 佔 16/24
+  // 如果只有一個區域有權限，則該區域佔滿全寬 24/24
+  const applicationColSpan = hasApplicationPermission && hasStudioPermission ? 8 : (hasApplicationPermission ? 24 : 0);
+  const studioColSpan = hasStudioPermission && hasApplicationPermission ? 16 : (hasStudioPermission ? 24 : 0);
+
+  // 如果正在載入數據或權限，顯示 loading
+  if (loading || loadingUserInterfaces) {
     return (
       <div style={{ 
         display: 'flex', 
@@ -848,18 +1000,227 @@ const Dashboard = ({ onMenuSelect }) => {
         gap: '16px'
       }}>
         <Spin size="large" />
-        <Text>{t('dashboard.loadingDashboard')}</Text>
+        <Text>{loadingUserInterfaces ? '正在載入權限信息...' : t('dashboard.loadingDashboard')}</Text>
+      </div>
+    );
+  }
+
+  // 只有在權限載入完成且確實沒有任何權限時，才顯示提示信息
+  if (!loadingUserInterfaces && !hasAnyPermission) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '60vh',
+        flexDirection: 'column',
+        gap: '16px',
+        padding: '24px'
+      }}>
+        <Title level={3}>無權限訪問</Title>
+        <Text type="secondary">您目前沒有任何功能權限，請聯繫管理員分配權限。</Text>
       </div>
     );
   }
 
   return (
     <div className="dashboard-container">
+      {/* 數據分析圖表區域 - 所有用戶都能看到 */}
+      <div className="main-sections" style={{ paddingTop: '24px' }}>
+        <Card
+          style={{
+            background: 'linear-gradient(135deg, #F9F7FC 0%, #FFF 100%)',
+            border: '2px solid #F0E7FF',
+            borderRadius: '24px',
+            boxShadow: '0 8px 32px rgba(114, 52, 207, 0.12)',
+            marginBottom: '24px'
+          }}
+          bodyStyle={{ padding: '32px' }}
+        >
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            marginBottom: '24px',
+            paddingBottom: '16px',
+            borderBottom: '2px solid #F0E7FF'
+          }}>
+            <BarChartOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
+            <div>
+              <Title level={3} style={{ margin: 0, fontSize: '22px', color: '#333', fontWeight: 'bold' }}>
+                {t('dashboard.dataAnalysis')}
+              </Title>
+              <Text style={{ color: 'rgba(0,0,0,0.6)', fontSize: '14px' }}>
+                {t('dashboard.dataAnalysisDescription')}
+              </Text>
+            </div>
+          </div>
+          
+          <Row gutter={[16, 16]}>
+            {/* 訊息趨勢圖 */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card
+                size="small"
+                style={{
+                  borderRadius: '12px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  height: '280px'
+                }}
+                bodyStyle={{ padding: '16px', height: '100%' }}
+              >
+                <ReactECharts
+                  option={{
+                    title: { 
+                      text: t('dashboard.messageTrend'),
+                      left: 'center',
+                      top: 2,
+                      textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                    },
+                    grid: { left: '10%', right: '10%', top: '30%', bottom: '15%', containLabel: false },
+                    xAxis: { 
+                      type: 'category', 
+                      data: chartData.messageTrend.dates.map(d => d.substring(5)),
+                      axisLabel: { fontSize: 10, rotate: 45 }
+                    },
+                    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+                    tooltip: { trigger: 'axis' },
+                    series: [{
+                      type: 'line',
+                      data: chartData.messageTrend.totalSent,
+                      smooth: true,
+                      lineStyle: { width: 2, color: '#7234CF' },
+                      areaStyle: { 
+                        color: {
+                          type: 'linear',
+                          x: 0, y: 0, x2: 0, y2: 1,
+                          colorStops: [
+                            { offset: 0, color: 'rgba(114, 52, 207, 0.3)' },
+                            { offset: 1, color: 'rgba(114, 52, 207, 0.05)' }
+                          ]
+                        }
+                      },
+                      itemStyle: { color: '#7234CF' }
+                    }]
+                  }}
+                  style={{ height: '100%', width: '100%' }}
+                  opts={{ renderer: 'svg' }}
+                />
+              </Card>
+            </Col>
+            
+            {/* 熱門流程圖 */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card
+                size="small"
+                style={{
+                  borderRadius: '12px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  height: '280px'
+                }}
+                bodyStyle={{ padding: '16px', height: '100%' }}
+              >
+                <ReactECharts
+                  option={{
+                    title: { 
+                      text: t('dashboard.hotWorkflows'),
+                      left: 'center',
+                      top: 2,
+                      textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                    },
+                    grid: { left: '15%', right: '10%', top: '30%', bottom: '5%', containLabel: true },
+                    xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+                    yAxis: { 
+                      type: 'category', 
+                      data: chartData.topWorkflows.slice(0, 3).map(w => w.workflowName.length > 10 ? w.workflowName.substring(0, 10) + '...' : w.workflowName).reverse(),
+                      axisLabel: { fontSize: 10 }
+                    },
+                    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                    series: [{
+                      type: 'bar',
+                      data: chartData.topWorkflows.slice(0, 3).map(w => w.executionCount).reverse(),
+                      itemStyle: { color: '#7234CF', borderRadius: [0, 4, 4, 0] },
+                      label: { show: true, position: 'right', fontSize: 10 }
+                    }]
+                  }}
+                  style={{ height: '100%', width: '100%' }}
+                  opts={{ renderer: 'svg' }}
+                />
+              </Card>
+            </Col>
+            
+            {/* 表單狀態圖 */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card
+                size="small"
+                style={{
+                  borderRadius: '12px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  height: '280px'
+                }}
+                bodyStyle={{ padding: '16px', height: '100%' }}
+              >
+                <ReactECharts
+                  option={{
+                    title: { 
+                      text: t('dashboard.formStatus'),
+                      left: 'center',
+                      top: 2,
+                      textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
+                    },
+                    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                    legend: { 
+                      orient: 'horizontal', 
+                      bottom: 5, 
+                      itemGap: 15, 
+                      textStyle: { fontSize: 10 } 
+                    },
+                    series: [{
+                      type: 'pie',
+                      radius: ['35%', '60%'],
+                      center: ['50%', '45%'],
+                      data: [
+                        { value: chartData.formStatus.pending, name: t('dashboard.pending'), itemStyle: { color: '#faad14' } },
+                        { value: chartData.formStatus.approved, name: t('dashboard.approved'), itemStyle: { color: '#52c41a' } },
+                        { value: chartData.formStatus.rejected, name: t('dashboard.rejected'), itemStyle: { color: '#ff4d4f' } }
+                      ],
+                      label: { 
+                        fontSize: 12, 
+                        formatter: '{c}',
+                        position: 'outside',
+                        distance: 12,
+                        avoidLabelOverlap: true
+                      },
+                      labelLine: {
+                        show: true,
+                        length: 12,
+                        length2: 8,
+                        smooth: true
+                      },
+                      emphasis: {
+                        itemStyle: {
+                          shadowBlur: 10,
+                          shadowOffsetX: 0,
+                          shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                      }
+                    }]
+                  }}
+                  style={{ height: '100%', width: '100%' }}
+                  opts={{ renderer: 'svg' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+        </Card>
+      </div>
+
       {/* 主要功能區域 - 左右分佈 */}
+      {(hasApplicationPermission || hasStudioPermission) && (
       <div className="main-sections" style={{ paddingTop: '24px' }}>
         <Row gutter={[24, 32]}>
-          {/* Application 應用區域 - 左側 33% */}
-          <Col xs={24} lg={8}>
+          {/* Application 應用區域 - 動態寬度 */}
+          {hasApplicationPermission && (
+          <Col xs={24} lg={applicationColSpan}>
             <div className="section-container left-section">
               <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <RocketOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
@@ -870,6 +1231,7 @@ const Dashboard = ({ onMenuSelect }) => {
               </Text>
       
       <Row gutter={[16, 16]}>
+                {hasInterfacePermission(userInterfaces, 'publishedApps') && (
                 <Col xs={24}>
                   <SmartButton
                     title={t('dashboard.publishedApps')}
@@ -887,7 +1249,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
         </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'pendingTasks') && (
                 <Col xs={24}>
                   <SmartButton
                     title={t('dashboard.pendingTasks')}
@@ -903,7 +1267,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
         </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'workflowMonitor') && (
                 <Col xs={24}>
                   <SmartButton
                     title={t('dashboard.runningApps')}
@@ -922,200 +1288,16 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
         </Col>
+                )}
                 
       </Row>
             </div>
           </Col>
+          )}
 
-          {/* Studio 工作室區域 - 右側 67% */}
-          <Col xs={24} lg={16}>
-            {/* 數據分析圖表區域 - 獨立 Card */}
-            <Card
-              style={{
-                background: 'linear-gradient(135deg, #F9F7FC 0%, #FFF 100%)',
-                border: '2px solid #F0E7FF',
-                borderRadius: '24px',
-                boxShadow: '0 8px 32px rgba(114, 52, 207, 0.12)',
-                marginBottom: '24px'
-              }}
-              bodyStyle={{ padding: '32px' }}
-            >
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '12px', 
-                marginBottom: '24px',
-                paddingBottom: '16px',
-                borderBottom: '2px solid #F0E7FF'
-              }}>
-                <BarChartOutlined style={{ fontSize: '32px', color: '#7234CF' }} />
-                <div>
-                  <Title level={3} style={{ margin: 0, fontSize: '22px', color: '#333', fontWeight: 'bold' }}>
-                    {t('dashboard.dataAnalysis')}
-                  </Title>
-                  <Text style={{ color: 'rgba(0,0,0,0.6)', fontSize: '14px' }}>
-                    {t('dashboard.dataAnalysisDescription')}
-                  </Text>
-                </div>
-              </div>
-              
-              <Row gutter={[16, 16]}>
-                {/* 訊息趨勢圖 */}
-                <Col xs={24} sm={12} lg={8}>
-                  <Card
-                    size="small"
-                    style={{
-                      borderRadius: '12px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      height: '280px'
-                    }}
-                    bodyStyle={{ padding: '16px', height: '100%' }}
-                  >
-                    <ReactECharts
-                      option={{
-                        title: { 
-                          text: t('dashboard.messageTrend'),
-                          left: 'center',
-                          top: 2,
-                          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
-                        },
-                        grid: { left: '10%', right: '10%', top: '30%', bottom: '15%', containLabel: false },
-                        xAxis: { 
-                          type: 'category', 
-                          data: chartData.messageTrend.dates.map(d => d.substring(5)),
-                          axisLabel: { fontSize: 10, rotate: 45 }
-                        },
-                        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
-                        tooltip: { trigger: 'axis' },
-                        series: [{
-                          type: 'line',
-                          data: chartData.messageTrend.totalSent,
-                          smooth: true,
-                          lineStyle: { width: 2, color: '#7234CF' },
-                          areaStyle: { 
-                            color: {
-                              type: 'linear',
-                              x: 0, y: 0, x2: 0, y2: 1,
-                              colorStops: [
-                                { offset: 0, color: 'rgba(114, 52, 207, 0.3)' },
-                                { offset: 1, color: 'rgba(114, 52, 207, 0.05)' }
-                              ]
-                            }
-                          },
-                          itemStyle: { color: '#7234CF' }
-                        }]
-                      }}
-                      style={{ height: '100%', width: '100%' }}
-                      opts={{ renderer: 'svg' }}
-                    />
-                  </Card>
-                </Col>
-                
-                {/* 熱門流程圖 */}
-                <Col xs={24} sm={12} lg={8}>
-                  <Card
-                    size="small"
-                    style={{
-                      borderRadius: '12px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      height: '280px'
-                    }}
-                    bodyStyle={{ padding: '16px', height: '100%' }}
-                  >
-                    <ReactECharts
-                      option={{
-                        title: { 
-                          text: t('dashboard.hotWorkflows'),
-                          left: 'center',
-                          top: 2,
-                          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
-                        },
-                        grid: { left: '15%', right: '10%', top: '30%', bottom: '5%', containLabel: true },
-                        xAxis: { type: 'value', axisLabel: { fontSize: 10 } },
-                        yAxis: { 
-                          type: 'category', 
-                          data: chartData.topWorkflows.slice(0, 3).map(w => w.workflowName.length > 10 ? w.workflowName.substring(0, 10) + '...' : w.workflowName).reverse(),
-                          axisLabel: { fontSize: 10 }
-                        },
-                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                        series: [{
-                          type: 'bar',
-                          data: chartData.topWorkflows.slice(0, 3).map(w => w.executionCount).reverse(),
-                          itemStyle: { color: '#7234CF', borderRadius: [0, 4, 4, 0] },
-                          label: { show: true, position: 'right', fontSize: 10 }
-                        }]
-                      }}
-                      style={{ height: '100%', width: '100%' }}
-                      opts={{ renderer: 'svg' }}
-                    />
-                  </Card>
-                </Col>
-                
-                {/* 表單狀態圖 */}
-                <Col xs={24} sm={12} lg={8}>
-                  <Card
-                    size="small"
-                    style={{
-                      borderRadius: '12px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      height: '280px'
-                    }}
-                    bodyStyle={{ padding: '16px', height: '100%' }}
-                  >
-                    <ReactECharts
-                      option={{
-                        title: { 
-                          text: t('dashboard.formStatus'),
-                          left: 'center',
-                          top: 2,
-                          textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' }
-                        },
-                        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-                        legend: { 
-                          orient: 'horizontal', 
-                          bottom: 5, 
-                          itemGap: 15, 
-                          textStyle: { fontSize: 10 } 
-                        },
-                        series: [{
-                          type: 'pie',
-                          radius: ['35%', '60%'],
-                          center: ['50%', '45%'],
-                          data: [
-                            { value: chartData.formStatus.pending, name: t('dashboard.pending'), itemStyle: { color: '#faad14' } },
-                            { value: chartData.formStatus.approved, name: t('dashboard.approved'), itemStyle: { color: '#52c41a' } },
-                            { value: chartData.formStatus.rejected, name: t('dashboard.rejected'), itemStyle: { color: '#ff4d4f' } }
-                          ],
-                          label: { 
-                            fontSize: 12, 
-                            formatter: '{c}',
-                            position: 'outside',
-                            distance: 12,
-                            avoidLabelOverlap: true
-                          },
-                          labelLine: {
-                            show: true,
-                            length: 12,
-                            length2: 8,
-                            smooth: true
-                          },
-                          emphasis: {
-                            itemStyle: {
-                              shadowBlur: 10,
-                              shadowOffsetX: 0,
-                              shadowColor: 'rgba(0, 0, 0, 0.5)'
-                            }
-                          }
-                        }]
-                      }}
-                      style={{ height: '100%', width: '100%' }}
-                      opts={{ renderer: 'svg' }}
-                    />
-                  </Card>
-                </Col>
-              </Row>
-            </Card>
-            
+          {/* Studio 工作室區域 - 動態寬度 */}
+          {hasStudioPermission && (
+          <Col xs={24} lg={studioColSpan}>
             {/* Studio 功能區域 - 獨立 Card */}
             <Card
               style={{
@@ -1143,6 +1325,7 @@ const Dashboard = ({ onMenuSelect }) => {
               </Text>
       
       <Row gutter={[16, 16]}>
+        {hasInterfacePermission(userInterfaces, 'eformList') && (
         <Col xs={24} sm={12} lg={12}>
                   <SmartButton
                     title={t('dashboard.formManagement')}
@@ -1166,7 +1349,9 @@ const Dashboard = ({ onMenuSelect }) => {
                      }}
                   />
                 </Col>
+        )}
                 
+                {hasInterfacePermission(userInterfaces, 'whatsappTemplates') && (
                 <Col xs={24} sm={12} lg={12}>
                   <SmartButton
                     title={t('dashboard.messageTemplates')}
@@ -1233,7 +1418,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'whatsappWorkflow') && (
                 <Col xs={24} sm={12} lg={12}>
                   <SmartButton
                     title={t('dashboard.workflowDesign')}
@@ -1256,7 +1443,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'dataSets') && (
                 <Col xs={24} sm={12} lg={12}>
                   <SmartButton
                     title={t('dashboard.datasetManagement')}
@@ -1280,15 +1469,19 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
         </Col>
+                )}
                 
                 
       </Row>
             </Card>
         </Col>
+          )}
       </Row>
       </div>
+      )}
 
       {/* 管理工具區域 */}
+      {hasAdminToolsPermission && (
       <div className="main-sections" style={{ paddingTop: '24px' }}>
         <Row gutter={[24, 32]}>
           <Col xs={24}>
@@ -1302,6 +1495,7 @@ const Dashboard = ({ onMenuSelect }) => {
               </Text>
       
               <Row gutter={[16, 16]}>
+                {hasInterfacePermission(userInterfaces, 'contactList') && (
                 <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.contactManagement')}
@@ -1320,7 +1514,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'broadcastGroups') && (
                 <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.broadcastGroups')}
@@ -1339,7 +1535,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'hashtags') && (
                 <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.hashtagManagement')}
@@ -1358,7 +1556,9 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
+                )}
                 
+                {hasInterfacePermission(userInterfaces, 'companyUserAdmin') && (
                 <Col xs={24} sm={12} lg={8}>
                   <SmartButton
                     title={t('dashboard.companyUserManagement')}
@@ -1377,11 +1577,13 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
+                )}
               </Row>
             </div>
           </Col>
         </Row>
       </div>
+      )}
 
     </div>
   );

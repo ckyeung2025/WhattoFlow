@@ -119,7 +119,18 @@ namespace PurpleRice.Controllers
             user.Timezone = req.Timezone;
             user.AvatarUrl = req.AvatarUrl;
             if (!string.IsNullOrEmpty(req.PasswordHash))
-                user.PasswordHash = req.PasswordHash;
+            {
+                // 如果傳入的密碼不是已經 hash 的格式，則進行 hash
+                if (!PasswordService.IsHashed(req.PasswordHash))
+                {
+                    user.PasswordHash = PasswordService.HashPassword(req.PasswordHash);
+                }
+                else
+                {
+                    // 如果已經是 hash 格式，直接使用（不建議，但為了兼容性保留）
+                    user.PasswordHash = req.PasswordHash;
+                }
+            }
 
             await _context.SaveChangesAsync();
 

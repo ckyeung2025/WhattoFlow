@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>測試表單</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .readonly {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <form id="order_form">
+        <table>
+            <tr>
+                <td><label for="order_id">訂單號碼</label></td>
+                <td><input type="text" id="order_id" name="order_id" value="S/2506/00617" readonly class="readonly"></td>
+            </tr>
+            <tr>
+                <td><label for="quote_date">報價日期</label></td>
+                <td><input type="date" id="quote_date" name="quote_date" value="2025-06-09"></td>
+            </tr>
+            <tr>
+                <td><label for="client_code">客戶編號</label></td>
+                <td><input type="text" id="client_code" name="client_code" value="P258032-PNS-ADC-E&W"></td>
+            </tr>
+            <tr>
+                <td><label for="client_po_no">Client PO No.</label></td>
+                <td><input type="text" id="client_po_no" name="client_po_no" value="86660393"></td>
+            </tr>
+            <tr>
+                <td><label for="salesperson">銷售人員</label></td>
+                <td><input type="text" id="salesperson" name="salesperson" value="Cindy Wong (WMTD)"></td>
+            </tr>
+            <tr>
+                <td><label for="delivery_address">送貨地址</label></td>
+                <td>
+                    <textarea id="delivery_address" name="delivery_address" rows="3">葵涌四號貨櫃碼頭和黃物流心中二樓201B室</textarea>
+                </td>
+            </tr>
+        </table>
+
+        <h3>產品明細</h3>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>產品編號</th>
+                    <th>描述</th>
+                    <th>條碼</th>
+                    <th>箱規</th>
+                    <th>數量(箱)</th>
+                    <th>單價</th>
+                    <th>金額</th>
+                </tr>
+            </thead>
+            <tbody id="product_rows">
+                <tr>
+                    <td><input type="text" id="product_1_code" name="products[0][code]" value="5061025830992"></td>
+                    <td><input type="text" id="product_1_desc" name="products[0][desc]" value="貝純多效合1洗衣旋風珠(晨露清新)(日本版)44粒 ( PNS Price )"></td>
+                    <td><input type="text" id="product_1_barcode" name="products[0][barcode]" value="5061025830992"></td>
+                    <td><input type="number" id="product_1_pack" name="products[0][pack]" value="12"></td>
+                    <td><input type="number" id="product_1_qty" name="products[0][qty]" value="1.00"></td>
+                    <td><input type="text" id="product_1_price" name="products[0][price]" value="983.88"></td>
+                    <td><input type="text" id="product_1_amount" name="products[0][amount]" value="983.88" readonly class="readonly"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>合共箱: <input type="number" id="total_cartons" name="total_cartons" value="1" readonly class="readonly"></p>
+        <p>合共金額: <input type="text" id="total_amount" name="total_amount" value="$983.88" readonly class="readonly"></p>
+
+        <p>收貨簽署: <input type="text" id="customer_signature" name="customer_signature" value="榮邁科技發展有限公司"></p>
+
+        <button type="submit">提交表單</button>
+    </form>
+</body>
+</html> 

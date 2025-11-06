@@ -133,9 +133,17 @@ namespace PurpleRice.Controllers
                     });
                 }
 
-                _loggingService.LogInformation($"📝 [CreateMetaTemplate] 公司ID: {companyId.Value}");
+                // 獲取當前用戶 ID
+                Guid? userId = null;
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var parsedUserId))
+                {
+                    userId = parsedUserId;
+                }
 
-                var result = await _metaTemplateService.CreateMetaTemplateAsync(companyId.Value, request);
+                _loggingService.LogInformation($"📝 [CreateMetaTemplate] 公司ID: {companyId.Value}, 用戶ID: {userId}");
+
+                var result = await _metaTemplateService.CreateMetaTemplateAsync(companyId.Value, request, userId);
 
                 _loggingService.LogInformation($"✅ [CreateMetaTemplate] 創建成功 - ID: {result.Id}");
 

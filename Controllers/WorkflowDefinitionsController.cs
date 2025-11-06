@@ -288,6 +288,249 @@ namespace PurpleRice.Controllers
             }
         }
 
+        // POST: api/workflowdefinitions/batch-related-records
+        [HttpPost("batch-related-records")]
+        public async Task<IActionResult> GetBatchRelatedRecords([FromBody] WorkflowBatchDeleteRequest request)
+        {
+            var companyId = GetCurrentUserCompanyId();
+            if (!companyId.HasValue)
+            {
+                return Unauthorized(new { error = "無法識別用戶公司" });
+            }
+
+            var workflows = await _db.WorkflowDefinitions
+                .Where(x => request.Ids.Contains(x.Id) && x.CompanyId == companyId.Value)
+                .ToListAsync();
+
+            if (!workflows.Any())
+            {
+                return NotFound(new { error = "未找到流程" });
+            }
+
+            try
+            {
+                // 獲取所有相關的 WorkflowExecutions
+                var executionIds = await _db.WorkflowExecutions
+                    .Where(x => request.Ids.Contains(x.WorkflowDefinitionId))
+                    .Select(x => x.Id)
+                    .ToListAsync();
+
+                // 計算各類相關記錄數量
+                var executionCount = executionIds.Count;
+                var stepExecutionCount = 0;
+                var messageSendCount = 0;
+                var messageRecipientCount = 0;
+                var queryResultCount = 0;
+                var queryRecordCount = 0;
+                var eformInstanceCount = 0;
+                var messageValidationCount = 0;
+                var chatMsgCount = 0;
+                var processVariableValueCount = 0;
+                var processVariableDefinitionCount = 0;
+
+                if (executionIds.Any())
+                {
+                    stepExecutionCount = await _db.WorkflowStepExecutions
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    messageSendCount = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    var messageSendIds = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (messageSendIds.Any())
+                    {
+                        messageRecipientCount = await _db.WorkflowMessageRecipients
+                            .Where(x => messageSendIds.Contains(x.MessageSendId))
+                            .CountAsync();
+                    }
+                    
+                    queryResultCount = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    var queryResultIds = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (queryResultIds.Any())
+                    {
+                        queryRecordCount = await _db.WorkflowDataSetQueryRecords
+                            .Where(x => queryResultIds.Contains(x.QueryResultId))
+                            .CountAsync();
+                    }
+                    
+                    eformInstanceCount = await _db.EFormInstances
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    messageValidationCount = await _db.MessageValidations
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    chatMsgCount = await _db.WhatsAppMonitorChatMsgs
+                        .Where(x => x.WorkflowInstanceId.HasValue && executionIds.Contains(x.WorkflowInstanceId.Value))
+                        .CountAsync();
+                    
+                    processVariableValueCount = await _db.ProcessVariableValues
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                }
+                
+                processVariableDefinitionCount = await _db.ProcessVariableDefinitions
+                    .Where(x => request.Ids.Contains(x.WorkflowDefinitionId))
+                    .CountAsync();
+
+                var relatedRecords = new
+                {
+                    executionCount,
+                    stepExecutionCount,
+                    messageSendCount,
+                    messageRecipientCount,
+                    queryResultCount,
+                    queryRecordCount,
+                    eformInstanceCount,
+                    messageValidationCount,
+                    chatMsgCount,
+                    processVariableValueCount,
+                    processVariableDefinitionCount
+                };
+
+                return Ok(relatedRecords);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"批量查詢相關記錄失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "批量查詢相關記錄失敗", details = ex.Message });
+            }
+        }
+
+        // GET: api/workflowdefinitions/{id}/related-records
+        [HttpGet("{id}/related-records")]
+        public async Task<IActionResult> GetRelatedRecords(int id)
+        {
+            var companyId = GetCurrentUserCompanyId();
+            if (!companyId.HasValue)
+            {
+                return Unauthorized(new { error = "無法識別用戶公司" });
+            }
+
+            var item = await _db.WorkflowDefinitions
+                .Where(x => x.Id == id && x.CompanyId == companyId.Value)
+                .FirstOrDefaultAsync();
+            
+            if (item == null) return NotFound();
+
+            try
+            {
+                // 獲取所有相關的 WorkflowExecutions
+                var executionIds = await _db.WorkflowExecutions
+                    .Where(x => x.WorkflowDefinitionId == id)
+                    .Select(x => x.Id)
+                    .ToListAsync();
+
+                // 計算各類相關記錄數量
+                var executionCount = executionIds.Count;
+                var stepExecutionCount = 0;
+                var messageSendCount = 0;
+                var messageRecipientCount = 0;
+                var queryResultCount = 0;
+                var queryRecordCount = 0;
+                var eformInstanceCount = 0;
+                var messageValidationCount = 0;
+                var chatMsgCount = 0;
+                var processVariableValueCount = 0;
+                var processVariableDefinitionCount = 0;
+
+                if (executionIds.Any())
+                {
+                    stepExecutionCount = await _db.WorkflowStepExecutions
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    messageSendCount = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    var messageSendIds = await _db.WorkflowMessageSends
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (messageSendIds.Any())
+                    {
+                        messageRecipientCount = await _db.WorkflowMessageRecipients
+                            .Where(x => messageSendIds.Contains(x.MessageSendId))
+                            .CountAsync();
+                    }
+                    
+                    queryResultCount = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    var queryResultIds = await _db.WorkflowDataSetQueryResults
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .Select(x => x.Id)
+                        .ToListAsync();
+                    
+                    if (queryResultIds.Any())
+                    {
+                        queryRecordCount = await _db.WorkflowDataSetQueryRecords
+                            .Where(x => queryResultIds.Contains(x.QueryResultId))
+                            .CountAsync();
+                    }
+                    
+                    eformInstanceCount = await _db.EFormInstances
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    messageValidationCount = await _db.MessageValidations
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                    
+                    chatMsgCount = await _db.WhatsAppMonitorChatMsgs
+                        .Where(x => x.WorkflowInstanceId.HasValue && executionIds.Contains(x.WorkflowInstanceId.Value))
+                        .CountAsync();
+                    
+                    processVariableValueCount = await _db.ProcessVariableValues
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .CountAsync();
+                }
+                
+                processVariableDefinitionCount = await _db.ProcessVariableDefinitions
+                    .Where(x => x.WorkflowDefinitionId == id)
+                    .CountAsync();
+
+                var relatedRecords = new
+                {
+                    executionCount,
+                    stepExecutionCount,
+                    messageSendCount,
+                    messageRecipientCount,
+                    queryResultCount,
+                    queryRecordCount,
+                    eformInstanceCount,
+                    messageValidationCount,
+                    chatMsgCount,
+                    processVariableValueCount,
+                    processVariableDefinitionCount
+                };
+
+                return Ok(relatedRecords);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"查詢相關記錄失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "查詢相關記錄失敗", details = ex.Message });
+            }
+        }
+
         // DELETE: api/workflowdefinitions/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
@@ -354,30 +597,128 @@ namespace PurpleRice.Controllers
                         .ToListAsync();
                     _db.WorkflowMessageSends.RemoveRange(messageSends);
 
-                    // 6. 刪除 WorkflowStepExecutions
+                    // 6. 刪除 EFormInstances（需要先刪除相關的 EFormApprovals）
+                    var eformInstances = await _db.EFormInstances
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    
+                    if (eformInstances.Any())
+                    {
+                        // 先獲取所有 EFormInstance IDs
+                        var eformInstanceIds = eformInstances.Select(x => x.Id).ToList();
+                        
+                        // 刪除相關的 EFormApprovals
+                        var eformApprovals = await _db.EFormApprovals
+                            .Where(x => eformInstanceIds.Contains(x.EFormInstanceId))
+                            .ToListAsync();
+                        if (eformApprovals.Any())
+                        {
+                            _db.EFormApprovals.RemoveRange(eformApprovals);
+                        }
+                        
+                        // 然後刪除 EFormInstances
+                        _db.EFormInstances.RemoveRange(eformInstances);
+                    }
+
+                    // 7. 刪除 MessageValidations
+                    var messageValidations = await _db.MessageValidations
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.MessageValidations.RemoveRange(messageValidations);
+
+                    // 8. 刪除 WhatsAppMonitorChatMsgs（設置為軟刪除或直接刪除）
+                    var chatMsgs = await _db.WhatsAppMonitorChatMsgs
+                        .Where(x => x.WorkflowInstanceId.HasValue && executionIds.Contains(x.WorkflowInstanceId.Value))
+                        .ToListAsync();
+                    foreach (var msg in chatMsgs)
+                    {
+                        msg.WorkflowInstanceId = null; // 斷開關聯，保留消息記錄
+                    }
+                    _db.WhatsAppMonitorChatMsgs.UpdateRange(chatMsgs);
+
+                    // 9. 刪除 ProcessVariableValues
+                    var processVariableValues = await _db.ProcessVariableValues
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.ProcessVariableValues.RemoveRange(processVariableValues);
+
+                    // 注意：WhatsAppMessage 表已廢棄，已被 WhatsAppMonitorChatMsg 取代
+                    // WhatsAppMonitorChatMsg 已在步驟 8 中處理（斷開關聯）
+
+                    // 10. 處理 UserSessions（斷開關聯，保留 session 記錄）
+                    var userSessions = await _db.UserSessions
+                        .Where(x => x.CurrentWorkflowExecutionId.HasValue && executionIds.Contains(x.CurrentWorkflowExecutionId.Value))
+                        .ToListAsync();
+                    foreach (var session in userSessions)
+                    {
+                        session.CurrentWorkflowExecutionId = null; // 斷開關聯，保留 session 記錄
+                    }
+                    if (userSessions.Any())
+                    {
+                        _db.UserSessions.UpdateRange(userSessions);
+                    }
+
+                    // 11. 刪除 WorkflowStepExecutions
                     var stepExecutions = await _db.WorkflowStepExecutions
                         .Where(x => executionIds.Contains(x.WorkflowExecutionId))
                         .ToListAsync();
                     _db.WorkflowStepExecutions.RemoveRange(stepExecutions);
 
-                    // 7. 刪除 WorkflowExecutions
+                    // 12. 刪除 WorkflowExecutions
                     var executions = await _db.WorkflowExecutions
                         .Where(x => x.WorkflowDefinitionId == id)
                         .ToListAsync();
                     _db.WorkflowExecutions.RemoveRange(executions);
                 }
 
-                // 8. 最後刪除 WorkflowDefinition
+                // 13. 刪除 ProcessVariableDefinitions
+                var processVariableDefinitions = await _db.ProcessVariableDefinitions
+                    .Where(x => x.WorkflowDefinitionId == id)
+                    .ToListAsync();
+                _db.ProcessVariableDefinitions.RemoveRange(processVariableDefinitions);
+
+                // 14. 最後刪除 WorkflowDefinition
                 _db.WorkflowDefinitions.Remove(item);
                 await _db.SaveChangesAsync();
                 
                 _loggingService.LogInformation($"成功刪除流程 {item.Name} (ID: {id}) 及其所有相關記錄");
                 return NoContent();
             }
+            catch (DbUpdateException dbEx)
+            {
+                // 處理數據庫更新異常，可能是外鍵約束問題
+                var innerEx = dbEx.InnerException;
+                var errorMessage = dbEx.Message;
+                if (innerEx != null)
+                {
+                    errorMessage += $" | Inner: {innerEx.Message}";
+                }
+                
+                _loggingService.LogError($"刪除流程失敗 (數據庫錯誤): {errorMessage}", dbEx);
+                
+                // 檢查是否是外鍵約束錯誤
+                if (errorMessage.Contains("FOREIGN KEY") || errorMessage.Contains("reference constraint") || errorMessage.Contains("DELETE statement conflicted"))
+                {
+                    return StatusCode(500, new { 
+                        error = "刪除流程失敗", 
+                        details = "存在外鍵約束，無法刪除。請先刪除相關記錄。",
+                        technicalDetails = errorMessage
+                    });
+                }
+                
+                return StatusCode(500, new { error = "刪除流程失敗", details = errorMessage });
+            }
             catch (Exception ex)
             {
-                _loggingService.LogError($"刪除流程失敗: {ex.Message}", ex);
-                return StatusCode(500, new { error = "刪除流程失敗", details = ex.Message });
+                var innerEx = ex.InnerException;
+                var errorMessage = ex.Message;
+                if (innerEx != null)
+                {
+                    errorMessage += $" | Inner: {innerEx.Message}";
+                }
+                
+                _loggingService.LogError($"刪除流程失敗: {errorMessage}", ex);
+                return StatusCode(500, new { error = "刪除流程失敗", details = errorMessage });
             }
         }
 
@@ -486,30 +827,128 @@ namespace PurpleRice.Controllers
                         .ToListAsync();
                     _db.WorkflowMessageSends.RemoveRange(messageSends);
 
-                    // 6. 刪除 WorkflowStepExecutions
+                    // 6. 刪除 EFormInstances（需要先刪除相關的 EFormApprovals）
+                    var eformInstances = await _db.EFormInstances
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    
+                    if (eformInstances.Any())
+                    {
+                        // 先獲取所有 EFormInstance IDs
+                        var eformInstanceIds = eformInstances.Select(x => x.Id).ToList();
+                        
+                        // 刪除相關的 EFormApprovals
+                        var eformApprovals = await _db.EFormApprovals
+                            .Where(x => eformInstanceIds.Contains(x.EFormInstanceId))
+                            .ToListAsync();
+                        if (eformApprovals.Any())
+                        {
+                            _db.EFormApprovals.RemoveRange(eformApprovals);
+                        }
+                        
+                        // 然後刪除 EFormInstances
+                        _db.EFormInstances.RemoveRange(eformInstances);
+                    }
+
+                    // 7. 刪除 MessageValidations
+                    var messageValidations = await _db.MessageValidations
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.MessageValidations.RemoveRange(messageValidations);
+
+                    // 8. 刪除 WhatsAppMonitorChatMsgs（斷開關聯，保留消息記錄）
+                    var chatMsgs = await _db.WhatsAppMonitorChatMsgs
+                        .Where(x => x.WorkflowInstanceId.HasValue && executionIds.Contains(x.WorkflowInstanceId.Value))
+                        .ToListAsync();
+                    foreach (var msg in chatMsgs)
+                    {
+                        msg.WorkflowInstanceId = null; // 斷開關聯，保留消息記錄
+                    }
+                    _db.WhatsAppMonitorChatMsgs.UpdateRange(chatMsgs);
+
+                    // 9. 刪除 ProcessVariableValues
+                    var processVariableValues = await _db.ProcessVariableValues
+                        .Where(x => executionIds.Contains(x.WorkflowExecutionId))
+                        .ToListAsync();
+                    _db.ProcessVariableValues.RemoveRange(processVariableValues);
+
+                    // 注意：WhatsAppMessage 表已廢棄，已被 WhatsAppMonitorChatMsg 取代
+                    // WhatsAppMonitorChatMsg 已在步驟 8 中處理（斷開關聯）
+
+                    // 10. 處理 UserSessions（斷開關聯，保留 session 記錄）
+                    var userSessions = await _db.UserSessions
+                        .Where(x => x.CurrentWorkflowExecutionId.HasValue && executionIds.Contains(x.CurrentWorkflowExecutionId.Value))
+                        .ToListAsync();
+                    foreach (var session in userSessions)
+                    {
+                        session.CurrentWorkflowExecutionId = null; // 斷開關聯，保留 session 記錄
+                    }
+                    if (userSessions.Any())
+                    {
+                        _db.UserSessions.UpdateRange(userSessions);
+                    }
+
+                    // 11. 刪除 WorkflowStepExecutions
                     var stepExecutions = await _db.WorkflowStepExecutions
                         .Where(x => executionIds.Contains(x.WorkflowExecutionId))
                         .ToListAsync();
                     _db.WorkflowStepExecutions.RemoveRange(stepExecutions);
 
-                    // 7. 刪除 WorkflowExecutions
+                    // 12. 刪除 WorkflowExecutions
                     var executions = await _db.WorkflowExecutions
                         .Where(x => request.Ids.Contains(x.WorkflowDefinitionId))
                         .ToListAsync();
                     _db.WorkflowExecutions.RemoveRange(executions);
                 }
 
-                // 8. 最後刪除 WorkflowDefinitions
+                // 13. 刪除 ProcessVariableDefinitions
+                var processVariableDefinitions = await _db.ProcessVariableDefinitions
+                    .Where(x => request.Ids.Contains(x.WorkflowDefinitionId))
+                    .ToListAsync();
+                _db.ProcessVariableDefinitions.RemoveRange(processVariableDefinitions);
+
+                // 14. 最後刪除 WorkflowDefinitions
                 _db.WorkflowDefinitions.RemoveRange(workflowsToDelete);
                 await _db.SaveChangesAsync();
 
                 _loggingService.LogInformation($"成功批量刪除 {workflowsToDelete.Count} 個流程及其所有相關記錄");
                 return Ok(new { success = true, deletedCount = workflowsToDelete.Count });
             }
+            catch (DbUpdateException dbEx)
+            {
+                // 處理數據庫更新異常，可能是外鍵約束問題
+                var innerEx = dbEx.InnerException;
+                var errorMessage = dbEx.Message;
+                if (innerEx != null)
+                {
+                    errorMessage += $" | Inner: {innerEx.Message}";
+                }
+                
+                _loggingService.LogError($"批量刪除流程失敗 (數據庫錯誤): {errorMessage}", dbEx);
+                
+                // 檢查是否是外鍵約束錯誤
+                if (errorMessage.Contains("FOREIGN KEY") || errorMessage.Contains("reference constraint") || errorMessage.Contains("DELETE statement conflicted"))
+                {
+                    return StatusCode(500, new { 
+                        error = "批量刪除流程失敗", 
+                        details = "存在外鍵約束，無法刪除。請先刪除相關記錄。",
+                        technicalDetails = errorMessage
+                    });
+                }
+                
+                return StatusCode(500, new { error = "批量刪除流程失敗", details = errorMessage });
+            }
             catch (Exception ex)
             {
-                _loggingService.LogError($"批量刪除流程失敗: {ex.Message}", ex);
-                return StatusCode(500, new { error = "批量刪除流程失敗", details = ex.Message });
+                var innerEx = ex.InnerException;
+                var errorMessage = ex.Message;
+                if (innerEx != null)
+                {
+                    errorMessage += $" | Inner: {innerEx.Message}";
+                }
+                
+                _loggingService.LogError($"批量刪除流程失敗: {errorMessage}", ex);
+                return StatusCode(500, new { error = "批量刪除流程失敗", details = errorMessage });
             }
         }
 

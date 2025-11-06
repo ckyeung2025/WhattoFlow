@@ -4,6 +4,7 @@ using PurpleRice.Data;
 using PurpleRice.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -130,7 +131,7 @@ namespace PurpleRice.Services
                     }
                     
                     // 調用 Meta 模板發送方法
-                    return await SendMetaTemplateMessageAsync(to, templateName, variables, company, templateLanguage);
+                    return await SendMetaTemplateMessageAsync(to, templateName, variables, company, templateLanguage, dbContext);
                 }
                 else
                 {
@@ -244,7 +245,7 @@ namespace PurpleRice.Services
                 throw new Exception($"找不到對應的公司記錄，Company ID: {workflowDefinition.CompanyId}");
             }
 
-            _loggingService.LogInformation($"找到公司記錄: {company.Name}");
+            _loggingService.LogInformation($"找到公司記錄: {company.Name} (ID: {company.Id})");
 
             // 驗證 WhatsApp 配置
             if (string.IsNullOrEmpty(company.WA_API_Key))
@@ -257,8 +258,22 @@ namespace PurpleRice.Services
                 throw new Exception("該公司未配置 WhatsApp Phone Number ID");
             }
 
-            _loggingService.LogInformation($"公司 WhatsApp API Key: {company.WA_API_Key}");
-            _loggingService.LogInformation($"公司 WhatsApp Phone Number ID: {company.WA_PhoneNo_ID}");
+            // 記錄部分 API Key 和 Phone Number ID（用於調試，不記錄完整值）
+            var maskedApiKey = company.WA_API_Key.Length > 8 
+                ? $"{company.WA_API_Key.Substring(0, 4)}...{company.WA_API_Key.Substring(company.WA_API_Key.Length - 4)}" 
+                : "***";
+            var maskedPhoneId = company.WA_PhoneNo_ID.Length > 8 
+                ? $"{company.WA_PhoneNo_ID.Substring(0, 4)}...{company.WA_PhoneNo_ID.Substring(company.WA_PhoneNo_ID.Length - 4)}" 
+                : "***";
+            
+            _loggingService.LogInformation($"🔑 公司 WhatsApp 配置 - API Key: {maskedApiKey}, Phone Number ID: {maskedPhoneId}, Business Account ID: {company.WA_Business_Account_ID ?? "null"}");
+            
+            // ⚠️ 重要警告：如果配置了 Business Account ID，但 Phone Number ID 可能屬於不同的 WABA
+            // 這會導致發送消息時找不到模板（因為模板屬於 Business Account ID 指定的 WABA）
+            if (!string.IsNullOrEmpty(company.WA_Business_Account_ID))
+            {
+                _loggingService.LogWarning($"⚠️ 重要：請確保 Phone Number ID ({maskedPhoneId}) 屬於 Business Account ID ({company.WA_Business_Account_ID}) 指定的 WABA。如果不匹配，發送消息時可能找不到模板。");
+            }
 
             return company;
         }
@@ -870,7 +885,8 @@ namespace PurpleRice.Services
             string templateName, 
             Dictionary<string, string> variables,
             Company company,
-            string languageCode = null)  // 添加語言代碼參數
+            string languageCode = null,  // 添加語言代碼參數
+            PurpleRiceDbContext dbContext = null)  // 添加 dbContext 參數，用於從數據庫讀取 header_url
         {
             try
             {
@@ -895,143 +911,770 @@ namespace PurpleRice.Services
                 // 構建 Meta API 的 template components
                 var components = new List<object>();
                 
+                // ========== 智能處理 Header Component (IMAGE/VIDEO/DOCUMENT) ==========
+                // 先從 Meta API 獲取 template 定義，檢查 header 是否為靜態
+                bool hasStaticHeader = false;
+                string templateHeaderFormat = null;
+                
+                try
+                {
+                    // 獲取 template 定義以檢查 header 類型
+                    var templateUrl = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_Business_Account_ID}/message_templates";
+                    var templateQueryUrl = $"{templateUrl}?name={Uri.EscapeDataString(templateName)}&fields=name,components";
+                    
+                    using var httpClient = new HttpClient();
+                    httpClient.DefaultRequestHeaders.Authorization = 
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                    
+                    var templateResponse = await httpClient.GetAsync(templateQueryUrl);
+                    if (templateResponse.IsSuccessStatusCode)
+                    {
+                        var templateContent = await templateResponse.Content.ReadAsStringAsync();
+                        _loggingService.LogInformation($"🔍 Template 定義響應: {templateContent}");
+                        var templateJson = JsonSerializer.Deserialize<JsonElement>(templateContent);
+                        
+                        if (templateJson.TryGetProperty("data", out var dataArray) && dataArray.GetArrayLength() > 0)
+                        {
+                            var templateData = dataArray[0];
+                            if (templateData.TryGetProperty("components", out var componentsArray))
+                            {
+                                foreach (var component in componentsArray.EnumerateArray())
+                                {
+                                    if (component.TryGetProperty("type", out var compType) && 
+                                        compType.GetString() == "HEADER")
+                                    {
+                                        // 檢查是否有 format（IMAGE/VIDEO/DOCUMENT）
+                                        // 注意：TEXT header 沒有 format 屬性，或 format 為空
+                                        if (component.TryGetProperty("format", out var format))
+                                        {
+                                            var formatValue = format.GetString();
+                                            
+                                            // 只有在 format 明確存在且不為空時，才設置 templateHeaderFormat
+                                            // 避免 TEXT header 或空的 format 被誤判為 IMAGE/VIDEO/DOCUMENT
+                                            // 注意：TEXT header 的 format 可能是 null、空字符串，或者根本沒有 format 屬性
+                                            if (!string.IsNullOrEmpty(formatValue) && 
+                                                formatValue.ToUpper() != "TEXT")
+                                            {
+                                                templateHeaderFormat = formatValue;
+                                                _loggingService.LogInformation($"🔍 檢測到 Template Header Format: {templateHeaderFormat}");
+                                                
+                                                // 檢查是否有 example（靜態 header）
+                                                if (component.TryGetProperty("example", out var example))
+                                            {
+                                                // 如果 example 中有 header_handle，說明是靜態的
+                                                // header_handle 可能是數組格式：["4:..."] 或單個值
+                                                if (example.TryGetProperty("header_handle", out var headerHandle))
+                                                {
+                                                    // 檢查 header_handle 是否有值（可能是數組或字符串）
+                                                    bool hasHandleValue = false;
+                                                    
+                                                    if (headerHandle.ValueKind == JsonValueKind.Array)
+                                                    {
+                                                        // 數組格式：["4:..."]
+                                                        if (headerHandle.GetArrayLength() > 0)
+                                                        {
+                                                            var firstHandle = headerHandle[0];
+                                                            if (firstHandle.ValueKind == JsonValueKind.String && 
+                                                                !string.IsNullOrEmpty(firstHandle.GetString()))
+                                                            {
+                                                                hasHandleValue = true;
+                                                                _loggingService.LogInformation($"✅ 檢測到 header_handle 數組: [{firstHandle.GetString()}]");
+                                                            }
+                                                        }
+                                                    }
+                                                    else if (headerHandle.ValueKind == JsonValueKind.String)
+                                                    {
+                                                        // 字符串格式
+                                                        if (!string.IsNullOrEmpty(headerHandle.GetString()))
+                                                        {
+                                                            hasHandleValue = true;
+                                                            _loggingService.LogInformation($"✅ 檢測到 header_handle 字符串: {headerHandle.GetString()}");
+                                                        }
+                                                    }
+                                                    
+                                                    if (hasHandleValue)
+                                                    {
+                                                        hasStaticHeader = true;
+                                                        _loggingService.LogInformation($"✅ Template 有靜態 Header（已上傳 handle），發送時無需提供 header component");
+                                                    }
+                                                    else
+                                                    {
+                                                        _loggingService.LogInformation($"ℹ️ Template Header 的 header_handle 為空，需要動態參數");
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    _loggingService.LogInformation($"ℹ️ Template Header 的 example 中無 header_handle，需要動態參數");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // 如果沒有 example，但 format 是 IMAGE/VIDEO/DOCUMENT，可能是動態 header
+                                                // 但根據 Meta API，如果定義了 format，通常需要 example
+                                                _loggingService.LogInformation($"ℹ️ Template Header 無 example，可能是動態 header");
+                                            }
+                                            }
+                                            else if (formatValue?.ToUpper() == "TEXT")
+                                            {
+                                                // format 明確是 TEXT
+                                                _loggingService.LogInformation($"ℹ️ Template Header format 是 TEXT，不需要 header_url");
+                                                templateHeaderFormat = null; // 明確設置為 null，避免誤判
+                                            }
+                                            else
+                                            {
+                                                // format 為 null 或空，說明是 TEXT header 或沒有 format
+                                                _loggingService.LogInformation($"ℹ️ Template Header format 為空或 null，判定為 TEXT header，不需要 header_url");
+                                                templateHeaderFormat = null; // 明確設置為 null，避免誤判
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // 沒有 format 屬性，說明是 TEXT header
+                                            _loggingService.LogInformation($"ℹ️ Template Header 無 format 屬性，是 TEXT header，不需要 header_url");
+                                            templateHeaderFormat = null; // 明確設置為 null
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"⚠️ 無法獲取 template 定義，將使用變數判斷: {ex.Message}");
+                    // 如果獲取失敗，將 templateHeaderFormat 設為 null，避免誤判
+                    // 這樣只有當用戶明確提供 header_url 變數時才會處理
+                    templateHeaderFormat = null;
+                }
+                
+                // 根據 Meta API 的官方要求：
+                // **重要**：即使 template 有靜態 header_handle（創建時上傳的），發送時**仍然必須**提供 header component
+                // 這是 Meta API 的特殊行為：header_handle 只用於審核，發送時需要提供 header_url 或 media_id
+                // 所以我們需要：
+                // - 無論是否有靜態 header，都需要提供 header_url（從變數、數據庫或文件系統獲取）
+                // - 如果沒有提供，Meta API 會報錯
+                
+                // 檢查用戶是否提供了 header_url
+                bool userProvidedHeaderUrl = false;
+                string headerUrl = null;
+                string headerType = null;
+                string headerFilename = null;
+                
+                // 嘗試從變數中獲取 header_url（無論是否有靜態 header）
+                if (variables != null && variables.Any())
+                {
+                    // 檢查是否有 header 相關的變數
+                    // 支持以下格式：
+                    // - "header_url" 或 "headerUrl"：header 的 URL
+                    // - "header_type" 或 "headerType"：header 類型（image/video/document）
+                    // - "header_filename" 或 "headerFilename"：文件名（僅 DOCUMENT 需要）
+                    
+                    // 嘗試從變數中獲取 header 信息
+                    if (variables.TryGetValue("header_url", out var headerUrlValue) && !string.IsNullOrEmpty(headerUrlValue))
+                    {
+                        headerUrl = headerUrlValue;
+                        userProvidedHeaderUrl = true;
+                    }
+                    else if (variables.TryGetValue("headerUrl", out headerUrlValue) && !string.IsNullOrEmpty(headerUrlValue))
+                    {
+                        headerUrl = headerUrlValue;
+                        userProvidedHeaderUrl = true;
+                    }
+                    else if (variables.TryGetValue("header", out headerUrlValue) && !string.IsNullOrEmpty(headerUrlValue))
+                    {
+                        headerUrl = headerUrlValue;
+                        userProvidedHeaderUrl = true;
+                    }
+                    
+                    if (variables.TryGetValue("header_type", out var headerTypeValue))
+                    {
+                        headerType = headerTypeValue?.ToLower();
+                    }
+                    else if (variables.TryGetValue("headerType", out headerTypeValue))
+                    {
+                        headerType = headerTypeValue?.ToLower();
+                    }
+                    
+                    if (variables.TryGetValue("header_filename", out var headerFilenameValue))
+                    {
+                        headerFilename = headerFilenameValue;
+                    }
+                    else if (variables.TryGetValue("headerFilename", out headerFilenameValue))
+                    {
+                        headerFilename = headerFilenameValue;
+                    }
+                }
+                
+                // 即使有靜態 header_handle，Meta API 仍然要求提供 header component
+                // 所以需要從數據庫或文件系統獲取 header_url
+                if (string.IsNullOrEmpty(headerUrl) && !string.IsNullOrEmpty(templateHeaderFormat))
+                {
+                    // 優先從數據庫讀取
+                    if (dbContext != null)
+                    {
+                        try
+                        {
+                            _loggingService.LogInformation($"🔍 嘗試從數據庫讀取 template {templateName} (CompanyId: {company.Id}) 的 HeaderUrl...");
+                            
+                            // 使用 Select 時處理 NULL 值，避免 SqlNullValueException
+                            var templateRecord = await dbContext.WhatsAppTemplates
+                                .Where(t => 
+                                    t.CompanyId == company.Id && 
+                                    t.Name == templateName && 
+                                    t.TemplateSource == "Meta")
+                                .Select(t => new { 
+                                    HeaderUrl = t.HeaderUrl ?? string.Empty, 
+                                    HeaderType = t.HeaderType ?? string.Empty, 
+                                    HeaderFilename = t.HeaderFilename ?? string.Empty
+                                })
+                                .FirstOrDefaultAsync();
+                            
+                            if (templateRecord != null)
+                            {
+                                _loggingService.LogInformation($"🔍 找到數據庫記錄: HeaderUrl={(string.IsNullOrEmpty(templateRecord.HeaderUrl) ? "空" : templateRecord.HeaderUrl)}, HeaderType={(string.IsNullOrEmpty(templateRecord.HeaderType) ? "空" : templateRecord.HeaderType)}, HeaderFilename={(string.IsNullOrEmpty(templateRecord.HeaderFilename) ? "空" : templateRecord.HeaderFilename)}");
+                                
+                                if (!string.IsNullOrEmpty(templateRecord.HeaderUrl))
+                                {
+                                    headerUrl = templateRecord.HeaderUrl;
+                                    headerType = string.IsNullOrEmpty(templateRecord.HeaderType) ? templateHeaderFormat.ToLower() : templateRecord.HeaderType;
+                                    headerFilename = string.IsNullOrEmpty(templateRecord.HeaderFilename) ? null : templateRecord.HeaderFilename;
+                                    
+                                    _loggingService.LogInformation($"✅ 從數據庫讀取 Header URL: {headerUrl}, Type: {headerType}");
+                                    userProvidedHeaderUrl = false; // 標記為自動獲取
+                                }
+                                else
+                                {
+                                    _loggingService.LogWarning($"⚠️ 數據庫記錄存在，但 HeaderUrl 為空。Template 名稱: {templateName}, CompanyId: {company.Id}");
+                                }
+                            }
+                            else
+                            {
+                                _loggingService.LogWarning($"⚠️ 數據庫中未找到 template 記錄。Template 名稱: {templateName}, CompanyId: {company.Id}, TemplateSource: Meta");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _loggingService.LogWarning($"⚠️ 從數據庫讀取 header_url 失敗: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"⚠️ dbContext 為 null，無法從數據庫讀取 header_url");
+                    }
+                    
+                    // 如果數據庫中沒有，嘗試從文件系統查找（作為備選方案）
+                    if (string.IsNullOrEmpty(headerUrl))
+                    {
+                        try
+                        {
+                            // 檢查 public/meta-templates 目錄中的文件
+                            // 注意：這只是嘗試，實際的文件名可能包含時間戳和 GUID
+                            var webRootPath = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+                            var metaTemplatesPath = System.IO.Path.Combine(webRootPath, "public", "meta-templates");
+                            
+                            if (Directory.Exists(metaTemplatesPath))
+                            {
+                                // 獲取所有文件
+                                var files = Directory.GetFiles(metaTemplatesPath);
+                                
+                                // 根據 header format 過濾文件類型
+                                var extensions = templateHeaderFormat.ToUpper() switch
+                                {
+                                    "IMAGE" => new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" },
+                                    "VIDEO" => new[] { ".mp4", ".avi", ".mov", ".wmv" },
+                                    "DOCUMENT" => new[] { ".pdf", ".doc", ".docx", ".txt" },
+                                    _ => new[] { ".jpg", ".jpeg", ".png" }
+                                };
+                                
+                                // 查找匹配的文件（按修改時間排序，取最新的）
+                                var matchingFiles = files
+                                    .Where(f => extensions.Contains(System.IO.Path.GetExtension(f).ToLowerInvariant()))
+                                    .OrderByDescending(f => new FileInfo(f).LastWriteTime)
+                                    .ToList();
+                                
+                                if (matchingFiles.Any())
+                                {
+                                    // 使用最新的文件（假設是最近創建的）
+                                    var latestFile = matchingFiles.First();
+                                    var fileName = System.IO.Path.GetFileName(latestFile);
+                                    
+                                    // 構建完整的 HTTPS URL
+                                    // 優先從配置讀取 BaseUrl，如果沒有則使用默認值
+                                    var baseUrl = _configuration["AppSettings:BaseUrl"] 
+                                        ?? _configuration["BaseUrl"] 
+                                        ?? _configuration["ASPNETCORE_URLS"]?.Split(';').FirstOrDefault(u => u.StartsWith("https://"))
+                                        ?? "https://yourdomain.com"; // 默認值，需要用戶配置
+                                    
+                                    // 確保 baseUrl 以 / 結尾時移除，避免重複
+                                    baseUrl = baseUrl.TrimEnd('/');
+                                    
+                                    headerUrl = $"{baseUrl}/public/meta-templates/{fileName}";
+                                    headerType = templateHeaderFormat.ToLower();
+                                    
+                                    _loggingService.LogInformation($"🔍 從文件系統找到匹配的文件: {fileName}");
+                                    _loggingService.LogInformation($"📎 構建完整 URL: {headerUrl}");
+                                    
+                                    // 如果使用默認值，記錄警告
+                                    if (baseUrl == "https://yourdomain.com")
+                                    {
+                                        _loggingService.LogWarning($"⚠️ 請在 appsettings.json 中配置 BaseUrl 或 AppSettings:BaseUrl，當前使用默認值");
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _loggingService.LogWarning($"⚠️ 嘗試從文件系統查找 header URL 失敗: {ex.Message}");
+                        }
+                    }
+                }
+                
+                // 驗證 header URL 是否為完整的 HTTPS URL（Meta API 要求）
+                // 即使有靜態 header，也需要提供 header_url
+                if (!string.IsNullOrEmpty(headerUrl) && !string.IsNullOrEmpty(templateHeaderFormat))
+                {
+                    // 檢查是否為相對路徑（以 / 開頭且不是完整的 URL）
+                    bool isRelativePath = headerUrl.StartsWith("/") && !headerUrl.StartsWith("//");
+                    
+                    // 檢查是否為有效的絕對 URI（必須包含 scheme://）
+                    bool isValidAbsoluteUri = Uri.TryCreate(headerUrl, UriKind.Absolute, out var uri) 
+                        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+                    
+                    // 如果是相對路徑或不是有效的絕對 URI，轉換為完整 URL
+                    if (isRelativePath || !isValidAbsoluteUri)
+                    {
+                        var baseUrl = _configuration["AppSettings:BaseUrl"] 
+                            ?? _configuration["BaseUrl"] 
+                            ?? _configuration["ASPNETCORE_URLS"]?.Split(';').FirstOrDefault(u => u.StartsWith("https://"))
+                            ?? "https://yourdomain.com";
+                        
+                        baseUrl = baseUrl.TrimEnd('/');
+                        headerUrl = $"{baseUrl}{headerUrl}";
+                        
+                        _loggingService.LogInformation($"🔧 將相對路徑轉換為完整 URL: {headerUrl}");
+                    }
+                    
+                    // 驗證 URL 是否為 HTTPS（僅對有效的 HTTP URL 進行轉換）
+                    if (Uri.TryCreate(headerUrl, UriKind.Absolute, out var finalUri) 
+                        && finalUri.Scheme == Uri.UriSchemeHttp)
+                    {
+                        _loggingService.LogWarning($"⚠️ Header URL 是 HTTP，轉換為 HTTPS: {headerUrl}");
+                        headerUrl = headerUrl.Replace("http://", "https://", StringComparison.OrdinalIgnoreCase);
+                        _loggingService.LogInformation($"🔧 已將 HTTP 轉換為 HTTPS: {headerUrl}");
+                    }
+                }
+                
+                // 如果有 header URL 且 template 有 header format，構建 header component
+                // 即使有靜態 header_handle，Meta API 仍然要求提供 header component
+                if (!string.IsNullOrEmpty(headerUrl) && !string.IsNullOrEmpty(templateHeaderFormat))
+                    {
+                        // 如果沒有指定類型，從 template 定義中獲取，或默認使用 image
+                        if (string.IsNullOrEmpty(headerType))
+                        {
+                            if (!string.IsNullOrEmpty(templateHeaderFormat))
+                            {
+                                headerType = templateHeaderFormat.ToLower();
+                            }
+                            else
+                            {
+                                headerType = "image";
+                            }
+                        }
+                        
+                        object headerParameter = null;
+                        
+                        // 根據 header 類型構建參數
+                        switch (headerType.ToLower())
+                        {
+                            case "video":
+                                headerParameter = new
+                                {
+                                    type = "video",
+                                    video = new
+                                    {
+                                        link = headerUrl
+                                    }
+                                };
+                                _loggingService.LogInformation($"📹 構建 VIDEO Header: URL={headerUrl}");
+                                break;
+                                
+                            case "document":
+                                headerParameter = new
+                                {
+                                    type = "document",
+                                    document = new
+                                    {
+                                        link = headerUrl,
+                                        filename = !string.IsNullOrEmpty(headerFilename) ? headerFilename : "document"
+                                    }
+                                };
+                                _loggingService.LogInformation($"📄 構建 DOCUMENT Header: URL={headerUrl}, Filename={headerFilename ?? "document"}");
+                                break;
+                                
+                            case "image":
+                            default:
+                                headerParameter = new
+                                {
+                                    type = "image",
+                                    image = new
+                                    {
+                                        link = headerUrl
+                                    }
+                                };
+                                _loggingService.LogInformation($"🖼️ 構建 IMAGE Header: URL={headerUrl}");
+                                break;
+                        }
+                        
+                        if (headerParameter != null)
+                        {
+                            // Header component 必須放在 body 之前
+                            components.Add(new
+                            {
+                                type = "header",
+                                parameters = new[] { headerParameter }
+                            });
+                            
+                            _loggingService.LogInformation($"✅ Header Component 已添加: Type={headerType}, URL={headerUrl}");
+                        }
+                }
+                
+                // 如果 template 有 header format，但沒有添加 header component（用戶沒有提供 header_url）
+                // 這會在後續的 Meta API 調用中觸發錯誤，我們會在錯誤處理中給出明確提示
+                if (!string.IsNullOrEmpty(templateHeaderFormat) && !components.Any(c => 
+                {
+                    try
+                    {
+                        var component = JsonSerializer.Serialize(c);
+                        var compJson = JsonSerializer.Deserialize<JsonElement>(component);
+                        return compJson.TryGetProperty("type", out var type) && type.GetString() == "header";
+                    }
+                    catch { return false; }
+                }))
+                {
+                    _loggingService.LogWarning($"⚠️ Template 定義了 {templateHeaderFormat} Header，但未提供 header_url 參數。Meta API 將在發送時要求提供 header component。");
+                }
+                // ========== Header Component 處理結束 ==========
+                
+                // ========== 處理 Body Component Parameters ==========
                 if (variables != null && variables.Any())
                 {
                     // Meta 模板的變數處理：支持命名參數和數字參數
                     // 關鍵：Meta API 要求參數按照模板中出現的順序發送
                     // 如果模板使用 {{1}}，參數必須按照 1, 2, 3... 的順序發送
-                    var parameters = new List<object>();
                     
-                    // 檢查是否為數字參數（如 "1", "2", "3"）
-                    var numericKeys = variables.Keys.Where(k => int.TryParse(k, out _)).ToList();
+                    // 過濾掉 header 相關的變數，只處理 body 參數
+                    var bodyVariables = variables
+                        .Where(kvp => !kvp.Key.Equals("header_url", StringComparison.OrdinalIgnoreCase) &&
+                                     !kvp.Key.Equals("headerUrl", StringComparison.OrdinalIgnoreCase) &&
+                                     !kvp.Key.Equals("header", StringComparison.OrdinalIgnoreCase) &&
+                                     !kvp.Key.Equals("header_type", StringComparison.OrdinalIgnoreCase) &&
+                                     !kvp.Key.Equals("headerType", StringComparison.OrdinalIgnoreCase) &&
+                                     !kvp.Key.Equals("header_filename", StringComparison.OrdinalIgnoreCase) &&
+                                     !kvp.Key.Equals("headerFilename", StringComparison.OrdinalIgnoreCase))
+                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                     
-                    if (numericKeys.Any())
+                    if (bodyVariables.Any())
                     {
-                        // 數字參數：按數字順序排序
-                        var sortedKeys = numericKeys.OrderBy(k => int.Parse(k)).ToList();
-                        _loggingService.LogInformation($"🔍 [DEBUG] 檢測到數字參數: {string.Join(", ", sortedKeys)}");
+                        var parameters = new List<object>();
+                    
+                        // 檢查是否為數字參數（如 "1", "2", "3"）
+                        var numericKeys = bodyVariables.Keys.Where(k => int.TryParse(k, out _)).ToList();
                         
-                        foreach (var key in sortedKeys)
+                        if (numericKeys.Any())
                         {
-                            parameters.Add(new
+                            // 數字參數：按數字順序排序
+                            var sortedKeys = numericKeys.OrderBy(k => int.Parse(k)).ToList();
+                            _loggingService.LogInformation($"🔍 [DEBUG] 檢測到數字參數: {string.Join(", ", sortedKeys)}");
+                            
+                            foreach (var key in sortedKeys)
                             {
-                                type = "text",
-                                text = !string.IsNullOrEmpty(variables[key]) ? variables[key] : " "
+                                parameters.Add(new
+                                {
+                                    type = "text",
+                                    text = !string.IsNullOrEmpty(bodyVariables[key]) ? bodyVariables[key] : " "
+                                });
+                            }
+                        }
+                        else
+                        {
+                            // 命名參數：Meta API 不支持命名參數
+                            // 建議用戶在 Meta 模板中使用數字參數 {{1}}, {{2}}, {{3}} 等
+                            var sortedKeys = bodyVariables.Keys.OrderBy(k => k).ToList();
+                            _loggingService.LogInformation($"🔍 [DEBUG] 檢測到命名參數: {string.Join(", ", sortedKeys)}");
+                            _loggingService.LogInformation($"🔍 [DEBUG] 注意：Meta API 不支持命名參數，請在 Meta 模板中使用數字參數 {{1}}, {{2}}, {{3}} 等");
+                            
+                            foreach (var key in sortedKeys)
+                            {
+                                parameters.Add(new
+                                {
+                                    type = "text",
+                                    text = !string.IsNullOrEmpty(bodyVariables[key]) ? bodyVariables[key] : " "
+                                });
+                            }
+                        }
+                    
+                        _loggingService.LogInformation($"🔍 [DEBUG] Body 參數處理詳情:");
+                        _loggingService.LogInformation($"🔍 [DEBUG] 原始變數鍵值對: {string.Join(", ", bodyVariables.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                        _loggingService.LogInformation($"🔍 [DEBUG] 處理後參數順序: {string.Join(", ", parameters.Select((p, i) => $"位置{i+1}={((dynamic)p).text}"))}");
+                        
+                        if (parameters.Any())
+                        {
+                            components.Add(new
+                            {
+                                type = "body",
+                                parameters = parameters
                             });
                         }
-                    }
-                    else
-                    {
-                        // 命名參數：Meta API 不支持命名參數
-                        // 建議用戶在 Meta 模板中使用數字參數 {{1}}, {{2}}, {{3}} 等
-                        var sortedKeys = variables.Keys.OrderBy(k => k).ToList();
-                        _loggingService.LogInformation($"🔍 [DEBUG] 檢測到命名參數: {string.Join(", ", sortedKeys)}");
-                        _loggingService.LogInformation($"🔍 [DEBUG] 注意：Meta API 不支持命名參數，請在 Meta 模板中使用數字參數 {{1}}, {{2}}, {{3}} 等");
                         
-                        foreach (var key in sortedKeys)
-                        {
-                            parameters.Add(new
-                            {
-                                type = "text",
-                                text = !string.IsNullOrEmpty(variables[key]) ? variables[key] : " "
-                            });
-                        }
+                        _loggingService.LogInformation($"Meta 模板 Body 參數處理: 原始變數={JsonSerializer.Serialize(bodyVariables)}, 處理後參數={JsonSerializer.Serialize(parameters)}");
                     }
-                    
-                    _loggingService.LogInformation($"🔍 [DEBUG] 參數處理詳情:");
-                    _loggingService.LogInformation($"🔍 [DEBUG] 原始變數鍵值對: {string.Join(", ", variables.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
-                    _loggingService.LogInformation($"🔍 [DEBUG] 處理後參數順序: {string.Join(", ", parameters.Select((p, i) => $"位置{i+1}={((dynamic)p).text}"))}");
-                    
-                    if (parameters.Any())
-                    {
-                        components.Add(new
-                        {
-                            type = "body",
-                            parameters = parameters
-                        });
-                    }
-                    
-                    _loggingService.LogInformation($"Meta 模板參數處理: 原始變數={JsonSerializer.Serialize(variables)}, 處理後參數={JsonSerializer.Serialize(parameters)}");
-                    _loggingService.LogInformation($"Components 結構: {JsonSerializer.Serialize(components)}");
                 }
+                // ========== Body Component 處理結束 ==========
                 
-                // 使用提供的語言代碼，如果沒有則默認為 zh_TW
-                var finalLanguageCode = languageCode ?? "zh_TW";
-                _loggingService.LogInformation($"使用語言代碼: {finalLanguageCode}");
+                _loggingService.LogInformation($"📦 最終 Components 結構: {JsonSerializer.Serialize(components)}");
+                _loggingService.LogInformation($"📦 Components 數量: {components.Count} (Header: {components.Count(c => ((dynamic)c).type == "header")}, Body: {components.Count(c => ((dynamic)c).type == "body")})");
                 
                 // 構建 Meta API 請求 - 嘗試使用最新版本 {GetApiVersion()}
                 var url = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/messages";
                 
-                // 根據是否有參數來構建不同的 payload
-                object payload;
-                if (components.Any())
+                // 準備嘗試的語言代碼列表
+                var languageCodesToTry = new List<string>();
+                if (!string.IsNullOrEmpty(languageCode))
                 {
-                    // 有參數時，包含 components
-                    payload = new
+                    // 先嘗試指定的語言代碼
+                    languageCodesToTry.Add(languageCode);
+                    // 如果指定的語言失敗，也嘗試其他常見語言代碼（作為備選）
+                    var fallbackLanguages = new[] { "zh_TW", "zh_HK", "zh_CN", "en_US" };
+                    foreach (var fallback in fallbackLanguages)
                     {
-                        messaging_product = "whatsapp",
-                        to = formattedTo,
-                        type = "template",
-                        template = new
+                        if (fallback != languageCode)  // 避免重複
                         {
-                            name = templateName,
-                            language = new
-                            {
-                                code = finalLanguageCode
-                            },
-                            components = components.ToArray()
+                            languageCodesToTry.Add(fallback);
                         }
-                    };
+                    }
+                    _loggingService.LogInformation($"使用指定的語言代碼: {languageCode}，如果失敗將嘗試: {string.Join(", ", languageCodesToTry.Skip(1))}");
                 }
                 else
                 {
-                    // 沒有參數時，不包含 components
-                    payload = new
-                    {
-                        messaging_product = "whatsapp",
-                        to = formattedTo,
-                        type = "template",
-                        template = new
-                        {
-                            name = templateName,
-                            language = new
-                            {
-                                code = finalLanguageCode
-                            }
-                        }
-                    };
+                    // 如果沒有指定語言代碼，嘗試常見的語言代碼（按優先順序）
+                    languageCodesToTry.AddRange(new[] { "zh_TW", "zh_HK", "zh_CN", "en_US" });
+                    _loggingService.LogWarning($"未指定模板語言代碼，將嘗試以下語言: {string.Join(", ", languageCodesToTry)}");
                 }
                 
-                var jsonPayload = JsonSerializer.Serialize(payload);
-                _loggingService.LogInformation($"Meta Template API URL: {url}");
-                _loggingService.LogInformation($"Meta Template API Payload: {jsonPayload}");
-                _loggingService.LogInformation($"是否有參數: {components.Any()}, 參數數量: {components.Count}");
+                Exception lastException = null;
+                string lastResponseContent = null;
                 
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization = 
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
-                
-                var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
-                
-                _loggingService.LogInformation($"開始發送 Meta 模板消息...");
-                var response = await httpClient.PostAsync(url, content);
-                var responseContent = await response.Content.ReadAsStringAsync();
-                
-                _loggingService.LogInformation($"Meta API 響應狀態碼: {response.StatusCode}");
-                _loggingService.LogInformation($"Meta API 響應內容: {responseContent}");
-                
-                if (!response.IsSuccessStatusCode)
+                // 嘗試每個語言代碼
+                foreach (var langCode in languageCodesToTry)
                 {
-                    throw new Exception($"Meta API 發送失敗: {response.StatusCode} - {responseContent}");
+                    try
+                    {
+                        _loggingService.LogInformation($"嘗試使用語言代碼: {langCode}");
+                        
+                        // 根據是否有參數來構建不同的 payload
+                        object payload;
+                        if (components.Any())
+                        {
+                            // 有參數時，包含 components
+                            payload = new
+                            {
+                                messaging_product = "whatsapp",
+                                to = formattedTo,
+                                type = "template",
+                                template = new
+                                {
+                                    name = templateName,
+                                    language = new
+                                    {
+                                        code = langCode
+                                    },
+                                    components = components.ToArray()
+                                }
+                            };
+                        }
+                        else
+                        {
+                            // 沒有參數時，不包含 components
+                            payload = new
+                            {
+                                messaging_product = "whatsapp",
+                                to = formattedTo,
+                                type = "template",
+                                template = new
+                                {
+                                    name = templateName,
+                                    language = new
+                                    {
+                                        code = langCode
+                                    }
+                                }
+                            };
+                        }
+                        
+                        var jsonPayload = JsonSerializer.Serialize(payload);
+                        
+                        // 記錄使用的配置（部分遮罩）
+                        var maskedApiKey = company.WA_API_Key.Length > 8 
+                            ? $"{company.WA_API_Key.Substring(0, 4)}...{company.WA_API_Key.Substring(company.WA_API_Key.Length - 4)}" 
+                            : "***";
+                        var maskedPhoneId = company.WA_PhoneNo_ID.Length > 8 
+                            ? $"{company.WA_PhoneNo_ID.Substring(0, 4)}...{company.WA_PhoneNo_ID.Substring(company.WA_PhoneNo_ID.Length - 4)}" 
+                            : "***";
+                        
+                        _loggingService.LogInformation($"🔑 發送 Meta 模板使用的配置 - API Key: {maskedApiKey}, Phone Number ID: {maskedPhoneId}, Business Account ID: {company.WA_Business_Account_ID ?? "null"}");
+                        _loggingService.LogInformation($"Meta Template API URL: {url}");
+                        _loggingService.LogInformation($"Meta Template API Payload: {jsonPayload}");
+                        _loggingService.LogInformation($"是否有參數: {components.Any()}, 參數數量: {components.Count}");
+                        
+                        using var httpClient = new HttpClient();
+                        httpClient.DefaultRequestHeaders.Authorization = 
+                            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                        
+                        var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                        
+                        _loggingService.LogInformation($"開始發送 Meta 模板消息...");
+                        var response = await httpClient.PostAsync(url, content);
+                        var responseContent = await response.Content.ReadAsStringAsync();
+                        
+                        _loggingService.LogInformation($"Meta API 響應狀態碼: {response.StatusCode}");
+                        _loggingService.LogInformation($"Meta API 響應內容: {responseContent}");
+                        
+                        if (response.IsSuccessStatusCode)
+                        {
+                            // 成功！解析響應獲取消息 ID
+                            var responseJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                            var whatsappMessageId = responseJson.GetProperty("messages")[0].GetProperty("id").GetString();
+                            
+                            _loggingService.LogInformation($"✅ Meta 模板消息發送成功，消息 ID: {whatsappMessageId}，使用的語言代碼: {langCode}");
+                            
+                            return whatsappMessageId;
+                        }
+                        else
+                        {
+                            // 檢查是否是語言不匹配錯誤 (132001)
+                            var errorJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                            if (errorJson.TryGetProperty("error", out var errorProp))
+                            {
+                                var errorCode = errorProp.TryGetProperty("code", out var codeProp) ? codeProp.GetInt32() : 0;
+                                
+                                if (errorCode == 132001)
+                                {
+                                    // 這是語言不匹配錯誤，嘗試下一個語言代碼
+                                    _loggingService.LogWarning($"模板 {templateName} 在語言 {langCode} 中不存在，嘗試下一個語言代碼");
+                                    lastException = new Exception($"Meta API 發送失敗: {response.StatusCode} - {responseContent}");
+                                    lastResponseContent = responseContent;
+                                    continue; // 嘗試下一個語言代碼
+                                }
+                                else if (errorCode == 132012)
+                                {
+                                    // 檢查是否是 header format mismatch 錯誤
+                                    if (errorProp.TryGetProperty("error_data", out var errorData) &&
+                                        errorData.TryGetProperty("details", out var details))
+                                    {
+                                        var detailsStr = details.GetString();
+                                        if (!string.IsNullOrEmpty(detailsStr) && detailsStr.Contains("header") && detailsStr.Contains("expected"))
+                                        {
+                                            // 提取期望的 header 類型
+                                            string expectedType = null;
+                                            if (detailsStr.Contains("expected TEXT"))
+                                            {
+                                                expectedType = "TEXT";
+                                                // 如果 Meta API 說 expected TEXT，說明 template 實際是 TEXT header
+                                                // 不應該添加任何 header component（IMAGE/VIDEO/DOCUMENT）
+                                                var friendlyError = $"模板 {templateName} 是 TEXT 類型的 Header，不應該提供 header_url 參數。\n" +
+                                                                    $"系統誤判為 IMAGE 並添加了 header component，請檢查代碼邏輯。\n" +
+                                                                    $"TEXT header 不需要 header component，只需要 body parameters。";
+                                                _loggingService.LogError($"❌ {friendlyError}");
+                                                throw new Exception(friendlyError);
+                                            }
+                                            else if (detailsStr.Contains("expected IMAGE"))
+                                                expectedType = "IMAGE";
+                                            else if (detailsStr.Contains("expected VIDEO"))
+                                                expectedType = "VIDEO";
+                                            else if (detailsStr.Contains("expected DOCUMENT"))
+                                                expectedType = "DOCUMENT";
+                                            else
+                                            {
+                                                // 無法識別，嘗試從錯誤信息中提取
+                                                expectedType = "UNKNOWN";
+                                            }
+                                            
+                                            if (expectedType == null)
+                                            {
+                                                // 無法識別期望的類型，使用默認邏輯
+                                                expectedType = "IMAGE";
+                                            }
+                                            
+                                            // 如果 expectedType 是 TEXT，已經在上面處理了，這裡不會執行
+                                            // 只有在 expectedType 是 IMAGE/VIDEO/DOCUMENT 時才會執行到這裡
+                                            
+                                            // 檢查是否提供了 header_url
+                                            var hasHeaderUrl = variables != null && (
+                                                variables.ContainsKey("header_url") ||
+                                                variables.ContainsKey("headerUrl") ||
+                                                variables.ContainsKey("header"));
+                                            
+                                            // 檢查是否錯誤地添加了 header component（當 template 實際是 TEXT 時）
+                                            var hasHeaderComponent = components.Any(c =>
+                                            {
+                                                try
+                                                {
+                                                    var component = JsonSerializer.Serialize(c);
+                                                    var compJson = JsonSerializer.Deserialize<JsonElement>(component);
+                                                    return compJson.TryGetProperty("type", out var type) && type.GetString() == "header";
+                                                }
+                                                catch { return false; }
+                                            });
+                                            
+                                            if (!hasHeaderUrl)
+                                            {
+                                                // 無論是否有靜態 header，Meta API 都要求提供 header component
+                                                // 系統應該已經嘗試從數據庫和文件系統自動獲取，但未找到
+                                                var friendlyError = $"模板 {templateName} 定義了 {expectedType} 類型的 Header，但未提供 header_url 參數。\n" +
+                                                                    $"系統已嘗試從數據庫和文件系統自動查找，但未找到匹配的 header_url。\n" +
+                                                                    $"請在節點配置的變數中添加 header_url 和 header_type 參數。\n" +
+                                                                    $"例如：{{\"header_url\": \"https://yourdomain.com/public/meta-templates/xxx.jpg\", \"header_type\": \"{expectedType.ToLower()}\"}}\n" +
+                                                                    $"注意：請使用公開可訪問的 URL（不是 localhost）。\n" +
+                                                                    $"提示：創建 template 時，系統會自動保存 header_url 到數據庫，下次發送時會自動使用。";
+                                                _loggingService.LogError($"❌ {friendlyError}");
+                                                throw new Exception(friendlyError);
+                                            }
+                                            else
+                                            {
+                                                // 提供了 header_url 但仍然出錯，可能是格式問題
+                                                var friendlyError = $"模板 {templateName} 的 Header 格式不匹配。\n" +
+                                                                    $"模板期望: {expectedType}\n" +
+                                                                    $"請檢查 header_type 參數是否正確（應為: {expectedType.ToLower()}）";
+                                                _loggingService.LogError($"❌ {friendlyError}");
+                                                throw new Exception(friendlyError);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 其他錯誤，直接拋出
+                            throw new Exception($"Meta API 發送失敗: {response.StatusCode} - {responseContent}");
+                        }
+                    }
+                    catch (Exception ex) when (ex.Message.Contains("132001") || ex.Message.Contains("does not exist in"))
+                    {
+                        // 語言不匹配錯誤，嘗試下一個語言代碼
+                        _loggingService.LogWarning($"模板 {templateName} 在語言 {langCode} 中不存在: {ex.Message}");
+                        lastException = ex;
+                        continue;
+                    }
                 }
                 
-                // 解析響應獲取消息 ID
-                var responseJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                var whatsappMessageId = responseJson.GetProperty("messages")[0].GetProperty("id").GetString();
+                // 所有語言代碼都失敗了
+                if (lastException != null)
+                {
+                    _loggingService.LogError($"所有嘗試的語言代碼都失敗了。最後的錯誤: {lastResponseContent ?? lastException.Message}");
+                    throw new Exception($"Meta API 發送失敗：模板 {templateName} 在嘗試的語言代碼 ({string.Join(", ", languageCodesToTry)}) 中都不存在。請確認模板的語言版本或在前端配置中指定正確的 templateLanguage。最後的錯誤: {lastResponseContent ?? lastException.Message}");
+                }
                 
-                _loggingService.LogInformation($"✅ Meta 模板消息發送成功，消息 ID: {whatsappMessageId}");
-                
-                return whatsappMessageId;
+                throw new Exception($"Meta API 發送失敗：無法發送模板 {templateName}");
             }
             catch (Exception ex)
             {
@@ -1263,6 +1906,7 @@ namespace PurpleRice.Services
                 _loggingService.LogInformation($"模板類型: {(isMetaTemplate ? "Meta 官方模板" : "內部模板")}");
                 _loggingService.LogInformation($"模板 ID: {templateId}");
                 _loggingService.LogInformation($"模板名稱: {templateName}");
+                _loggingService.LogInformation($"模板語言代碼: {templateLanguage ?? "null (將自動嘗試多個語言)"}");
 
                 // 獲取公司配置
                 var company = await GetCompanyConfigurationAsync(execution, dbContext);
