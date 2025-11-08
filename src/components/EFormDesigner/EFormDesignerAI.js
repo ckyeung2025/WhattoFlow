@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Modal, Input, Button, Alert, Spin, Switch, message } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Modal, Input, Button, Alert, Spin, Switch, message, Select } from 'antd';
 import { RobotOutlined } from '@ant-design/icons';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { apiService } from '../WorkflowDesigner/services/apiService';
 
 const { TextArea } = Input;
 
@@ -19,6 +20,38 @@ const EFormDesignerAI = ({
     const initialContent = htmlContent || '';
     return initialContent.trim().length > 0;
   });
+  const [aiProviders, setAiProviders] = useState([]);
+  const [selectedProviderKey, setSelectedProviderKey] = useState('');
+  const [loadingProviders, setLoadingProviders] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      loadAiProviders();
+    }
+  }, [visible]);
+
+  const loadAiProviders = async () => {
+    try {
+      setLoadingProviders(true);
+      const providers = await apiService.fetchAiProviders();
+      setAiProviders(providers || []);
+      setSelectedProviderKey(prev => {
+        if (prev) {
+          return prev;
+        }
+        if (providers && providers.length > 0) {
+          const active = providers.find(p => p.active);
+          return (active || providers[0]).providerKey;
+        }
+        return '';
+      });
+    } catch (error) {
+      console.error('Failed to load AI providers for EForm designer', error);
+      message.error(t('eformDesigner.loadAiProvidersFailed'));
+    } finally {
+      setLoadingProviders(false);
+    }
+  };
 
   const handleAiGenerateForm = async () => {
     if (!aiPrompt.trim()) {
@@ -26,11 +59,17 @@ const EFormDesignerAI = ({
       return;
     }
 
+    if (aiProviders.length > 0 && !selectedProviderKey) {
+      message.warning(t('eformDesigner.aiProviderRequired'));
+      return;
+    }
+
     setIsGenerating(true);
     try {
       const requestData = {
         prompt: aiPrompt.trim(),
-        includeCurrentHtml: includeCurrentHtml
+        includeCurrentHtml: includeCurrentHtml,
+        providerKey: selectedProviderKey || null
       };
 
       if (includeCurrentHtml && htmlContent.trim()) {
@@ -43,10 +82,12 @@ const EFormDesignerAI = ({
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000);
 
+      const token = localStorage.getItem('token');
       const response = await fetch('/api/FormsUpload/ai-generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify(requestData),
         signal: controller.signal
@@ -94,7 +135,10 @@ const EFormDesignerAI = ({
           type="primary"
           onClick={handleAiGenerateForm}
           loading={isGenerating}
-          disabled={!aiPrompt.trim()}
+          disabled={
+            !aiPrompt.trim() ||
+            (aiProviders.length > 0 && !selectedProviderKey)
+          }
         >
           {isGenerating ? t('eformDesigner.generating') : t('eformDesigner.generateForm')}
         </Button>
@@ -120,6 +164,25 @@ const EFormDesignerAI = ({
             placeholder={t('eformDesigner.placeholderExample')}
             rows={6}
             style={{ fontSize: '14px' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+            {t('eformDesigner.aiProvider')}
+          </label>
+          <Select
+            value={selectedProviderKey || undefined}
+            onChange={value => setSelectedProviderKey(value)}
+            placeholder={t('eformDesigner.aiProviderPlaceholder')}
+            style={{ width: '100%' }}
+            loading={loadingProviders}
+            allowClear
+            options={aiProviders.map(provider => ({
+              value: provider.providerKey,
+              label: `${provider.displayName}${provider.active ? '' : ` (${t('workflowDesigner.aiProviderInactive')})`}`,
+              disabled: provider.active === false
+            }))}
           />
         </div>
 

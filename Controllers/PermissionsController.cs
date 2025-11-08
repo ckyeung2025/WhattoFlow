@@ -53,7 +53,8 @@ namespace PurpleRice.Controllers
                     new { key = "hashtags", label = "標籤管理", category = "adminTools", isParent = (bool?)false, parent = "adminTools" },
                     new { key = "companyUserAdmin", label = "公司/用戶管理", category = "adminTools", isParent = (bool?)false, parent = "adminTools" },
                     new { key = "phoneVerificationAdmin", label = "WhatsApp 電話號碼驗證管理", category = "adminTools", isParent = (bool?)false, parent = "adminTools" },
-                    new { key = "permissionManagement", label = "權限管理", category = "adminTools", isParent = (bool?)false, parent = "adminTools" }
+                    new { key = "permissionManagement", label = "權限管理", category = "adminTools", isParent = (bool?)false, parent = "adminTools" },
+                    new { key = "apiProviders", label = "API 供應商管理", category = "adminTools", isParent = (bool?)false, parent = "adminTools" }
                 };
 
                 _loggingService.LogInformation("成功獲取可用介面列表");
@@ -351,7 +352,7 @@ namespace PurpleRice.Controllers
             {
                 { "application", new List<string> { "publishedApps", "pendingTasks", "workflowMonitor" } },
                 { "studio", new List<string> { "eformList", "whatsappTemplates", "whatsappWorkflow", "dataSets" } },
-                { "adminTools", new List<string> { "contactList", "broadcastGroups", "hashtags", "companyUserAdmin", "phoneVerificationAdmin", "permissionManagement" } }
+                { "adminTools", new List<string> { "contactList", "broadcastGroups", "hashtags", "companyUserAdmin", "phoneVerificationAdmin", "permissionManagement", "apiProviders" } }
             };
 
             var expanded = new HashSet<string>(interfaces);

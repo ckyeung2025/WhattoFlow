@@ -1,0 +1,139 @@
+.api-provider-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+
+.api-provider-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  margin-bottom: 24px;
+}
+
+.api-provider-page__header h2 {
+  margin: 0;
+}
+
+.api-provider-page__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: rgba(114, 46, 209, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.api-provider-page__description {
+  color: rgba(0, 0, 0, 0.55);
+  max-width: 720px;
+}
+
+.api-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+@media (min-width: 1200px) {
+  .api-provider-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.api-provider-card {
+  border-radius: 16px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  min-height: 220px;
+}
+
+.api-provider-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+}
+
+.api-provider-card__header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.api-provider-card__icon {
+  background: #f4f4f4;
+  color: #3a3a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.api-provider-card__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.api-provider-card__name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.api-provider-card__category {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.api-provider-card__description {
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1.5;
+  min-height: 48px;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.api-provider-card__meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.api-provider-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  color: #722ed1;
+  font-weight: 500;
+}
+
+.api-provider-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.api-provider-modal__defaults {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .api-provider-page__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .api-provider-page__description {
+    max-width: 100%;
+  }
+}
+

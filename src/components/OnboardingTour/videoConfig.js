@@ -18,7 +18,7 @@ export const VIDEO_URLS = {
   4: 'https://www.youtube.com/embed/4yr6y_NhpF4', // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
   
   // 步驟 5: 工作流程設計演示
-  5: ''  // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
+  5: 'https://www.youtube.com/embed/lH82AY7vjP0'  // 例如: 'https://www.youtube.com/embed/VIDEO_ID'
 };
 
 // 使用說明：

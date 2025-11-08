@@ -24,7 +24,17 @@ Method doesn't allow unregistered callers (callers without established identity)
 
 ### 2. 設置 API Key
 
-#### 方法 1：環境變量（推薦）
+#### 方法 1：透過系統的「API 管理」介面（推薦）
+1. 以系統管理員身分登入 WhattoFlow 後台
+2. 前往「管理工具」→「API 管理」
+3. 找到 `Google Docs API` 卡片並點擊「設定詳情」
+4. 貼上您的 Google API Key，點擊「儲存設定」
+5. 若需要額外的授權範圍或進階參數，可在「進階設定 (JSON)」欄位中自訂
+
+這些設定會保存於 `CompanyApiProviderSettings` 資料表，支援多公司隔離及加密保存。
+
+#### 方法 2：環境變量（後備方案）
+系統仍會在找不到資料庫設定時嘗試讀取 `GOOGLE_API_KEY` 環境變量：
 ```bash
 # Windows PowerShell
 $env:GOOGLE_API_KEY="your_api_key_here"
@@ -34,13 +44,6 @@ set GOOGLE_API_KEY=your_api_key_here
 
 # Linux/macOS
 export GOOGLE_API_KEY="your_api_key_here"
-```
-
-#### 方法 2：在 appsettings.json 中添加
-```json
-{
-  "GoogleApiKey": "your_api_key_here"
-}
 ```
 
 ### 3. 測試表格權限

@@ -34,6 +34,7 @@ import OnboardingTest from './components/OnboardingTest';
 import PhoneVerificationPage from './pages/PhoneVerificationPage';
 import CompanyPhoneVerificationAdminPage from './pages/CompanyPhoneVerificationAdminPage';
 import PermissionManagementPage from './pages/PermissionManagementPage';
+import ApiProviderManagementPage from './pages/ApiProviderManagementPage';
 
 const { Content } = Layout;
 
@@ -61,6 +62,7 @@ const pathToMenuKey = {
   '/onboarding-test': 'onboarding-test',
   '/phone-verification-admin': 'phoneVerificationAdmin',
   '/permission-management': 'permissionManagement',
+  '/api-providers': 'apiProviders',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -124,6 +126,12 @@ function MainLayout({ userInfo, onLogout }) {
       case 'permissionManagement':
         navigate('/permission-management');
         break;
+      case 'apiProviders':
+        navigate('/api-providers');
+        break;
+      case 'apiProviders':
+        navigate('/api-providers');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -164,6 +172,7 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/hashtags" element={<HashtagsPage />} />
             <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
             <Route path="/permission-management" element={<PermissionManagementPage />} />
+            <Route path="/api-providers" element={<ApiProviderManagementPage />} />
             <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
@@ -244,6 +253,9 @@ function AppContent() {
         break;
       case 'permissionManagement':
         navigate('/permission-management');
+        break;
+      case 'apiProviders':
+        navigate('/api-providers');
         break;
       case 'onboarding':
         navigate('/onboarding');
@@ -435,6 +447,7 @@ function AppContent() {
               <Route path="/hashtags" element={<HashtagsPage />} />
               <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
               <Route path="/permission-management" element={<PermissionManagementPage />} />
+              <Route path="/api-providers" element={<ApiProviderManagementPage />} />
               <Route path="/onboarding" element={<OnboardingManagementPage />} />
               <Route path="/onboarding-test" element={<OnboardingTest />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />

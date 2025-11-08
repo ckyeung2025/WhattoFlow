@@ -202,6 +202,12 @@ BEGIN
     VALUES (@CompanyAdminRoleId, NULL, 'permissionManagement', GETUTCDATE(), GETUTCDATE(), 1);
 END
 
+IF NOT EXISTS (SELECT 1 FROM [dbo].[roles_interface] WHERE [role_id] = @CompanyAdminRoleId AND [company_id] IS NULL AND [interface_key] = 'apiProviders')
+BEGIN
+    INSERT INTO [dbo].[roles_interface] ([role_id], [company_id], [interface_key], [created_at], [updated_at], [is_active])
+    VALUES (@CompanyAdminRoleId, NULL, 'apiProviders', GETUTCDATE(), GETUTCDATE(), 1);
+END
+
 -- Tenant_Admin - 系統默認權限
 IF NOT EXISTS (SELECT 1 FROM [dbo].[roles_interface] WHERE [role_id] = @TenantAdminRoleId AND [company_id] IS NULL AND [interface_key] = 'adminTools')
 BEGIN
@@ -219,6 +225,12 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[roles_interface] WHERE [role_id] = @TenantAd
 BEGIN
     INSERT INTO [dbo].[roles_interface] ([role_id], [company_id], [interface_key], [created_at], [updated_at], [is_active])
     VALUES (@TenantAdminRoleId, NULL, 'permissionManagement', GETUTCDATE(), GETUTCDATE(), 1);
+END
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[roles_interface] WHERE [role_id] = @TenantAdminRoleId AND [company_id] IS NULL AND [interface_key] = 'apiProviders')
+BEGIN
+    INSERT INTO [dbo].[roles_interface] ([role_id], [company_id], [interface_key], [created_at], [updated_at], [is_active])
+    VALUES (@TenantAdminRoleId, NULL, 'apiProviders', GETUTCDATE(), GETUTCDATE(), 1);
 END
 
 PRINT '✅ 系統默認權限數據插入完成'

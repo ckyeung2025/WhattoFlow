@@ -1,23 +1,24 @@
-using Microsoft.AspNetCore.Mvc;
-using System.IO;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
-using System;
-using System.Linq;
-using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Wordprocessing;
-using System.Text;
-using System.Collections.Generic;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
 using PurpleRice.Data;
 using PurpleRice.Models;
-using Microsoft.EntityFrameworkCore;
 using PurpleRice.Services;
-using Microsoft.Extensions.Configuration;
-using System.Net.Http;
-using Newtonsoft.Json;
+using PurpleRice.Services.ApiProviders;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace PurpleRice.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class FormsUploadController : ControllerBase
@@ -27,13 +28,29 @@ namespace PurpleRice.Controllers
         private readonly DocumentConverterService _documentConverter;
         private readonly IConfiguration _configuration;
         private readonly LoggingService _loggingService;
+        private readonly IAiCompletionClient _aiCompletionClient;
 
-        public FormsUploadController(PurpleRiceDbContext context, DocumentConverterService documentConverter, IConfiguration configuration, Func<string, LoggingService> loggingServiceFactory)
+        public FormsUploadController(PurpleRiceDbContext context, DocumentConverterService documentConverter, IConfiguration configuration, Func<string, LoggingService> loggingServiceFactory, IAiCompletionClient aiCompletionClient)
         {
             _context = context;
             _documentConverter = documentConverter;
             _configuration = configuration;
             _loggingService = loggingServiceFactory("FormsUploadController");
+            _aiCompletionClient = aiCompletionClient;
+        }
+
+        private Guid GetCurrentCompanyId()
+        {
+            var companyIdClaim = User?.FindFirst("company_id")
+                ?? User?.FindFirst(ClaimTypes.GroupSid)
+                ?? User?.FindFirst(ClaimTypes.PrimaryGroupSid);
+
+            if (companyIdClaim != null && Guid.TryParse(companyIdClaim.Value, out var companyId))
+            {
+                return companyId;
+            }
+
+            return Guid.Empty;
         }
 
         [HttpPost("image")]
@@ -677,176 +694,58 @@ namespace PurpleRice.Controllers
                     _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 當前 HTML 長度: {request.CurrentHtml.Length}");
                 }
 
-                // 獲取 X.AI 配置
-                var apiKey = _configuration["XAI:ApiKey"];
-                var defaultSystemPrompt = _configuration["XAI:DefaultSystemPrompt"];
-
-                if (string.IsNullOrEmpty(apiKey))
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
                 {
-                    _loggingService.LogWarning($"❌ [GenerateFormWithAI] X.AI API Key 未配置");
-                    return BadRequest(new { success = false, error = "X.AI API Key 未配置" });
+                    _loggingService.LogWarning("❌ [GenerateFormWithAI] 無法取得公司資訊");
+                    return Unauthorized(new { success = false, error = "無法識別公司資訊" });
                 }
 
-                // 檢查是否為測試 API Key
-                if (apiKey.Contains("test-key") || apiKey.Contains("please-replace"))
+                if (string.IsNullOrWhiteSpace(request.Prompt))
                 {
-                    _loggingService.LogInformation($"🧪 [GenerateFormWithAI] 使用測試模式，生成模擬響應");
-                    
-                    // 生成模擬的 HTML 表單
-                    var mockHtmlContent = GenerateMockHtmlForm(request.Prompt, request.IncludeCurrentHtml, request.CurrentHtml);
-                    var mockFormName = ExtractFormNameFromPrompt(request.Prompt) ?? "AI 生成的表單";
-                    
-                    return Ok(new
-                    {
-                        success = true,
-                        htmlContent = mockHtmlContent,
-                        formName = mockFormName,
-                        message = "測試模式：已生成模擬表單"
-                    });
+                    return BadRequest(new { success = false, error = "請輸入生成表單的需求描述" });
                 }
 
-                // 構建用戶消息
-                var userMessage = request.Prompt;
-                if (request.IncludeCurrentHtml && !string.IsNullOrEmpty(request.CurrentHtml))
+                var systemPrompt = _configuration["Fill-Form-Prompt:DefaultSystemPrompt"] ?? string.Empty;
+                var userPrompt = request.Prompt.Trim();
+
+                if (request.IncludeCurrentHtml && !string.IsNullOrWhiteSpace(request.CurrentHtml))
                 {
-                    userMessage = $"用戶需求：{request.Prompt}\n\n當前 HTML 內容：\n{request.CurrentHtml}\n\n請基於以上內容進行修改和優化。";
+                    userPrompt = $"用戶需求：{request.Prompt}\n\n當前 HTML 內容：\n{request.CurrentHtml}\n\n請基於以上內容進行修改和優化。";
                 }
 
-                // 從配置文件中獲取 AI 模型參數
-                var model = _configuration["XAI:Model"] ?? "grok-3";
-                var stream = _configuration.GetValue<bool>("XAI:Stream", true);
-                var temperature = _configuration.GetValue<double>("XAI:Temperature", 0.8);
-                var maxTokens = _configuration.GetValue<int>("XAI:MaxTokens", 15000);
-                var topP = _configuration.GetValue<double>("XAI:TopP", 0.9);
-
-                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 模型: {model}");
-                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 流式響應: {stream}");
-                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 溫度: {temperature}");
-                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 最大 Token: {maxTokens}");
-                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] Top P: {topP}");
-
-                // 構建請求 - 使用配置文件中的參數
-                var aiRequest = new
+                var messages = new[]
                 {
-                    messages = new[]
-                    {
-                        new { role = "system", content = defaultSystemPrompt },
-                        new { role = "user", content = userMessage }
-                    },
-                    model = model,
-                    stream = stream,
-                    temperature = temperature,
-                    max_tokens = maxTokens,
-                    top_p = topP
+                    new AiMessage("user", userPrompt)
                 };
 
-                _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 發送請求到 X.AI API");
+                var aiResult = await _aiCompletionClient.SendChatAsync(
+                    companyId,
+                    request.ProviderKey,
+                    systemPrompt,
+                    messages);
 
-                using (var httpClient = new HttpClient())
+                if (!aiResult.Success || string.IsNullOrWhiteSpace(aiResult.Content))
                 {
-                    // 設置更長的超時時間，因為 AI 生成可能需要較長時間
-                    httpClient.Timeout = TimeSpan.FromMinutes(10); // 10分鐘超時
-                    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-                    httpClient.DefaultRequestHeaders.Add("User-Agent", "PurpleRice-FormGenerator/1.0");
-                    // 移除錯誤的 Content-Type 頭部設置
-                    // httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
-
-                    var jsonContent = JsonConvert.SerializeObject(aiRequest);
-                    var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
-                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 請求內容: {jsonContent}");
-                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] API Key: {apiKey.Substring(0, 10)}...");
-                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 請求 URL: https://api.x.ai/v1/chat/completions");
-
-                    try
-                    {
-                        // 使用正確的 X.AI API 端點
-                        var response = await httpClient.PostAsync("https://api.x.ai/v1/chat/completions", content);
-                        
-                        _loggingService.LogInformation($"🤖 [GenerateFormWithAI] X.AI 響應狀態: {response.StatusCode}");
-
-                        if (!response.IsSuccessStatusCode)
-                        {
-                            var errorContent = await response.Content.ReadAsStringAsync();
-                            _loggingService.LogError($"❌ [GenerateFormWithAI] X.AI API 請求失敗: {response.StatusCode} - {errorContent}");
-                            return StatusCode(500, new { success = false, error = $"X.AI API 請求失敗: {response.StatusCode} - {errorContent}" });
-                        }
-
-                        // 處理流式響應
-                        var responseStream = await response.Content.ReadAsStreamAsync();
-                        var reader = new StreamReader(responseStream);
-                        var fullResponse = new StringBuilder();
-                        
-                        _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 開始處理流式響應...");
-                        
-                        string line;
-                        while ((line = await reader.ReadLineAsync()) != null)
-                        {
-                            if (line.StartsWith("data: "))
-                            {
-                                var data = line.Substring(6);
-                                if (data == "[DONE]")
-                                {
-                                    _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 流式響應完成");
-                                    break;
-                                }
-                                
-                                try
-                                {
-                                    var jsonData = JsonConvert.DeserializeObject<dynamic>(data);
-                                    var streamContent = jsonData?.choices?[0]?.delta?.content?.ToString();
-                                    if (!string.IsNullOrEmpty(streamContent))
-                                    {
-                                        fullResponse.Append(streamContent);
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    _loggingService.LogWarning($"⚠️ [GenerateFormWithAI] 解析流式數據時發生錯誤: {ex.Message}");
-                                }
-                            }
-                        }
-
-                        var generatedContent = fullResponse.ToString();
-                        _loggingService.LogInformation($"🤖 [GenerateFormWithAI] 完整響應長度: {generatedContent.Length}");
-
-                        if (string.IsNullOrEmpty(generatedContent))
-                        {
-                            _loggingService.LogWarning($"❌ [GenerateFormWithAI] AI 生成內容為空");
-                            return BadRequest(new { success = false, error = "AI 生成內容為空" });
-                        }
-
-                        _loggingService.LogInformation($"✅ [GenerateFormWithAI] AI 生成成功，內容長度: {generatedContent.Length}");
-
-                        // 提取 HTML 內容
-                        var htmlContent = ExtractHtmlFromResponse(generatedContent);
-                        var formName = ExtractFormNameFromResponse(generatedContent) ?? "AI 生成的表單";
-
-                        _loggingService.LogInformation($"✅ [GenerateFormWithAI] 提取的 HTML 長度: {htmlContent.Length}");
-                        _loggingService.LogInformation($"✅ [GenerateFormWithAI] 表單名稱: {formName}");
-
-                        return Ok(new
-                        {
-                            success = true,
-                            htmlContent = htmlContent,
-                            formName = formName,
-                            message = "AI 已成功生成表單"
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        _loggingService.LogError($"❌ [GenerateFormWithAI] HTTP 請求異常: {ex.Message}", ex);
-                        _loggingService.LogError($"❌ [GenerateFormWithAI] 異常類型: {ex.GetType().Name}");
-                        _loggingService.LogError($"❌ [GenerateFormWithAI] 錯誤堆疊: {ex.StackTrace}");
-                        return StatusCode(500, new { success = false, error = $"HTTP 請求異常: {ex.Message}" });
-                    }
+                    var providerLabel = string.IsNullOrWhiteSpace(aiResult.ProviderKey) ? request.ProviderKey ?? "(unspecified)" : aiResult.ProviderKey;
+                    _loggingService.LogWarning($"❌ [GenerateFormWithAI] AI 生成失敗，Provider: {providerLabel}, 錯誤: {aiResult.ErrorMessage ?? "Unknown"}");
+                    return StatusCode(500, new { success = false, error = aiResult.ErrorMessage ?? "AI 生成失敗" });
                 }
+
+                var formName = ExtractFormNameFromPrompt(request.Prompt) ?? "AI 生成的表單";
+
+                return Ok(new
+                {
+                    success = true,
+                    htmlContent = aiResult.Content,
+                    formName,
+                    message = "AI 已成功生成表單"
+                });
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"❌ [GenerateFormWithAI] AI 生成失敗: {ex.Message}", ex);
-                _loggingService.LogError($"❌ [GenerateFormWithAI] 錯誤堆疊: {ex.StackTrace}");
-                return StatusCode(500, new { success = false, error = $"AI 生成失敗: {ex.Message}" });
+                _loggingService.LogError($"❌ [GenerateFormWithAI] 發生錯誤: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, error = $"AI 生成表單失敗: {ex.Message}" });
             }
         }
 
@@ -1179,6 +1078,7 @@ namespace PurpleRice.Controllers
         public string Prompt { get; set; } = string.Empty;
         public bool IncludeCurrentHtml { get; set; } = false;
         public string CurrentHtml { get; set; } = string.Empty;
+        public string? ProviderKey { get; set; }
     }
 
     public class ConvertRequest

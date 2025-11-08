@@ -532,15 +532,24 @@ namespace PurpleRice.Services.WebhookServices
 
                 // 執行驗證
                 var validationResult = await _messageValidator.ValidateMessageAsync(
-                    messageData.MessageText, execution, execution.CurrentWaitingStep ?? 0);
+                    messageData.MessageText,
+                    execution,
+                    stepExecution);
 
                 validation.IsValid = validationResult.IsValid;
                 validation.ErrorMessage = validationResult.ErrorMessage;
-                validation.ValidatorType = "default";
+                validation.ValidatorType = validationResult.ValidatorType ?? "default";
 
                 if (validationResult.IsValid)
                 {
-                    validation.ProcessedData = JsonSerializer.Serialize(validationResult.ProcessedData);
+                    if (validationResult.ProcessedData is string processedText)
+                    {
+                        validation.ProcessedData = processedText;
+                    }
+                    else if (validationResult.ProcessedData != null)
+                    {
+                        validation.ProcessedData = JsonSerializer.Serialize(validationResult.ProcessedData);
+                    }
                 }
 
                 _context.MessageValidations.Add(validation);

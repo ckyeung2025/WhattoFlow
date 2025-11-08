@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
 using PurpleRice.Models;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PurpleRice.Models.DTOs;
@@ -32,6 +33,21 @@ namespace PurpleRice.Controllers
             _loggingService = loggingServiceFactory("DataSetsController");
             _googleSheetsService = googleSheetsService;
             _serviceProvider = serviceProvider;
+        }
+
+        private Guid GetCurrentCompanyId()
+        {
+            var companyClaim = User?.FindFirst("company_id")
+                ?? User?.FindFirst(ClaimTypes.GroupSid)
+                ?? User?.FindFirst(ClaimTypes.PrimaryGroupSid);
+
+            if (companyClaim != null && Guid.TryParse(companyClaim.Value, out var companyId))
+            {
+                return companyId;
+            }
+
+            _loggingService.LogWarning("DataSetsController - 無法從使用者權杖取得公司 ID");
+            return Guid.Empty;
         }
 
         // GET: api/datasets
@@ -2161,7 +2177,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
 
                 // 測試連接
-                var connectionTest = await _googleSheetsService.TestConnectionAsync(spreadsheetId);
+                var connectionTest = await _googleSheetsService.TestConnectionAsync(dataSet.CompanyId, spreadsheetId);
                 if (!connectionTest)
                 {
                     _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
@@ -2173,7 +2189,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation($"使用工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
 
                 // 讀取數據
-                var sheetData = await _googleSheetsService.ReadSheetDataAsync(spreadsheetId, sheetName);
+                var sheetData = await _googleSheetsService.ReadSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName);
                 if (!sheetData.Any())
                 {
                     _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {sheetName}, 數據集ID: {dataSet.Id}");
@@ -2335,6 +2351,12 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogInformation($"開始預覽 Google Sheets 欄位定義，URL: {url}, 工作表: {sheetName}");
 
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                {
+                    return Unauthorized(new { success = false, message = "無法識別公司資訊" });
+                }
+
                 if (string.IsNullOrEmpty(url))
                 {
                     return BadRequest(new { success = false, message = "請提供 Google Sheets URL" });
@@ -2351,7 +2373,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}");
 
                 // 測試連接
-                var connectionTest = await _googleSheetsService.TestConnectionAsync(spreadsheetId);
+                var connectionTest = await _googleSheetsService.TestConnectionAsync(companyId, spreadsheetId);
                 if (!connectionTest)
                 {
                     _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}");
@@ -2363,7 +2385,7 @@ namespace PurpleRice.Controllers
                 _loggingService.LogInformation($"使用工作表名稱: {targetSheetName}");
 
                 // 讀取數據
-                var sheetData = await _googleSheetsService.ReadSheetDataAsync(spreadsheetId, targetSheetName);
+                var sheetData = await _googleSheetsService.ReadSheetDataAsync(companyId, spreadsheetId, targetSheetName);
                 if (!sheetData.Any())
                 {
                     _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {targetSheetName}");

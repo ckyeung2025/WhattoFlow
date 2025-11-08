@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Models;
 using PurpleRice.Models.DTOs;
+using PurpleRice.Models.Dto.ApiProviders;
 using PurpleRice.Data;
 using PurpleRice.Services;
+using PurpleRice.Services.ApiProviders;
 using System.Security.Claims;
 using System.Linq;
 using System.Text.Json;
@@ -20,19 +22,19 @@ namespace PurpleRice.Controllers
     {
         private readonly ContactListService _contactListService;
         private readonly ILogger<ContactImportController> _logger;
-        private readonly IConfiguration _configuration;
         private readonly PurpleRiceDbContext _context;
+        private readonly IApiProviderService _apiProviderService;
 
         public ContactImportController(
             ContactListService contactListService, 
             ILogger<ContactImportController> logger, 
-            IConfiguration configuration,
-            PurpleRiceDbContext context)
+            PurpleRiceDbContext context,
+            IApiProviderService apiProviderService)
         {
             _contactListService = contactListService;
             _logger = logger;
-            _configuration = configuration;
             _context = context;
+            _apiProviderService = apiProviderService;
         }
 
         /// <summary>
@@ -65,6 +67,44 @@ namespace PurpleRice.Controllers
 
             _logger.LogWarning("ContactImportController - No company ID found in claims");
             return Guid.Empty;
+        }
+
+        private async Task<ApiProviderRuntimeDto?> GetGoogleDocsProviderAsync(Guid companyId)
+        {
+            if (companyId == Guid.Empty)
+            {
+                _logger.LogWarning("無法取得公司 ID，無法載入 Google Docs API 設定");
+                return null;
+            }
+
+            try
+            {
+                var provider = await _apiProviderService.GetRuntimeProviderAsync(companyId, "google-docs");
+
+                if (provider == null)
+                {
+                    _logger.LogWarning("公司 {CompanyId} 尚未設定 Google Docs API 供應商", companyId);
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(provider.ApiKey) && !string.Equals(provider.AuthType, "serviceAccount", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("公司 {CompanyId} 的 Google Docs 設定未提供 API Key", companyId);
+                }
+
+                return provider;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "取得 Google Docs 供應商設定失敗，公司: {CompanyId}", companyId);
+                return null;
+            }
+        }
+
+        private async Task<string?> GetGoogleDocsApiKeyAsync(Guid companyId)
+        {
+            var provider = await GetGoogleDocsProviderAsync(companyId);
+            return provider?.ApiKey;
         }
 
         /// <summary>
@@ -124,11 +164,10 @@ namespace PurpleRice.Controllers
         /// <summary>
         /// 檢測 Google 文件類型（Excel 或 Google Sheets）
         /// </summary>
-        private async Task<string> DetectGoogleFileTypeAsync(string spreadsheetId)
+        private async Task<string> DetectGoogleFileTypeAsync(string spreadsheetId, string? apiKey)
         {
             try
             {
-                var apiKey = _configuration["GoogleApiKey"];
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     _logger.LogWarning("Google API 金鑰未配置，無法檢測文件類型");
@@ -179,11 +218,10 @@ namespace PurpleRice.Controllers
         /// <summary>
         /// 使用 Google Sheets API 獲取工作表列表
         /// </summary>
-        private async Task<List<string>> GetGoogleSheetsTabsAsync(string spreadsheetId)
+        private async Task<List<string>> GetGoogleSheetsTabsAsync(string spreadsheetId, string? apiKey)
         {
             try
             {
-                var apiKey = _configuration["GoogleApiKey"];
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     _logger.LogWarning("Google API Key 未配置，無法獲取工作表列表");
@@ -405,11 +443,10 @@ namespace PurpleRice.Controllers
         /// <summary>
         /// 根據工作表名稱獲取 Google Sheets 的 gid
         /// </summary>
-        private async Task<int?> GetSheetGidByNameAsync(string spreadsheetId, string sheetName)
+        private async Task<int?> GetSheetGidByNameAsync(string spreadsheetId, string sheetName, string? apiKey)
         {
             try
             {
-                var apiKey = _configuration["GoogleApiKey"];
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     _logger.LogWarning("Google API 金鑰未配置，無法獲取工作表 gid");
@@ -558,11 +595,10 @@ namespace PurpleRice.Controllers
         /// <summary>
         /// 直接使用 Google Sheets API v4 獲取數據，避免 CSV 導出的科學記數法問題
         /// </summary>
-        private async Task<(bool success, List<Dictionary<string, object>> data, List<string> columns, string errorMessage)> GetGoogleSheetsDataDirectlyAsync(string spreadsheetId, string sheetName)
+        private async Task<(bool success, List<Dictionary<string, object>> data, List<string> columns, string errorMessage)> GetGoogleSheetsDataDirectlyAsync(string spreadsheetId, string sheetName, string? apiKey)
         {
             try
             {
-                var apiKey = _configuration["GoogleApiKey"];
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     return (false, null, null, "Google API 金鑰未配置");
@@ -1163,8 +1199,11 @@ namespace PurpleRice.Controllers
                     return BadRequest(new { success = false, message = "無效的 Google Sheets URL" });
                 }
 
+                var companyId = GetCurrentCompanyId();
+                var apiKey = await GetGoogleDocsApiKeyAsync(companyId);
+
                 // 檢測文件類型
-                var fileType = await DetectGoogleFileTypeAsync(spreadsheetId);
+                var fileType = await DetectGoogleFileTypeAsync(spreadsheetId, apiKey);
                 _logger.LogInformation("檢測到文件類型: {FileType}", fileType);
 
                 if (fileType == "excel")
@@ -1181,7 +1220,7 @@ namespace PurpleRice.Controllers
                 else
                 {
                     // Google Sheets 原生文件，獲取工作表列表
-                    var availableSheets = await GetGoogleSheetsTabsAsync(spreadsheetId);
+                    var availableSheets = await GetGoogleSheetsTabsAsync(spreadsheetId, apiKey);
                     
                     _logger.LogInformation("Google Sheets 工作表列表獲取成功 - SpreadsheetId: {SpreadsheetId}, Sheets: {Sheets}", 
                         spreadsheetId, string.Join(", ", availableSheets));
@@ -1222,8 +1261,11 @@ namespace PurpleRice.Controllers
                     return BadRequest(new { success = false, message = "無效的 Google Sheets URL" });
                 }
 
+                var companyId = GetCurrentCompanyId();
+                var apiKey = await GetGoogleDocsApiKeyAsync(companyId);
+
                 // 檢測文件類型
-                var fileType = await DetectGoogleFileTypeAsync(spreadsheetId);
+                var fileType = await DetectGoogleFileTypeAsync(spreadsheetId, apiKey);
                 _logger.LogInformation("檢測到文件類型: {FileType}", fileType);
 
                 List<Dictionary<string, object>> data;
@@ -1279,7 +1321,7 @@ namespace PurpleRice.Controllers
                 {
                     // 對於原生 Google Sheets，使用 Google Sheets API v4 直接獲取值
                     // 這樣可以避免 CSV 導出時的科學記數法轉換問題
-                    var parseResult = await GetGoogleSheetsDataDirectlyAsync(spreadsheetId, config.SheetName);
+                    var parseResult = await GetGoogleSheetsDataDirectlyAsync(spreadsheetId, config.SheetName, apiKey);
                     if (parseResult.success)
                     {
                         data = parseResult.data;
@@ -2066,7 +2108,8 @@ namespace PurpleRice.Controllers
                             Url = sourceConfig.ContainsKey("url") ? sourceConfig["url"]?.ToString() : null,
                             SheetName = sourceConfig.ContainsKey("sheetName") ? sourceConfig["sheetName"]?.ToString() : null
                         };
-                        var result = await LoadFromGoogleDocsInternalAsync(googleConfig);
+                        var apiKey = await GetGoogleDocsApiKeyAsync(schedule.CompanyId);
+                        var result = await LoadFromGoogleDocsInternalAsync(googleConfig, schedule.CompanyId, apiKey);
                         data = result.data;
                         columns = result.columns;
                     }
@@ -2466,7 +2509,7 @@ namespace PurpleRice.Controllers
         /// <summary>
         /// 內部載入 Google Docs 數據（用於執行匯入）- 直接復用 LoadFromGoogleDocs 的邏輯
         /// </summary>
-        private async Task<(List<Dictionary<string, object>> data, List<string> columns)> LoadFromGoogleDocsInternalAsync(GoogleDocsConfig config)
+        private async Task<(List<Dictionary<string, object>> data, List<string> columns)> LoadFromGoogleDocsInternalAsync(GoogleDocsConfig config, Guid companyId, string? apiKey = null)
         {
             if (string.IsNullOrEmpty(config.Url))
                 throw new Exception("請提供 Google Docs URL");
@@ -2475,7 +2518,9 @@ namespace PurpleRice.Controllers
             if (string.IsNullOrEmpty(spreadsheetId))
                 throw new Exception("無效的 Google Sheets URL");
 
-            var fileType = await DetectGoogleFileTypeAsync(spreadsheetId);
+            apiKey ??= await GetGoogleDocsApiKeyAsync(companyId);
+
+            var fileType = await DetectGoogleFileTypeAsync(spreadsheetId, apiKey);
             var data = new List<Dictionary<string, object>>();
             var columns = new List<string>();
 
@@ -2504,7 +2549,6 @@ namespace PurpleRice.Controllers
             }
             else
             {
-                var apiKey = _configuration["GoogleApiKey"];
                 if (string.IsNullOrEmpty(apiKey))
                     throw new Exception("Google API 金鑰未配置");
 

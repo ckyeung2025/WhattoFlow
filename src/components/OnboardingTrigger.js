@@ -90,9 +90,9 @@ const OnboardingTrigger = () => {
               onClick={handleStartTour}
               className="onboarding-trigger-btn"
               style={{
-                background: 'linear-gradient(135deg, #7234CF 0%, #8c4dd4 100%)',
+                background: 'linear-gradient(135deg, #FD26BD 0%, #FF6FD9 100%)',
                 border: 'none',
-                boxShadow: '0 4px 12px rgba(114, 52, 207, 0.3)',
+                boxShadow: '0 4px 12px rgba(253, 38, 189, 0.3)',
                 animation: 'questionBounce 2s infinite'
               }}
             />

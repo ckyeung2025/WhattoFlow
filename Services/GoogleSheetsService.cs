@@ -1,59 +1,85 @@
 using Google.Apis.Auth.OAuth2;
+using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
 using Google.Apis.Sheets.v4.Data;
-using Google.Apis.Services;
+using PurpleRice.Models.Dto.ApiProviders;
+using PurpleRice.Services.ApiProviders;
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Configuration;
 
 namespace PurpleRice.Services
 {
     public interface IGoogleSheetsService
     {
-        Task<List<List<string>>> ReadSheetDataAsync(string spreadsheetId, string sheetName, string range = null);
-        Task<List<string>> GetSheetNamesAsync(string spreadsheetId);
-        Task<bool> TestConnectionAsync(string spreadsheetId);
+        Task<List<List<string>>> ReadSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, string range = null);
+        Task<List<string>> GetSheetNamesAsync(Guid companyId, string spreadsheetId);
+        Task<bool> TestConnectionAsync(Guid companyId, string spreadsheetId);
     }
 
     public class GoogleSheetsService : IGoogleSheetsService
     {
         private readonly LoggingService _loggingService;
-        private readonly SheetsService _sheetsService;
-        private readonly IConfiguration _configuration;
+        private readonly IApiProviderService _apiProviderService;
 
-        public GoogleSheetsService(LoggingService loggingService, IConfiguration configuration)
+        public GoogleSheetsService(LoggingService loggingService, IApiProviderService apiProviderService)
         {
             _loggingService = loggingService;
-            _configuration = configuration;
-            _sheetsService = CreateSheetsService();
+            _apiProviderService = apiProviderService;
         }
 
-        private SheetsService CreateSheetsService()
+        private async Task<SheetsService> CreateSheetsServiceAsync(Guid companyId)
         {
             try
             {
-                // 嘗試從多個來源獲取 API Key
-                var apiKey = Environment.GetEnvironmentVariable("GOOGLE_API_KEY") ?? 
-                            _configuration["GoogleApiKey"];
-                
-                var initializer = new BaseClientService.Initializer()
+                var runtime = await _apiProviderService.GetRuntimeProviderAsync(companyId, "google-docs");
+
+                if (runtime == null)
                 {
-                    ApplicationName = "WhatoFlow DataSet Management"
+                    _loggingService.LogWarning($"公司 {companyId} 尚未設定 Google Docs API 供應商");
+                    throw new InvalidOperationException("Google Docs API provider is not configured.");
+                }
+
+                var initializer = new BaseClientService.Initializer
+                {
+                    ApplicationName = ResolveApplicationName(runtime) ?? "WhatoFlow Google Sheets"
                 };
-                
-                // 如果有 API Key，則使用它
-                if (!string.IsNullOrEmpty(apiKey))
+
+                if (!string.IsNullOrWhiteSpace(runtime.ApiKey))
                 {
-                    initializer.ApiKey = apiKey;
-                    _loggingService.LogInformation("Google Sheets 服務初始化成功（使用 API Key）");
+                    initializer.ApiKey = runtime.ApiKey;
+                    _loggingService.LogInformation("Google Sheets 服務初始化成功（使用資料庫中的 API Key）");
+                }
+                else if (string.Equals(runtime.AuthType, "serviceAccount", StringComparison.OrdinalIgnoreCase) &&
+                         !string.IsNullOrWhiteSpace(runtime.AuthConfigJson))
+                {
+                    var credential = GoogleCredential.FromJson(runtime.AuthConfigJson);
+                    var scopes = ResolveScopes(runtime) ?? new[]
+                    {
+                        "https://www.googleapis.com/auth/documents",
+                        "https://www.googleapis.com/auth/drive.file",
+                        "https://www.googleapis.com/auth/spreadsheets.readonly"
+                    };
+                    credential = credential.CreateScoped(scopes);
+                    initializer.HttpClientInitializer = credential;
+                    _loggingService.LogInformation("Google Sheets 服務初始化成功（使用 Service Account）");
                 }
                 else
                 {
-                    _loggingService.LogWarning("未找到 GOOGLE_API_KEY 環境變量或 GoogleApiKey 配置，將嘗試無認證訪問");
-                    _loggingService.LogWarning("請設置環境變量 GOOGLE_API_KEY 或在 appsettings.json 中添加 GoogleApiKey 配置");
+                    var fallbackKey = Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+                    if (!string.IsNullOrWhiteSpace(fallbackKey))
+                    {
+                        initializer.ApiKey = fallbackKey;
+                        _loggingService.LogWarning("使用環境變量 GOOGLE_API_KEY 作為後備。");
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"Google Docs provider 未提供 API Key 或 Service Account 配置，公司 {companyId}");
+                    }
                 }
-                
-                var service = new SheetsService(initializer);
-                return service;
+
+                return new SheetsService(initializer);
             }
             catch (Exception ex)
             {
@@ -62,7 +88,7 @@ namespace PurpleRice.Services
             }
         }
 
-        public async Task<List<List<string>>> ReadSheetDataAsync(string spreadsheetId, string sheetName, string range = null)
+        public async Task<List<List<string>>> ReadSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, string range = null)
         {
             try
             {
@@ -73,7 +99,8 @@ namespace PurpleRice.Services
                 
                 _loggingService.LogInformation($"讀取範圍: {rangeString}");
 
-                var request = _sheetsService.Spreadsheets.Values.Get(spreadsheetId, rangeString);
+                using var sheetsService = await CreateSheetsServiceAsync(companyId);
+                var request = sheetsService.Spreadsheets.Values.Get(spreadsheetId, rangeString);
                 var response = await request.ExecuteAsync();
 
                 if (response.Values == null || !response.Values.Any())
@@ -116,13 +143,14 @@ namespace PurpleRice.Services
             }
         }
 
-        public async Task<List<string>> GetSheetNamesAsync(string spreadsheetId)
+        public async Task<List<string>> GetSheetNamesAsync(Guid companyId, string spreadsheetId)
         {
             try
             {
                 _loggingService.LogInformation($"獲取 Google Sheets 工作表名稱，表格ID: {spreadsheetId}");
 
-                var request = _sheetsService.Spreadsheets.Get(spreadsheetId);
+                using var sheetsService = await CreateSheetsServiceAsync(companyId);
+                var request = sheetsService.Spreadsheets.Get(spreadsheetId);
                 var response = await request.ExecuteAsync();
 
                 if (response.Sheets == null || !response.Sheets.Any())
@@ -143,13 +171,14 @@ namespace PurpleRice.Services
             }
         }
 
-        public async Task<bool> TestConnectionAsync(string spreadsheetId)
+        public async Task<bool> TestConnectionAsync(Guid companyId, string spreadsheetId)
         {
             try
             {
                 _loggingService.LogInformation($"測試 Google Sheets 連接，表格ID: {spreadsheetId}");
 
-                var request = _sheetsService.Spreadsheets.Get(spreadsheetId);
+                using var sheetsService = await CreateSheetsServiceAsync(companyId);
+                var request = sheetsService.Spreadsheets.Get(spreadsheetId);
                 var response = await request.ExecuteAsync();
 
                 var isAccessible = response != null && !string.IsNullOrEmpty(response.Properties?.Title);
@@ -186,6 +215,61 @@ namespace PurpleRice.Services
             // https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit
             var match = Regex.Match(url, @"/spreadsheets/d/([a-zA-Z0-9-_]+)");
             return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
+        private static string? ResolveApplicationName(ApiProviderRuntimeDto runtime)
+        {
+            if (string.IsNullOrWhiteSpace(runtime.SettingsJson))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(runtime.SettingsJson);
+                if (document.RootElement.TryGetProperty("applicationName", out var value) && value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString();
+                }
+            }
+            catch (JsonException)
+            {
+                // ignore parse errors, fallback handled by caller
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string>? ResolveScopes(ApiProviderRuntimeDto runtime)
+        {
+            if (string.IsNullOrWhiteSpace(runtime.SettingsJson))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(runtime.SettingsJson);
+                if (document.RootElement.TryGetProperty("scopes", out var scopesElement) && scopesElement.ValueKind == JsonValueKind.Array)
+                {
+                    var scopes = new List<string>();
+                    foreach (var item in scopesElement.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+                        {
+                            scopes.Add(item.GetString()!);
+                        }
+                    }
+
+                    return scopes.Count > 0 ? scopes : null;
+                }
+            }
+            catch (JsonException)
+            {
+                // ignore parse errors, fallback handled by caller
+            }
+
+            return null;
         }
     }
 }

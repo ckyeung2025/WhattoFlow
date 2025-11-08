@@ -88,6 +88,17 @@ const DataSetManagementPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
+  const fetchWithAuth = (url, options = {}) => {
+    const token = localStorage.getItem('token');
+    const headers = {
+      ...(options.headers || {}),
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    return fetch(url, { ...options, headers });
+  };
+
   // 用戶時區偏移狀態
   const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8');
 
@@ -155,7 +166,7 @@ const DataSetManagementPage = () => {
       console.log('fetchDataSets: 請求 URL:', url);
       console.log('fetchDataSets: 請求參數:', Object.fromEntries(params));
       
-      const response = await fetch(url);
+      const response = await fetchWithAuth(url);
       const result = await response.json();
       console.log('fetchDataSets: API 響應結果:', result);
       
@@ -351,7 +362,7 @@ const DataSetManagementPage = () => {
   const handleDelete = async (id) => {
     console.log('handleDelete: 開始刪除 DataSet, ID:', id);
     try {
-      const response = await fetch(`/api/datasets/${id}`, {
+      const response = await fetchWithAuth(`/api/datasets/${id}`, {
         method: 'DELETE'
       });
       const result = await response.json();
@@ -383,7 +394,7 @@ const DataSetManagementPage = () => {
     setSyncingDataSets(prev => new Set(prev).add(id));
     
     try {
-      const response = await fetch(`/api/datasets/${id}/sync`, {
+      const response = await fetchWithAuth(`/api/datasets/${id}/sync`, {
         method: 'POST'
       });
       const result = await response.json();
@@ -416,7 +427,7 @@ const DataSetManagementPage = () => {
     const interval = setInterval(async () => {
       try {
         // 定期從服務器獲取最新的數據集狀態，確保能檢測到後台服務啟動的同步
-        const response = await fetch('/api/datasets');
+        const response = await fetchWithAuth('/api/datasets');
         const result = await response.json();
         
         if (result.success) {
@@ -434,7 +445,7 @@ const DataSetManagementPage = () => {
             // 並行檢查所有運行中數據集的狀態
             runningDataSets.forEach(async (dataSet) => {
               try {
-                const statusResponse = await fetch(`/api/datasets/${dataSet.id}/sync-status`);
+                const statusResponse = await fetchWithAuth(`/api/datasets/${dataSet.id}/sync-status`);
                 const statusResult = await statusResponse.json();
                 
                 if (statusResult.success) {
@@ -484,7 +495,7 @@ const DataSetManagementPage = () => {
     
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/datasets/${id}/sync-status`);
+        const response = await fetchWithAuth(`/api/datasets/${id}/sync-status`);
         const result = await response.json();
         
         if (result.success) {
@@ -592,7 +603,7 @@ const DataSetManagementPage = () => {
       }
       
       console.log('fetchRecords: 請求 URL:', url);
-      const response = await fetch(url);
+      const response = await fetchWithAuth(url);
       
       // 檢查響應狀態
       if (!response.ok) {
@@ -673,7 +684,7 @@ const DataSetManagementPage = () => {
     
     console.log('handleSearch: 開始執行搜尋，搜尋條件:', values);
     try {
-      const response = await fetch(`/api/datasets/${selectedDataSet.id}/records/search`, {
+      const response = await fetchWithAuth(`/api/datasets/${selectedDataSet.id}/records/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values)
@@ -795,7 +806,7 @@ const DataSetManagementPage = () => {
       
       console.log('handleSubmit: 請求 URL:', url, '方法:', method);
       
-      const response = await fetch(url, {
+      const response = await fetchWithAuth(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)
@@ -1263,7 +1274,7 @@ const DataSetManagementPage = () => {
         params.append('sheetName', googleDocsSheetName);
       }
       
-      const response = await fetch(`/api/datasets/google-sheets/preview?${params.toString()}`);
+      const response = await fetchWithAuth(`/api/datasets/google-sheets/preview?${params.toString()}`);
       console.log('Google Sheets 欄位預覽 API 響應狀態:', response.status);
       
       if (!response.ok) {
@@ -1344,7 +1355,7 @@ const DataSetManagementPage = () => {
       console.log('開始獲取欄位預覽，文件路徑:', filePath, '工作表:', sheetName);
       
       // 獲取欄位預覽
-      const response = await fetch(`/api/datasets-upload/excel/preview?filePath=${encodeURIComponent(filePath)}&sheetName=${encodeURIComponent(sheetName)}`);
+      const response = await fetchWithAuth(`/api/datasets-upload/excel/preview?filePath=${encodeURIComponent(filePath)}&sheetName=${encodeURIComponent(sheetName)}`);
       console.log('欄位預覽 API 響應狀態:', response.status);
       
       if (!response.ok) {
@@ -1405,7 +1416,7 @@ const DataSetManagementPage = () => {
         message.loading(t('dataSetManagement.testingConnection'), 0);
 
         try {
-          const response = await fetch('/api/datasets/test-preset-connection', {
+          const response = await fetchWithAuth('/api/datasets/test-preset-connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ presetConnection })
@@ -1483,7 +1494,7 @@ const DataSetManagementPage = () => {
         message.loading(t('dataSetManagement.testingConnection'), 0);
 
         try {
-          const response = await fetch('/api/datasets/test-sql-connection', {
+          const response = await fetchWithAuth('/api/datasets/test-sql-connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ connectionString })
@@ -1520,7 +1531,7 @@ const DataSetManagementPage = () => {
     try {
       console.log('開始根據預設連接的 SQL 查詢生成欄位定義');
       
-      const response = await fetch('/api/datasets/generate-columns-from-preset-sql', {
+      const response = await fetchWithAuth('/api/datasets/generate-columns-from-preset-sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1575,7 +1586,7 @@ const DataSetManagementPage = () => {
     try {
       console.log('開始根據 SQL 查詢生成欄位定義');
       
-      const response = await fetch('/api/datasets/generate-columns-from-sql', {
+      const response = await fetchWithAuth('/api/datasets/generate-columns-from-sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -2103,7 +2114,7 @@ const DataSetManagementPage = () => {
                               formData.append('file', file);
                               
                               // 上傳文件
-                              const uploadResponse = await fetch('/api/datasets-upload/excel', {
+                              const uploadResponse = await fetchWithAuth('/api/datasets-upload/excel', {
                                 method: 'POST',
                                 body: formData
                               });
@@ -2124,7 +2135,7 @@ const DataSetManagementPage = () => {
                                 // 自動獲取工作表名稱
                                 try {
                                   console.log('開始獲取工作表名稱，文件路徑:', filePath);
-                                  const sheetsResponse = await fetch(`/api/datasets-upload/excel/sheets?filePath=${encodeURIComponent(filePath)}`);
+                                  const sheetsResponse = await fetchWithAuth(`/api/datasets-upload/excel/sheets?filePath=${encodeURIComponent(filePath)}`);
                                   console.log('工作表名稱 API 響應狀態:', sheetsResponse.status);
                                   
                                   if (!sheetsResponse.ok) {

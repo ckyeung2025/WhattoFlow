@@ -5,7 +5,7 @@
     
     &:hover {
       transform: scale(1.1);
-      box-shadow: 0 6px 16px rgba(114, 52, 207, 0.4) !important;
+      box-shadow: 0 6px 16px rgba(253, 38, 189, 0.4) !important;
     }
     
     &:active {
@@ -18,11 +18,11 @@
 @keyframes pulse {
   0%, 100% { 
     transform: scale(1);
-    box-shadow: 0 4px 12px rgba(114, 52, 207, 0.3);
+    box-shadow: 0 4px 12px rgba(253, 38, 189, 0.3);
   }
   50% { 
     transform: scale(1.05);
-    box-shadow: 0 6px 16px rgba(114, 52, 207, 0.5);
+    box-shadow: 0 6px 16px rgba(253, 38, 189, 0.5);
   }
 }
 
@@ -30,19 +30,19 @@
 @keyframes questionBounce {
   0%, 100% { 
     transform: scale(1) rotate(0deg);
-    box-shadow: 0 4px 12px rgba(114, 52, 207, 0.3);
+    box-shadow: 0 4px 12px rgba(253, 38, 189, 0.3);
   }
   25% { 
     transform: scale(1.1) rotate(-5deg);
-    box-shadow: 0 6px 16px rgba(114, 52, 207, 0.5);
+    box-shadow: 0 6px 16px rgba(253, 38, 189, 0.5);
   }
   50% { 
     transform: scale(1.05) rotate(0deg);
-    box-shadow: 0 8px 20px rgba(114, 52, 207, 0.6);
+    box-shadow: 0 8px 20px rgba(253, 38, 189, 0.6);
   }
   75% { 
     transform: scale(1.1) rotate(5deg);
-    box-shadow: 0 6px 16px rgba(114, 52, 207, 0.5);
+    box-shadow: 0 6px 16px rgba(253, 38, 189, 0.5);
   }
 }
 

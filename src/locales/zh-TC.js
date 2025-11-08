@@ -42,6 +42,7 @@ const zhTC = {
     runningApps: '運行中的應用',
     phoneVerificationAdmin: '電話號碼驗證',
     permissionManagement: '權限管理',
+    apiProviders: 'API 管理',
   },
 
   // Dashboard 儀表板
@@ -1068,6 +1069,10 @@ const zhTC = {
     aiGenerateForm: "AI 生成表單",
     aiPrompt: "AI 提示詞",
     includeCurrentHtml: "包含當前 HTML",
+    aiProvider: "AI 提供商",
+    aiProviderPlaceholder: "選擇要使用的 AI 提供商",
+    aiProviderRequired: "請選擇一個 AI 提供商",
+    loadAiProvidersFailed: "無法載入 AI 提供商，請稍後再試",
     uploadSuccess: "上傳成功",
     uploadFailed: "上傳失敗",
     generateSuccess: "生成成功",
@@ -2471,15 +2476,22 @@ const zhTC = {
     validatorType: '驗證器類型',
     defaultValidator: '預設驗證器',
     customValidator: '自定義驗證器',
-    openaiValidation: 'OpenAI 驗證',
-    xaiValidation: 'XAI 驗證',
+    aiValidator: 'AI 驗證',
     timeValidatorLabel: '時間驗證器（無回應提醒）',
     promptText: '提示文字',
+    promptTextPlaceholder: '描述有效回覆需要滿足的條件，例如「用戶必須提供 6 位數字驗證碼」。',
     retryMessage: '提醒訊息',
+    retryMessagePlaceholder: '輸入當用戶回覆不符合要求時要發送的提示內容。',
     maxRetries: '最大提醒次數',
     minutes: '分鐘',
     days: '天',
     hours: '小時',
+    validationAiProvider: 'AI 提供商',
+    validationAiProviderPlaceholder: '選擇用於驗證用戶回覆的 AI 提供商',
+    validationAiProviderRequired: '請選擇用於驗證的 AI 提供商',
+    aiProviderInactive: '未啟用',
+    aiProviderNotConfigured: '尚未配置 AI 提供商，請至 API 管理頁面新增。',
+    aiProviderLoadFailed: '無法載入 AI 提供商列表',
     
     // Time Validator 相關翻譯
     timeValidator: {
@@ -2531,27 +2543,6 @@ const zhTC = {
     // Drawer 全屏相關
     enterFullscreen: '全屏顯示',
     exitFullscreen: '退出全屏',
-    
-    // Send E-Form 相關翻譯
-    sendEForm: {
-      integrateWaitReply: '整合等待回覆',
-      integrateWaitReplyDesc: '表單發送後，系統會等待用戶填寫並回覆表單',
-      integrateDataSetQuery: '整合 DataSet 查詢',
-      integrateDataSetQueryDesc: '從 DataSet Query 節點獲取數據並自動填充表單',
-      manualFill: '手動填寫',
-      manualFillDesc: '用戶需要手動填寫表單',
-      notificationMessage: '通知訊息',
-      selectDataSetQueryNode: '選擇 DataSet Query 節點',
-      selectDataSetQueryNodePlaceholder: '請選擇要整合的 DataSet Query 節點',
-      noDataSetQueryNodes: '暫無可用的 DataSet Query 節點',
-      dataSetQueryNodeHelp: '選擇要整合的 DataSet Query 節點（操作類型為 SELECT）',
-      useDefaultMessage: '使用預設訊息',
-      customMessage: '自定義訊息',
-      notificationMessagePlaceholder: '請輸入通知訊息內容，告知用戶需要填寫表單...',
-      notificationMessageHelp: '當表單發送後，此訊息會自動發送給用戶',
-      defaultNotificationMessage: '請填寫並回覆此表單',
-      promptMessagePlaceholder: '輸入提示訊息，提醒用戶填寫表單前需要了解的信息',
-    },
     
     // Overdue Settings（流程逾期設置 - Start 節點）
     overdueConfig: '流程逾期設置',
@@ -2772,6 +2763,9 @@ const zhTC = {
       selectDataSetQueryNodePlaceholder: '選擇要整合的 DataSet Query 節點',
       noDataSetQueryNodes: '暫無可用的 DataSet Query 節點',
       dataSetQueryNodeHelp: '只有操作類型為 SELECT 的 DataSet Query 節點才會顯示在此列表中',
+      aiProvider: 'AI 提供商',
+      aiProviderPlaceholder: '選擇用於解析用戶自然語言輸入的 AI 提供商',
+      aiProviderRequired: '請為 AI 自動填寫模式選擇 AI 提供商',
       
       // 依賴檢查
       dependencyCheck: '依賴檢查',
@@ -3788,6 +3782,7 @@ const zhTC = {
     operationFailed: '操作失敗',
     fetchFailed: '獲取 DataSet 列表失敗',
     fetchRecordsFailed: '獲取記錄失敗',
+    processFailed: '處理失敗',
     searchFailed: '搜尋失敗',
     foundRecords: '找到 {count} 條記錄',
     
@@ -3833,6 +3828,82 @@ const zhTC = {
     previousPage: '上一頁',
     nextPage: '下一頁',
     datasetNotFound: '未找到 ID 為 {id} 的數據集'
+  },
+
+  apiProviders: {
+    pageTitle: 'API 供應商管理',
+    pageDescription: '集中管理 AI 與雲端文件等外部 API，設定各供應商的連線資訊、模型與密鑰，方便團隊共用與擴充。',
+    actions: {
+      refresh: '重新整理'
+    },
+    messages: {
+      loadFailed: '載入 API 供應商失敗，請稍後再試。',
+      saveSuccess: '設定已更新。',
+      saveFailed: '儲存失敗，請檢查輸入或稍後再試。',
+      loadDetailFailed: '載入供應商詳細設定失敗，請稍後重試。'
+    },
+    empty: '尚未有可管理的 API 供應商。',
+    category: {
+      ai: 'AI 服務',
+      clouddoc: '雲端文件'
+    },
+    noDescription: '尚未提供描述。',
+    status: {
+      active: '啟用',
+      inactive: '停用',
+      activeTip: '此供應商目前可供流程與工具使用。',
+      inactiveTip: '此供應商目前未啟用。'
+    },
+    apiKey: {
+      set: '已設定密鑰',
+      missing: '尚未設定密鑰',
+      setTip: '密鑰已保存，可直接使用。',
+      missingTip: '尚未設定密鑰，將無法完成授權。'
+    },
+    configure: '設定詳情',
+    modal: {
+      title: '設定 {name}',
+      loadingTitle: '載入設定中...',
+      save: '儲存設定',
+      cancel: '取消',
+      defaultUrl: '官方預設 API URL',
+      defaultModel: '官方建議模型'
+    },
+    form: {
+      active: '啟用狀態',
+      apiUrl: 'API URL',
+      apiUrlRequired: '請輸入 API URL。',
+      model: '模型',
+      modelRequired: '請選擇或輸入模型。',
+      modelPlaceholder: '請輸入模型名稱',
+      temperature: 'Temperature',
+      temperatureTip: '控制輸出隨機度，值越高越具創造性。',
+      topP: 'Top P',
+      topPTip: '控制取樣範圍，值越低越保守。',
+      enableStreaming: '啟用串流輸出',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: '輸入新的 API Key',
+      clearApiKey: '清除已儲存的 API Key',
+      maskedKey: '目前已保存的密鑰：{key}',
+      extraHeaders: '額外 HTTP Headers (JSON)',
+      extraHeadersTip: '若需要自訂 Header，請輸入 JSON 格式，例如 {"X-Custom-Header":"value"}。',
+      authType: '授權類型',
+      authTypeTip: '選擇此供應商的授權方式，預設依照官方建議。',
+      authTypePlaceholder: '選擇授權類型',
+      authTypeOptions: {
+        apiKey: 'API Key',
+        bearerToken: 'Bearer Token',
+        serviceAccount: 'Service Account JSON',
+        oauth: 'OAuth 2.0'
+      },
+      authConfigJson: '授權配置 (JSON)',
+      authConfigTip: '用於存放 Tenant、Client ID、Service Account 等授權所需資訊。',
+      settingsJson: '進階設定 (JSON)',
+      settingsJsonTip: '自訂供應商專屬參數，例如 temperature、top_p、top_k。',
+      resetSettings: '套用官方預設',
+      resetSettingsHint: '將以供應商預設值覆寫目前設定。',
+      jsonInvalid: '請輸入有效的 JSON 格式。'
+    }
   },
 
   // WhatsApp 電話號碼驗證管理

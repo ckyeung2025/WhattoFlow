@@ -127,6 +127,35 @@ export class ApiService {
     }
   }
 
+  async fetchAiProviders(category = 'AI') {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        return [];
+      }
+
+      const url = category
+        ? `${this.baseUrl}/apiproviders/company?category=${encodeURIComponent(category)}`
+        : `${this.baseUrl}/apiproviders/company`;
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('獲取 AI Provider 失敗:', error);
+      return [];
+    }
+  }
+
   // 獲取節點類型定義
   async fetchNodeTypeDefinitions() {
     try {

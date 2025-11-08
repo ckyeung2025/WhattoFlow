@@ -1766,12 +1766,16 @@ namespace PurpleRice.Services
     {
         public bool? Enabled { get; set; }
         public string ValidatorType { get; set; }
+        public string Prompt { get; set; }
+        public string RetryMessage { get; set; }
         public int? RetryIntervalDays { get; set; }
         public int? RetryIntervalHours { get; set; }
         public int? RetryIntervalMinutes { get; set; }
         public int? RetryLimit { get; set; }
+        public int? MaxRetries { get; set; }
         public RetryMessageConfig RetryMessageConfig { get; set; }
         public EscalationConfig EscalationConfig { get; set; }
+        public string AiProviderKey { get; set; }
     }
 
     /// <summary>

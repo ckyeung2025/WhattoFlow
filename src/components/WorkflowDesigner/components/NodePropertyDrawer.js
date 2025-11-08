@@ -78,6 +78,10 @@ const NodePropertyDrawer = ({
   const [availableProcessVariables, setAvailableProcessVariables] = useState([]);
   const [loadingDataSets, setLoadingDataSets] = useState(false);
   const [testingOperation, setTestingOperation] = useState(false);
+
+  const [aiProviders, setAiProviders] = useState([]);
+  const [loadingAiProviders, setLoadingAiProviders] = useState(false);
+  const [aiProvidersError, setAiProvidersError] = useState(null);
   
   // DataSet 查詢條件相關狀態
   const [dataSetConditionGroupModalVisible, setDataSetConditionGroupModalVisible] = useState(false);
@@ -248,6 +252,50 @@ const NodePropertyDrawer = ({
     
     return Array.from(variables);
   };
+
+  const aiProviderOptions = useMemo(() => {
+    return aiProviders.map(provider => ({
+      value: provider.providerKey,
+      label: `${provider.displayName}${provider.active ? '' : ` (${t('workflowDesigner.aiProviderInactive')})`}`,
+      disabled: provider.active === false
+    }));
+  }, [aiProviders, t]);
+
+  const loadAiProviders = useCallback(async () => {
+    try {
+      setLoadingAiProviders(true);
+      setAiProvidersError(null);
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setAiProviders([]);
+        return;
+      }
+
+      const response = await fetch('/api/apiproviders/company?category=AI', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setAiProviders(data);
+      } else {
+        setAiProviders([]);
+      }
+    } catch (error) {
+      console.error('Failed to load AI providers', error);
+      setAiProviders([]);
+      setAiProvidersError(error.message || 'Failed to load AI providers');
+    } finally {
+      setLoadingAiProviders(false);
+    }
+  }, []);
 
   // DataSet 查詢條件處理函數
   const handleSaveDataSetConditionGroup = async (values) => {
@@ -433,6 +481,87 @@ const NodePropertyDrawer = ({
       });
     }
   }, [selectedNode?.id, form]); // 只依賴 selectedNode.id，而不是整個 selectedNode 對象
+
+  useEffect(() => {
+    if (drawerOpen) {
+      loadAiProviders();
+    }
+  }, [drawerOpen, loadAiProviders]);
+
+  useEffect(() => {
+    if (!selectedNode?.data?.validation) {
+      return;
+    }
+    const rawType = selectedNode.data.validation.validatorType;
+    if (!rawType) {
+      return;
+    }
+    const normalizedType = rawType.toLowerCase();
+    if (normalizedType === 'openai' || normalizedType === 'xai') {
+      const fallbackProviderKey = selectedNode.data.validation.aiProviderKey || normalizedType;
+      const newValidation = {
+        ...selectedNode.data.validation,
+        validatorType: 'ai',
+        aiProviderKey: fallbackProviderKey
+      };
+      handleNodeDataChange({
+        validation: newValidation,
+        aiProviderKey: selectedNode.data.aiProviderKey ?? fallbackProviderKey
+      });
+    }
+  }, [
+    selectedNode?.id,
+    selectedNode?.data?.validation?.validatorType,
+    selectedNode?.data?.validation?.aiProviderKey,
+    selectedNode?.data?.aiProviderKey,
+    handleNodeDataChange
+  ]);
+
+  useEffect(() => {
+    if (!drawerOpen || !selectedNode) {
+      return;
+    }
+    if (!aiProviders.length) {
+      return;
+    }
+
+    const activeProvider = aiProviders.find(p => p.active);
+    const fallbackProvider = activeProvider || aiProviders[0];
+
+    if (selectedNode.data?.type === 'sendEForm' && selectedNode.data.sendEFormMode === 'integrateWaitReply') {
+      const currentKey = selectedNode.data.aiProviderKey;
+      const exists = currentKey && aiProviders.some(p => p.providerKey === currentKey);
+      if (!exists && fallbackProvider) {
+        handleNodeDataChange({ aiProviderKey: fallbackProvider.providerKey });
+      }
+    }
+
+    const validationType = selectedNode.data?.validation?.validatorType?.toLowerCase();
+    if (validationType === 'ai') {
+      const currentKey = selectedNode.data.validation?.aiProviderKey || selectedNode.data.aiProviderKey;
+      const exists = currentKey && aiProviders.some(p => p.providerKey === currentKey);
+      if (!exists && fallbackProvider) {
+        const newValidation = {
+          ...(selectedNode.data.validation || {}),
+          aiProviderKey: fallbackProvider.providerKey
+        };
+        handleNodeDataChange({
+          validation: newValidation,
+          aiProviderKey: selectedNode.data.aiProviderKey ?? fallbackProvider.providerKey
+        });
+      }
+    }
+  }, [
+    drawerOpen,
+    selectedNode?.id,
+    selectedNode?.data?.type,
+    selectedNode?.data?.sendEFormMode,
+    selectedNode?.data?.validation?.validatorType,
+    selectedNode?.data?.validation?.aiProviderKey,
+    selectedNode?.data?.aiProviderKey,
+    aiProviders,
+    handleNodeDataChange
+  ]);
 
   // 載入 DataSet 列表和流程變量
   useEffect(() => {
@@ -678,11 +807,25 @@ const NodePropertyDrawer = ({
     const { taskName, ...otherValues } = changedValues;
     if (Object.keys(otherValues).length > 0) {
       // 特殊處理 validation 對象，確保嵌套更新時保持其他屬性
-      if (otherValues.validation && selectedNode?.data?.validation) {
+      if (otherValues.validation) {
         otherValues.validation = {
-          ...selectedNode.data.validation,
+          ...(selectedNode?.data?.validation || {}),
           ...otherValues.validation
         };
+
+        const validatorType = otherValues.validation.validatorType?.toLowerCase();
+        if (validatorType === 'ai') {
+          if (!otherValues.validation.aiProviderKey && aiProviders.length > 0) {
+            const fallback = aiProviders.find(p => p.active) || aiProviders[0];
+            if (fallback) {
+              otherValues.validation.aiProviderKey = fallback.providerKey;
+            }
+          }
+        }
+
+        if (!otherValues.aiProviderKey && otherValues.validation.aiProviderKey) {
+          otherValues.aiProviderKey = otherValues.validation.aiProviderKey;
+        }
       }
       
       // 使用 setTimeout 來避免在輸入過程中觸發重新渲染
@@ -690,7 +833,7 @@ const NodePropertyDrawer = ({
         handleNodeDataChange(otherValues);
       }, 0);
     }
-  }, [handleNodeDataChange, selectedNode]);
+  }, [handleNodeDataChange, selectedNode, aiProviders]);
 
   if (!selectedNode) return null;
 
@@ -1057,8 +1200,7 @@ const NodePropertyDrawer = ({
                         { value: 'default', label: t('workflowDesigner.defaultValidator') },
                         { value: 'time', label: t('workflowDesigner.timeValidatorLabel') },
                         { value: 'custom', label: t('workflowDesigner.customValidator') },
-                        { value: 'openai', label: t('workflowDesigner.openaiValidation') },
-                        { value: 'xai', label: t('workflowDesigner.xaiValidation') }
+                        { value: 'ai', label: t('workflowDesigner.aiValidator') }
                       ]}
                     />
                   </Form.Item>
@@ -1191,11 +1333,44 @@ const NodePropertyDrawer = ({
                   {/* 其他 Validator 的配置 */}
                   {selectedNode.data.validation?.validatorType !== 'time' && (
                     <>
+                      {selectedNode.data.validation?.validatorType === 'ai' && (
+                        <>
+                          {!loadingAiProviders && aiProviders.length === 0 && (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              message={t('workflowDesigner.aiProviderNotConfigured')}
+                              style={{ marginBottom: 12 }}
+                            />
+                          )}
+                          {aiProvidersError && (
+                            <Alert
+                              type="error"
+                              showIcon
+                              message={t('workflowDesigner.aiProviderLoadFailed')}
+                              description={aiProvidersError}
+                              style={{ marginBottom: 12 }}
+                            />
+                          )}
+                          <Form.Item
+                            label={t('workflowDesigner.validationAiProvider')}
+                            name={['validation', 'aiProviderKey']}
+                            rules={[{ required: true, message: t('workflowDesigner.validationAiProviderRequired') }]}
+                          >
+                            <Select
+                              loading={loadingAiProviders}
+                              placeholder={t('workflowDesigner.validationAiProviderPlaceholder')}
+                              options={aiProviderOptions}
+                              allowClear
+                            />
+                          </Form.Item>
+                        </>
+                      )}
                       <Form.Item label={t('workflowDesigner.promptText')} name={['validation', 'prompt']}>
-                        <Input placeholder={t('workflowDesigner.dateFormatExample')} />
+                        <Input placeholder={t('workflowDesigner.promptTextPlaceholder')} />
                       </Form.Item>
                       <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
-                        <Input placeholder={t('workflowDesigner.formatExample')} />
+                        <Input placeholder={t('workflowDesigner.retryMessagePlaceholder')} />
                       </Form.Item>
                       <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
                         <Input type="number" min="1" max="10" />
@@ -1831,6 +2006,40 @@ const NodePropertyDrawer = ({
                     <div>{t('workflowDesigner.sendEForm.manualFillDesc')}</div>
                   )}
                 </div>
+                
+                {selectedNode.data.sendEFormMode === 'integrateWaitReply' && (
+                  <>
+                    {!loadingAiProviders && aiProviders.length === 0 && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message={t('workflowDesigner.aiProviderNotConfigured')}
+                        style={{ marginBottom: 12 }}
+                      />
+                    )}
+                    {aiProvidersError && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={t('workflowDesigner.aiProviderLoadFailed')}
+                        description={aiProvidersError}
+                        style={{ marginBottom: 12 }}
+                      />
+                    )}
+                    <Form.Item
+                      label={t('workflowDesigner.sendEForm.aiProvider')}
+                      name="aiProviderKey"
+                      rules={[{ required: true, message: t('workflowDesigner.sendEForm.aiProviderRequired') }]}
+                    >
+                      <Select
+                        loading={loadingAiProviders}
+                        placeholder={t('workflowDesigner.sendEForm.aiProviderPlaceholder')}
+                        options={aiProviderOptions}
+                        allowClear
+                      />
+                    </Form.Item>
+                  </>
+                )}
                 
                 {/* DataSet Query 節點選擇 */}
                 {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (

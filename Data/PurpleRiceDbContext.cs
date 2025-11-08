@@ -59,6 +59,10 @@ namespace PurpleRice.Data
         public DbSet<ContactImportExecution> ContactImportExecutions { get; set; }
         public DbSet<SchedulerExecution> SchedulerExecutions { get; set; }
         
+        // API Provider 設定
+        public DbSet<ApiProviderDefinition> ApiProviderDefinitions { get; set; }
+        public DbSet<CompanyApiProviderSetting> CompanyApiProviderSettings { get; set; }
+        
         // Company Phone Verification 相關 DbSet
         public DbSet<CompanyPhoneVerification> CompanyPhoneVerifications { get; set; }
 
@@ -922,6 +926,68 @@ namespace PurpleRice.Data
                 }
             });
             
+            modelBuilder.Entity<ApiProviderDefinition>(entity =>
+            {
+                entity.ToTable("ApiProviderDefinitions", schema: "dbo");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("Id");
+                entity.Property(e => e.ProviderKey).HasColumnName("ProviderKey").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.Category).HasColumnName("Category").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.DisplayName).HasColumnName("DisplayName").HasMaxLength(100).IsRequired();
+                entity.Property(e => e.IconName).HasColumnName("IconName").HasMaxLength(100);
+                entity.Property(e => e.DefaultApiUrl).HasColumnName("DefaultApiUrl").HasMaxLength(500).IsRequired();
+                entity.Property(e => e.DefaultModel).HasColumnName("DefaultModel").HasMaxLength(100);
+                entity.Property(e => e.SupportedModels).HasColumnName("SupportedModels");
+                entity.Property(e => e.Description).HasColumnName("Description");
+                entity.Property(e => e.AuthType).HasColumnName("AuthType").HasMaxLength(50);
+                entity.Property(e => e.DefaultSettingsJson).HasColumnName("DefaultSettingsJson");
+                entity.Property(e => e.EnableStreaming).HasColumnName("EnableStreaming");
+                entity.Property(e => e.TemperatureMin).HasColumnName("TemperatureMin").HasColumnType("decimal(4,2)");
+                entity.Property(e => e.TemperatureMax).HasColumnName("TemperatureMax").HasColumnType("decimal(4,2)");
+                entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+                entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+
+                entity.HasIndex(e => e.ProviderKey).IsUnique();
+                entity.HasIndex(e => e.Category);
+            });
+
+            modelBuilder.Entity<CompanyApiProviderSetting>(entity =>
+            {
+                entity.ToTable("CompanyApiProviderSettings", schema: "dbo");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("Id");
+                entity.Property(e => e.CompanyId).HasColumnName("CompanyId").IsRequired();
+                entity.Property(e => e.ProviderKey).HasColumnName("ProviderKey").HasMaxLength(50).IsRequired();
+                entity.Property(e => e.Category).HasColumnName("Category").HasMaxLength(50);
+                entity.Property(e => e.ApiUrlOverride).HasColumnName("ApiUrlOverride").HasMaxLength(500);
+                entity.Property(e => e.ApiKeyEncrypted).HasColumnName("ApiKeyEncrypted");
+                entity.Property(e => e.ModelOverride).HasColumnName("ModelOverride").HasMaxLength(100);
+                entity.Property(e => e.Temperature).HasColumnName("Temperature").HasColumnType("decimal(4,2)");
+                entity.Property(e => e.TopP).HasColumnName("TopP").HasColumnType("decimal(4,2)");
+                entity.Property(e => e.EnableStreaming).HasColumnName("EnableStreaming");
+                entity.Property(e => e.ExtraHeadersJson).HasColumnName("ExtraHeadersJson");
+                entity.Property(e => e.AuthType).HasColumnName("AuthType").HasMaxLength(50);
+                entity.Property(e => e.AuthConfigJson).HasColumnName("AuthConfigJson");
+                entity.Property(e => e.SettingsJson).HasColumnName("SettingsJson");
+                entity.Property(e => e.Active).HasColumnName("Active");
+                entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
+                entity.Property(e => e.UpdatedAt).HasColumnName("UpdatedAt");
+
+                entity.HasIndex(e => new { e.CompanyId, e.ProviderKey }).IsUnique();
+                entity.HasIndex(e => e.CompanyId);
+
+                entity.HasOne(e => e.Company)
+                      .WithMany()
+                      .HasForeignKey(e => e.CompanyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.ProviderDefinition)
+                      .WithMany()
+                      .HasForeignKey(e => e.ProviderKey)
+                      .HasPrincipalKey(d => d.ProviderKey)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
         }
     }
 } 

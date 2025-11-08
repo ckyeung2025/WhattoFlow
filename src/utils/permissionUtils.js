@@ -8,7 +8,7 @@
 const INTERFACE_HIERARCHY = {
   'application': ['publishedApps', 'pendingTasks', 'workflowMonitor'],
   'studio': ['eformList', 'whatsappTemplates', 'whatsappWorkflow', 'dataSets'],
-  'adminTools': ['contactList', 'broadcastGroups', 'hashtags', 'companyUserAdmin', 'permissionManagement']
+  'adminTools': ['contactList', 'broadcastGroups', 'hashtags', 'companyUserAdmin', 'permissionManagement', 'apiProviders']
   // phoneVerificationAdmin 需要明確授予，不會從 adminTools 自動展開
 };
 

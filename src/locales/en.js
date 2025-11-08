@@ -42,6 +42,7 @@ const en = {
     runningApps: 'Running Apps',
     phoneVerificationAdmin: 'Phone Number Verification',
     permissionManagement: 'Permission Management',
+    apiProviders: 'API Providers',
   },
 
   // Dashboard
@@ -802,6 +803,10 @@ const en = {
     uploadImage: 'Upload Image',
     aiGenerate: 'AI Generate',
     aiGenerateForm: 'AI Generate Form',
+    aiProvider: 'AI Provider',
+    aiProviderPlaceholder: 'Select the AI provider to use',
+    aiProviderRequired: 'Please select an AI provider',
+    loadAiProvidersFailed: 'Failed to load AI providers. Please try again later.',
     
     // Upload modal translations
     createFormFromWordFile: 'Create Form from Word File',
@@ -2022,15 +2027,22 @@ const en = {
     validatorType: 'Validator Type',
     defaultValidator: 'Default Validator',
     customValidator: 'Custom Validator',
-    openaiValidation: 'OpenAI Validation',
-    xaiValidation: 'XAI Validation',
+    aiValidator: 'AI Validator',
     timeValidatorLabel: 'Time Validator (No Response Reminder)',
     promptText: 'Prompt Text',
+    promptTextPlaceholder: 'Describe the rules for a valid reply, e.g. “User must provide a 6 digit code”.',
     retryMessage: 'Reminder Message',
+    retryMessagePlaceholder: 'Enter the message to send when the reply does not meet the requirement.',
     maxRetries: 'Max Reminders',
     minutes: 'Minutes',
     days: 'Days',
     hours: 'Hours',
+    validationAiProvider: 'AI Provider',
+    validationAiProviderPlaceholder: 'Select the AI provider used to validate user replies',
+    validationAiProviderRequired: 'Please select an AI provider for validation',
+    aiProviderInactive: 'Inactive',
+    aiProviderNotConfigured: 'No AI providers configured. Please add one in API Management.',
+    aiProviderLoadFailed: 'Unable to load AI providers',
     
     // Time Validator translations
     timeValidator: {
@@ -2061,27 +2073,6 @@ const en = {
     // Drawer fullscreen related
     enterFullscreen: 'Fullscreen',
     exitFullscreen: 'Exit Fullscreen',
-    
-    // Send E-Form related translations
-    sendEForm: {
-      integrateWaitReply: 'Integrated Wait Reply',
-      integrateWaitReplyDesc: 'After form is sent, system will wait for user to fill in and reply',
-      integrateDataSetQuery: 'Integrated DataSet Query',
-      integrateDataSetQueryDesc: 'Get data from DataSet Query node and auto-fill form',
-      manualFill: 'Manual Fill',
-      manualFillDesc: 'User needs to manually fill in the form',
-      notificationMessage: 'Notification Message',
-      selectDataSetQueryNode: 'Select DataSet Query Node',
-      selectDataSetQueryNodePlaceholder: 'Please select DataSet Query node to integrate',
-      noDataSetQueryNodes: 'No DataSet Query nodes available',
-      dataSetQueryNodeHelp: 'Select DataSet Query node (operation type: SELECT) to integrate',
-      useDefaultMessage: 'Use Default Message',
-      customMessage: 'Custom Message',
-      notificationMessagePlaceholder: 'Enter notification message to inform user to fill in the form...',
-      notificationMessageHelp: 'This message will be automatically sent to user after form is sent',
-      defaultNotificationMessage: 'Please fill in and reply to this form',
-      promptMessagePlaceholder: 'Enter prompt message to remind user of information needed before filling in the form',
-    },
     
     // Overdue Settings (workflow overdue settings - Start node)
     overdueConfig: 'Workflow Overdue Settings',
@@ -2145,6 +2136,9 @@ const en = {
       selectDataSetQueryNodePlaceholder: 'Select DataSet Query node to integrate',
       noDataSetQueryNodes: 'No DataSet Query nodes available',
       dataSetQueryNodeHelp: 'Only DataSet Query nodes with SELECT operation type will be shown in this list',
+      aiProvider: 'AI Provider',
+      aiProviderPlaceholder: 'Select the AI provider used to analyse user replies',
+      aiProviderRequired: 'Please select an AI provider for AI fill mode',
       
       // Dependency check
       dependencyCheck: 'Dependency Check',
@@ -3311,6 +3305,7 @@ const en = {
     operationFailed: 'Operation failed',
     fetchFailed: 'Failed to fetch DataSet list',
     fetchRecordsFailed: 'Failed to fetch records',
+    processFailed: 'Processing failed',
     searchFailed: 'Search failed',
     foundRecords: 'Found {count} records',
     
@@ -3723,6 +3718,82 @@ const en = {
     updateError: 'Failed to update contact',
     loadError: 'Failed to load contact data',
     loadOptionsError: 'Failed to load options data'
+  },
+
+  apiProviders: {
+    pageTitle: 'API Provider Management',
+    pageDescription: 'Centralize management of AI and cloud document APIs, configure provider endpoints, models, and credentials for team-wide reuse and future expansion.',
+    actions: {
+      refresh: 'Refresh'
+    },
+    messages: {
+      loadFailed: 'Failed to load API providers. Please try again later.',
+      saveSuccess: 'Settings updated successfully.',
+      saveFailed: 'Failed to save settings. Please check your input or try again later.',
+      loadDetailFailed: 'Failed to load provider details. Please try again later.'
+    },
+    empty: 'No API providers available yet.',
+    category: {
+      ai: 'AI Services',
+      clouddoc: 'Cloud Documents'
+    },
+    noDescription: 'No description provided.',
+    status: {
+      active: 'Active',
+      inactive: 'Inactive',
+      activeTip: 'This provider is currently enabled for workflows and tools.',
+      inactiveTip: 'This provider is currently disabled.'
+    },
+    apiKey: {
+      set: 'API Key Configured',
+      missing: 'API Key Missing',
+      setTip: 'A key is stored and ready to use.',
+      missingTip: 'No key configured; the provider cannot authenticate.'
+    },
+    configure: 'Configure',
+    modal: {
+      title: 'Configure {name}',
+      loadingTitle: 'Loading settings…',
+      save: 'Save Settings',
+      cancel: 'Cancel',
+      defaultUrl: 'Default API URL',
+      defaultModel: 'Recommended Model'
+    },
+    form: {
+      active: 'Active Status',
+      apiUrl: 'API URL',
+      apiUrlRequired: 'Please enter the API URL.',
+      model: 'Model',
+      modelRequired: 'Please choose or enter a model.',
+      modelPlaceholder: 'Enter model name',
+      temperature: 'Temperature',
+      temperatureTip: 'Controls randomness; higher values yield more creative output.',
+      topP: 'Top P',
+      topPTip: 'Controls sampling range; lower values keep outputs conservative.',
+      enableStreaming: 'Enable Streaming Output',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: 'Enter new API key',
+      clearApiKey: 'Clear stored API key',
+      maskedKey: 'Current stored key: {key}',
+      extraHeaders: 'Extra HTTP Headers (JSON)',
+      extraHeadersTip: 'Provide custom headers in JSON format, e.g. {"X-Custom-Header":"value"}.',
+      authType: 'Authentication Type',
+      authTypeTip: 'Choose how this provider authenticates. Defaults to the vendor recommendation.',
+      authTypePlaceholder: 'Select authentication type',
+      authTypeOptions: {
+        apiKey: 'API Key',
+        bearerToken: 'Bearer Token',
+        serviceAccount: 'Service Account JSON',
+        oauth: 'OAuth 2.0'
+      },
+      authConfigJson: 'Auth Configuration (JSON)',
+      authConfigTip: 'Store tenant, client ID, service account JSON, or other auth metadata.',
+      settingsJson: 'Advanced Settings (JSON)',
+      settingsJsonTip: 'Override provider-specific parameters such as temperature, top_p, or top_k.',
+      resetSettings: 'Apply Default Settings',
+      resetSettingsHint: 'Restores vendor default values and overrides current changes.',
+      jsonInvalid: 'Please provide valid JSON text.'
+    }
   },
 
   // WhatsApp Phone Number Verification Management

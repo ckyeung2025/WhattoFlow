@@ -21,7 +21,8 @@ import {
   TeamOutlined,  // 添加群組圖標
   TagsOutlined,  // 添加標籤圖標
   SendOutlined,  // 添加發送圖標
-  SafetyOutlined  // 添加安全圖標用於權限管理
+  SafetyOutlined,  // 添加安全圖標用於權限管理
+  ApiOutlined
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
@@ -114,6 +115,12 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
         icon: <SafetyOutlined />,
         label: t('menu.permissionManagement'),
         url: '/permission-management',
+      },
+      {
+        key: 'apiProviders',
+        icon: <ApiOutlined />,
+        label: t('menu.apiProviders'),
+        url: '/api-providers',
       },
       // WhatsApp 電話號碼驗證管理
       {

@@ -641,11 +641,32 @@ namespace PurpleRice.Services
                     escalationConfig.IsMetaTemplate = TemplateHelper.IsMetaTemplateId(escalationConfig.TemplateId);
                 }
                 
+                var validatorType = validation.ValidatorType;
+                var aiProviderKey = validation.AiProviderKey;
+
+                if (!string.IsNullOrWhiteSpace(validatorType))
+                {
+                    var normalized = validatorType.ToLowerInvariant();
+                    if (normalized == "openai" || normalized == "xai")
+                    {
+                        aiProviderKey ??= normalized;
+                        validatorType = "ai";
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(nodeData.AiProviderKey) && !string.IsNullOrWhiteSpace(aiProviderKey))
+                {
+                    nodeData.AiProviderKey = aiProviderKey;
+                }
+
+                validation.ValidatorType = validatorType;
+                validation.AiProviderKey = aiProviderKey;
+
                 // 創建標準化的 ValidationConfig 對象
                 var standardValidationConfig = new ValidationConfig
                 {
                     Enabled = validation.Enabled,
-                    ValidatorType = validation.ValidatorType,
+                    ValidatorType = validatorType,
                     RetryIntervalDays = validation.RetryIntervalDays,
                     RetryIntervalHours = validation.RetryIntervalHours,
                     RetryIntervalMinutes = validation.RetryIntervalMinutes ?? 
@@ -653,7 +674,11 @@ namespace PurpleRice.Services
                     RetryLimit = validation.RetryLimitValue ?? 
                         (int.TryParse(validation.RetryLimitFromUI, out var retryLimit) ? retryLimit : 5), // 預設 5 次重試
                     RetryMessageConfig = retryMessageConfig,
-                    EscalationConfig = escalationConfig
+                    EscalationConfig = escalationConfig,
+                    Prompt = validation.Prompt,
+                    RetryMessage = validation.RetryMessage,
+                    MaxRetries = validation.MaxRetries,
+                    AiProviderKey = aiProviderKey
                 };
                 
                 validationConfigJson = JsonSerializer.Serialize(standardValidationConfig);
@@ -1901,7 +1926,11 @@ namespace PurpleRice.Services
                                 {
                                     var latestMessage = userMessages.Last();
                                     userMessage = latestMessage.UserMessage;
-                                    filledHtmlCode = await _eFormService.FillFormWithAIAsync(eFormDefinition.HtmlCode, latestMessage.UserMessage);
+                                    filledHtmlCode = await _eFormService.FillFormWithAIAsync(
+                                        execution.WorkflowDefinition.CompanyId,
+                                        nodeData.AiProviderKey,
+                                        eFormDefinition.HtmlCode,
+                                        latestMessage.UserMessage);
                                 }
                                 WriteLog($"🔍 [DEBUG] 整合等待用戶回覆模式，用戶回覆數量: {userMessages.Count}");
                                 break;
@@ -3271,6 +3300,9 @@ namespace PurpleRice.Services
         
         [System.Text.Json.Serialization.JsonPropertyName("formId")]
         public string FormId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("aiProviderKey")]
+        public string AiProviderKey { get; set; }
         
         // sendEForm 節點相關屬性
         [System.Text.Json.Serialization.JsonPropertyName("messageTemplate")]
@@ -3389,6 +3421,9 @@ namespace PurpleRice.Services
         // 重命名標準屬性以避免衝突
         [System.Text.Json.Serialization.JsonPropertyName("retryLimitValue")]
         public int? RetryLimitValue { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("aiProviderKey")]
+        public string AiProviderKey { get; set; }
     }
     
     // 工作流程執行結果模型

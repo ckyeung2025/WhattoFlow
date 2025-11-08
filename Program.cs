@@ -11,6 +11,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
+using PurpleRice.Services.ApiProviders;
+using PurpleRice.Services.Security;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -103,15 +105,14 @@ builder.Services.AddScoped<PdfService>();
 builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<DocumentConverterService>();
 builder.Services.AddScoped<UserSessionService>();
-builder.Services.AddScoped<IMessageValidator, DefaultMessageValidator>();
+builder.Services.AddScoped<IMessageValidator, MessageValidator>();
 builder.Services.AddScoped<ContactListService>();
 // 註冊 GoogleSheetsService
 builder.Services.AddScoped<IGoogleSheetsService>(provider =>
 {
-    var configuration = provider.GetRequiredService<IConfiguration>();
-    var logger = provider.GetRequiredService<ILogger<LoggingService>>();
-    var loggingService = new LoggingService(configuration, logger, "GoogleSheetsService");
-    return new GoogleSheetsService(loggingService, configuration);
+    var loggingFactory = provider.GetRequiredService<Func<string, LoggingService>>();
+    var apiProviderService = provider.GetRequiredService<IApiProviderService>();
+    return new GoogleSheetsService(loggingFactory("GoogleSheetsService"), apiProviderService);
 });
 
 // 註冊 LoggingService 工廠
@@ -139,6 +140,10 @@ builder.Services.AddScoped<LoggingService>(provider =>
     var logger = provider.GetRequiredService<ILogger<LoggingService>>();
     return new LoggingService(configuration, logger, "WhatsAppController");
 });
+
+builder.Services.AddSingleton<IApiKeyProtector, ApiKeyProtector>();
+builder.Services.AddScoped<IApiProviderService, ApiProviderService>();
+builder.Services.AddScoped<IAiCompletionClient, AiCompletionClient>();
 
 builder.Services.AddScoped<WorkflowEngine>(); // 改為 Scoped 以解決生命週期問題
 

@@ -36,7 +36,9 @@ const zhSC = {
     whatsappTemplates: '消息模板',
     workflowMonitor: '流程监控',
     runningApps: '运行中的应用',
-    phoneVerificationAdmin: '电话号码验证'
+    phoneVerificationAdmin: '电话号码验证',
+    permissionManagement: '权限管理',
+    apiProviders: 'API 管理'
   },
 
   // Dashboard 仪表板
@@ -1231,6 +1233,14 @@ const zhSC = {
     fileTooLarge: '文件太大',
     unsupportedFormat: '不支持的格式',
     includeCurrentHtml: '包含当前 HTML 内容',
+    aiProvider: 'AI 提供商',
+    aiProviderPlaceholder: '选择要使用的 AI 提供商',
+    aiProviderRequired: '请选择一个 AI 提供商',
+    loadAiProvidersFailed: '无法加载 AI 提供商，请稍后再试',
+    aiProvider: 'AI 提供商',
+    aiProviderPlaceholder: '选择要使用的 AI 提供商',
+    aiProviderRequired: '请选择一个 AI 提供商',
+    loadAiProvidersFailed: '无法加载 AI 提供商，请稍后再试',
     toolbarCollapse: '收合工具栏',
     toolbarExpand: '展开工具栏',
     viewCode: '查看代码',
@@ -1831,15 +1841,22 @@ const zhSC = {
     validatorType: '验证器类型',
     defaultValidator: '预设验证器',
     customValidator: '自定义验证器',
-    openaiValidation: 'OpenAI 验证',
-    xaiValidation: 'XAI 验证',
+    aiValidator: 'AI 验证',
     timeValidatorLabel: '时间验证器（无回应提醒）',
     promptText: '提示文字',
+    promptTextPlaceholder: '描述有效回复需要满足的条件，例如“用户必须提供 6 位数字验证码”。',
     retryMessage: '提醒消息',
+    retryMessagePlaceholder: '输入当用户回复不符合要求时要发送的提示内容。',
     maxRetries: '最大提醒次数',
     minutes: '分钟',
     days: '天',
     hours: '小时',
+    validationAiProvider: 'AI 提供商',
+    validationAiProviderPlaceholder: '选择用于验证用户回复的 AI 提供商',
+    validationAiProviderRequired: '请选择用于验证的 AI 提供商',
+    aiProviderInactive: '未启用',
+    aiProviderNotConfigured: '尚未配置 AI 提供商，请到 API 管理页面新增。',
+    aiProviderLoadFailed: '无法载入 AI 提供商列表',
     
     // Time Validator 相关翻译
     timeValidator: {
@@ -1886,6 +1903,12 @@ const zhSC = {
       notificationMessageHelp: '当表单发送后，此消息会自动发送给用户',
       defaultNotificationMessage: '请填写并回复此表单',
       promptMessagePlaceholder: '输入提示消息，提醒用户填写表单前需要了解的信息',
+      aiProvider: 'AI 提供商',
+      aiProviderPlaceholder: '选择用于解析用户自然语言输入的 AI 提供商',
+      aiProviderRequired: '请为 AI 自动填写模式选择 AI 提供商',
+      aiProvider: 'AI 提供商',
+      aiProviderPlaceholder: '选择用于解析用户自然语言输入的 AI 提供商',
+      aiProviderRequired: '请为 AI 自动填写模式选择 AI 提供商',
     },
     
     // Drawer 全屏相关
@@ -2384,6 +2407,7 @@ const zhSC = {
     operationFailed: '操作失败',
     fetchFailed: '获取 DataSet 列表失败',
     fetchRecordsFailed: '获取记录失败',
+    processFailed: '处理失败',
     searchFailed: '搜索失败',
     foundRecords: '找到 {count} 条记录',
     
@@ -2702,15 +2726,22 @@ const zhSC = {
     validatorType: '验证器类型',
     defaultValidator: '预设验证器',
     customValidator: '自定义验证器',
-    openaiValidation: 'OpenAI 验证',
-    xaiValidation: 'XAI 验证',
+    aiValidator: 'AI 验证',
     timeValidatorLabel: '时间验证器（无回应提醒）',
     promptText: '提示文字',
+    promptTextPlaceholder: '描述有效回复需要满足的条件，例如“用户必须提供 6 位数字验证码”。',
     retryMessage: '提醒消息',
+    retryMessagePlaceholder: '输入当用户回复不符合要求时要发送的提示内容。',
     maxRetries: '最大提醒次数',
     minutes: '分钟',
     days: '天',
     hours: '小时',
+    validationAiProvider: 'AI 提供商',
+    validationAiProviderPlaceholder: '选择用于验证用户回复的 AI 提供商',
+    validationAiProviderRequired: '请选择用于验证的 AI 提供商',
+    aiProviderInactive: '未启用',
+    aiProviderNotConfigured: '尚未配置 AI 提供商，请到 API 管理页面新增。',
+    aiProviderLoadFailed: '无法载入 AI 提供商列表',
     
     // Time Validator 相关翻译
     timeValidator: {
@@ -3496,6 +3527,82 @@ const zhSC = {
     pleaseSelectWorkflowsToOperate: '请选择要操作的流程',
     workflowStarted: '已成功启动',
     manualStartMessage: '手动启动的流程'
+  },
+
+  apiProviders: {
+    pageTitle: 'API 供应商管理',
+    pageDescription: '集中管理 AI 与云端文档等外部 API，配置各供应商的连接信息、模型与密钥，方便团队共用与扩展。',
+    actions: {
+      refresh: '重新整理'
+    },
+    messages: {
+      loadFailed: '加载 API 供应商失败，请稍后再试。',
+      saveSuccess: '设置已更新。',
+      saveFailed: '保存失败，请检查输入或稍后再试。',
+      loadDetailFailed: '加载供应商详细设置失败，请稍后重试。'
+    },
+    empty: '尚未有可管理的 API 供应商。',
+    category: {
+      ai: 'AI 服务',
+      clouddoc: '云端文档'
+    },
+    noDescription: '尚未提供描述。',
+    status: {
+      active: '启用',
+      inactive: '停用',
+      activeTip: '此供应商目前可供流程与工具使用。',
+      inactiveTip: '此供应商目前未启用。'
+    },
+    apiKey: {
+      set: '已设置密钥',
+      missing: '尚未设置密钥',
+      setTip: '密钥已保存，可直接使用。',
+      missingTip: '尚未设置密钥，将无法完成授权。'
+    },
+    configure: '设置详情',
+    modal: {
+      title: '设置 {name}',
+      loadingTitle: '载入设置中...',
+      save: '保存设置',
+      cancel: '取消',
+      defaultUrl: '官方预设 API URL',
+      defaultModel: '官方建议模型'
+    },
+    form: {
+      active: '启用状态',
+      apiUrl: 'API URL',
+      apiUrlRequired: '请输入 API URL。',
+      model: '模型',
+      modelRequired: '请选择或输入模型。',
+      modelPlaceholder: '请输入模型名称',
+      temperature: 'Temperature',
+      temperatureTip: '控制输出随机度，值越高越具创造性。',
+      topP: 'Top P',
+      topPTip: '控制采样范围，值越低越保守。',
+      enableStreaming: '启用串流输出',
+      apiKey: 'API Key',
+      apiKeyPlaceholder: '输入新的 API Key',
+      clearApiKey: '清除已保存的 API Key',
+      maskedKey: '目前已保存的密钥：{key}',
+      extraHeaders: '额外 HTTP Headers (JSON)',
+      extraHeadersTip: '若需要自定义 Header，请输入 JSON 格式，例如 {"X-Custom-Header":"value"}。',
+      authType: '授权类型',
+      authTypeTip: '选择此供应商的授权方式，默认采用官方建议。',
+      authTypePlaceholder: '选择授权类型',
+      authTypeOptions: {
+        apiKey: 'API Key',
+        bearerToken: 'Bearer Token',
+        serviceAccount: 'Service Account JSON',
+        oauth: 'OAuth 2.0'
+      },
+      authConfigJson: '授权配置 (JSON)',
+      authConfigTip: '用于存放租户、客户端 ID、Service Account 等授权信息。',
+      settingsJson: '进阶设置 (JSON)',
+      settingsJsonTip: '自定义供应商专属参数，例如 temperature、top_p、top_k。',
+      resetSettings: '套用官方预设',
+      resetSettingsHint: '将以供应商预设值覆盖当前设置。',
+      jsonInvalid: '请输入有效的 JSON 格式。'
+    }
   },
 
   // WhatsApp 电话号码验证管理
