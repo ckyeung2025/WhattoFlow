@@ -2,7 +2,7 @@ const zhTC = {
   // 登入相關
   login: {
     title: 'SS.AI 客服',
-    platformTitle: 'AI WhatsApp 流程平台',
+    platformTitle: 'AI 聊天流程平台',
     userId: '使用者 ID',
     password: '密碼',
     loginButton: '登入',
@@ -886,6 +886,12 @@ const zhTC = {
     validateTokenButton: "驗證 Token 權限",
     validateTokenHint: "輸入 API Key 和 Business Account ID 後點擊驗證",
     validateTokenLoading: "正在驗證 Token 權限...",
+    subscribeWebhookButton: "訂閱 Webhook",
+    subscribeWebhookLoading: "正在訂閱 Webhook...",
+    subscribeWebhookSuccessTitle: "Webhook 訂閱結果",
+    subscribeWebhookSuccess: "Webhook 訂閱成功，Meta 將把通知發送到您的回呼網址。",
+    subscribeWebhookErrorTitle: "Webhook 訂閱失敗",
+    subscribeWebhookError: "無法訂閱 Webhook，請確認 Access Token、Business Account ID 及權限設定。",
     validateTokenError: "❌ 驗證失敗",
     validateTokenFailed: "❌ 權限檢查失敗",
     validateTokenErrorMsg: "無法驗證 Token 權限，請檢查您的設定",

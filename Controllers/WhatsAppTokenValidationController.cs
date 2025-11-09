@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using PurpleRice.Data;
 using PurpleRice.Services;
 using System.Text.Json;
+using System.Net.Http.Headers;
 
 namespace PurpleRice.Controllers
 {
@@ -69,7 +70,12 @@ namespace PurpleRice.Controllers
                 var permissionsContent = await permissionsResponse.Content.ReadAsStringAsync();
                 _loggingService.LogInformation($"✅ Permissions Response: {permissionsContent}");
 
-                var permissionsData = JsonSerializer.Deserialize<PermissionsResponse>(permissionsContent);
+                var permissionsData = JsonSerializer.Deserialize<PermissionsResponse>(
+                    permissionsContent,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
                 
                 // 3. 檢查關鍵權限
                 var hasMessaging = permissionsData?.Data?.Any(p => 
@@ -132,6 +138,76 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogError($"❌ Token 驗證錯誤: {ex.Message}", ex);
                 return StatusCode(500, new { error = "Token 驗證失敗", message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 幫 WhatsApp Business Account 訂閱 Webhook
+        /// </summary>
+        [HttpPost("subscribe-webhook")]
+        public async Task<IActionResult> SubscribeWebhookAsync()
+        {
+            try
+            {
+                _loggingService.LogInformation("🔔 開始訂閱 WhatsApp Webhook");
+
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { success = false, error = "無法識別用戶公司" });
+                }
+
+                var company = await _context.Companies.FindAsync(companyId.Value);
+                if (company == null)
+                {
+                    return NotFound(new { success = false, error = "找不到對應的公司資料" });
+                }
+
+                if (string.IsNullOrWhiteSpace(company.WA_API_Key))
+                {
+                    return BadRequest(new { success = false, error = "未配置 WhatsApp API Key" });
+                }
+
+                if (string.IsNullOrWhiteSpace(company.WA_Business_Account_ID))
+                {
+                    return BadRequest(new { success = false, error = "未配置 WhatsApp Business Account ID" });
+                }
+
+                var apiVersion = WhatsAppApiConfig.GetApiVersion();
+                var requestUrl = $"https://graph.facebook.com/{apiVersion}/{company.WA_Business_Account_ID}/subscribed_apps";
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                _loggingService.LogInformation($"📡 訂閱請求 URL: {requestUrl}");
+
+                var response = await _httpClient.SendAsync(request);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 訂閱回應狀態: {response.StatusCode}");
+                _loggingService.LogDebug($"📨 訂閱回應內容: {responseContent}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "✅ Webhook 訂閱成功，Meta 將會把通知發送到設定的回呼網址。",
+                        metaResponse = responseContent
+                    });
+                }
+
+                return StatusCode((int)response.StatusCode, new
+                {
+                    success = false,
+                    error = responseContent,
+                    status = response.StatusCode
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ Webhook 訂閱失敗: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, error = "Webhook 訂閱失敗", message = ex.Message });
             }
         }
 

@@ -1,11 +1,17 @@
 {
-  "short_name": "QR 掃描系統",
-  "name": "QR 掃描管理系統",
+  "short_name": "WhatoFlow",
+  "name": "WhatoFlow - ChatFlow Platform",
   "icons": [
     {
       "src": "assets/favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "assets/WhatoFlow_icon_P.png",
+      "sizes": "178x178",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ],
   "start_url": ".",

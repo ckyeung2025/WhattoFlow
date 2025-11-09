@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Typography, Space, Dropdown, Menu } from 'antd';
+import { Button, Typography, Space, Dropdown } from 'antd';
 import { 
   SaveOutlined, 
   ArrowLeftOutlined, 
@@ -30,46 +30,41 @@ const Toolbar = ({
   const navigate = useNavigate();
 
   // 對齊選單
-  const alignMenu = (
-    <Menu
-      onClick={({ key }) => onAlignNodes(key)}
-      items={[
-        {
-          key: 'align-left',
-          icon: <AlignLeftOutlined />,
-          label: t('workflowDesigner.alignLeft'),
-        },
-        {
-          key: 'align-center',
-          icon: <AlignCenterOutlined />,
-          label: t('workflowDesigner.alignCenter'),
-        },
-        {
-          key: 'align-right',
-          icon: <AlignRightOutlined />,
-          label: t('workflowDesigner.alignRight'),
-        },
-        {
-          type: 'divider',
-        },
-        {
-          key: 'align-top',
-          icon: <VerticalAlignTopOutlined />,
-          label: t('workflowDesigner.alignTop'),
-        },
-        {
-          key: 'align-middle',
-          icon: <VerticalAlignMiddleOutlined />,
-          label: t('workflowDesigner.alignMiddle'),
-        },
-        {
-          key: 'align-bottom',
-          icon: <VerticalAlignBottomOutlined />,
-          label: t('workflowDesigner.alignBottom'),
-        },
-      ]}
-    />
-  );
+  const alignMenuItems = [
+    {
+      key: 'align-left',
+      icon: <AlignLeftOutlined />,
+      label: t('workflowDesigner.alignLeft'),
+    },
+    {
+      key: 'align-center',
+      icon: <AlignCenterOutlined />,
+      label: t('workflowDesigner.alignCenter'),
+    },
+    {
+      key: 'align-right',
+      icon: <AlignRightOutlined />,
+      label: t('workflowDesigner.alignRight'),
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'align-top',
+      icon: <VerticalAlignTopOutlined />,
+      label: t('workflowDesigner.alignTop'),
+    },
+    {
+      key: 'align-middle',
+      icon: <VerticalAlignMiddleOutlined />,
+      label: t('workflowDesigner.alignMiddle'),
+    },
+    {
+      key: 'align-bottom',
+      icon: <VerticalAlignBottomOutlined />,
+      label: t('workflowDesigner.alignBottom'),
+    },
+  ];
 
   return (
     <div style={{
@@ -142,7 +137,10 @@ const Toolbar = ({
         
         {/* 對齊按鈕 */}
         <Dropdown 
-          menu={{ items: alignMenu }} 
+          menu={{ 
+            items: alignMenuItems,
+            onClick: ({ key }) => onAlignNodes(key)
+          }} 
           trigger={['click']}
           disabled={!selectedNodes || selectedNodes.length < 2}
         >

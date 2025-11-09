@@ -10,36 +10,35 @@ import { useLanguage } from '../contexts/LanguageContext';
 import zhTC from '../locales/zh-TC';
 import en from '../locales/en';
 import MyPreferencesModal from '../components/MyPreferencesModal';
-import { TIMEZONES } from '../configs/timezones';
+import {
+  GMT_OFFSET_OPTIONS,
+  getGMTOffsetString,
+  getTimezoneValueByGMTOffset,
+  normalizeGMTOffsetString,
+  formatOffsetToGMT
+} from '../configs/timezones';
 
 // 獲取瀏覽器時區的輔助函數
 const getBrowserTimezone = () => {
   try {
     // 獲取瀏覽器的 IANA 時區標識符
     const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    
-    // 檢查是否在 TIMEZONES 列表中
-    const foundTimezone = TIMEZONES.find(tz => tz.value === browserTimezone);
-    if (foundTimezone) {
-      return foundTimezone.value;
+
+    if (browserTimezone) {
+      const gmtOffset = getGMTOffsetString(browserTimezone);
+      if (gmtOffset) {
+        return gmtOffset;
+      }
     }
-    
-    // 如果不在列表中，根據偏移值找到最接近的時區
+
+    // 如果不在列表中，根據偏移值計算偏移字符串
     const now = new Date();
     const offsetMinutes = now.getTimezoneOffset();
     const offsetHours = -offsetMinutes / 60; // getTimezoneOffset() 返回的是相反的符號
-    
-    // 找到相同偏移值的時區（優先選擇第一個）
-    const matchingTimezone = TIMEZONES.find(tz => tz.offset === offsetHours);
-    if (matchingTimezone) {
-      return matchingTimezone.value;
-    }
-    
-    // 如果找不到，返回 UTC
-    return 'UTC';
+    return formatOffsetToGMT(offsetHours);
   } catch (error) {
     console.error('獲取瀏覽器時區失敗:', error);
-    return 'Asia/Hong_Kong'; // 默認香港時區
+    return 'UTC+8'; // 默認香港時區
   }
 };
 
@@ -220,7 +219,7 @@ const CompanyUserAdminPage = () => {
       try {
         const parsedUserInfo = JSON.parse(userInfo);
         if (parsedUserInfo.timezone) {
-          setUserTimezoneOffset(parsedUserInfo.timezone);
+          setUserTimezoneOffset(normalizeGMTOffsetString(parsedUserInfo.timezone));
         }
       } catch (error) {
         console.error('解析用戶信息失敗:', error);
@@ -527,6 +526,7 @@ const CompanyUserAdminPage = () => {
         created_at: u.createdAt,
         updated_at: u.updatedAt,
         avatar_url: u.avatarUrl, // 添加頭像字段映射
+        timezone: normalizeGMTOffsetString(u.timezone),
       }));
       
       // 根據用戶角色過濾用戶列表
@@ -645,7 +645,10 @@ const CompanyUserAdminPage = () => {
     // 立即設置表單值，確保頭像正確顯示
     setTimeout(() => {
       if (record) {
-        form.setFieldsValue(record);
+        form.setFieldsValue({
+          ...record,
+          timezone: normalizeGMTOffsetString(record.timezone),
+        });
       } else {
         // 新增模式：設置默認值
         form.setFieldsValue({
@@ -671,6 +674,12 @@ const CompanyUserAdminPage = () => {
       const token = localStorage.getItem('token');
       const isNewUser = !editingUser || !editingUser.id;
       
+      // 時區轉換處理
+      const normalizedTimezone = normalizeGMTOffsetString(
+        values.timezone || editingUser?.timezone || getBrowserTimezone()
+      );
+      const timezoneForSave = getTimezoneValueByGMTOffset(normalizedTimezone);
+
       // 獲取當前用戶的公司 ID
       const currentUserInfo = getUserInfo();
       const currentCompanyId = currentUserInfo.company_id || currentUserInfo.companyId || currentUserInfo.companyID || '';
@@ -686,7 +695,7 @@ const CompanyUserAdminPage = () => {
         isActive: values.is_active !== undefined ? values.is_active : (isNewUser ? true : editingUser.is_active),
         isOwner: isNewUser ? false : (editingUser.is_owner || false), // 新增用戶默認為 false
         avatarUrl: values.avatar_url || null,
-        timezone: values.timezone || null,
+        timezone: timezoneForSave,
         name: values.name || null,
         phone: values.phone || null,
         language: values.language || null,
@@ -750,7 +759,10 @@ const CompanyUserAdminPage = () => {
       setTimeout(() => {
         if (editingUser && editingUser.id) {
           // 編輯模式：設置現有用戶的值
-          form.setFieldsValue(editingUser);
+          form.setFieldsValue({
+            ...editingUser,
+            timezone: normalizeGMTOffsetString(editingUser.timezone),
+          });
         } else {
           // 新增模式：設置默認值，使用瀏覽器時區
           const browserTimezone = getBrowserTimezone();
@@ -1095,10 +1107,7 @@ const CompanyUserAdminPage = () => {
                     filterOption={(input, option) =>
                       (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                     }
-                    options={TIMEZONES.map(timezone => ({
-                      value: timezone.value,
-                      label: timezone.label
-                    }))}
+                    options={GMT_OFFSET_OPTIONS}
                     style={{ width: '100%' }}
                   />
                 </Form.Item>

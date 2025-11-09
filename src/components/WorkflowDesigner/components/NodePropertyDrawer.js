@@ -122,6 +122,14 @@ const NodePropertyDrawer = ({
   // Drawer 全屏狀態
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const watchedValidationEnabled = Form.useWatch(['validation', 'enabled'], form);
+  const validationEnabled = typeof watchedValidationEnabled === 'boolean'
+    ? watchedValidationEnabled
+    : (selectedNode?.data?.validation?.enabled ?? false);
+
+  const watchedValidatorType = Form.useWatch(['validation', 'validatorType'], form);
+  const normalizedValidatorType = ((watchedValidatorType ?? selectedNode?.data?.validation?.validatorType) || '').toLowerCase();
+
   // 監聽 Time Validator 模板選擇事件
   useEffect(() => {
     const handleTimeValidatorTemplateSelected = (event) => {
@@ -450,6 +458,7 @@ const NodePropertyDrawer = ({
     if (selectedNode && form && form.resetFields) {
       // 重置表單並設置新的初始值
       form.resetFields();
+      const validation = selectedNode.data.validation || {};
       form.setFieldsValue({
         taskName: selectedNode.data.taskName || selectedNode.data.label,
         to: selectedNode.data.to || '',
@@ -470,7 +479,10 @@ const NodePropertyDrawer = ({
         scheduledTable: selectedNode.data.scheduledTable || '',
         scheduledQuery: selectedNode.data.scheduledQuery || '',
         scheduledInterval: selectedNode.data.scheduledInterval || 300,
-        validation: selectedNode.data.validation || {},
+        validation: {
+          ...validation,
+          enabled: validation.enabled ?? false
+        },
         // DataSet 查詢節點相關字段
         dataSetId: selectedNode.data.dataSetId || '',
         operationType: selectedNode.data.operationType || 'SELECT',
@@ -1186,7 +1198,10 @@ const NodePropertyDrawer = ({
                     gridTemplateColumns: isFullscreen ? '1fr 1fr' : '1fr',
                     gap: isFullscreen ? '16px' : '0'
                   }}>
-                    <Form.Item label={t('workflowDesigner.enableValidation')} name={['validation', 'enabled']}>
+                    <Form.Item
+                      label={t('workflowDesigner.enableValidation')}
+                      name={['validation', 'enabled']}
+                    >
                       <Select
                         options={[
                           { value: true, label: t('workflowDesigner.yes') },
@@ -1194,20 +1209,24 @@ const NodePropertyDrawer = ({
                         ]}
                       />
                     </Form.Item>
-                  <Form.Item label={t('workflowDesigner.validatorType')} name={['validation', 'validatorType']}>
-                    <Select
-                      options={[
-                        { value: 'default', label: t('workflowDesigner.defaultValidator') },
-                        { value: 'time', label: t('workflowDesigner.timeValidatorLabel') },
-                        { value: 'custom', label: t('workflowDesigner.customValidator') },
-                        { value: 'ai', label: t('workflowDesigner.aiValidator') }
-                      ]}
-                    />
-                  </Form.Item>
+                    {validationEnabled && (
+                      <Form.Item label={t('workflowDesigner.validatorType')} name={['validation', 'validatorType']}>
+                        <Select
+                          options={[
+                            { value: 'default', label: t('workflowDesigner.defaultValidator') },
+                            { value: 'time', label: t('workflowDesigner.timeValidatorLabel') },
+                            { value: 'custom', label: t('workflowDesigner.customValidator') },
+                            { value: 'ai', label: t('workflowDesigner.aiValidator') }
+                          ]}
+                        />
+                      </Form.Item>
+                    )}
                   </div>
-                  
+
+                  {validationEnabled && (
+                  <>
                   {/* Time Validator 配置 */}
-                  {selectedNode.data.validation?.validatorType === 'time' && (
+                  {normalizedValidatorType === 'time' && (
                     <>
                       {/* Retry Interval - 天/時/分 */}
                       <Form.Item label={t('workflowDesigner.timeValidator.retryInterval')}>
@@ -1331,9 +1350,9 @@ const NodePropertyDrawer = ({
                   )}
                   
                   {/* 其他 Validator 的配置 */}
-                  {selectedNode.data.validation?.validatorType !== 'time' && (
+                  {normalizedValidatorType !== 'time' && (
                     <>
-                      {selectedNode.data.validation?.validatorType === 'ai' && (
+                      {normalizedValidatorType === 'ai' && (
                         <>
                           {!loadingAiProviders && aiProviders.length === 0 && (
                             <Alert
@@ -1376,6 +1395,8 @@ const NodePropertyDrawer = ({
                         <Input type="number" min="1" max="10" />
                       </Form.Item>
                     </>
+                  )}
+                  </>
                   )}
                 </Card>
               </Form.Item>

@@ -2,7 +2,7 @@ const zhSC = {
   // 登录相关
   login: {
     title: 'SS.AI 客服',
-    platformTitle: 'AI WhatsApp 流程平台',
+    platformTitle: 'AI 聊天流程平台',
     userId: '用户 ID',
     password: '密码',
     loginButton: '登录',

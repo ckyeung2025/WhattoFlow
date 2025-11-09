@@ -188,6 +188,7 @@ function AppContent() {
   const { t, currentLanguage, changeLanguage } = useLanguage();
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [systemVersion, setSystemVersion] = useState('');
   const [showPreferences, setShowPreferences] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -276,6 +277,33 @@ function AppContent() {
       setUserInfo(JSON.parse(savedUser));
     }
   }, []);
+
+  useEffect(() => {
+    if (isLoggedIn || systemVersion) {
+      return;
+    }
+
+    let isMounted = true;
+
+    fetch('/api/system/version', { cache: 'no-store' })
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        if (!isMounted || !data?.version) {
+          return;
+        }
+        const rawVersion = typeof data.version === 'string' ? data.version.trim() : '';
+        if (rawVersion) {
+          setSystemVersion(rawVersion);
+        }
+      })
+      .catch(() => {
+        // 靜默失敗，登入頁不顯示版本
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isLoggedIn, systemVersion]);
 
   // 處理登入後的重定向
   useEffect(() => {
@@ -465,6 +493,10 @@ function AppContent() {
     );
   }
 
+  const versionLabel = systemVersion
+    ? (systemVersion.toLowerCase().startsWith('v') ? systemVersion : `v${systemVersion}`)
+    : '';
+
   return (
     <div className="login-root">
       <div className="login-left">
@@ -500,6 +532,9 @@ function AppContent() {
               {loading ? t('common.loading') : t('login.loginButton')}
             </button>
           </form>
+          {versionLabel && (
+            <div className="login-version">{versionLabel}</div>
+          )}
         </div>
       </div>
     </div>

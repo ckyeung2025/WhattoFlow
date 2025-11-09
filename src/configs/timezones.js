@@ -76,6 +76,78 @@ export const TIMEZONES = [
   { value: 'Asia/Kamchatka', label: 'UTC+12 Asia/Kamchatka (Kamchatka)', offset: 12 }
 ];
 
+// --- 時區與 GMT 偏移轉換工具 ---
+
+const toNumber = (value) => {
+  const num = Number(value);
+  return Number.isNaN(num) ? 0 : num;
+};
+
+const formatOffsetMinutes = (totalMinutes) => {
+  if (!Number.isFinite(totalMinutes)) return 'UTC+0';
+
+  const sign = totalMinutes >= 0 ? '+' : '-';
+  const absMinutes = Math.abs(totalMinutes);
+  const hours = Math.floor(absMinutes / 60);
+  const minutes = absMinutes % 60;
+
+  if (minutes === 0) {
+    return `UTC${sign}${hours}`;
+  }
+
+  const paddedMinutes = minutes.toString().padStart(2, '0');
+  return `UTC${sign}${hours}:${paddedMinutes}`;
+};
+
+const formatOffset = (offset) => {
+  // offset 為小時數，可能是小數（例如 5.5 代表 5 小時 30 分）
+  const totalMinutes = Math.round(toNumber(offset) * 60);
+  return formatOffsetMinutes(totalMinutes);
+};
+
+const OFFSET_TO_TIMEZONE = {};
+
+TIMEZONES.forEach((timezone) => {
+  const offsetString = formatOffset(timezone.offset);
+  if (!OFFSET_TO_TIMEZONE[offsetString]) {
+    OFFSET_TO_TIMEZONE[offsetString] = timezone.value;
+  }
+});
+
+const OFFSET_REGEX = /^UTC(?:(?<sign>[+-])?(?<hours>\d{1,2})(?::?(?<minutes>\d{1,2}))?)$/i;
+
+/**
+ * 標準化 GMT 偏移字符串，例如：
+ * - UTC+08:00 -> UTC+8
+ * - UTC-5 -> UTC-5
+ * - UTC -> UTC+0
+ * - Asia/Hong_Kong -> 透過 IANA 轉換為對應 GMT 偏移
+ */
+export const normalizeGMTOffsetString = (value) => {
+  if (!value) return 'UTC+0';
+
+  if (typeof value === 'string' && value.includes('/')) {
+    // IANA 格式
+    return getGMTOffsetString(value);
+  }
+
+  if (typeof value === 'string' && value.startsWith('UTC')) {
+    if (value.toUpperCase() === 'UTC') return 'UTC+0';
+
+    const match = value.match(OFFSET_REGEX);
+    if (!match) return 'UTC+0';
+
+    const sign = match.groups?.sign === '-' ? -1 : 1;
+    const hours = toNumber(match.groups?.hours || 0);
+    const minutes = toNumber(match.groups?.minutes || 0);
+
+    const totalMinutes = sign * (hours * 60 + minutes);
+    return formatOffsetMinutes(totalMinutes);
+  }
+
+  return 'UTC+0';
+};
+
 // 根據 GMT 偏移值分組的時區
 export const TIMEZONES_BY_OFFSET = TIMEZONES.reduce((acc, timezone) => {
   const offset = timezone.offset;
@@ -88,6 +160,19 @@ export const TIMEZONES_BY_OFFSET = TIMEZONES.reduce((acc, timezone) => {
 
 // 獲取時區偏移值的輔助函數
 export const getTimezoneOffset = (timezoneValue) => {
+  if (!timezoneValue) return 0;
+
+  if (timezoneValue.startsWith('UTC')) {
+    const normalized = normalizeGMTOffsetString(timezoneValue);
+    const match = normalized.match(OFFSET_REGEX);
+    if (!match) return 0;
+    const sign = match.groups?.sign === '-' ? -1 : 1;
+    const hours = toNumber(match.groups?.hours || 0);
+    const minutes = toNumber(match.groups?.minutes || 0);
+    const totalMinutes = sign * (hours * 60 + minutes);
+    return totalMinutes / 60;
+  }
+
   const timezone = TIMEZONES.find(tz => tz.value === timezoneValue);
   return timezone ? timezone.offset : 0;
 };
@@ -98,16 +183,44 @@ export const getTimezoneLabel = (timezoneValue) => {
   return timezone ? timezone.label : timezoneValue;
 };
 
-// 根據 IANA 時區標識符獲取 GMT 偏移字符串
+// 根據 IANA 時區標識符或 GMT 偏移字符串獲取標準化的 GMT 偏移字符串
 export const getGMTOffsetString = (timezoneValue) => {
+  if (!timezoneValue) return 'UTC+0';
+
+  if (timezoneValue.startsWith('UTC')) {
+    return normalizeGMTOffsetString(timezoneValue);
+  }
+
   const timezone = TIMEZONES.find(tz => tz.value === timezoneValue);
   if (!timezone) return 'UTC+0';
   
-  const offset = timezone.offset;
-  if (offset === 0) return 'UTC+0';
-  if (offset > 0) {
-    return `UTC+${offset}`;
-  } else {
-    return `UTC${offset}`;
-  }
+  return formatOffset(timezone.offset);
 };
+
+// 根據 GMT 偏移字符串取得預設的 IANA 時區（優先使用列表中第一個對應值）
+export const getTimezoneValueByGMTOffset = (gmtOffsetString) => {
+  const normalized = normalizeGMTOffsetString(gmtOffsetString);
+  return OFFSET_TO_TIMEZONE[normalized] || 'UTC';
+};
+
+// 取得唯一的 GMT 偏移選項清單（用於下拉選單）
+export const GMT_OFFSET_OPTIONS = Object.entries(OFFSET_TO_TIMEZONE).map(([offsetString, timezoneValue]) => {
+  const timezone = TIMEZONES.find(tz => tz.value === timezoneValue);
+  return {
+    value: offsetString,
+    label: timezone ? timezone.label : offsetString,
+  };
+}).sort((a, b) => {
+  const getMinutes = (offsetStr) => {
+    const match = offsetStr.match(OFFSET_REGEX);
+    if (!match) return 0;
+    const sign = match.groups?.sign === '-' ? -1 : 1;
+    const hours = toNumber(match.groups?.hours || 0);
+    const minutes = toNumber(match.groups?.minutes || 0);
+    return sign * (hours * 60 + minutes);
+  };
+
+  return getMinutes(a.value) - getMinutes(b.value);
+});
+
+export const formatOffsetToGMT = (offset) => formatOffset(offset);

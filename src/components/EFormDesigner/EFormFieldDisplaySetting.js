@@ -112,7 +112,10 @@ const EFormFieldDisplaySetting = ({
         setFieldSettings(mergedFields);
       } else {
         console.log('🔍 沒有初始設定，使用掃描結果');
-        setFieldSettings(scannedFields);
+        setFieldSettings(scannedFields.map(field => ({
+          ...field,
+          showInList: false
+        })));
       }
     }
   }, [visible, htmlContent, initialSettings]);

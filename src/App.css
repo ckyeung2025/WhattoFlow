@@ -326,6 +326,104 @@
   cursor: not-allowed;
 }
 
+.login-version {
+  margin-top: 16px;
+  font-size: 13px;
+  color: #666;
+  text-align: center;
+  letter-spacing: 0.4px;
+}
+
+@media (max-width: 1024px) {
+  .login-root {
+    flex-direction: column;
+    padding: 24px 16px;
+    background: linear-gradient(180deg, #7234CF 0%, #f5f6fa 55%);
+  }
+
+  .login-left {
+    flex: none;
+    width: 100%;
+    min-height: 140px;
+    padding: 12px 0;
+    background: transparent;
+    justify-content: center;
+  }
+
+  .theme-img {
+    max-width: 220px;
+    max-height: 80px;
+  }
+
+  .login-right {
+    flex: none;
+    width: 100%;
+    justify-content: flex-start;
+    background: transparent;
+  }
+
+  .login-box {
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 28px 24px 32px;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(114, 52, 207, 0.18);
+  }
+
+  .language-switcher-container {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .login-input {
+    padding: 12px 14px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+
+  .login-btn {
+    padding: 12px 0;
+    font-size: 17px;
+    border-radius: 8px;
+  }
+
+  .login-version {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .login-root {
+    padding: 32px 20px;
+    min-height: 100vh;
+  }
+
+  .theme-img {
+    max-width: 180px;
+  }
+
+  .login-box {
+    padding: 24px 20px 28px;
+    border-radius: 18px;
+  }
+
+  .logo-img {
+    width: 150px;
+    margin-bottom: 12px;
+  }
+
+  .platform-title {
+    font-size: 16px;
+    margin-bottom: 20px;
+  }
+
+  .login-version {
+    font-size: 12px;
+  }
+}
+
 /* 內嵌表單 Modal 樣式 */
 .embedded-form-modal .ant-modal-content {
   border-radius: 12px;

@@ -2,7 +2,7 @@ const en = {
   // Login related
   login: {
     title: 'SS.AI Customer Service',
-    platformTitle: 'AI WhatsApp Workflow Platform',
+    platformTitle: 'AI ChatFlow Platform',
     userId: 'User ID',
     password: 'Password',
     loginButton: 'Login',
@@ -632,6 +632,12 @@ const en = {
     validateTokenButton: "Validate Token Permissions",
     validateTokenHint: "Click validate after entering API Key and Business Account ID",
     validateTokenLoading: "Validating Token permissions...",
+    subscribeWebhookButton: "Subscribe Webhook",
+    subscribeWebhookLoading: "Subscribing webhook...",
+    subscribeWebhookSuccessTitle: "Webhook Subscription",
+    subscribeWebhookSuccess: "Webhook subscription successful. Meta notifications will be sent to your callback URL.",
+    subscribeWebhookErrorTitle: "Webhook Subscription Failed",
+    subscribeWebhookError: "Unable to subscribe webhook, please verify Access Token, Business Account ID, and permissions.",
     validateTokenError: "❌ Validation Failed",
     validateTokenFailed: "❌ Permission Check Failed",
     validateTokenErrorMsg: "Unable to validate Token permissions, please check your settings",

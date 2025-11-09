@@ -226,6 +226,62 @@ const CompanyEditPage = () => {
     }
   };
 
+  // 訂閱 WhatsApp Webhook
+  const handleSubscribeWebhook = async () => {
+    try {
+      const waApiKey = form.getFieldValue('wA_API_Key');
+      const waBusinessAccountId = form.getFieldValue('wA_Business_Account_ID');
+
+      if (!waApiKey) {
+        message.warning(t('companyEdit.apiKeyRequired'));
+        return;
+      }
+
+      if (!waBusinessAccountId) {
+        message.warning(t('companyEdit.businessAccountIdRequired'));
+        return;
+      }
+
+      message.loading(t('companyEdit.subscribeWebhookLoading'), 0);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/whatsapptokenvalidation/subscribe-webhook', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const responseText = await response.text();
+      message.destroy();
+
+      let result = null;
+      try {
+        result = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        result = null;
+      }
+
+      if (response.ok && result?.success) {
+        Modal.success({
+          title: t('companyEdit.subscribeWebhookSuccessTitle'),
+          content: result.message || t('companyEdit.subscribeWebhookSuccess')
+        });
+      } else {
+        Modal.error({
+          title: t('companyEdit.subscribeWebhookErrorTitle'),
+          content: result?.error || result?.message || responseText || t('companyEdit.subscribeWebhookError')
+        });
+      }
+    } catch (error) {
+      message.destroy();
+      Modal.error({
+        title: t('companyEdit.subscribeWebhookErrorTitle'),
+        content: error.message || t('companyEdit.subscribeWebhookError')
+      });
+    }
+  };
+
   // 上傳公司頭像
   const handleUpload = async ({ file }) => {
     const formData = new FormData();
@@ -382,14 +438,23 @@ const CompanyEditPage = () => {
                       
                       {/* 驗證 Token 權限按鈕 */}
                       <Form.Item>
-                        <Button 
-                          icon={<SafetyOutlined />}
-                          onClick={handleValidateToken}
-                          style={{ width: '100%' }}
-                          type="dashed"
-                        >
-                          {t('companyEdit.validateTokenButton')}
-                        </Button>
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <Button 
+                            icon={<SafetyOutlined />}
+                            onClick={handleValidateToken}
+                            style={{ width: '100%' }}
+                            type="dashed"
+                          >
+                            {t('companyEdit.validateTokenButton')}
+                          </Button>
+                          <Button 
+                            onClick={handleSubscribeWebhook}
+                            style={{ width: '100%' }}
+                            type="primary"
+                          >
+                            {t('companyEdit.subscribeWebhookButton')}
+                          </Button>
+                        </Space>
                         <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
                           {t('companyEdit.validateTokenHint')}
                         </div>
