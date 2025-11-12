@@ -218,7 +218,13 @@ namespace PurpleRice.Services
                         // 解析 ValidationConfig
                         var validation = JsonSerializer.Deserialize<ValidationConfig>(step.ValidationConfig);
                         
-                        if (validation?.ValidatorType != "time")
+                        if (validation == null || validation.Enabled != true)
+                        {
+                            continue;
+                        }
+
+                        var timeValidatorActive = validation.TimeIsActive ?? string.Equals(validation.ValidatorType, "time", StringComparison.OrdinalIgnoreCase);
+                        if (!timeValidatorActive)
                         {
                             continue; // 不是 Time Validator，跳過
                         }
@@ -1766,6 +1772,8 @@ namespace PurpleRice.Services
     {
         public bool? Enabled { get; set; }
         public string ValidatorType { get; set; }
+        public bool? AiIsActive { get; set; }
+        public bool? TimeIsActive { get; set; }
         public string Prompt { get; set; }
         public string RetryMessage { get; set; }
         public int? RetryIntervalDays { get; set; }
@@ -1776,6 +1784,7 @@ namespace PurpleRice.Services
         public RetryMessageConfig RetryMessageConfig { get; set; }
         public EscalationConfig EscalationConfig { get; set; }
         public string AiProviderKey { get; set; }
+        public string AiResultVariable { get; set; }
     }
 
     /// <summary>

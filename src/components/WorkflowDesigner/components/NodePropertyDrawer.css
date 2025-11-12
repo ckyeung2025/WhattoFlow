@@ -1,0 +1,21 @@
+.validator-switch {
+  min-width: 84px;
+}
+
+.validator-switch.ant-switch-checked {
+  background-color: #7E3EF3 !important;
+  border-color: #7E3EF3 !important;
+}
+
+.validator-switch.ant-switch:not(.ant-switch-checked) {
+  background-color: #d9d9d9;
+  border-color: #d9d9d9;
+}
+
+.validator-switch .ant-switch-handle::before {
+  background-color: #ffffff;
+}
+
+.validator-switch.ant-switch-checked .ant-switch-handle::before {
+  background-color: #ffffff;
+}

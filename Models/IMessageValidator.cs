@@ -4,7 +4,7 @@ namespace PurpleRice.Models
 {
     public interface IMessageValidator
     {
-        Task<ValidationResult> ValidateMessageAsync(string userMessage, WorkflowExecution execution, WorkflowStepExecution? stepExecution);
+        Task<ValidationResult> ValidateMessageAsync(WhatsAppMessageData messageData, WorkflowExecution execution, WorkflowStepExecution? stepExecution);
     }
 
     public class ValidationResult
@@ -15,5 +15,7 @@ namespace PurpleRice.Models
         public object? ProcessedData { get; set; } // 驗證通過後的處理數據
         public string? ValidatorType { get; set; }
         public string? ProviderKey { get; set; }
+        public string? TargetProcessVariable { get; set; }
+        public object? AdditionalData { get; set; }
     }
 } 

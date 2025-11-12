@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using PurpleRice.Services;
 using System.IO;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace PurpleRice.Controllers
 {
@@ -123,17 +125,17 @@ namespace PurpleRice.Controllers
         }
 
         // POST: api/workflowexecutions/{id}/resume
-        [HttpPost("{id}/resume")]
-        public async Task<IActionResult> Resume(int id, [FromBody] Dictionary<string, object> input)
-        {
-            var exec = await _db.WorkflowExecutions.Include(e => e.WorkflowDefinition).FirstOrDefaultAsync(e => e.Id == id);
-            if (exec == null) return NotFound();
-            if (exec.Status != "Waiting") return BadRequest("Workflow is not waiting");
-            exec.Status = "Running";
-            exec.InputJson = input != null ? JsonSerializer.Serialize(input) : null;
-            await _engine.ExecuteWorkflowAsync(exec, null);
-            return Ok(new { executionId = exec.Id, status = exec.Status });
-        }
+        //[HttpPost("{id}/resume")]
+        //public async Task<IActionResult> Resume(int id, [FromBody] Dictionary<string, object> input)
+        //{
+        //    var exec = await _db.WorkflowExecutions.Include(e => e.WorkflowDefinition).FirstOrDefaultAsync(e => e.Id == id);
+        //    if (exec == null) return NotFound();
+        //    if (exec.Status != "Waiting") return BadRequest("Workflow is not waiting");
+        //    exec.Status = "Running";
+        //    exec.InputJson = input != null ? JsonSerializer.Serialize(input) : null;
+        //    await _engine.ExecuteWorkflowAsync(exec, null);
+        //    return Ok(new { executionId = exec.Id, status = exec.Status });
+        //}
 
         // GET: api/workflowexecutions/monitor
         [HttpGet("monitor")]
@@ -689,11 +691,6 @@ namespace PurpleRice.Controllers
                     return NotFound(new { error = "實例不存在" });
                 }
 
-                if (instance.Status != "Running")
-                {
-                    return BadRequest(new { error = "只有運行中的實例才能暫停" });
-                }
-
                 instance.Status = "Paused";
                 await _db.SaveChangesAsync();
 
@@ -715,11 +712,6 @@ namespace PurpleRice.Controllers
                 if (instance == null)
                 {
                     return NotFound(new { error = "實例不存在" });
-                }
-
-                if (instance.Status != "Paused" && instance.Status != "Waiting")
-                {
-                    return BadRequest(new { error = "只有暫停或等待中的實例才能恢復" });
                 }
 
                 instance.Status = "Running";
@@ -745,11 +737,6 @@ namespace PurpleRice.Controllers
                     return NotFound(new { error = "實例不存在" });
                 }
 
-                if (instance.Status == "Completed" || instance.Status == "Cancelled")
-                {
-                    return BadRequest(new { error = "已完成或已取消的實例無法取消" });
-                }
-
                 instance.Status = "Cancelled";
                 instance.EndedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
@@ -759,6 +746,161 @@ namespace PurpleRice.Controllers
             catch (Exception ex)
             {
                 return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        // DELETE: api/workflowexecutions/{id}
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteInstance(int id)
+        {
+            _loggingService.LogInformation($"準備刪除工作流程實例 ID: {id}");
+
+            var execution = await _db.WorkflowExecutions
+                .Include(e => e.WorkflowDefinition)
+                .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (execution == null)
+            {
+                return NotFound(new { error = "實例不存在" });
+            }
+
+            IDbContextTransaction transaction = null;
+            try
+            {
+                transaction = await _db.Database.BeginTransactionAsync();
+
+                var messageSends = await _db.WorkflowMessageSends
+                    .Where(ms => ms.WorkflowExecutionId == id)
+                    .Include(ms => ms.Recipients)
+                    .ToListAsync();
+
+                if (messageSends.Count > 0)
+                {
+                    foreach (var send in messageSends)
+                    {
+                        if (send.Recipients != null && send.Recipients.Count > 0)
+                        {
+                            _db.WorkflowMessageRecipients.RemoveRange(send.Recipients);
+                        }
+                    }
+                    _db.WorkflowMessageSends.RemoveRange(messageSends);
+                }
+
+                var stepExecutions = await _db.WorkflowStepExecutions
+                    .Where(se => se.WorkflowExecutionId == id)
+                    .ToListAsync();
+                if (stepExecutions.Count > 0)
+                {
+                    _db.WorkflowStepExecutions.RemoveRange(stepExecutions);
+                }
+
+                var messageValidations = await _db.MessageValidations
+                    .Where(mv => mv.WorkflowExecutionId == id)
+                    .ToListAsync();
+                if (messageValidations.Count > 0)
+                {
+                    _db.MessageValidations.RemoveRange(messageValidations);
+                }
+
+                var processVariableValues = await _db.ProcessVariableValues
+                    .Where(pv => pv.WorkflowExecutionId == id)
+                    .ToListAsync();
+                if (processVariableValues.Count > 0)
+                {
+                    _db.ProcessVariableValues.RemoveRange(processVariableValues);
+                }
+
+                var dataSetResults = await _db.WorkflowDataSetQueryResults
+                    .Where(r => r.WorkflowExecutionId == id)
+                    .ToListAsync();
+                if (dataSetResults.Count > 0)
+                {
+                    var resultIds = dataSetResults.Select(r => r.Id).ToList();
+                    var dataSetRecords = await _db.WorkflowDataSetQueryRecords
+                        .Where(r => resultIds.Contains(r.QueryResultId))
+                        .ToListAsync();
+                    if (dataSetRecords.Count > 0)
+                    {
+                        _db.WorkflowDataSetQueryRecords.RemoveRange(dataSetRecords);
+                    }
+
+                    _db.WorkflowDataSetQueryResults.RemoveRange(dataSetResults);
+                }
+
+                var eformInstanceIds = await _db.EFormInstances
+                    .Where(e => e.WorkflowExecutionId == id)
+                    .Select(e => e.Id)
+                    .ToListAsync();
+
+                if (eformInstanceIds.Count > 0)
+                {
+                    var approvals = await _db.EFormApprovals
+                        .Where(a => eformInstanceIds.Contains(a.EFormInstanceId))
+                        .ToListAsync();
+                    if (approvals.Count > 0)
+                    {
+                        _db.EFormApprovals.RemoveRange(approvals);
+                    }
+
+                    var eformInstances = await _db.EFormInstances
+                        .Where(e => eformInstanceIds.Contains(e.Id))
+                        .ToListAsync();
+                    if (eformInstances.Count > 0)
+                    {
+                        _db.EFormInstances.RemoveRange(eformInstances);
+                    }
+                }
+
+                var sessions = await _db.UserSessions
+                    .Where(us => us.CurrentWorkflowExecutionId == id)
+                    .ToListAsync();
+                foreach (var session in sessions)
+                {
+                    session.CurrentWorkflowExecutionId = null;
+                }
+
+                // 嘗試清理 WhatsApp 訊息（表格可能不存在）
+                try
+                {
+                    var whatsappMessages = await _db.WhatsAppMessages
+                        .Where(m => m.WorkflowExecutionId == id)
+                        .ToListAsync();
+
+                    if (whatsappMessages.Count > 0)
+                    {
+                        foreach (var message in whatsappMessages)
+                        {
+                            message.WorkflowExecutionId = null;
+                        }
+                    }
+                }
+                catch (SqlException sqlEx) when (sqlEx.Number == 208)
+                {
+                    _loggingService.LogWarning($"刪除工作流程實例 {id} 時忽略 WhatsApp 訊息清理：{sqlEx.Message}");
+                }
+                _db.WorkflowExecutions.Remove(execution);
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _loggingService.LogInformation($"工作流程實例 {id} 刪除完成");
+                return Ok(new { message = "實例已刪除" });
+            }
+            catch (Exception ex)
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
+                _loggingService.LogError($"刪除工作流程實例 {id} 失敗: {ex.Message}", ex);
+                return BadRequest(new { error = $"刪除實例失敗: {ex.Message}" });
+            }
+            finally
+            {
+                if (transaction != null)
+                {
+                    await transaction.DisposeAsync();
+                }
             }
         }
 

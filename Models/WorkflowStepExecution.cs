@@ -14,6 +14,8 @@ namespace PurpleRice.Models
         public string? Status { get; set; }
         public string? InputJson { get; set; }
         public string? OutputJson { get; set; }
+        public string? ReceivedPayloadJson { get; set; }
+        public string? AiResultJson { get; set; }
         public DateTime? StartedAt { get; set; }
         public DateTime? EndedAt { get; set; }
         

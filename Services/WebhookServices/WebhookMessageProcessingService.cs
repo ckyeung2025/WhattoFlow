@@ -1,9 +1,17 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using PurpleRice.Data;
 using PurpleRice.Models;
 using PurpleRice.Services;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 namespace PurpleRice.Services.WebhookServices
 {
@@ -80,6 +88,12 @@ namespace PurpleRice.Services.WebhookServices
         private readonly WebhookDuplicateService _duplicateService;
         private readonly LoggingService _loggingService;
         private readonly IServiceProvider _serviceProvider;
+        private readonly DocumentConverterService _documentConverterService;
+        private static readonly JsonSerializerOptions PayloadJsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
         public WebhookMessageProcessingService(
             PurpleRiceDbContext context,
@@ -89,7 +103,8 @@ namespace PurpleRice.Services.WebhookServices
             WorkflowEngine workflowEngine,
             WebhookDuplicateService duplicateService,
             Func<string, LoggingService> loggingServiceFactory,
-            IServiceProvider serviceProvider)
+            IServiceProvider serviceProvider,
+            DocumentConverterService documentConverterService)
         {
             _context = context;
             _userSessionService = userSessionService;
@@ -99,6 +114,7 @@ namespace PurpleRice.Services.WebhookServices
             _duplicateService = duplicateService;
             _loggingService = loggingServiceFactory("WebhookMessageProcessingService");
             _serviceProvider = serviceProvider;
+            _documentConverterService = documentConverterService;
         }
 
         /// <summary>
@@ -232,6 +248,9 @@ namespace PurpleRice.Services.WebhookServices
                 string messageType = "text";
                 string interactiveType = "";
                 string mediaId = "";
+                string mediaMimeType = null;
+                string mediaFileName = null;
+                string caption = null;
                 
                 if (value.TryGetProperty("messages", out var messages))
                 {
@@ -296,16 +315,59 @@ namespace PurpleRice.Services.WebhookServices
                                 _loggingService.LogInformation($"提取到媒體 ID: {mediaId}");
                             }
                             
-                            // ✅ 提取圖片的文字說明（caption）
+                            if (imageData.TryGetProperty("mime_type", out var mimeTypeProperty))
+                            {
+                                mediaMimeType = mimeTypeProperty.GetString();
+                                _loggingService.LogInformation($"圖片 MIME 類型: {mediaMimeType}");
+                            }
+                            
                             if (imageData.TryGetProperty("caption", out var captionProperty))
                             {
                                 messageText = captionProperty.GetString();
+                                caption = messageText;
                                 _loggingService.LogInformation($"✅ 提取到圖片文字說明（caption）: '{messageText}'");
                             }
                             else
                             {
                                 _loggingService.LogInformation($"圖片消息沒有文字說明（caption）");
                             }
+                        }
+                    }
+                    else if (messageType == "document")
+                    {
+                        _loggingService.LogInformation("檢測到文件訊息，準備提取文件資訊");
+                        messageText = "";
+
+                        if (message.TryGetProperty("document", out var documentData))
+                        {
+                            if (documentData.TryGetProperty("id", out var documentIdProperty))
+                            {
+                                mediaId = documentIdProperty.GetString();
+                                _loggingService.LogInformation($"提取到文件媒體 ID: {mediaId}");
+                            }
+
+                            if (documentData.TryGetProperty("mime_type", out var mimeTypeProperty))
+                            {
+                                mediaMimeType = mimeTypeProperty.GetString();
+                                _loggingService.LogInformation($"文件 MIME 類型: {mediaMimeType}");
+                            }
+
+                            if (documentData.TryGetProperty("filename", out var filenameProperty))
+                            {
+                                mediaFileName = filenameProperty.GetString();
+                                _loggingService.LogInformation($"文件名稱: {mediaFileName}");
+                            }
+
+                            if (documentData.TryGetProperty("caption", out var captionProperty))
+                            {
+                                messageText = captionProperty.GetString();
+                                caption = messageText;
+                                _loggingService.LogInformation($"✅ 提取到文件文字說明（caption）: '{messageText}'");
+                            }
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning("文件訊息缺少 document 區段，無法提取媒體資訊");
                         }
                     }
                     else
@@ -328,7 +390,10 @@ namespace PurpleRice.Services.WebhookServices
                     Source = "MetaWebhook",
                     MessageType = messageType,
                     InteractiveType = interactiveType,
-                    MediaId = mediaId
+                    MediaId = mediaId,
+                    Caption = caption,
+                    MediaMimeType = mediaMimeType,
+                    MediaFileName = mediaFileName
                 };
 
                 _loggingService.LogInformation("訊息數據提取完成");
@@ -482,29 +547,81 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"處理等待流程回覆，執行ID: {execution.Id}，步驟: {execution.CurrentWaitingStep}");
                 _loggingService.LogInformation($"消息類型: {messageData.MessageType}, MediaId: {messageData.MediaId}");
                 
-                // 如果是圖片消息，下載並保存圖片
-                string savedImagePath = null;
-                if (messageData.MessageType == "image" && !string.IsNullOrEmpty(messageData.MediaId))
+                // 如果是媒體消息，下載並預處理（圖片、文件等）
+                string savedMediaPath = null;
+                DownloadedMedia? downloadedMedia = null;
+                if (!string.IsNullOrEmpty(messageData.MediaId))
                 {
-                    try
+                    downloadedMedia = await DownloadWhatsAppMediaAsync(company, messageData.MediaId);
+                    if (downloadedMedia == null || downloadedMedia.Content == null || downloadedMedia.Content.Length == 0)
                     {
-                        _loggingService.LogInformation($"檢測到圖片消息，開始下載並保存圖片");
-                        var imageBytes = await DownloadWhatsAppImage(company, messageData.MediaId);
-                        
-                        if (imageBytes != null && imageBytes.Length > 0)
-                        {
-                            savedImagePath = await SaveWaitReplyImageAsync(execution.Id, imageBytes);
-                            _loggingService.LogInformation($"圖片已保存到: {savedImagePath}");
-                        }
-                        else
-                        {
-                            _loggingService.LogWarning($"圖片下載失敗或為空");
-                        }
+                        _loggingService.LogWarning($"媒體 {messageData.MediaId} 下載失敗或為空");
                     }
-                    catch (Exception imgEx)
+                    else
                     {
-                        _loggingService.LogError($"下載或保存圖片時發生錯誤: {imgEx.Message}");
-                        // 繼續處理，不因圖片保存失敗而中斷流程
+                        messageData.MediaMimeType = downloadedMedia.MimeType;
+                        messageData.MediaFileName = downloadedMedia.FileName;
+                        messageData.MediaContentBase64 = Convert.ToBase64String(downloadedMedia.Content);
+
+                        // 依不同消息類型作額外處理
+                        if (string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase))
+                        {
+                            savedMediaPath = await SaveWaitReplyImageAsync(execution.Id, downloadedMedia.Content, downloadedMedia.MimeType);
+                        }
+                        else if (string.Equals(messageData.MessageType, "document", StringComparison.OrdinalIgnoreCase))
+                        {
+                            savedMediaPath = await SaveWaitReplyDocumentAsync(execution.Id, downloadedMedia.Content, downloadedMedia.FileName, downloadedMedia.MimeType);
+
+                            // 將文件寫入暫存檔供 LibreOffice 解析
+                            var extension = Path.GetExtension(downloadedMedia.FileName ?? string.Empty);
+                            if (string.IsNullOrWhiteSpace(extension) && !string.IsNullOrWhiteSpace(downloadedMedia.MimeType))
+                            {
+                                extension = GetFileExtensionFromMimeType(downloadedMedia.MimeType) ?? ".tmp";
+                            }
+
+                            var tempFilePath = Path.Combine(Path.GetTempPath(), $"whatsapp_doc_{Guid.NewGuid():N}{extension}");
+                            try
+                            {
+                                await File.WriteAllBytesAsync(tempFilePath, downloadedMedia.Content);
+                                if (_documentConverterService.IsSupportedFormat(tempFilePath))
+                                {
+                                    var parseResult = await _documentConverterService.ParseDocumentAsync(tempFilePath, downloadedMedia.MimeType, downloadedMedia.FileName);
+                                    messageData.DocumentPlainText = parseResult.PlainText;
+                                    messageData.DocumentStructuredJson = parseResult.ToJson();
+                                    if (string.IsNullOrWhiteSpace(messageData.MessageText) && !string.IsNullOrWhiteSpace(parseResult.PlainText))
+                                    {
+                                        messageData.MessageText = parseResult.PlainText;
+                                    }
+                                }
+                                else
+                                {
+                                    _loggingService.LogWarning($"文件類型 {extension} 暫不支援 LibreOffice 轉換");
+                                }
+                            }
+                            catch (Exception docEx)
+                            {
+                                _loggingService.LogError($"解析文件內容時發生錯誤: {docEx.Message}");
+                            }
+                            finally
+                            {
+                                try
+                                {
+                                    if (File.Exists(tempFilePath))
+                                    {
+                                        File.Delete(tempFilePath);
+                                    }
+                                    var generatedHtmlPath = Path.Combine(Path.GetDirectoryName(tempFilePath) ?? Path.GetTempPath(), Path.GetFileNameWithoutExtension(tempFilePath) + ".html");
+                                    if (File.Exists(generatedHtmlPath))
+                                    {
+                                        File.Delete(generatedHtmlPath);
+                                    }
+                                }
+                                catch (Exception cleanupEx)
+                                {
+                                    _loggingService.LogWarning($"清理暫存文件失敗: {cleanupEx.Message}");
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -515,6 +632,12 @@ namespace PurpleRice.Services.WebhookServices
                 // ✅ 使用 stepExecution.StepIndex 而不是 execution.CurrentWaitingStep
                 int stepIndex = stepExecution?.StepIndex ?? execution.CurrentWaitingStep ?? 0;
                 
+                var rawPayload = BuildRawMessagePayload(messageData);
+                if (stepExecution != null)
+                {
+                    stepExecution.ReceivedPayloadJson = JsonSerializer.Serialize(rawPayload, PayloadJsonOptions);
+                }
+
                 _loggingService.LogInformation($"📊 保存消息驗證記錄 - StepIndex: {stepIndex}");
 
                 // 記錄驗證（包含媒體信息）
@@ -526,19 +649,31 @@ namespace PurpleRice.Services.WebhookServices
                     UserMessage = messageData.MessageText,
                     MessageType = messageData.MessageType, // ✅ 保存消息類型
                     MediaId = messageData.MediaId, // ✅ 保存媒體 ID
-                    MediaUrl = savedImagePath, // ✅ 保存圖片本地路徑
+                    MediaUrl = savedMediaPath,
                     CreatedAt = DateTime.UtcNow
                 };
 
                 // 執行驗證
                 var validationResult = await _messageValidator.ValidateMessageAsync(
-                    messageData.MessageText,
+                    messageData,
                     execution,
                     stepExecution);
 
                 validation.IsValid = validationResult.IsValid;
                 validation.ErrorMessage = validationResult.ErrorMessage;
                 validation.ValidatorType = validationResult.ValidatorType ?? "default";
+
+                if (stepExecution != null && validationResult.AdditionalData != null)
+                {
+                    try
+                    {
+                        stepExecution.AiResultJson = JsonSerializer.Serialize(validationResult.AdditionalData, PayloadJsonOptions);
+                    }
+                    catch (Exception serializeEx)
+                    {
+                        _loggingService.LogError($"序列化 AI 結果失敗: {serializeEx.Message}");
+                    }
+                }
 
                 if (validationResult.IsValid)
                 {
@@ -549,6 +684,41 @@ namespace PurpleRice.Services.WebhookServices
                     else if (validationResult.ProcessedData != null)
                     {
                         validation.ProcessedData = JsonSerializer.Serialize(validationResult.ProcessedData);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(validationResult.TargetProcessVariable))
+                    {
+                        try
+                        {
+                            using var scope = _serviceProvider.CreateScope();
+                            var processVariableService = scope.ServiceProvider.GetRequiredService<IProcessVariableService>();
+
+                            object? valueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? messageData.MessageText;
+                            if (valueToStore == null || (valueToStore is string s && string.IsNullOrWhiteSpace(s)))
+                            {
+                                valueToStore = validationResult.AdditionalData ?? BuildFallbackProcessVariablePayload(messageData);
+                            }
+
+                            if (valueToStore != null && valueToStore is not string)
+                            {
+                                valueToStore = JsonSerializer.Serialize(valueToStore, PayloadJsonOptions);
+                            }
+
+                            await processVariableService.SetVariableValueAsync(
+                                execution.Id,
+                                validationResult.TargetProcessVariable,
+                                valueToStore ?? string.Empty,
+                                setBy: "AIValidator",
+                                sourceType: "AIValidation",
+                                sourceReference: execution.Id.ToString()
+                            );
+
+                            _loggingService.LogInformation($"AI 驗證結果寫入流程變量: {validationResult.TargetProcessVariable}");
+                        }
+                        catch (Exception pvEx)
+                        {
+                            _loggingService.LogError($"AI 驗證結果寫入流程變量失敗: {pvEx.Message}", pvEx);
+                        }
                     }
                 }
 
@@ -1332,8 +1502,9 @@ namespace PurpleRice.Services.WebhookServices
                 }
                 
                 // 從 WhatsApp 下載圖片
-                var imageBytes = await DownloadWhatsAppImage(company, messageData.MediaId);
-                if (imageBytes == null || imageBytes.Length == 0)
+                var qrMedia = await DownloadWhatsAppMediaAsync(company, messageData.MediaId);
+                var imageBytes = qrMedia?.Content;
+                if (qrMedia == null || imageBytes == null || imageBytes.Length == 0)
                 {
                     _loggingService.LogError("無法下載 WhatsApp 圖片");
                     var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
@@ -1344,6 +1515,8 @@ namespace PurpleRice.Services.WebhookServices
                 }
                 
                 _loggingService.LogInformation($"成功下載圖片，大小: {imageBytes.Length} bytes");
+                messageData.MediaMimeType = qrMedia.MimeType;
+                messageData.MediaFileName = qrMedia.FileName;
                 
                 // 調用 QRCodeController 的處理邏輯
                 using var scope = _serviceProvider.CreateScope();
@@ -1518,12 +1691,12 @@ namespace PurpleRice.Services.WebhookServices
         }
 
         /// <summary>
-        /// 從 WhatsApp 下載圖片
+        /// 從 WhatsApp 下載媒體文件
         /// </summary>
         /// <param name="company">公司信息</param>
         /// <param name="messageId">訊息 ID</param>
         /// <returns>圖片字節數組</returns>
-        private async Task<byte[]> DownloadWhatsAppImage(Company company, string messageId)
+        private async Task<DownloadedMedia?> DownloadWhatsAppMediaAsync(Company company, string messageId)
         {
             try
             {
@@ -1557,13 +1730,17 @@ namespace PurpleRice.Services.WebhookServices
                     var imageResponse = await httpClient.GetAsync(imageUrl);
                     if (imageResponse.IsSuccessStatusCode)
                     {
-                        var imageBytes = await imageResponse.Content.ReadAsByteArrayAsync();
-                        _loggingService.LogInformation($"成功下載圖片，大小: {imageBytes.Length} bytes");
-                        return imageBytes;
+                        var mediaBytes = await imageResponse.Content.ReadAsByteArrayAsync();
+                        _loggingService.LogInformation($"成功下載媒體，大小: {mediaBytes.Length} bytes");
+                        mediaInfo.TryGetProperty("mime_type", out var mimeProperty);
+                        mediaInfo.TryGetProperty("filename", out var filenameProperty);
+                        var mimeType = mimeProperty.ValueKind == JsonValueKind.String ? mimeProperty.GetString() : null;
+                        var fileName = filenameProperty.ValueKind == JsonValueKind.String ? filenameProperty.GetString() : null;
+                        return new DownloadedMedia(mediaBytes, mimeType, fileName);
                     }
                     else
                     {
-                        _loggingService.LogError($"下載圖片失敗: {imageResponse.StatusCode}");
+                        _loggingService.LogError($"下載媒體失敗: {imageResponse.StatusCode}");
                     }
                 }
                 else
@@ -1575,7 +1752,7 @@ namespace PurpleRice.Services.WebhookServices
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"下載 WhatsApp 圖片時發生錯誤: {ex.Message}");
+                _loggingService.LogError($"下載 WhatsApp 媒體時發生錯誤: {ex.Message}");
                 _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
                 return null;
             }
@@ -1587,7 +1764,7 @@ namespace PurpleRice.Services.WebhookServices
         /// <param name="executionId">工作流程執行 ID</param>
         /// <param name="imageData">圖片數據</param>
         /// <returns>保存的圖片路徑</returns>
-        private async Task<string> SaveWaitReplyImageAsync(int executionId, byte[] imageData)
+        private async Task<string> SaveWaitReplyImageAsync(int executionId, byte[] imageData, string? mimeType = null)
         {
             _loggingService.LogInformation($"開始保存 waitReply 圖片，執行ID: {executionId}");
             
@@ -1613,10 +1790,12 @@ namespace PurpleRice.Services.WebhookServices
                     _loggingService.LogInformation($"目錄已存在: {uploadsPath}");
                 }
 
+                var extension = GetFileExtensionFromMimeType(mimeType) ?? ".jpg";
+
                 // 生成文件名：使用時間戳和 GUID 確保唯一性
                 var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 var guid = Guid.NewGuid().ToString("N").Substring(0, 8); // 取前8位
-                var fileName = $"reply_image_{timestamp}_{guid}.jpg";
+                var fileName = $"reply_image_{timestamp}_{guid}{extension}";
                 
                 var filePath = Path.Combine(uploadsPath, fileName);
                 _loggingService.LogInformation($"目標文件路徑: {filePath}");
@@ -1826,6 +2005,165 @@ namespace PurpleRice.Services.WebhookServices
             catch (Exception ex)
             {
                 _loggingService.LogError($"更新消息發送統計時發生錯誤: {ex.Message}");
+            }
+        }
+
+        private async Task<string> SaveWaitReplyDocumentAsync(int executionId, byte[] documentData, string? fileName, string? mimeType)
+        {
+            _loggingService.LogInformation($"開始保存 waitReply 文件，執行ID: {executionId}");
+
+            try
+            {
+                if (executionId <= 0)
+                {
+                    throw new ArgumentException("ExecutionId must be greater than 0", nameof(executionId));
+                }
+
+                string directoryName = executionId.ToString();
+                var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Documents", directoryName);
+                _loggingService.LogInformation($"文件目錄: {uploadsPath}");
+
+                if (!Directory.Exists(uploadsPath))
+                {
+                    Directory.CreateDirectory(uploadsPath);
+                }
+
+                var extension = Path.GetExtension(fileName ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(extension))
+                {
+                    extension = GetFileExtensionFromMimeType(mimeType) ?? ".dat";
+                }
+
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                var baseFileName = string.IsNullOrWhiteSpace(fileName)
+                    ? $"reply_document_{timestamp}_{Guid.NewGuid():N}"
+                    : Path.GetFileNameWithoutExtension(fileName);
+
+                var invalidChars = Path.GetInvalidFileNameChars();
+                baseFileName = new string(baseFileName.Where(ch => !invalidChars.Contains(ch)).ToArray());
+                if (string.IsNullOrWhiteSpace(baseFileName))
+                {
+                    baseFileName = $"reply_document_{timestamp}_{Guid.NewGuid():N}";
+                }
+
+                var safeFileName = baseFileName + extension;
+
+                var filePath = Path.Combine(uploadsPath, safeFileName);
+                await File.WriteAllBytesAsync(filePath, documentData);
+                _loggingService.LogInformation($"文件保存成功: {filePath}, 大小: {documentData.Length} bytes");
+
+                var relativeUrl = $"/Uploads/Whatsapp_Documents/{directoryName}/{safeFileName}";
+                return relativeUrl;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"保存 waitReply 文件時發生錯誤: {ex.Message}");
+                _loggingService.LogDebug($"錯誤堆疊: {ex.StackTrace}");
+                throw;
+            }
+        }
+
+        private IDictionary<string, object?> BuildRawMessagePayload(WhatsAppMessageData messageData)
+        {
+            var payload = new Dictionary<string, object?>
+            {
+                ["messageType"] = messageData.MessageType,
+                ["text"] = messageData.MessageText,
+                ["caption"] = messageData.Caption,
+                ["mediaMimeType"] = messageData.MediaMimeType,
+                ["mediaFileName"] = messageData.MediaFileName
+            };
+
+            if (!string.IsNullOrWhiteSpace(messageData.MediaContentBase64))
+            {
+                payload["media"] = new Dictionary<string, object?>
+                {
+                    ["mimeType"] = messageData.MediaMimeType,
+                    ["fileName"] = messageData.MediaFileName,
+                    ["base64"] = messageData.MediaContentBase64
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(messageData.DocumentStructuredJson))
+            {
+                try
+                {
+                    payload["document"] = JsonSerializer.Deserialize<JsonElement>(messageData.DocumentStructuredJson);
+                }
+                catch
+                {
+                    payload["documentJson"] = messageData.DocumentStructuredJson;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(messageData.DocumentPlainText))
+            {
+                payload["documentText"] = messageData.DocumentPlainText;
+            }
+
+            return payload;
+        }
+
+        private object BuildFallbackProcessVariablePayload(WhatsAppMessageData messageData)
+        {
+            var raw = BuildRawMessagePayload(messageData);
+            var cleaned = new Dictionary<string, object?>();
+            foreach (var kv in raw)
+            {
+                if (kv.Value is null)
+                {
+                    continue;
+                }
+
+                if (kv.Value is string s && string.IsNullOrWhiteSpace(s))
+                {
+                    continue;
+                }
+
+                cleaned[kv.Key] = kv.Value;
+            }
+
+            return cleaned;
+        }
+
+        private string? GetFileExtensionFromMimeType(string? mimeType)
+        {
+            if (string.IsNullOrWhiteSpace(mimeType))
+            {
+                return null;
+            }
+
+            mimeType = mimeType.Trim().ToLowerInvariant();
+
+            return mimeType switch
+            {
+                "image/png" => ".png",
+                "image/jpeg" or "image/jpg" => ".jpg",
+                "image/gif" => ".gif",
+                "image/webp" => ".webp",
+                "application/pdf" => ".pdf",
+                "application/msword" => ".doc",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+                "application/vnd.ms-excel" => ".xls",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+                "application/vnd.ms-powerpoint" => ".ppt",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation" => ".pptx",
+                "text/plain" => ".txt",
+                "application/octet-stream" => ".bin",
+                _ => null
+            };
+        }
+
+        private class DownloadedMedia
+        {
+            public byte[] Content { get; }
+            public string? MimeType { get; }
+            public string? FileName { get; }
+
+            public DownloadedMedia(byte[] content, string? mimeType, string? fileName)
+            {
+                Content = content;
+                MimeType = mimeType;
+                FileName = fileName;
             }
         }
     }

@@ -161,6 +161,8 @@ namespace PurpleRice.Data
                 entity.Property(e => e.Status).HasColumnName("Status").HasMaxLength(20);
                 entity.Property(e => e.InputJson).HasColumnName("InputJson");
                 entity.Property(e => e.OutputJson).HasColumnName("OutputJson");
+                entity.Property(e => e.ReceivedPayloadJson).HasColumnName("ReceivedPayloadJson");
+                entity.Property(e => e.AiResultJson).HasColumnName("AiResultJson");
                 entity.Property(e => e.StartedAt).HasColumnName("StartedAt");
                 entity.Property(e => e.EndedAt).HasColumnName("EndedAt");
                 

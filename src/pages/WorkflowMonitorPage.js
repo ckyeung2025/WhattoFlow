@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Layout, 
   Card, 
@@ -7,6 +7,7 @@ import {
   Button, 
   Space, 
   Input, 
+  InputNumber,
   Select, 
   Row, 
   Col, 
@@ -67,11 +68,13 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
   ReloadOutlined as ResetOutlined,
-  CloseOutlined
+  CloseOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getUserInterfacesFromStorage, hasInterfacePermission } from '../utils/permissionUtils';
 // import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
 // import duration from 'dayjs/plugin/duration'; // 已替換為 TimezoneUtils
 import { TimezoneUtils } from '../utils/timezoneUtils';
@@ -129,6 +132,9 @@ const WorkflowMonitorPage = () => {
   });
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(30);
+  const [autoRefreshModalVisible, setAutoRefreshModalVisible] = useState(false);
+  const [modalAutoRefreshEnabled, setModalAutoRefreshEnabled] = useState(autoRefresh);
+  const [modalRefreshInterval, setModalRefreshInterval] = useState(refreshInterval);
   const [selectedInstance, setSelectedInstance] = useState(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [dataSetQueryModalVisible, setDataSetQueryModalVisible] = useState(false);
@@ -142,6 +148,8 @@ const WorkflowMonitorPage = () => {
     averageExecutionTime: 0,
     successRate: 0
   });
+  const [userInterfaces, setUserInterfaces] = useState([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [selectedChatInstance, setSelectedChatInstance] = useState(null);
   const [messageSendModalVisible, setMessageSendModalVisible] = useState(false);
@@ -159,7 +167,7 @@ const WorkflowMonitorPage = () => {
   const [selectedInstanceId, setSelectedInstanceId] = useState(null);
   
   // 表格列寬調整相關狀態
-  const [resizableColumns, setResizableColumns] = useState([]);
+  const [columnWidths, setColumnWidths] = useState({});
   
   // 內嵌表單相關狀態
   const [selectedFormInstanceId, setSelectedFormInstanceId] = useState(null);
@@ -184,6 +192,35 @@ const WorkflowMonitorPage = () => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadInterfaces = async () => {
+      setLoadingPermissions(true);
+      try {
+        // 強制從 API 獲取最新權限，不使用緩存
+        const interfaces = await getUserInterfacesFromStorage(true);
+        console.log('[WorkflowMonitor] 從 API 獲取的權限列表:', interfaces);
+        if (isMounted) {
+          setUserInterfaces(interfaces || []);
+        }
+      } catch (error) {
+        console.error('[WorkflowMonitor] 載入用戶介面權限失敗:', error);
+        if (isMounted) {
+          setUserInterfaces([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingPermissions(false);
+        }
+      }
+    };
+
+    loadInterfaces();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     loadInstances();
     loadStatistics();
     
@@ -196,6 +233,31 @@ const WorkflowMonitorPage = () => {
       return () => clearInterval(interval);
     }
   }, [autoRefresh, refreshInterval]);
+
+  const canUseWhatsAppChat = !loadingPermissions && hasInterfacePermission(userInterfaces, 'workflowMonitor.whatsappChat');
+  const canPauseExecution = !loadingPermissions && hasInterfacePermission(userInterfaces, 'workflowMonitor.pause');
+  const canResumeExecution = !loadingPermissions && hasInterfacePermission(userInterfaces, 'workflowMonitor.resume');
+  const canRetryExecution = !loadingPermissions && hasInterfacePermission(userInterfaces, 'workflowMonitor.retry');
+  const canCancelExecution = !loadingPermissions && hasInterfacePermission(userInterfaces, 'workflowMonitor.cancel');
+  const canDeleteExecution = !loadingPermissions && hasInterfacePermission(userInterfaces, 'workflowMonitor.delete');
+
+  console.log('[WorkflowMonitor] permission flags', {
+    loadingPermissions,
+    userInterfaces,
+    canUseWhatsAppChat,
+    canPauseExecution,
+    canResumeExecution,
+    canRetryExecution,
+    canCancelExecution,
+    canDeleteExecution
+  });
+
+  useEffect(() => {
+    if (autoRefreshModalVisible) {
+      setModalAutoRefreshEnabled(autoRefresh);
+      setModalRefreshInterval(refreshInterval);
+    }
+  }, [autoRefreshModalVisible, autoRefresh, refreshInterval]);
 
   // 載入內嵌表單數據
   useEffect(() => {
@@ -210,7 +272,7 @@ const WorkflowMonitorPage = () => {
   }, [filters, pagination.current, pagination.pageSize]);
 
   const loadInstances = async (sortBy = 'startedAt', sortOrder = 'desc') => {
-    console.log(t('workflowMonitor.startLoadingInstances', { sortBy, sortOrder }));
+    console.log('[WorkflowMonitor] start loading instances', { sortBy, sortOrder });
     setLoading(true);
     try {
       // 構建查詢參數
@@ -240,9 +302,9 @@ const WorkflowMonitorPage = () => {
       }
 
       const url = `/api/workflowexecutions/monitor?${params}`;
-      console.log(t('workflowMonitor.requestUrl'), url);
-      console.log(t('workflowMonitor.requestParams'), Object.fromEntries(params));
-      console.log(t('workflowMonitor.currentPaginationParams'), { current: pagination.current, pageSize: pagination.pageSize });
+      console.log('[WorkflowMonitor] request url', url);
+      console.log('[WorkflowMonitor] request params', Object.fromEntries(params));
+      console.log('[WorkflowMonitor] current pagination', { current: pagination.current, pageSize: pagination.pageSize });
 
       const response = await fetch(url, {
         headers: {
@@ -255,22 +317,22 @@ const WorkflowMonitorPage = () => {
       }
 
       const data = await response.json();
-      console.log(t('workflowMonitor.dataFromMonitorApi'), data);
-      console.log(t('workflowMonitor.instanceDataStructure'), data.data);
-      console.log(t('workflowMonitor.paginationInfo'), { page: data.page, pageSize: data.pageSize, total: data.total });
+      console.log('[WorkflowMonitor] api data', data);
+      console.log('[WorkflowMonitor] instance structure', data.data);
+      console.log('[WorkflowMonitor] pagination info', { page: data.page, pageSize: data.pageSize, total: data.total });
       
       // 檢查第一個實例是否包含 InputJson 字段
       if (data.data && data.data.length > 0) {
         const firstInstance = data.data[0];
-        console.log(t('workflowMonitor.firstInstanceCompleteData'), firstInstance);
-        console.log(t('workflowMonitor.inputJsonField'), firstInstance.inputJson);
-        console.log(t('workflowMonitor.inputJsonType'), typeof firstInstance.inputJson);
+        console.log('[WorkflowMonitor] first instance', firstInstance);
+        console.log('[WorkflowMonitor] first instance inputJson', firstInstance.inputJson);
+        console.log('[WorkflowMonitor] first instance inputJson type', typeof firstInstance.inputJson);
         if (firstInstance.inputJson) {
           try {
             const parsedInput = JSON.parse(firstInstance.inputJson);
-            console.log(t('workflowMonitor.parsedInputJson'), parsedInput);
+            console.log('[WorkflowMonitor] parsed inputJson', parsedInput);
           } catch (parseError) {
-            console.error(t('workflowMonitor.parseInputJsonFailed'), parseError);
+            console.error('[WorkflowMonitor] parse inputJson failed', parseError);
           }
         }
       }
@@ -328,6 +390,19 @@ const WorkflowMonitorPage = () => {
     setPagination(prev => ({ ...prev, current: 1 }));
   };
 
+  const handleOpenAutoRefreshSettings = () => {
+    setAutoRefreshModalVisible(true);
+  };
+
+  const handleApplyAutoRefreshSettings = () => {
+    const normalizedInterval = Number(modalRefreshInterval);
+    const sanitizedInterval = Math.max(5, Math.min(600, Number.isFinite(normalizedInterval) ? normalizedInterval : refreshInterval));
+    setRefreshInterval(sanitizedInterval);
+    setAutoRefresh(modalAutoRefreshEnabled);
+    setModalRefreshInterval(sanitizedInterval);
+    setAutoRefreshModalVisible(false);
+  };
+
   const handleInstanceAction = async (action, instance) => {
     try {
       const response = await fetch(`/api/workflowexecutions/${instance.id}/${action}`, {
@@ -351,6 +426,75 @@ const WorkflowMonitorPage = () => {
       loadStatistics();
     } catch (error) {
       message.error(t('workflowMonitor.operationFailed', { action }) + ': ' + error.message);
+    }
+  };
+
+  const handleCancelInstance = (instance) => {
+    Modal.confirm({
+      title: t('workflowMonitor.cancelConfirmTitle'),
+      icon: <ExclamationCircleOutlined />,
+      content: t('workflowMonitor.cancelConfirmMessage', {
+        workflowName: instance.workflowName || '-',
+        instanceId: instance.id
+      }),
+      okText: t('workflowMonitor.cancel'),
+      cancelText: t('common.cancel'),
+      onOk: () => handleInstanceAction('cancel', instance)
+    });
+  };
+
+  const handleDeleteInstance = (instance) => {
+    Modal.confirm({
+      title: t('workflowMonitor.deleteConfirmTitle'),
+      icon: <ExclamationCircleOutlined />,
+      content: t('workflowMonitor.deleteConfirmMessage', {
+        workflowName: instance.workflowName || '-',
+        instanceId: instance.id
+      }),
+      okText: t('common.delete'),
+      okType: 'danger',
+      cancelText: t('common.cancel'),
+      onOk: () => performDeleteInstance(instance)
+    });
+  };
+
+  const performDeleteInstance = async (instance) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/workflowexecutions/${instance.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      let responseData = null;
+      try {
+        responseData = await response.json();
+      } catch (parseError) {
+        // 忽略解析錯誤，部分情況可能沒有 JSON 內容
+      }
+
+      if (!response.ok) {
+        throw new Error(responseData?.error || t('workflowMonitor.deleteFailed'));
+      }
+
+      message.success(responseData?.message || t('workflowMonitor.deleteSuccess'));
+
+      if (selectedInstanceId === instance.id) {
+        setDetailPanelVisible(false);
+        setSelectedInstanceId(null);
+        setSelectedInstance(null);
+      }
+
+      setSelectedInstances(prev => prev.filter(item => item.id !== instance.id));
+
+      await loadInstances();
+      await loadStatistics();
+    } catch (error) {
+      message.error(error.message || t('workflowMonitor.deleteFailed'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -417,22 +561,22 @@ const WorkflowMonitorPage = () => {
 
   // 打開 WhatsApp 對話框
   const handleOpenChat = (instance) => {
-    console.log(t('workflowMonitor.openWhatsAppChat'), instance);
-    console.log(t('workflowMonitor.instanceId'), instance.id);
-    console.log(t('workflowMonitor.inputJsonField'), instance.inputJson);
-    console.log(t('workflowMonitor.inputJsonType'), typeof instance.inputJson);
+    console.log('[WorkflowMonitor] open chat for instance', instance);
+    console.log('[WorkflowMonitor] instance id', instance.id);
+    console.log('[WorkflowMonitor] instance inputJson', instance.inputJson);
+    console.log('[WorkflowMonitor] instance inputJson type', typeof instance.inputJson);
     
     if (instance.inputJson) {
       try {
         const parsedInput = JSON.parse(instance.inputJson);
-        console.log(t('workflowMonitor.parsedInputJson'), parsedInput);
-        console.log(t('workflowMonitor.availableFields'), Object.keys(parsedInput));
+        console.log('[WorkflowMonitor] parsed inputJson (chat)', parsedInput);
+        console.log('[WorkflowMonitor] available fields', Object.keys(parsedInput));
       } catch (parseError) {
-        console.error(t('workflowMonitor.parseInputJsonFailed'), parseError);
+        console.error('[WorkflowMonitor] parse inputJson failed (chat)', parseError);
       }
     } else {
-      console.warn(t('workflowMonitor.noInputJsonField'));
-      console.log(t('workflowMonitor.availableFields'), Object.keys(instance));
+      console.warn('[WorkflowMonitor] no inputJson field');
+      console.log('[WorkflowMonitor] available fields (fallback)', Object.keys(instance));
     }
     
     setSelectedChatInstance(instance);
@@ -441,7 +585,7 @@ const WorkflowMonitorPage = () => {
 
   // 處理發送消息
   const handleSendMessage = (message) => {
-    console.log(t('workflowMonitor.sendMessage'), message);
+    console.log('[WorkflowMonitor] send message', message);
     // 這裡可以添加額外的邏輯，比如更新實例狀態等
   };
 
@@ -497,7 +641,7 @@ const WorkflowMonitorPage = () => {
   const loadEmbeddedFormInstance = async () => {
     try {
       setLoadingEmbeddedForm(true);
-      console.log(t('workflowMonitor.loadingEmbeddedFormInstance'), selectedFormInstanceId);
+      console.log('[WorkflowMonitor] loading embedded form instance', selectedFormInstanceId);
       
       const response = await fetch(`/api/eforminstances/${selectedFormInstanceId}`, {
         headers: {
@@ -510,10 +654,10 @@ const WorkflowMonitorPage = () => {
       }
       
       const data = await response.json();
-      console.log(t('workflowMonitor.loadedEmbeddedFormInstance'), data);
+      console.log('[WorkflowMonitor] loaded embedded form instance', data);
       setEmbeddedFormInstance(data);
     } catch (error) {
-      console.error(t('workflowMonitor.loadEmbeddedFormInstanceFailed'), error);
+      console.error('[WorkflowMonitor] load embedded form instance failed', error);
       message.error(t('workflowMonitor.loadFormInstanceFailed') + ': ' + error.message);
       setEmbeddedFormInstance(null);
     } finally {
@@ -544,16 +688,20 @@ const WorkflowMonitorPage = () => {
   };
 
   // 表格列寬調整處理
-  const handleResize = index => (e, { size }) => {
-    const nextColumns = [...resizableColumns];
-    nextColumns[index] = { ...nextColumns[index], width: size.width };
-    setResizableColumns(nextColumns);
-  };
+  const handleResize = useCallback(
+    (key) => (e, { size }) => {
+      setColumnWidths(prev => ({
+        ...prev,
+        [key]: size.width,
+      }));
+    },
+    []
+  );
 
   // 表格變化處理（包括排序）
   const handleTableChange = (paginationInfo, filters, sorter) => {
-    console.log(t('workflowMonitor.tableChange'), { paginationInfo, filters, sorter });
-    console.log(t('workflowMonitor.sorterDetails'), {
+    console.log('[WorkflowMonitor] table change', { paginationInfo, filters, sorter });
+    console.log('[WorkflowMonitor] sorter details', {
       field: sorter?.field,
       order: sorter?.order,
       columnKey: sorter?.columnKey,
@@ -562,7 +710,7 @@ const WorkflowMonitorPage = () => {
     
     // 處理分頁
     if (paginationInfo) {
-      console.log(t('workflowMonitor.paginationChange'), paginationInfo);
+      console.log('[WorkflowMonitor] pagination change', paginationInfo);
       setPagination(prev => ({ 
         ...prev, 
         current: paginationInfo.current, 
@@ -572,18 +720,18 @@ const WorkflowMonitorPage = () => {
     
     // 處理排序
     if (sorter && sorter.field) {
-      console.log(t('workflowMonitor.sortField'), sorter.field, t('workflowMonitor.sortOrder'), sorter.order);
+      console.log('[WorkflowMonitor] sort field', sorter.field, 'order', sorter.order);
       // 重新載入數據以應用排序
       loadInstances(sorter.field, sorter.order);
     } else if (paginationInfo) {
       // 只有分頁變更時
-      console.log(t('workflowMonitor.paginationOnlyDefaultSort'));
+      console.log('[WorkflowMonitor] pagination changed with default sort');
       loadInstances();
     }
   };
 
   // 基礎表格列定義
-  const baseColumns = [
+  const baseColumns = useMemo(() => [
     {
       title: t('workflowMonitor.instanceId'),
       dataIndex: 'id',
@@ -666,47 +814,55 @@ const WorkflowMonitorPage = () => {
       title: t('common.action'),
       key: 'action',
       width: 250,
-      render: (_, record) => (
+      render: (_, record) => {
+        const status = typeof record.status === 'string' ? record.status.toLowerCase() : '';
+        return (
         <Space size="small" onClick={(e) => e.stopPropagation()}>
           {/* WhatsApp 對話按鈕 */}
-          <Tooltip title={t('workflowMonitor.whatsappChat')}>
-            <Button 
-              type="text" 
-              icon={<MessageOutlined />} 
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenChat(record);
-              }}
-              style={{ color: '#25d366' }}
-            />
-          </Tooltip>
+          {canUseWhatsAppChat && (
+            <Tooltip title={t('workflowMonitor.whatsappChat')}>
+              <Button 
+                type="text" 
+                icon={<MessageOutlined />} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenChat(record);
+                }}
+                style={{ color: '#25d366' }}
+              />
+            </Tooltip>
+          )}
           
-          {record.status === 'running' && (
+          {status === 'running' && (
             <>
-              <Tooltip title={t('workflowMonitor.pause')}>
-                <Button 
-                  type="text" 
-                  icon={<PauseCircleOutlined />} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleInstanceAction('pause', record);
-                  }}
-                />
-              </Tooltip>
-              <Tooltip title={t('workflowMonitor.cancel')}>
-                <Button 
-                  type="text" 
-                  icon={<StopOutlined />} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleInstanceAction('cancel', record);
-                  }}
-                />
-              </Tooltip>
+              {canPauseExecution && (
+                <Tooltip title={t('workflowMonitor.pause')}>
+                  <Button 
+                    type="text" 
+                    icon={<PauseCircleOutlined />} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleInstanceAction('pause', record);
+                    }}
+                  />
+                </Tooltip>
+              )}
+              {canCancelExecution && (
+                <Tooltip title={t('workflowMonitor.cancel')}>
+                  <Button 
+                    type="text" 
+                    icon={<StopOutlined />} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCancelInstance(record);
+                    }}
+                  />
+                </Tooltip>
+              )}
             </>
           )}
           
-          {record.status === 'failed' && (
+          {status === 'failed' && canRetryExecution && (
             <Tooltip title={t('workflowMonitor.retry')}>
               <Button 
                 type="text" 
@@ -719,7 +875,7 @@ const WorkflowMonitorPage = () => {
             </Tooltip>
           )}
           
-          {(record.status === 'waiting' || record.status === 'paused') && (
+          {(status === 'waiting' || status === 'paused') && canResumeExecution && (
             <Tooltip title={t('workflowMonitor.resume')}>
               <Button 
                 type="text" 
@@ -731,27 +887,49 @@ const WorkflowMonitorPage = () => {
               />
             </Tooltip>
           )}
-        </Space>
-      )
-    }
-  ];
 
-  // 初始化可調整列寬的列配置
-  useEffect(() => {
-    if (resizableColumns.length === 0) {
-      setResizableColumns(
-        baseColumns.map(col => ({ ...col, width: col.width ? parseInt(col.width) : 120 }))
+          {canDeleteExecution && (
+            <Tooltip title={t('workflowMonitor.delete')}>
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteInstance(record);
+                }}
+              />
+            </Tooltip>
+          )}
+        </Space>
       );
+      }
     }
-  }, [baseColumns, resizableColumns.length]);
+  ], [
+    t,
+    userTimezoneOffset,
+    selectedInstanceId,
+    canUseWhatsAppChat,
+    canPauseExecution,
+    canCancelExecution,
+    canRetryExecution,
+    canResumeExecution,
+    canDeleteExecution,
+    handleOpenChat,
+    handleInstanceAction,
+    handleCancelInstance,
+    handleDeleteInstance,
+    getDurationText
+  ]);
 
   // 合併列配置，添加調整功能
-  const mergedColumns = resizableColumns.map((col, index) => ({
+  const mergedColumns = baseColumns.map((col) => ({
     ...col,
     onHeaderCell: column => ({
-      width: col.width,
-      onResize: handleResize(index),
+      width: columnWidths[col.key] || col.width,
+      onResize: handleResize(col.key),
     }),
+    width: columnWidths[col.key] || col.width
   }));
 
   // 表格組件配置
@@ -889,7 +1067,7 @@ const WorkflowMonitorPage = () => {
                 <Tooltip title={t('workflowMonitor.autoRefreshSettings')}>
                   <Button 
                     icon={<SettingOutlined />}
-                    onClick={() => {/* 打開設置彈窗 */}}
+                    onClick={handleOpenAutoRefreshSettings}
                   />
                 </Tooltip>
               </Space>
@@ -1120,6 +1298,42 @@ const WorkflowMonitorPage = () => {
             </div>
           )}
         </div>
+
+        {/* 自動刷新設定 */}
+        <Modal
+          title={t('workflowMonitor.autoRefreshSettings')}
+          open={autoRefreshModalVisible}
+          onCancel={() => setAutoRefreshModalVisible(false)}
+          onOk={handleApplyAutoRefreshSettings}
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
+          destroyOnClose
+        >
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text strong>{t('workflowMonitor.autoRefresh')}</Text>
+              <Switch
+                checked={modalAutoRefreshEnabled}
+                onChange={setModalAutoRefreshEnabled}
+                checkedChildren={t('common.yes')}
+                unCheckedChildren={t('common.no')}
+              />
+            </div>
+            <div>
+              <Text strong>{t('workflowMonitor.refreshInterval')}</Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                <InputNumber
+                  min={5}
+                  max={600}
+                  value={modalRefreshInterval}
+                  onChange={(value) => setModalRefreshInterval(value ?? 5)}
+                  style={{ width: 140 }}
+                />
+                <Text type="secondary">{t('workflowMonitor.seconds')}</Text>
+              </div>
+            </div>
+          </Space>
+        </Modal>
 
         {/* WhatsApp 對話框 */}
         <WhatsAppChat

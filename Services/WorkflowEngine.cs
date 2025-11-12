@@ -662,11 +662,20 @@ namespace PurpleRice.Services
                 validation.ValidatorType = validatorType;
                 validation.AiProviderKey = aiProviderKey;
 
+                var aiIsActive = validation.AiIsActive ?? (validation.Enabled && string.Equals(validatorType, "ai", StringComparison.OrdinalIgnoreCase));
+                var timeIsActive = validation.TimeIsActive ?? (validation.Enabled && string.Equals(validatorType, "time", StringComparison.OrdinalIgnoreCase));
+
+                validation.AiIsActive = aiIsActive;
+                validation.TimeIsActive = timeIsActive;
+                validation.Enabled = aiIsActive || timeIsActive;
+
                 // 創建標準化的 ValidationConfig 對象
                 var standardValidationConfig = new ValidationConfig
                 {
                     Enabled = validation.Enabled,
                     ValidatorType = validatorType,
+                    AiIsActive = aiIsActive,
+                    TimeIsActive = timeIsActive,
                     RetryIntervalDays = validation.RetryIntervalDays,
                     RetryIntervalHours = validation.RetryIntervalHours,
                     RetryIntervalMinutes = validation.RetryIntervalMinutes ?? 
@@ -678,7 +687,8 @@ namespace PurpleRice.Services
                     Prompt = validation.Prompt,
                     RetryMessage = validation.RetryMessage,
                     MaxRetries = validation.MaxRetries,
-                    AiProviderKey = aiProviderKey
+                    AiProviderKey = aiProviderKey,
+                    AiResultVariable = validation.AiResultVariable
                 };
                 
                 validationConfigJson = JsonSerializer.Serialize(standardValidationConfig);
@@ -3403,6 +3413,10 @@ namespace PurpleRice.Services
         public string Prompt { get; set; }
         public string RetryMessage { get; set; }
         public int MaxRetries { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("aiIsActive")]
+        public bool? AiIsActive { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("timeIsActive")]
+        public bool? TimeIsActive { get; set; }
         
         // Time Validator 相關屬性
         public int? RetryIntervalDays { get; set; }
@@ -3424,6 +3438,9 @@ namespace PurpleRice.Services
 
         [System.Text.Json.Serialization.JsonPropertyName("aiProviderKey")]
         public string AiProviderKey { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("aiResultVariable")]
+        public string AiResultVariable { get; set; }
     }
     
     // 工作流程執行結果模型

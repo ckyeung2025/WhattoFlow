@@ -173,10 +173,11 @@ const Dashboard = ({ onMenuSelect }) => {
           return;
         }
         
-        const interfaces = await getUserInterfacesFromStorage();
+        // 強制從 API 獲取最新權限，不使用緩存
+        const interfaces = await getUserInterfacesFromStorage(true);
         if (isMountedRef.current) {
           setUserInterfaces(interfaces);
-          console.log('Dashboard: 權限載入完成，interfaces:', interfaces);
+          console.log('[Dashboard] 從 API 獲取的權限列表:', interfaces);
         }
       } catch (error) {
         console.error('載入用戶權限失敗:', error);

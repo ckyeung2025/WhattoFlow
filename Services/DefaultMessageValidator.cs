@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using PurpleRice.Models;
 using PurpleRice.Services.ApiProviders;
@@ -17,13 +18,19 @@ namespace PurpleRice.Services
             _logger = loggerFactory("MessageValidator");
         }
 
-        public async Task<ValidationResult> ValidateMessageAsync(string userMessage, WorkflowExecution execution, WorkflowStepExecution? stepExecution)
+        public async Task<ValidationResult> ValidateMessageAsync(WhatsAppMessageData messageData, WorkflowExecution execution, WorkflowStepExecution? stepExecution)
         {
+            messageData ??= new WhatsAppMessageData();
+            var defaultProcessed = string.IsNullOrWhiteSpace(messageData.MessageText)
+                ? "[媒體訊息]"
+                : messageData.MessageText;
+
             var defaultResult = new ValidationResult
             {
                 IsValid = true,
-                ProcessedData = string.IsNullOrWhiteSpace(userMessage) ? "[媒體訊息]" : userMessage,
-                ValidatorType = "default"
+                ProcessedData = defaultProcessed,
+                ValidatorType = "default",
+                AdditionalData = BuildMessageContext(messageData, prompt: null, nodeData: null)
             };
 
             if (execution?.WorkflowDefinition == null || stepExecution == null)
@@ -37,25 +44,24 @@ namespace PurpleRice.Services
                 return defaultResult;
             }
 
-            var validatorType = (validationConfig.ValidatorType ?? "default").ToLowerInvariant();
-            if (validatorType == "openai" || validatorType == "xai")
+            var rawValidatorType = (validationConfig.ValidatorType ?? "default").ToLowerInvariant();
+            var aiValidatorAliases = new[] { "ai", "openai", "xai" };
+            var aiActive = validationConfig.AiIsActive ?? Array.Exists(aiValidatorAliases, alias => string.Equals(rawValidatorType, alias, StringComparison.OrdinalIgnoreCase));
+
+            if (aiActive)
             {
-                if (string.IsNullOrWhiteSpace(validationConfig.AiProviderKey))
+                if ((string.Equals(rawValidatorType, "openai", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(rawValidatorType, "xai", StringComparison.OrdinalIgnoreCase)) &&
+                    string.IsNullOrWhiteSpace(validationConfig.AiProviderKey))
                 {
-                    validationConfig.AiProviderKey = validatorType;
+                    validationConfig.AiProviderKey = rawValidatorType;
                 }
-                validatorType = "ai";
+
+                validationConfig.ValidatorType = "ai";
+                return await ValidateWithAiAsync(messageData, execution, stepExecution, validationConfig);
             }
 
-            switch (validatorType)
-            {
-                case "ai":
-                    return await ValidateWithAiAsync(userMessage, execution, stepExecution, validationConfig);
-                case "custom":
-                case "default":
-                default:
-                    return defaultResult;
-            }
+            return defaultResult;
         }
 
         private ValidationConfig? ParseValidationConfig(string? json)
@@ -106,7 +112,7 @@ namespace PurpleRice.Services
         }
 
         private async Task<ValidationResult> ValidateWithAiAsync(
-            string userMessage,
+            WhatsAppMessageData messageData,
             WorkflowExecution execution,
             WorkflowStepExecution stepExecution,
             ValidationConfig validationConfig)
@@ -122,7 +128,8 @@ namespace PurpleRice.Services
                     IsValid = false,
                     ErrorMessage = validationConfig.RetryMessage ?? "AI 驗證器未設定，請聯絡系統管理員。",
                     ValidatorType = "ai",
-                    ProcessedData = null
+                    ProcessedData = messageData.MessageText,
+                    AdditionalData = BuildMessageContext(messageData, validationConfig.Prompt, nodeData)
                 };
             }
 
@@ -135,19 +142,27 @@ namespace PurpleRice.Services
                     IsValid = false,
                     ErrorMessage = validationConfig.RetryMessage ?? "系統無法辨識公司資訊，請稍後再試。",
                     ValidatorType = "ai",
-                    ProcessedData = null,
+                    ProcessedData = messageData.MessageText,
+                    AdditionalData = BuildMessageContext(messageData, validationConfig.Prompt, nodeData),
                     ProviderKey = providerKey
                 };
             }
 
             var systemPrompt = BuildAiValidationPrompt(validationConfig.Prompt);
+            var messageContext = BuildMessageContext(messageData, validationConfig.Prompt, nodeData);
+            var serializedPayload = JsonSerializer.Serialize(messageContext, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            });
+
             var aiResult = await _aiCompletionClient.SendChatAsync(
                 companyId,
                 providerKey,
                 systemPrompt,
                 new[]
                 {
-                    new AiMessage("user", userMessage ?? string.Empty)
+                    new AiMessage("user", serializedPayload)
                 });
 
             if (!aiResult.Success || string.IsNullOrWhiteSpace(aiResult.Content))
@@ -158,7 +173,8 @@ namespace PurpleRice.Services
                     IsValid = false,
                     ErrorMessage = validationConfig.RetryMessage ?? aiResult.ErrorMessage ?? "AI 驗證失敗，請稍後再試。",
                     ValidatorType = "ai",
-                    ProcessedData = null,
+                    ProcessedData = messageData.MessageText,
+                    AdditionalData = messageContext,
                     ProviderKey = aiResult.ProviderKey ?? providerKey
                 };
             }
@@ -172,15 +188,29 @@ namespace PurpleRice.Services
                     IsValid = false,
                     ErrorMessage = validationConfig.RetryMessage ?? "AI 回應格式無法解析，請重新輸入。",
                     ValidatorType = "ai",
-                    ProcessedData = null,
+                    ProcessedData = messageData.MessageText,
+                    AdditionalData = messageContext,
                     ProviderKey = aiResult.ProviderKey ?? providerKey
                 };
             }
 
             var isValid = parsedOutcome.IsValid ?? false;
             var processed = string.IsNullOrWhiteSpace(parsedOutcome.Processed)
-                ? (isValid ? userMessage : null)
+                ? (isValid ? messageData.MessageText : null)
                 : parsedOutcome.Processed;
+
+            var combinedPayload = new
+            {
+                original = messageContext,
+                ai = new
+                {
+                    parsedOutcome.IsValid,
+                    parsedOutcome.Processed,
+                    parsedOutcome.Reason,
+                    parsedOutcome.Suggestion,
+                    raw = aiResult.Content
+                }
+            };
 
             return new ValidationResult
             {
@@ -192,8 +222,10 @@ namespace PurpleRice.Services
                         ?? "輸入內容未通過驗證，請重新輸入。",
                 SuggestionMessage = parsedOutcome.Suggestion,
                 ProcessedData = processed,
+                AdditionalData = combinedPayload,
                 ValidatorType = "ai",
-                ProviderKey = aiResult.ProviderKey ?? providerKey
+                ProviderKey = aiResult.ProviderKey ?? providerKey,
+                TargetProcessVariable = validationConfig.AiResultVariable
             };
         }
 
@@ -205,11 +237,53 @@ namespace PurpleRice.Services
 
             return
                 "你是一個輸入驗證助手，請閱讀使用者的訊息並判斷是否符合需求。\n" +
+                "訊息內容將以 JSON 形式提供，可能包含文字、圖片（Base64）或文件資料。\n" +
                 "請遵守以下規則：\n" +
                 $"{instructions}\n" +
                 "輸出格式必須是 JSON，包含欄位：\n" +
                 "isValid (布林值)、processed (若驗證通過，請輸出整理後的值，否則為空字串)、reason (若未通過，請說明原因)、suggestion (給使用者的建議，可留空)。\n" +
                 "請僅回傳 JSON，不要包含任何額外文字。";
+        }
+
+        private object BuildMessageContext(WhatsAppMessageData messageData, string? prompt, WorkflowNodeData? nodeData)
+        {
+            JsonElement? documentElement = null;
+            object? documentFallback = null;
+            if (!string.IsNullOrWhiteSpace(messageData.DocumentStructuredJson))
+            {
+                try
+                {
+                    documentElement = JsonSerializer.Deserialize<JsonElement>(messageData.DocumentStructuredJson);
+                }
+                catch
+                {
+                    documentFallback = messageData.DocumentStructuredJson;
+                }
+            }
+
+            return new
+            {
+                messageType = messageData.MessageType,
+                text = string.IsNullOrWhiteSpace(messageData.MessageText) ? null : messageData.MessageText,
+                caption = string.IsNullOrWhiteSpace(messageData.Caption) ? null : messageData.Caption,
+                media = string.IsNullOrWhiteSpace(messageData.MediaContentBase64)
+                    ? null
+                    : new
+                    {
+                        mimeType = messageData.MediaMimeType,
+                        fileName = messageData.MediaFileName,
+                        base64 = messageData.MediaContentBase64
+                    },
+                document = documentElement ?? (documentFallback ?? (object?)null),
+                documentText = string.IsNullOrWhiteSpace(messageData.DocumentPlainText) ? null : messageData.DocumentPlainText,
+                prompt,
+                node = nodeData == null ? null : new
+                {
+                    nodeData.Type,
+                    nodeData.TaskName,
+                    nodeData.AiProviderKey
+                }
+            };
         }
 
         private AiValidationPayload? ParseAiValidationResponse(string content)

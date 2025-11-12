@@ -37,20 +37,26 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
   const [userInterfaces, setUserInterfaces] = useState([]);
   const { t } = useLanguage();
 
-  // 獲取用戶權限
+  // 獲取用戶權限（總是從 API 獲取最新權限）
   useEffect(() => {
     const loadUserInterfaces = async () => {
       try {
-        const interfaces = await getUserInterfacesFromStorage();
+        console.log('[SideMenu] 開始載入用戶權限，userInfo:', userInfo);
+        // 強制從 API 獲取最新權限，不使用緩存
+        const interfaces = await getUserInterfacesFromStorage(true);
+        console.log('[SideMenu] 獲取到的權限列表:', interfaces);
         setUserInterfaces(interfaces);
       } catch (error) {
-        console.error('載入用戶權限失敗:', error);
+        console.error('[SideMenu] 載入用戶權限失敗:', error);
         setUserInterfaces([]);
       }
     };
 
     if (userInfo) {
       loadUserInterfaces();
+    } else {
+      console.warn('[SideMenu] userInfo 為空，無法載入權限');
+      setUserInterfaces([]);
     }
   }, [userInfo]);
 

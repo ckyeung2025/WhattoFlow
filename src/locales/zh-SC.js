@@ -368,7 +368,18 @@ const zhSC = {
     ok: '确定',
     required: '必填',
     minLength: '至少 {min} 码',
-    pageRange: '第 {start}-{end} 项，共 {total} 项'
+    pageRange: '第 {start}-{end} 项，共 {total} 项',
+    status: '状态',
+    actions: '操作',
+    every: '每',
+    minutes: '分钟',
+    active: '启用',
+    inactive: '停用',
+    paused: '已暂停',
+    activate: '启用',
+    deactivate: '停用',
+    systemDefault: '系统默认',
+    editingCompany: '编辑公司'
   },
 
   // 收件人选择器
@@ -820,6 +831,7 @@ const zhSC = {
     removeRole: "移除角色",
     noRoles: "无角色",
     currentRoles: "当前角色",
+    selectedRoles: "已选角色",
     userInfo: "用户信息",
     avatar: "头像",
     status: "状态",
@@ -836,7 +848,10 @@ const zhSC = {
     confirmPasswordPlaceholder: "请再次输入密码",
     confirmPasswordRequired: "请再次输入密码以确认",
     passwordMismatch: "两次输入的密码不一致",
-    passwordMinLength: "密码长度至少为 6 个字符"
+    passwordMinLength: "密码长度至少为 6 个字符",
+    company: "公司",
+    selectCompany: "请选择公司",
+    companyRequired: "请选择公司"
   },
   
   // 公司编辑
@@ -1835,6 +1850,9 @@ const zhSC = {
     promptMessageHelp: '在用户输入前，系统会发送以下消息提醒用户需要输入',
     validationConfig: '验证配置',
     validationSettings: '验证设置',
+    validatorActiveLabel: '验证状态',
+    active: '启用',
+    inactive: '停用',
     enableValidation: '启用验证',
     yes: '是',
     no: '否',
@@ -1844,7 +1862,7 @@ const zhSC = {
     aiValidator: 'AI 验证',
     timeValidatorLabel: '时间验证器（无回应提醒）',
     promptText: '提示文字',
-    promptTextPlaceholder: '描述有效回复需要满足的条件，例如“用户必须提供 6 位数字验证码”。',
+    promptTextPlaceholder: '描述有效回复需要满足的条件，例如"用户必须提供 6 位数字验证码"。',
     retryMessage: '提醒消息',
     retryMessagePlaceholder: '输入当用户回复不符合要求时要发送的提示内容。',
     maxRetries: '最大提醒次数',
@@ -1854,6 +1872,9 @@ const zhSC = {
     validationAiProvider: 'AI 提供商',
     validationAiProviderPlaceholder: '选择用于验证用户回复的 AI 提供商',
     validationAiProviderRequired: '请选择用于验证的 AI 提供商',
+    validationAiResultVariable: 'AI 结果流程变量',
+    validationAiResultVariablePlaceholder: '选择要保存 AI 结果的流程变量',
+    validationAiResultVariableHelp: 'AI 解析完成后会将结果写入该流程变量，供后续节点使用。',
     aiProviderInactive: '未启用',
     aiProviderNotConfigured: '尚未配置 AI 提供商，请到 API 管理页面新增。',
     aiProviderLoadFailed: '无法载入 AI 提供商列表',
@@ -2556,10 +2577,10 @@ const zhSC = {
       selectDataSetPlaceholder: '选择要操作的 DataSet',
       operationType: '操作类型',
       operationTypePlaceholder: '请选择操作类型',
-      select: 'SELECT',
-      insert: 'INSERT',
-      update: 'UPDATE',
-      delete: 'DELETE',
+      select: '查询',
+      insert: '新增',
+      update: '更新',
+      delete: '删除',
       queryConditions: '查询条件',
       addQueryConditionGroup: '添加查询条件组',
       editQueryConditionGroup: '编辑查询条件组',
@@ -2720,6 +2741,9 @@ const zhSC = {
     promptMessageHelp: '在用户输入前，系统会发送以下消息提醒用户需要输入',
     validationConfig: '验证配置',
     validationSettings: '验证设置',
+    validatorActiveLabel: '验证状态',
+    active: '启用',
+    inactive: '停用',
     enableValidation: '启用验证',
     yes: '是',
     no: '否',
@@ -2729,7 +2753,7 @@ const zhSC = {
     aiValidator: 'AI 验证',
     timeValidatorLabel: '时间验证器（无回应提醒）',
     promptText: '提示文字',
-    promptTextPlaceholder: '描述有效回复需要满足的条件，例如“用户必须提供 6 位数字验证码”。',
+    promptTextPlaceholder: '描述有效回复需要满足的条件，例如"用户必须提供 6 位数字验证码"。',
     retryMessage: '提醒消息',
     retryMessagePlaceholder: '输入当用户回复不符合要求时要发送的提示内容。',
     maxRetries: '最大提醒次数',
@@ -3175,6 +3199,8 @@ const zhSC = {
     confirmResume: '确定要恢复此流程实例吗？',
     confirmCancel: '确定要取消此流程实例吗？',
     confirmRetry: '确定要重试此流程实例吗？',
+    cancelConfirmTitle: '取消流程实例',
+    cancelConfirmMessage: '确定要取消此流程实例吗？流程将立即停止且无法恢复。',
     
     // Action results
     pauseSuccess: '流程实例已暂停',
@@ -3182,6 +3208,16 @@ const zhSC = {
     cancelSuccess: '流程实例已取消',
     retrySuccess: '流程实例重试已开始',
     operationFailed: '操作失败',
+    whatsappChat: 'WhatsApp 对话',
+    pause: '暂停',
+    resume: '恢复',
+    retry: '重试',
+    cancel: '取消',
+    delete: '删除',
+    deleteSuccess: '流程实例已删除',
+    deleteFailed: '删除流程实例失败',
+    deleteConfirmTitle: '删除流程实例',
+    deleteConfirmMessage: '确定要删除实例 {instanceId}（{workflowName}）吗？此操作将移除相关记录且无法恢复。',
     
     // Real-time updates
     realTimeUpdate: '实时更新',
@@ -3684,6 +3720,24 @@ const zhSC = {
     
     // 国家代码检测
     duplicateCountryCodeDetected: '检测到重复的国家代码，已自动移除'
+  },
+
+  // 权限管理
+  permissionManagement: {
+    title: '权限管理',
+    roleName: '角色名称',
+    description: '描述',
+    pageDescription: '管理角色与界面权限',
+    interfaces: '界面权限',
+    actions: '操作',
+    systemDefault: '系统默认',
+    companyCustom: '公司自定义',
+    selectCompany: '选择公司',
+    noPermissions: '无权限',
+    saveSuccess: '权限保存成功',
+    saveFailed: '保存权限失败',
+    loadFailed: '加载权限失败',
+    editingCompany: '编辑公司'
   }
 };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
-import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs, Divider } from 'antd';
+import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs, Divider, Switch } from 'antd';
 import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined, BellOutlined, FullscreenOutlined, FullscreenExitOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
@@ -14,6 +14,7 @@ import OverdueEscalationModal from '../modals/OverdueEscalationModal';
 import TemplateModal from '../modals/TemplateModal';
 import { getAvailableOutputPaths } from '../utils';
 import { apiService } from '../services/apiService';
+import './NodePropertyDrawer.css';
 
 // 節點屬性編輯抽屜組件
 const NodePropertyDrawer = ({
@@ -122,13 +123,90 @@ const NodePropertyDrawer = ({
   // Drawer 全屏狀態
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const watchedValidationEnabled = Form.useWatch(['validation', 'enabled'], form);
-  const validationEnabled = typeof watchedValidationEnabled === 'boolean'
-    ? watchedValidationEnabled
-    : (selectedNode?.data?.validation?.enabled ?? false);
-
   const watchedValidatorType = Form.useWatch(['validation', 'validatorType'], form);
+  const watchedAiIsActive = Form.useWatch(['validation', 'aiIsActive'], form);
+  const watchedTimeIsActive = Form.useWatch(['validation', 'timeIsActive'], form);
+
+  const aiIsActive = typeof watchedAiIsActive === 'boolean'
+    ? watchedAiIsActive
+    : (selectedNode?.data?.validation?.aiIsActive ?? false);
+
+  const timeIsActive = typeof watchedTimeIsActive === 'boolean'
+    ? watchedTimeIsActive
+    : (selectedNode?.data?.validation?.timeIsActive ?? false);
+
   const normalizedValidatorType = ((watchedValidatorType ?? selectedNode?.data?.validation?.validatorType) || '').toLowerCase();
+
+  const allowedValidatorTypes = ['ai', 'time'];
+  const [activeValidatorTab, setActiveValidatorTab] = useState(
+    allowedValidatorTypes.includes(normalizedValidatorType) ? normalizedValidatorType : 'ai'
+  );
+
+  const syncValidationState = useCallback((updates) => {
+    if (!selectedNode) {
+      return;
+    }
+
+    const currentFormValidation = form?.getFieldValue?.('validation') || {};
+    const mergedValidation = {
+      ...(selectedNode.data.validation || {}),
+      ...currentFormValidation,
+      ...updates
+    };
+
+    const previousValidatorType = (mergedValidation.validatorType || currentFormValidation.validatorType || selectedNode.data.validation?.validatorType || '').toLowerCase();
+    const aiActive = mergedValidation.aiIsActive ?? false;
+    const timeActive = mergedValidation.timeIsActive ?? false;
+
+    let preferredValidatorType = updates.validatorType
+      ?? mergedValidation.validatorType
+      ?? currentFormValidation.validatorType
+      ?? selectedNode.data.validation?.validatorType
+      ?? 'ai';
+
+    preferredValidatorType = (preferredValidatorType || '').toLowerCase();
+
+    if (!allowedValidatorTypes.includes(preferredValidatorType)) {
+      preferredValidatorType = aiActive ? 'ai' : timeActive ? 'time' : 'ai';
+    }
+
+    mergedValidation.validatorType = preferredValidatorType;
+    mergedValidation.enabled = aiActive || timeActive;
+
+    form?.setFieldsValue?.({
+      validation: mergedValidation
+    });
+
+    handleNodeDataChange({
+      validation: mergedValidation
+    });
+  }, [allowedValidatorTypes, form, handleNodeDataChange, selectedNode]);
+
+  const handleValidatorToggle = useCallback((key, isActive) => {
+    const updates = key === 'ai'
+      ? { aiIsActive: isActive }
+      : { timeIsActive: isActive };
+
+    syncValidationState({
+      ...updates,
+      ...(isActive ? { validatorType: key } : {})
+    });
+
+    if (isActive) {
+      setActiveValidatorTab(key);
+    }
+  }, [syncValidationState]);
+
+  useEffect(() => {
+    if (aiIsActive && !timeIsActive) {
+      setActiveValidatorTab('ai');
+    } else if (!aiIsActive && timeIsActive) {
+      setActiveValidatorTab('time');
+    } else if (!aiIsActive && !timeIsActive) {
+      const next = allowedValidatorTypes.includes(normalizedValidatorType) ? normalizedValidatorType : 'ai';
+      setActiveValidatorTab(next);
+    }
+  }, [aiIsActive, timeIsActive, normalizedValidatorType]);
 
   // 監聽 Time Validator 模板選擇事件
   useEffect(() => {
@@ -260,6 +338,11 @@ const NodePropertyDrawer = ({
     
     return Array.from(variables);
   };
+
+  const yesNoOptions = useMemo(() => ([
+    { value: true, label: t('workflowDesigner.yes') },
+    { value: false, label: t('workflowDesigner.no') }
+  ]), [t]);
 
   const aiProviderOptions = useMemo(() => {
     return aiProviders.map(provider => ({
@@ -459,6 +542,13 @@ const NodePropertyDrawer = ({
       // 重置表單並設置新的初始值
       form.resetFields();
       const validation = selectedNode.data.validation || {};
+      const normalizedInitialValidatorType = (validation.validatorType || '').toLowerCase();
+      const derivedAiIsActive = typeof validation.aiIsActive === 'boolean'
+        ? validation.aiIsActive
+        : (validation.enabled === true && normalizedInitialValidatorType === 'ai');
+      const derivedTimeIsActive = typeof validation.timeIsActive === 'boolean'
+        ? validation.timeIsActive
+        : (validation.enabled === true && normalizedInitialValidatorType === 'time');
       form.setFieldsValue({
         taskName: selectedNode.data.taskName || selectedNode.data.label,
         to: selectedNode.data.to || '',
@@ -481,7 +571,9 @@ const NodePropertyDrawer = ({
         scheduledInterval: selectedNode.data.scheduledInterval || 300,
         validation: {
           ...validation,
-          enabled: validation.enabled ?? false
+          enabled: (validation.enabled ?? false) || derivedAiIsActive || derivedTimeIsActive,
+          aiIsActive: derivedAiIsActive,
+          timeIsActive: derivedTimeIsActive
         },
         // DataSet 查詢節點相關字段
         dataSetId: selectedNode.data.dataSetId || '',
@@ -773,8 +865,8 @@ const NodePropertyDrawer = ({
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              dataSetId: requestData.dataSetId,
-              whereClause: whereClause,
+              dataSetId: currentNode?.data?.dataSetId || selectedNode?.data?.dataSetId,
+              whereClause,
               limit: 10,
               processVariableValues: pvSimulationData
             })
@@ -788,17 +880,19 @@ const NodePropertyDrawer = ({
 
           const result = await response.json();
           console.log('API 響應結果:', result);
-          
+
           if (result.success && result.data) {
-            // 更新查詢結果預覽數據
             setQueryPreviewData(result.data);
-            message.success(`查詢成功！找到 ${result.totalCount} 條記錄。`);
+            const total = result.totalCount ?? result.data.length;
+            message.success(`查詢成功！找到 ${total} 條記錄。`);
           } else {
             throw new Error(result.message || '獲取預覽數據失敗');
           }
         } catch (previewError) {
           console.error('獲取預覽數據失敗:', previewError);
-          message.error('獲取預覽數據失敗: ' + previewError.message);
+          message.error(t('workflowDesigner.dataSet.previewFailed', { message: previewError.message }));
+        } finally {
+          setTestingOperation(false);
         }
       } else {
         // 非 SELECT 操作或無模擬數據時顯示基本配置信息
@@ -850,1519 +944,48 @@ const NodePropertyDrawer = ({
   if (!selectedNode) return null;
 
   return (
-    <Drawer
-      title={
-        selectedNode ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginRight: 40 }}>
-            <span>{t(`workflowDesigner.${selectedNode.data.type}Node`)}</span>
-            <Button
-              type="text"
-              icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFullscreen(!isFullscreen);
-              }}
-              style={{ 
-                marginLeft: 8,
-                fontSize: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              title={isFullscreen ? t('workflowDesigner.exitFullscreen') : t('workflowDesigner.enterFullscreen')}
-            />
-          </div>
-        ) : ''
-      }
-      placement="right"
-      open={drawerOpen}
-      onClose={() => {
-        setDrawerOpen(false);
-        setIsFullscreen(false); // 關閉時重置全屏狀態
-      }}
-      width={isFullscreen ? '100%' : 340}
-      style={{
-        transition: 'width 0.3s ease'
-      }}
-    >
-      <div style={{
-        maxWidth: isFullscreen ? '1200px' : '100%',
-        margin: isFullscreen ? '0 auto' : '0',
-        padding: isFullscreen ? '20px 40px' : '0'
-      }}>
-      {selectedNode && selectedNode.data.type !== 'start' && (
-        <Form
-          form={form}
-          key={selectedNode.id}
-          layout="vertical"
-          onValuesChange={handleFormValuesChange}
-        >
-          <Form.Item label={t('workflowDesigner.taskNameLabel')} name="taskName">
-            <Input 
-              placeholder={t('workflowDesigner.taskNamePlaceholder')}
-              onBlur={(e) => {
-                const value = e.target.value;
-                if (value !== selectedNode.data.taskName) {
-                  handleNodeDataChange({ taskName: value });
-                }
-              }}
-            />
-          </Form.Item>
-          
-          {/* 發送 WhatsApp 消息節點 - 合併模板和直接訊息功能 */}
-          {selectedNode.data.type === 'sendWhatsApp' && (
-            <>
-              {/* 收件人選擇（共用） */}
-              <Form.Item label={t('workflow.to')}>
-                <div style={{ position: 'relative' }}>
-                  <RecipientSelector
-                    value={selectedNode.data.to || ''}
-                    recipientDetails={selectedNode.data.recipientDetails}
-                    placeholder={t('workflowDesigner.selectRecipients')}
-                    compact={true}
-                    workflowDefinitionId={workflowId}
-                    t={t}
-                    onChange={(value, detailedValue) => {
-                      // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
-                      if (value === '' && detailedValue === null) {
-                        setIsRecipientModalVisible(true);
-                      } else {
-                        // 處理正常選擇或清除操作
-                        handleNodeDataChange({ 
-                          to: value,
-                          recipientDetails: detailedValue 
-                        });
-                      }
-                    }}
-                  />
-                  <div style={{ 
-                    position: 'absolute', 
-                    right: '8px', 
-                    top: '50%', 
-                    transform: 'translateY(-50%)',
-                    display: 'flex',
-                    gap: '4px'
-                  }}>
-                    {selectedNode.data.to && (
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
-                        }}
-                        style={{ padding: '0 4px', fontSize: '12px' }}
-                      >
-                        {t('workflowDesigner.clear')}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Form.Item>
-              
-              {/* 訊息模式 Tab 切換（共用組件） */}
-              <MessageModeTabsComponent
-                selectedNode={selectedNode}
-                handleNodeDataChange={handleNodeDataChange}
-                setIsTemplateModalVisible={setIsTemplateModalVisible}
-                processVariables={processVariables}
-                form={form}
-                t={t}
-                messageLabel={t('workflow.message')}
-                messagePlaceholder={t('workflowDesigner.messageWithVariablesPlaceholder')}
-                messageRows={3}
-                showProcessVariables={true}
-              />
-            </>
-          )}
-
-          {/* 發送 WhatsApp 模板節點 */}
-          {selectedNode.data.type === 'sendWhatsAppTemplate' && (
-            <>
-              <Form.Item label={t('workflow.to')}>
-                <div style={{ position: 'relative' }}>
-                  <RecipientSelector
-                    value={selectedNode.data.to || ''}
-                    recipientDetails={selectedNode.data.recipientDetails}
-                    placeholder={t('workflowDesigner.selectRecipients')}
-                    compact={true}
-                    workflowDefinitionId={workflowId}
-                    t={t}
-                    onChange={(value, detailedValue) => {
-                      // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
-                      if (value === '' && detailedValue === null) {
-                        setIsRecipientModalVisible(true);
-                      } else {
-                        // 處理正常選擇或清除操作
-                        handleNodeDataChange({ 
-                          to: value,
-                          recipientDetails: detailedValue 
-                        });
-                      }
-                    }}
-                  />
-                  <div style={{ 
-                    position: 'absolute', 
-                    right: '8px', 
-                    top: '50%', 
-                    transform: 'translateY(-50%)',
-                    display: 'flex',
-                    gap: '4px'
-                  }}>
-                    {selectedNode.data.to && (
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
-                        }}
-                        style={{ padding: '0 4px', fontSize: '12px' }}
-                      >
-                        {t('workflowDesigner.clear')}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Form.Item>
-              <Form.Item label={t('workflowDesigner.dataSet.template')}>
-                <Input 
-                  value={selectedNode.data.templateName || ''}
-                  placeholder={t('workflowDesigner.selectTemplate')} 
-                  readOnly 
-                  onClick={() => setIsTemplateModalVisible(true)}
-                  suffix={<FormOutlined />}
-                />
-              </Form.Item>
-              {selectedNode.data.templateId && (
-                <Card size="small" title={t('workflowDesigner.templateInfo')} style={{ marginBottom: 16 }}>
-                  <p><strong>{t('workflowDesigner.templateId')}</strong>{selectedNode.data.templateId}</p>
-                  <p><strong>{t('workflowDesigner.templateName')}</strong>{selectedNode.data.templateName}</p>
-                </Card>
-              )}
-              
-              {/* 模板變數編輯 */}
-              {selectedNode.data.templateId && (
-                <Form.Item label={t('workflowDesigner.templateVariables')}>
-                  <div style={{ marginBottom: 8 }}>
-                    <Button 
-                      type="dashed" 
-                      onClick={() => {
-                        const currentVariables = selectedNode.data.variables || {};
-                        const newVariables = { ...currentVariables, [`var_${Date.now()}`]: '' };
-                        handleNodeDataChange({ variables: newVariables });
-                      }}
-                      style={{ width: '100%' }}
-                    >
-                      <PlusOutlined /> {t('workflowDesigner.addVariable')}
-                    </Button>
-                  </div>
-                  
-                  {selectedNode.data.variables && Object.keys(selectedNode.data.variables).length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {Object.entries(selectedNode.data.variables).map(([key, value]) => (
-                        <div key={key} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <Input
-                            placeholder={t('workflowDesigner.variableName')}
-                            value={key}
-                            onChange={(e) => {
-                              const newVariables = { ...selectedNode.data.variables };
-                              delete newVariables[key];
-                              newVariables[e.target.value] = value;
-                              handleNodeDataChange({ variables: newVariables });
-                            }}
-                            style={{ flex: 1 }}
-                          />
-                          <Input
-                            placeholder={t('workflowDesigner.variableValue')}
-                            value={value}
-                            onChange={(e) => {
-                              const newVariables = { ...selectedNode.data.variables };
-                              newVariables[key] = e.target.value;
-                              handleNodeDataChange({ variables: newVariables });
-                            }}
-                            style={{ flex: 2 }}
-                          />
-                          <Button
-                            type="text"
-                            danger
-                            onClick={() => {
-                              const newVariables = { ...selectedNode.data.variables };
-                              delete newVariables[key];
-                              handleNodeDataChange({ variables: newVariables });
-                            }}
-                          >
-                            <DeleteOutlined />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                </Form.Item>
-              )}
-            </>
-          )}
-
-          {/* 等待回覆節點 */}
-          {selectedNode.data.type === 'waitReply' && (
-            <>
-              <Form.Item label={t('workflowDesigner.replyType')} name="replyType">
-                <Select
-                  options={[
-                    { value: 'initiator', label: t('workflowDesigner.initiator') },
-                    { value: 'specified', label: t('workflowDesigner.specifiedPerson') }
-                  ]}
-                />
-              </Form.Item>
-              
-              {selectedNode.data.replyType === 'specified' && (
-                <Form.Item label={t('workflowDesigner.specifiedPerson')}>
-                  <div style={{ position: 'relative' }}>
-                    <RecipientSelector
-                      value={selectedNode.data.specifiedUsers || ''}
-                      recipientDetails={selectedNode.data.recipientDetails}
-                      placeholder={t('workflowDesigner.selectRecipients')}
-                      compact={true}
-                      workflowDefinitionId={workflowId}
-                      onChange={(value, detailedValue) => {
-                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
-                        if (value === '' && detailedValue === null) {
-                          setIsRecipientModalVisible(true);
-                        } else {
-                          // 處理正常選擇或清除操作
-                          handleNodeDataChange({ 
-                            specifiedUsers: value,
-                            recipientDetails: detailedValue 
-                          });
-                        }
-                      }}
-                    />
-                    <div style={{ 
-                      position: 'absolute', 
-                      right: '8px', 
-                      top: '50%', 
-                      transform: 'translateY(-50%)',
-                      display: 'flex',
-                      gap: '4px'
-                    }}>
-                      {selectedNode.data.specifiedUsers && (
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNodeDataChange({ specifiedUsers: '', recipientDetails: null });
-                          }}
-                          style={{ padding: '0 4px', fontSize: '12px' }}
-                        >
-                          {t('workflowDesigner.clear')}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Form.Item>
-              )}
-              
-              {/* 提示訊息標籤 */}
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
-                  {t('workflowDesigner.promptMessage')}
-                </div>
-                <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
-                  {t('workflowDesigner.promptMessageHelp')}
-                </div>
-              </div>
-              
-              {/* 訊息模式 Tab 切換（共用組件） */}
-              <MessageModeTabsComponent
-                selectedNode={selectedNode}
-                handleNodeDataChange={handleNodeDataChange}
-                setIsTemplateModalVisible={setIsTemplateModalVisible}
-                processVariables={processVariables}
-                form={form}
-                t={t}
-                messageLabel={null}
-                messagePlaceholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
-                messageRows={3}
-              />
-              
-              <Form.Item label={t('workflowDesigner.validationConfig')}>
-                <Card 
-                  size="small" 
-                  title={t('workflowDesigner.validationSettings')} 
-                  style={{ marginBottom: 16 }}
-                >
-                  <div style={{
-                    display: isFullscreen ? 'grid' : 'block',
-                    gridTemplateColumns: isFullscreen ? '1fr 1fr' : '1fr',
-                    gap: isFullscreen ? '16px' : '0'
-                  }}>
-                    <Form.Item
-                      label={t('workflowDesigner.enableValidation')}
-                      name={['validation', 'enabled']}
-                    >
-                      <Select
-                        options={[
-                          { value: true, label: t('workflowDesigner.yes') },
-                          { value: false, label: t('workflowDesigner.no') }
-                        ]}
-                      />
-                    </Form.Item>
-                    {validationEnabled && (
-                      <Form.Item label={t('workflowDesigner.validatorType')} name={['validation', 'validatorType']}>
-                        <Select
-                          options={[
-                            { value: 'default', label: t('workflowDesigner.defaultValidator') },
-                            { value: 'time', label: t('workflowDesigner.timeValidatorLabel') },
-                            { value: 'custom', label: t('workflowDesigner.customValidator') },
-                            { value: 'ai', label: t('workflowDesigner.aiValidator') }
-                          ]}
-                        />
-                      </Form.Item>
-                    )}
-                  </div>
-
-                  {validationEnabled && (
-                  <>
-                  {/* Time Validator 配置 */}
-                  {normalizedValidatorType === 'time' && (
-                    <>
-                      {/* Retry Interval - 天/時/分 */}
-                      <Form.Item label={t('workflowDesigner.timeValidator.retryInterval')}>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
-                          gap: isFullscreen ? '12px' : '8px'
-                        }}>
-                          <Input 
-                            type="number" 
-                            min="0" 
-                            placeholder="0"
-                            value={selectedNode.data.validation?.retryIntervalDays || 0}
-                            onChange={(e) => {
-                              const newValidation = {
-                                ...(selectedNode.data.validation || {}),
-                                retryIntervalDays: parseInt(e.target.value) || 0
-                              };
-                              handleNodeDataChange({ validation: newValidation });
-                            }}
-                            addonAfter={t('workflowDesigner.days')}
-                          />
-                          <Input 
-                            type="number" 
-                            min="0" 
-                            max="23"
-                            placeholder="0"
-                            value={selectedNode.data.validation?.retryIntervalHours || 0}
-                            onChange={(e) => {
-                              const newValidation = {
-                                ...(selectedNode.data.validation || {}),
-                                retryIntervalHours: parseInt(e.target.value) || 0
-                              };
-                              handleNodeDataChange({ validation: newValidation });
-                            }}
-                            addonAfter={t('workflowDesigner.hours')}
-                          />
-                          <Input 
-                            type="number" 
-                            min="0" 
-                            max="59"
-                            placeholder="30"
-                            value={selectedNode.data.validation?.retryIntervalMinutes || 0}
-                            onChange={(e) => {
-                              const newValidation = {
-                                ...(selectedNode.data.validation || {}),
-                                retryIntervalMinutes: parseInt(e.target.value) || 0
-                              };
-                              handleNodeDataChange({ validation: newValidation });
-                            }}
-                            addonAfter={t('workflowDesigner.minutes')}
-                          />
-                        </div>
-                        <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
-                          💡 {t('workflowDesigner.timeValidator.retryIntervalHelp')}
-                        </div>
-                      </Form.Item>
-                      
-                      {/* Retry Limit */}
-                      <Form.Item label={t('workflowDesigner.timeValidator.retryLimit')} name={['validation', 'retryLimit']}>
-                        <Input type="number" min="0" max="10" placeholder="3" />
-                      </Form.Item>
-                      
-                      <div style={{
-                        display: isFullscreen ? 'grid' : 'block',
-                        gridTemplateColumns: isFullscreen ? '1fr 1fr' : '1fr',
-                        gap: isFullscreen ? '16px' : '0'
-                      }}>
-                        {/* Retry Message 設置按鈕 */}
-                        <Form.Item label={t('workflowDesigner.timeValidator.retryMessage')}>
-                          <Button 
-                            type="dashed" 
-                            icon={<MessageOutlined />}
-                            onClick={() => setRetryMessageModalVisible(true)}
-                            style={{ width: '100%' }}
-                          >
-                            {t('workflowDesigner.timeValidator.configureRetryMessage')}
-                          </Button>
-                          
-                          {/* 顯示已配置的摘要 */}
-                          {selectedNode.data.validation?.retryMessageConfig && (
-                            <div style={{ marginTop: 8, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 4 }}>
-                              <div style={{ fontSize: 12, color: '#666' }}>
-                                {selectedNode.data.validation.retryMessageConfig.useTemplate 
-                                  ? `📄 Template: ${selectedNode.data.validation.retryMessageConfig.templateName}`
-                                  : `✉️ Direct Message: ${selectedNode.data.validation.retryMessageConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
-                                }
-                              </div>
-                            </div>
-                          )}
-                        </Form.Item>
-                        
-                        {/* Escalation 設置按鈕 */}
-                        <Form.Item label={t('workflowDesigner.timeValidator.escalation')}>
-                          <Button 
-                            type="dashed" 
-                            icon={<BellOutlined />}
-                            onClick={() => setEscalationConfigModalVisible(true)}
-                            style={{ width: '100%' }}
-                          >
-                            {t('workflowDesigner.timeValidator.configureEscalation')}
-                          </Button>
-                          
-                          {/* 顯示已配置的升級對象摘要 */}
-                          {selectedNode.data.validation?.escalationConfig && (
-                            <div style={{ marginTop: 8, padding: 8, backgroundColor: '#fff7e6', borderRadius: 4, border: '1px solid #ffd666' }}>
-                              <div style={{ fontSize: 12, color: '#d48806' }}>
-                                📢 Recipients: {selectedNode.data.validation.escalationConfig.recipients || 'Not set'}
-                              </div>
-                              <div style={{ fontSize: 12, color: '#d48806', marginTop: 4 }}>
-                                {selectedNode.data.validation.escalationConfig.useTemplate 
-                                  ? `📄 Template: ${selectedNode.data.validation.escalationConfig.templateName}`
-                                  : `✉️ Message: ${selectedNode.data.validation.escalationConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
-                                }
-                              </div>
-                            </div>
-                          )}
-                        </Form.Item>
-                      </div>
-                    </>
-                  )}
-                  
-                  {/* 其他 Validator 的配置 */}
-                  {normalizedValidatorType !== 'time' && (
-                    <>
-                      {normalizedValidatorType === 'ai' && (
-                        <>
-                          {!loadingAiProviders && aiProviders.length === 0 && (
-                            <Alert
-                              type="warning"
-                              showIcon
-                              message={t('workflowDesigner.aiProviderNotConfigured')}
-                              style={{ marginBottom: 12 }}
-                            />
-                          )}
-                          {aiProvidersError && (
-                            <Alert
-                              type="error"
-                              showIcon
-                              message={t('workflowDesigner.aiProviderLoadFailed')}
-                              description={aiProvidersError}
-                              style={{ marginBottom: 12 }}
-                            />
-                          )}
-                          <Form.Item
-                            label={t('workflowDesigner.validationAiProvider')}
-                            name={['validation', 'aiProviderKey']}
-                            rules={[{ required: true, message: t('workflowDesigner.validationAiProviderRequired') }]}
-                          >
-                            <Select
-                              loading={loadingAiProviders}
-                              placeholder={t('workflowDesigner.validationAiProviderPlaceholder')}
-                              options={aiProviderOptions}
-                              allowClear
-                            />
-                          </Form.Item>
-                        </>
-                      )}
-                      <Form.Item label={t('workflowDesigner.promptText')} name={['validation', 'prompt']}>
-                        <Input placeholder={t('workflowDesigner.promptTextPlaceholder')} />
-                      </Form.Item>
-                      <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
-                        <Input placeholder={t('workflowDesigner.retryMessagePlaceholder')} />
-                      </Form.Item>
-                      <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
-                        <Input type="number" min="1" max="10" />
-                      </Form.Item>
-                    </>
-                  )}
-                  </>
-                  )}
-                </Card>
-              </Form.Item>
-              <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.waitReplyDescription1')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.waitReplyDescription2')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.waitReplyDescription3')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                  {t('workflowDesigner.waitReplyDescription4')}
-                </p>
-              </Card>
-            </>
-          )}
-
-          {/* 等待 QR Code 節點 */}
-          {selectedNode.data.type === 'waitForQRCode' && (
-            <>
-              <Form.Item label={t('workflowDesigner.replyType')} name="replyType">
-                <Select
-                  options={[
-                    { value: 'initiator', label: t('workflowDesigner.initiator') },
-                    { value: 'specified', label: t('workflowDesigner.specifiedPerson') }
-                  ]}
-                />
-              </Form.Item>
-              
-              {selectedNode.data.replyType === 'specified' && (
-                <Form.Item label={t('workflowDesigner.specifiedPerson')}>
-                  <div style={{ position: 'relative' }}>
-                    <RecipientSelector
-                      value={selectedNode.data.specifiedUsers || ''}
-                      recipientDetails={selectedNode.data.recipientDetails}
-                      placeholder={t('workflowDesigner.selectRecipients')}
-                      compact={true}
-                      workflowDefinitionId={workflowId}
-                      onChange={(value, detailedValue) => {
-                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
-                        if (value === '' && detailedValue === null) {
-                          setIsRecipientModalVisible(true);
-                        } else {
-                          // 處理正常選擇或清除操作
-                          handleNodeDataChange({ 
-                            specifiedUsers: value,
-                            recipientDetails: detailedValue 
-                          });
-                        }
-                      }}
-                    />
-                    <div style={{ 
-                      position: 'absolute', 
-                      right: '8px', 
-                      top: '50%', 
-                      transform: 'translateY(-50%)',
-                      display: 'flex',
-                      gap: '4px'
-                    }}>
-                      {selectedNode.data.specifiedUsers && (
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNodeDataChange({ specifiedUsers: '', recipientDetails: null });
-                          }}
-                          style={{ padding: '0 4px', fontSize: '12px' }}
-                        >
-                          {t('workflowDesigner.clear')}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Form.Item>
-              )}
-              
-              <Form.Item label={t('workflowDesigner.qrCodeVariable')} name="qrCodeVariable">
-                <Select
-                  placeholder={t('workflowDesigner.selectProcessVariable')}
-                  allowClear
-                >
-                  {processVariables.map(pv => (
-                    <Select.Option key={pv.id} value={pv.variableName}>
-                      {pv.variableName} ({pv.dataType})
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-              
-              {/* 提示訊息標籤 */}
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
-                  {t('workflowDesigner.promptMessage')}
-                </div>
-                <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
-                  {t('workflowDesigner.promptMessageHelp')}
-                </div>
-              </div>
-              
-              {/* 訊息模式 Tab 切換（共用組件） */}
-              <MessageModeTabsComponent
-                selectedNode={selectedNode}
-                handleNodeDataChange={handleNodeDataChange}
-                setIsTemplateModalVisible={setIsTemplateModalVisible}
-                processVariables={processVariables}
-                form={form}
-                t={t}
-                messageLabel={null}
-                messagePlaceholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
-                messageRows={3}
-              />
-              
-              <Form.Item label={t('workflowDesigner.timeout')} name="timeout">
-                <Input 
-                  type="number" 
-                  placeholder="300" 
-                  addonAfter={t('workflowDesigner.seconds')}
-                />
-              </Form.Item>
-              
-              <Form.Item label={t('workflowDesigner.qrCodeSuccessMessage')} name="qrCodeSuccessMessage">
-                <Input.TextArea 
-                  rows={2} 
-                  placeholder={t('workflowDesigner.dataSet.qrCodeSuccessMessage')}
-                />
-              </Form.Item>
-              
-              <Form.Item label={t('workflowDesigner.qrCodeErrorMessage')} name="qrCodeErrorMessage">
-                <Input.TextArea 
-                  rows={2} 
-                  placeholder={t('workflowDesigner.dataSet.qrCodeErrorMessage')}
-                />
-              </Form.Item>
-              
-              <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.qrCodeDescription1')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.qrCodeDescription2')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                  {t('workflowDesigner.qrCodeDescription3')}
-                </p>
-              </Card>
-            </>
-          )}
-
-          {/* DataSet 查詢節點 */}
-          {selectedNode.data.type === 'dataSetQuery' && (
-            <>
-              <Form.Item label={t('workflowDesigner.dataSet.selectDataSet')} name="dataSetId">
-                <Select 
-                  placeholder={t('workflowDesigner.dataSet.selectDataSetPlaceholder')}
-                  loading={loadingDataSets}
-                  onChange={(value) => {
-                    handleNodeDataChange({ dataSetId: value });
-                    loadDataSetColumns(value);
-                  }}
-                >
-                  {dataSets.map(ds => (
-                    <Select.Option key={ds.id} value={ds.id}>
-                      {ds.name} ({ds.dataSourceType})
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-              
-              <Form.Item label={t('workflowDesigner.dataSet.operationType')} name="operationType">
-                <Select 
-                  placeholder={t('workflowDesigner.dataSet.operationTypePlaceholder')}
-                  onChange={(value) => {
-                    // 清除查詢結果預覽
-                    setQueryPreviewData([]);
-                    setQueryPreviewModalVisible(false);
-                    handleNodeDataChange({ operationType: value });
-                  }}
-                >
-                  <Select.Option value="SELECT">{t('workflowDesigner.dataSet.select')}</Select.Option>
-                  <Select.Option value="INSERT">{t('workflowDesigner.dataSet.insert')}</Select.Option>
-                  <Select.Option value="UPDATE">{t('workflowDesigner.dataSet.update')}</Select.Option>
-                  <Select.Option value="DELETE">{t('workflowDesigner.dataSet.delete')}</Select.Option>
-                </Select>
-              </Form.Item>
-              
-                {/* 查詢條件 - SELECT/UPDATE/DELETE 時顯示 */}
-                {(selectedNode.data.operationType === 'SELECT' || 
-                  selectedNode.data.operationType === 'UPDATE' || 
-                  selectedNode.data.operationType === 'DELETE') && (
-                  <Form.Item label={t('workflowDesigner.dataSet.queryConditions')}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Button 
-                        type="dashed" 
-                        onClick={() => {
-                          const newConditionGroup = {
-                            id: `conditionGroup${Date.now()}`,
-                            relation: 'and',
-                            conditions: [],
-                            groupIndex: -1
-                          };
-                          setEditingDataSetConditionGroup(newConditionGroup);
-                          setDataSetConditionGroupModalVisible(true);
-                        }}
-                        style={{ width: '100%' }}
-                      >
-                        {t('workflowDesigner.dataSet.addQueryConditionGroup')}
-                      </Button>
-                    </div>
-                    {(() => {
-                      const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                      const currentConditionGroups = currentNode?.data?.queryConditionGroups || [];
-                      return currentConditionGroups.map((group, groupIndex) => (
-                        <Card 
-                          key={group.id} 
-                          size="small" 
-                          style={{ 
-                            marginBottom: '8px', 
-                            border: '1px solid #d9d9d9',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => {
-                            console.log('=== 編輯 DataSet 查詢條件組 ===');
-                            console.log('group:', group);
-                            console.log('groupIndex:', groupIndex);
-                            const editingGroup = { ...group, groupIndex };
-                            console.log('editingGroup:', editingGroup);
-                            setEditingDataSetConditionGroup(editingGroup);
-                            setDataSetConditionGroupModalVisible(true);
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
-                                {t('workflowDesigner.dataSet.queryConditionGroup')} {groupIndex + 1}
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                                {t('workflowDesigner.dataSet.conditionCount')}: {group.conditions?.length || 0}
-                                {group.relation && ` • ${group.relation.toUpperCase()}`}
-                              </div>
-                              {group.conditions && group.conditions.length > 0 && (
-                                <div style={{ fontSize: '11px', color: '#999' }}>
-                                  {group.conditions.slice(0, 2).map(condition => 
-                                    `${condition.fieldName} ${condition.operator} ${condition.value}`
-                                  ).join(', ')}
-                                  {group.conditions.length > 2 && ` +${group.conditions.length - 2} more`}
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <Button 
-                                type="text" 
-                                size="small"
-                                icon={<EditOutlined />}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  console.log('=== 編輯按鈕點擊 DataSet 查詢條件組 ===');
-                                  console.log('group:', group);
-                                  console.log('groupIndex:', groupIndex);
-                                  const editingGroup = { ...group, groupIndex };
-                                  console.log('editingGroup:', editingGroup);
-                                  setEditingDataSetConditionGroup(editingGroup);
-                                  setDataSetConditionGroupModalVisible(true);
-                                }}
-                              />
-                              <Button 
-                                type="text" 
-                                danger 
-                                size="small"
-                                icon={<DeleteOutlined />}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                                  const currentGroups = currentNode?.data?.queryConditionGroups || [];
-                                  const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
-                                  handleNodeDataChange({ queryConditionGroups: newGroups });
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </Card>
-                      ));
-                    })()}
-                    
-                    {/* 顯示生成的 SQL WHERE 條件預覽 */}
-                    {(() => {
-                      const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                      const conditionGroups = currentNode?.data?.queryConditionGroups || [];
-                      if (conditionGroups.length > 0) {
-                        const sqlPreview = generateWhereClause(conditionGroups);
-                        return (
-                          <div style={{ 
-                            marginTop: '12px',
-                            padding: '8px 12px', 
-                            backgroundColor: '#f5f5f5', 
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            color: '#666'
-                          }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{t('workflowDesigner.dataSet.generatedWhereClause')}:</div>
-                            <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                              {sqlPreview}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </Form.Item>
-                )}
-              
-              {/* 操作數據 - INSERT/UPDATE 時顯示 */}
-              {(selectedNode.data.operationType === 'INSERT' || 
-                selectedNode.data.operationType === 'UPDATE') && (
-                <>
-                  <Form.Item label={t('workflowDesigner.dataSet.operationData')}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Button 
-                        type="dashed" 
-                        onClick={handleOpenOperationDataModal}
-                        icon={<SettingOutlined />}
-                        style={{ width: '100%' }}
-                        disabled={!selectedNode.data.dataSetId}
-                      >
-                        {t('workflowDesigner.dataSet.setOperationData')}
-                      </Button>
-                    </div>
-                    {operationDataFields.length > 0 && (
-                      <div style={{ 
-                        border: '1px solid #d9d9d9', 
-                        borderRadius: '4px', 
-                        padding: '8px', 
-                        backgroundColor: '#f9f9f9',
-                        fontSize: '12px',
-                        color: '#666'
-                      }}>
-                        {t('workflowDesigner.dataSet.operationDataSummary', { count: operationDataFields.length })}
-                      </div>
-                    )}
-                  </Form.Item>
-                </>
-              )}
-              
-                {/* 映射字段 - SELECT 時顯示 */}
-                {selectedNode.data.operationType === 'SELECT' && (
-                  <Form.Item label={t('workflowDesigner.dataSet.fieldMapping')}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Button 
-                        type="dashed" 
-                        onClick={() => {
-                          const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                          const currentMappings = currentNode?.data?.mappedFields || [];
-                          dataSetFieldMappingForm.setFieldsValue({ mappedFields: currentMappings });
-                          setDataSetFieldMappingModalVisible(true);
-                        }}
-                        style={{ width: '100%' }}
-                        disabled={!selectedNode.data.dataSetId}
-                      >
-                        {t('workflowDesigner.dataSet.setFieldMapping')}
-                      </Button>
-                    </div>
-                    {(() => {
-                      const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                      const mappedFields = currentNode?.data?.mappedFields || [];
-                      if (mappedFields.length > 0) {
-                        return (
-                          <div style={{ 
-                            border: '1px solid #d9d9d9', 
-                            borderRadius: '4px', 
-                            padding: '8px',
-                            backgroundColor: '#fafafa'
-                          }}>
-                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                              {t('workflowDesigner.dataSet.fieldMappingSummary', { count: mappedFields.length })}:
-                            </div>
-                            {mappedFields.slice(0, 3).map((mapping, index) => (
-                              <div key={index} style={{ fontSize: '11px', color: '#999', marginBottom: '2px' }}>
-                                {mapping.fieldName} → ${mapping.variableName}
-                              </div>
-                            ))}
-                            {mappedFields.length > 3 && (
-                              <div style={{ fontSize: '11px', color: '#999' }}>
-                                +{mappedFields.length - 3} 個更多...
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div style={{ 
-                          textAlign: 'center', 
-                          padding: '20px', 
-                          color: '#999',
-                          border: '1px dashed #d9d9d9',
-                          borderRadius: '4px'
-                        }}>
-                          {t('workflowDesigner.dataSet.noFieldMapping')}
-                        </div>
-                      );
-                    })()}
-                    <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                      {t('workflowDesigner.dataSet.clickToSetFieldMapping')}
-                    </div>
-                  </Form.Item>
-                )}
-              
-                <Form.Item label={t('workflowDesigner.dataSet.operationPreview')}>
-                  <div style={{ 
-                    padding: '8px 12px', 
-                    backgroundColor: '#f5f5f5', 
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    color: '#666',
-                    minHeight: '40px'
-                  }}>
-                    {selectedNode.data.dataSetId && selectedNode.data.operationType ? (
-                      <div>
-                        <div><strong>DataSet:</strong> {dataSets.find(ds => ds.id === selectedNode.data.dataSetId)?.name}</div>
-                        <div><strong>{t('workflowDesigner.dataSet.operationType')}:</strong> {selectedNode.data.operationType}</div>
-                        {(() => {
-                          const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                          const conditionGroups = currentNode?.data?.queryConditionGroups || [];
-                          if (conditionGroups.length > 0) {
-                            const sqlPreview = generateWhereClause(conditionGroups);
-                            return <div><strong>{t('workflowDesigner.dataSet.queryConditions')}:</strong> {sqlPreview}</div>;
-                          }
-                          return null;
-                        })()}
-                        {Object.keys(selectedNode.data.operationData || {}).length > 0 && (
-                          <div><strong>{t('workflowDesigner.dataSet.operationData')}:</strong> {JSON.stringify(selectedNode.data.operationData)}</div>
-                        )}
-                        {(() => {
-                          const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                          const mappedFields = currentNode?.data?.mappedFields || [];
-                          if (mappedFields.length > 0) {
-                            return (
-                              <div>
-                                <strong>{t('workflowDesigner.dataSet.fieldMapping')}:</strong>
-                                <ul style={{ margin: '4px 0', paddingLeft: '16px' }}>
-                                  {mappedFields.map((mapping, index) => (
-                                    <li key={index}>
-                                      {mapping.fieldName} → ${mapping.variableName}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                    ) : (
-                      t('workflowDesigner.dataSet.pleaseSelectDataSetAndOperationType')
-                    )}
-                  </div>
-                </Form.Item>
-              
-
-              <Form.Item>
-                <Button 
-                  type="default" 
-                  onClick={testDataSetOperation}
-                  loading={testingOperation}
-                  disabled={!selectedNode.data.dataSetId || !selectedNode.data.operationType}
-                  style={{ width: '100%' }}
-                >
-                  {t('workflowDesigner.dataSet.testOperation')}
-                </Button>
-              </Form.Item>
-
-            </>
-          )}
-
-          {/* API 調用節點 */}
-          {selectedNode.data.type === 'callApi' && (
-            <Form.Item label={t('workflow.apiUrl')} name="url">
-              <Input />
-            </Form.Item>
-          )}
-          
-          {/* 表單節點 */}
-          {selectedNode.data.type === 'sendEForm' && (
-            <>
-              <Form.Item label={t('workflowDesigner.selectForm')}>
-                <Input 
-                  value={selectedNode.data.formName || ''}
-                  placeholder={t('workflowDesigner.selectEFormPlaceholder')} 
-                  readOnly 
-                  onClick={() => setIsEFormModalVisible(true)}
-                  suffix={
-                    <Space>
-                      {selectedNode.data.formName && (
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNodeDataChange({ 
-                              formName: '', 
-                              formId: '', 
-                              formDescription: '' 
-                            });
-                          }}
-                        >
-                          {t('workflowList.clear')}
-                        </Button>
-                      )}
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        onClick={() => setIsEFormModalVisible(true)}
-                      >
-                        {t('workflowDesigner.selectForm')}
-                      </Button>
-                    </Space>
-                  }
-                  style={{
-                    color: selectedNode.data.formName ? '#000' : '#999',
-                    backgroundColor: selectedNode.data.formName ? '#fff' : '#f5f5f5',
-                    width: '100%',
-                    minWidth: '300px'
-                  }}
-                />
-              </Form.Item>
-              
-              <Form.Item label={t('workflow.to')}>
-                <div style={{ position: 'relative' }}>
-                  <RecipientSelector
-                    value={selectedNode.data.to || ''}
-                    recipientDetails={selectedNode.data.recipientDetails}
-                    placeholder={t('workflowDesigner.selectRecipients')}
-                    compact={true}
-                    workflowDefinitionId={workflowId}
-                    t={t}
-                    onChange={(value, detailedValue) => {
-                      // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
-                      if (value === '' && detailedValue === null) {
-                        setIsRecipientModalVisible(true);
-                      } else {
-                        // 處理正常選擇或清除操作
-                        handleNodeDataChange({ 
-                          to: value,
-                          recipientDetails: detailedValue 
-                        });
-                      }
-                    }}
-                  />
-                  <div style={{ 
-                    position: 'absolute', 
-                    right: '8px', 
-                    top: '50%', 
-                    transform: 'translateY(-50%)',
-                    display: 'flex',
-                    gap: '4px'
-                  }}>
-                    {selectedNode.data.to && (
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
-                        }}
-                        style={{ padding: '0 4px', fontSize: '12px' }}
-                      >
-                        {t('workflowDesigner.clear')}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Form.Item>
-              
-              {selectedNode.data.formId && (
-                <Card size="small" title={t('workflowDesigner.formInfo')} style={{ marginBottom: 16 }}>
-                  <p><strong>{t('workflowDesigner.formId')}</strong>{selectedNode.data.formId}</p>
-                  <p><strong>{t('workflowDesigner.formName')}</strong>{selectedNode.data.formName}</p>
-                  {selectedNode.data.formDescription && (
-                    <p><strong>{t('workflowDesigner.formDescription')}</strong>{selectedNode.data.formDescription}</p>
-                  )}
-                </Card>
-              )}
-
-              {/* 表單填充模式配置 */}
-              <Form.Item label={t('workflowDesigner.sendEForm.fillMode')}>
-                <div style={{ marginBottom: 8 }}>
-                  <Radio.Group
-                    value={selectedNode.data.sendEFormMode || 'integrateWaitReply'}
-                    onChange={(e) => {
-                      const mode = e.target.value;
-                      handleNodeDataChange({ 
-                        sendEFormMode: mode,
-                        integratedDataSetQueryNodeId: mode === 'integrateDataSetQuery' ? (selectedNode.data.integratedDataSetQueryNodeId || '') : ''
-                      });
-                    }}
-                  >
-                    <div style={{ marginBottom: 8 }}>
-                      <Radio value="integrateWaitReply">{t('workflowDesigner.sendEForm.integrateWaitReply')}</Radio>
-                    </div>
-                    <div style={{ marginBottom: 8 }}>
-                      <Radio value="integrateDataSetQuery">{t('workflowDesigner.sendEForm.integrateDataSetQuery')}</Radio>
-                    </div>
-                    <div>
-                      <Radio value="manualFill">{t('workflowDesigner.sendEForm.manualFill')}</Radio>
-                    </div>
-                  </Radio.Group>
-                </div>
-                
-                {/* 模式說明 */}
-                <div style={{ 
-                  padding: '8px 12px', 
-                  backgroundColor: '#f0f8ff', 
-                  border: '1px solid #1890ff',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  color: '#666',
-                  marginTop: 8
-                }}>
-                  {selectedNode.data.sendEFormMode === 'integrateWaitReply' && (
-                    <div>{t('workflowDesigner.sendEForm.integrateWaitReplyDesc')}</div>
-                  )}
-                  {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (
-                    <div>{t('workflowDesigner.sendEForm.integrateDataSetQueryDesc')}</div>
-                  )}
-                  {selectedNode.data.sendEFormMode === 'manualFill' && (
-                    <div>{t('workflowDesigner.sendEForm.manualFillDesc')}</div>
-                  )}
-                </div>
-                
-                {selectedNode.data.sendEFormMode === 'integrateWaitReply' && (
-                  <>
-                    {!loadingAiProviders && aiProviders.length === 0 && (
-                      <Alert
-                        type="warning"
-                        showIcon
-                        message={t('workflowDesigner.aiProviderNotConfigured')}
-                        style={{ marginBottom: 12 }}
-                      />
-                    )}
-                    {aiProvidersError && (
-                      <Alert
-                        type="error"
-                        showIcon
-                        message={t('workflowDesigner.aiProviderLoadFailed')}
-                        description={aiProvidersError}
-                        style={{ marginBottom: 12 }}
-                      />
-                    )}
-                    <Form.Item
-                      label={t('workflowDesigner.sendEForm.aiProvider')}
-                      name="aiProviderKey"
-                      rules={[{ required: true, message: t('workflowDesigner.sendEForm.aiProviderRequired') }]}
-                    >
-                      <Select
-                        loading={loadingAiProviders}
-                        placeholder={t('workflowDesigner.sendEForm.aiProviderPlaceholder')}
-                        options={aiProviderOptions}
-                        allowClear
-                      />
-                    </Form.Item>
-                  </>
-                )}
-                
-                {/* DataSet Query 節點選擇 */}
-                {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (
-                  <div style={{ marginTop: 12 }}>
-                    <Form.Item label={t('workflowDesigner.sendEForm.selectDataSetQueryNode')}>
-                      <Select
-                        placeholder={t('workflowDesigner.sendEForm.selectDataSetQueryNodePlaceholder')}
-                        value={selectedNode.data.integratedDataSetQueryNodeId || undefined}
-                        onChange={(value) => handleNodeDataChange({ integratedDataSetQueryNodeId: value })}
-                        allowClear
-                      >
-                        {(() => {
-                          // 從流程中獲取 DataSet Query 節點列表（操作類型為 SELECT）
-                          const dataSetQueryNodes = nodes.filter(node => 
-                            node.data?.type === 'dataSetQuery' && 
-                            node.data?.operationType === 'SELECT' &&
-                            node.id !== selectedNode.id // 排除當前節點
-                          );
-                          
-                          if (dataSetQueryNodes.length === 0) {
-                            return (
-                              <Select.Option value="" disabled>
-                                {t('workflowDesigner.sendEForm.noDataSetQueryNodes')}
-                              </Select.Option>
-                            );
-                          }
-                          
-                          return dataSetQueryNodes.map(node => (
-                            <Select.Option key={node.id} value={node.id}>
-                              {node.data?.taskName || node.data?.label || `DataSet Query Node ${node.id}`}
-                            </Select.Option>
-                          ));
-                        })()}
-                      </Select>
-                      <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
-                        {t('workflowDesigner.sendEForm.dataSetQueryNodeHelp')}
-                      </div>
-                    </Form.Item>
-                  </div>
-                )}
-              </Form.Item>
-
-              {/* 提示訊息配置 */}
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
-                  {t('workflowDesigner.promptMessage')}
-                </div>
-                <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
-                  {t('workflowDesigner.promptMessageHelp')}
-                </div>
-              </div>
-              
-              {/* 訊息模式 Tab 切換（共用組件） - 提示訊息 */}
-              <Form.Item 
-                name="promptMessage"
-                initialValue={selectedNode.data.promptMessage || ''}
-              >
-                <Input.TextArea 
-                  rows={3} 
-                  placeholder={t('workflowDesigner.sendEForm.promptMessagePlaceholder')}
-                />
-              </Form.Item>
-
-              <Divider />
-
-              {/* 通知訊息配置 */}
-              <Form.Item label={t('workflowDesigner.sendEForm.notificationMessage')}>
-                {/* 訊息模式 Tab 切換（共用組件） */}
-                <MessageModeTabsComponent
-                  selectedNode={selectedNode}
-                  handleNodeDataChange={handleNodeDataChange}
-                  setIsTemplateModalVisible={setIsTemplateModalVisible}
-                  processVariables={processVariables}
-                  form={form}
-                  t={t}
-                  showProcessVariables={false}
-                  directMessageContent={(
-                    // sendEForm 特殊的直接訊息內容（預設訊息 vs 自定義訊息）
-                    <>
-                      <div style={{ marginBottom: 8 }}>
-                        <Radio.Group
-                          value={selectedNode.data.useCustomMessage ? 'custom' : 'default'}
-                          onChange={(e) => {
-                            const useCustom = e.target.value === 'custom';
-                            handleNodeDataChange({ 
-                              useCustomMessage: useCustom,
-                              messageTemplate: useCustom ? (selectedNode.data.messageTemplate || t('workflowDesigner.sendEForm.defaultNotificationMessage')) : t('workflowDesigner.sendEForm.defaultNotificationMessage')
-                            });
-                          }}
-                        >
-                          <Radio value="default">{t('workflowDesigner.sendEForm.useDefaultMessage')}</Radio>
-                          <Radio value="custom">{t('workflowDesigner.sendEForm.customMessage')}</Radio>
-                        </Radio.Group>
-                      </div>
-                      
-                      {selectedNode.data.useCustomMessage && (
-                        <>
-                          <Input.TextArea
-                            value={selectedNode.data.messageTemplate || ''}
-                            placeholder={t('workflowDesigner.sendEForm.notificationMessagePlaceholder')}
-                            rows={4}
-                            onChange={(e) => handleNodeDataChange({ messageTemplate: e.target.value })}
-                          />
-                          <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
-                            {t('workflowDesigner.sendEForm.notificationMessageHelp')}
-                          </div>
-                        </>
-                      )}
-                      
-                      {!selectedNode.data.useCustomMessage && (
-                        <div style={{ 
-                          padding: '8px 12px', 
-                          backgroundColor: '#f5f5f5', 
-                          border: '1px solid #d9d9d9',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                          color: '#666'
-                        }}>
-                          {t('workflowDesigner.sendEForm.defaultNotificationMessage')}
-                        </div>
-                      )}
-                    </>
-                  )}
-                />
-              </Form.Item>
-              
-              <Form.Item label={t('workflowDesigner.approvalResultVariable')} name="approvalResultVariable">
-                <Select
-                  placeholder={t('workflowDesigner.selectApprovalResultVariable')}
-                  allowClear
-                >
-                  {processVariables.map(pv => (
-                    <Select.Option key={pv.id} value={pv.variableName}>
-                      {pv.variableName} ({pv.dataType})
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-              
-              <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.eFormDescription1')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.eFormDescription2')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.eFormDescription3')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.eFormDescription4')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.eFormDescription5')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.eFormDescription6')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                  {t('workflowDesigner.eFormDescription7')}
-                </p>
-              </Card>
-            </>
-          )}
-          
-          {/* 條件分支節點 */}
-          {selectedNode.data.type === 'switch' && (
-            <>
-              <Form.Item label={t('workflowDesigner.conditionGroups')}>
-                <div style={{ marginBottom: '8px' }}>
-                  <Button 
-                    type="dashed" 
-                    onClick={() => {
-                      const newGroup = {
-                        id: `group${Date.now()}`,
-                        relation: 'and',
-                        conditions: [],
-                        outputPath: '',
-                        groupIndex: -1
-                      };
-                      setEditingConditionGroup(newGroup);
-                      setConditionGroupModalVisible(true);
-                    }}
-                    style={{ width: '100%' }}
-                  >
-                    {t('workflowDesigner.addConditionGroup')}
-                  </Button>
-                </div>
-                {(() => {
-                  const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                  const currentConditionGroups = currentNode?.data?.conditionGroups || [];
-                  return currentConditionGroups.map((group, groupIndex) => (
-                    <Card 
-                      key={group.id} 
-                      size="small" 
-                      style={{ 
-                        marginBottom: '8px', 
-                        border: '1px solid #d9d9d9',
-                        cursor: 'pointer'
-                      }}
-                      onClick={() => {
-                        setEditingConditionGroup({ ...group, groupIndex });
-                        setConditionGroupModalVisible(true);
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
-                            {t('workflowDesigner.conditionGroup')} {groupIndex + 1}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                            {t('workflowDesigner.conditions')}: {group.conditions?.length || 0}
-                            {group.relation && ` • ${group.relation.toUpperCase()}`}
-                          </div>
-                          {group.conditions && group.conditions.length > 0 && (
-                            <div style={{ fontSize: '11px', color: '#999' }}>
-                              {group.conditions.slice(0, 2).map(condition => 
-                                `${condition.variableName} ${condition.operator} ${condition.value}`
-                              ).join(', ')}
-                              {group.conditions.length > 2 && ` +${group.conditions.length - 2} more`}
-                            </div>
-                          )}
-                          {group.outputPath && selectedNode && (
-                            <div style={{ fontSize: '11px', color: '#1890ff', marginTop: '2px' }}>
-                              → {getAvailableOutputPaths(selectedNode.id, edges, nodes, t).find(p => p.id === group.outputPath)?.label || group.outputPath}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <Button 
-                            type="text" 
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingConditionGroup({ ...group, groupIndex });
-                              setConditionGroupModalVisible(true);
-                            }}
-                          />
-                          <Button 
-                            type="text" 
-                            danger 
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                              const currentGroups = currentNode?.data?.conditionGroups || [];
-                              const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
-                              handleNodeDataChange({ conditionGroups: newGroups });
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </Card>
-                  ));
-                })()}
-              </Form.Item>
-              
-              <Form.Item label={t('workflowDesigner.defaultPath')}>
-                <div style={{ 
-                  padding: '8px 12px', 
-                  border: '1px solid #d9d9d9', 
-                  borderRadius: '6px',
-                  backgroundColor: '#fafafa',
-                  cursor: 'pointer'
+    <>
+      <Drawer
+        title={
+          selectedNode ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginRight: 40 }}>
+              <span>{t(`workflowDesigner.${selectedNode.data.type}Node`)}</span>
+              <Button
+                type="text"
+                icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFullscreen(!isFullscreen);
                 }}
-                onClick={() => {
-                  setDefaultPathModalVisible(true);
+                style={{ 
+                  marginLeft: 8,
+                  fontSize: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
-                >
-                  {selectedNode?.data?.defaultPath ? (
-                    <span style={{ color: '#1890ff' }}>
-                      → {selectedNode && getAvailableOutputPaths(selectedNode.id, edges, nodes, t).find(p => p.id === selectedNode.data.defaultPath)?.label || selectedNode?.data?.defaultPath}
-                    </span>
-                  ) : (
-                    <span style={{ color: '#999' }}>
-                      {t('workflowDesigner.clickToSelectDefaultPath')}
-                    </span>
-                  )}
-                </div>
-              </Form.Item>
-              
-              <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.switchDescription1')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                  {t('workflowDesigner.switchDescription2')}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                  {t('workflowDesigner.switchDescription3')}
-                </p>
-              </Card>
-            </>
-          )}
-        </Form>
-      )}
-      
-      {/* Start 節點屬性 */}
-      {selectedNode && selectedNode.data.type === 'start' && (
-        <div style={{ color: '#888' }}>
+                title={isFullscreen ? t('workflowDesigner.exitFullscreen') : t('workflowDesigner.enterFullscreen')}
+              />
+            </div>
+          ) : ''
+        }
+        placement="right"
+        open={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false);
+          setIsFullscreen(false); // 關閉時重置全屏狀態
+        }}
+        width={isFullscreen ? '100%' : 340}
+        style={{
+          transition: 'width 0.3s ease'
+        }}
+      >
+        <div style={{
+          maxWidth: isFullscreen ? '1200px' : '100%',
+          margin: isFullscreen ? '0 auto' : '0',
+          padding: isFullscreen ? '20px 40px' : '0'
+        }}>
+        {selectedNode && selectedNode.data.type !== 'start' && (
           <Form
             form={form}
             key={selectedNode.id}
@@ -2381,159 +1004,1098 @@ const NodePropertyDrawer = ({
               />
             </Form.Item>
             
-            <h4>{t('workflowDesigner.activationConfig')}</h4>
-            <Form.Item label={t('workflowDesigner.activationType')} name="activationType">
-              <Select
-                options={[
-                  { value: 'manual', label: t('workflowDesigner.manualActivation') },
-                  { value: 'webhook', label: t('workflowDesigner.metaWebhookCall') },
-                  { value: 'scheduled', label: t('workflowDesigner.scheduledTableWatch') }
-                ]}
-              />
-            </Form.Item>
-            
-            {selectedNode.data.activationType === 'webhook' && (
+            {/* 發送 WhatsApp 消息節點 - 合併模板和直接訊息功能 */}
+            {selectedNode.data.type === 'sendWhatsApp' && (
               <>
-                <Card size="small" title={t('workflowDesigner.webhookInfo')} style={{ marginTop: 16 }}>
+                {/* 收件人選擇（共用） */}
+                <Form.Item label={t('workflow.to')}>
+                  <div style={{ position: 'relative' }}>
+                    <RecipientSelector
+                      value={selectedNode.data.to || ''}
+                      recipientDetails={selectedNode.data.recipientDetails}
+                      placeholder={t('workflowDesigner.selectRecipients')}
+                      compact={true}
+                      workflowDefinitionId={workflowId}
+                      t={t}
+                      onChange={(value, detailedValue) => {
+                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                        if (value === '' && detailedValue === null) {
+                          setIsRecipientModalVisible(true);
+                        } else {
+                          // 處理正常選擇或清除操作
+                          handleNodeDataChange({ 
+                            to: value,
+                            recipientDetails: detailedValue 
+                          });
+                        }
+                      }}
+                    />
+                    <div style={{ 
+                      position: 'absolute', 
+                      right: '8px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {selectedNode.data.to && (
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
+                          }}
+                          style={{ padding: '0 4px', fontSize: '12px' }}
+                        >
+                          {t('workflowDesigner.clear')}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Form.Item>
+                
+                {/* 訊息模式 Tab 切換（共用組件） */}
+                <MessageModeTabsComponent
+                  selectedNode={selectedNode}
+                  handleNodeDataChange={handleNodeDataChange}
+                  setIsTemplateModalVisible={setIsTemplateModalVisible}
+                  processVariables={processVariables}
+                  form={form}
+                  t={t}
+                  messageLabel={t('workflow.message')}
+                  messagePlaceholder={t('workflowDesigner.messageWithVariablesPlaceholder')}
+                  messageRows={3}
+                  showProcessVariables={true}
+                />
+              </>
+            )}
+
+            {/* 發送 WhatsApp 模板節點 */}
+            {selectedNode.data.type === 'sendWhatsAppTemplate' && (
+              <>
+                <Form.Item label={t('workflow.to')}>
+                  <div style={{ position: 'relative' }}>
+                    <RecipientSelector
+                      value={selectedNode.data.to || ''}
+                      recipientDetails={selectedNode.data.recipientDetails}
+                      placeholder={t('workflowDesigner.selectRecipients')}
+                      compact={true}
+                      workflowDefinitionId={workflowId}
+                      t={t}
+                      onChange={(value, detailedValue) => {
+                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                        if (value === '' && detailedValue === null) {
+                          setIsRecipientModalVisible(true);
+                        } else {
+                          // 處理正常選擇或清除操作
+                          handleNodeDataChange({ 
+                            to: value,
+                            recipientDetails: detailedValue 
+                          });
+                        }
+                      }}
+                    />
+                    <div style={{ 
+                      position: 'absolute', 
+                      right: '8px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {selectedNode.data.to && (
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
+                          }}
+                          style={{ padding: '0 4px', fontSize: '12px' }}
+                        >
+                          {t('workflowDesigner.clear')}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Form.Item>
+                <Form.Item label={t('workflowDesigner.dataSet.template')}>
+                  <Input 
+                    value={selectedNode.data.templateName || ''}
+                    placeholder={t('workflowDesigner.selectTemplate')} 
+                    readOnly 
+                    onClick={() => setIsTemplateModalVisible(true)}
+                    suffix={<FormOutlined />}
+                  />
+                </Form.Item>
+                {selectedNode.data.templateId && (
+                  <Card size="small" title={t('workflowDesigner.templateInfo')} style={{ marginBottom: 16 }}>
+                    <p><strong>{t('workflowDesigner.templateId')}</strong>{selectedNode.data.templateId}</p>
+                    <p><strong>{t('workflowDesigner.templateName')}</strong>{selectedNode.data.templateName}</p>
+                  </Card>
+                )}
+                
+                {/* 模板變數編輯 */}
+                {selectedNode.data.templateId && (
+                  <Form.Item label={t('workflowDesigner.templateVariables')}>
+                    <div style={{ marginBottom: 8 }}>
+                      <Button 
+                        type="dashed" 
+                        onClick={() => {
+                          const currentVariables = selectedNode.data.variables || {};
+                          const newVariables = { ...currentVariables, [`var_${Date.now()}`]: '' };
+                          handleNodeDataChange({ variables: newVariables });
+                        }}
+                        style={{ width: '100%' }}
+                      >
+                        <PlusOutlined /> {t('workflowDesigner.addVariable')}
+                      </Button>
+                    </div>
+                    
+                    {selectedNode.data.variables && Object.keys(selectedNode.data.variables).length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {Object.entries(selectedNode.data.variables).map(([key, value]) => (
+                          <div key={key} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <Input
+                              placeholder={t('workflowDesigner.variableName')}
+                              value={key}
+                              onChange={(e) => {
+                                const newVariables = { ...selectedNode.data.variables };
+                                delete newVariables[key];
+                                newVariables[e.target.value] = value;
+                                handleNodeDataChange({ variables: newVariables });
+                              }}
+                              style={{ flex: 1 }}
+                            />
+                            <Input
+                              placeholder={t('workflowDesigner.variableValue')}
+                              value={value}
+                              onChange={(e) => {
+                                const newVariables = { ...selectedNode.data.variables };
+                                newVariables[key] = e.target.value;
+                                handleNodeDataChange({ variables: newVariables });
+                              }}
+                              style={{ flex: 2 }}
+                            />
+                            <Button
+                              type="text"
+                              danger
+                              onClick={() => {
+                                const newVariables = { ...selectedNode.data.variables };
+                                delete newVariables[key];
+                                handleNodeDataChange({ variables: newVariables });
+                              }}
+                            >
+                              <DeleteOutlined />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                  </Form.Item>
+                )}
+              </>
+            )}
+
+            {/* 等待回覆節點 */}
+            {selectedNode.data.type === 'waitReply' && (
+              <>
+                <Form.Item label={t('workflowDesigner.replyType')} name="replyType">
+                  <Select
+                    options={[
+                      { value: 'initiator', label: t('workflowDesigner.initiator') },
+                      { value: 'specified', label: t('workflowDesigner.specifiedPerson') }
+                    ]}
+                  />
+                </Form.Item>
+                
+                {selectedNode.data.replyType === 'specified' && (
+                  <Form.Item label={t('workflowDesigner.specifiedPerson')}>
+                    <div style={{ position: 'relative' }}>
+                      <RecipientSelector
+                        value={selectedNode.data.specifiedUsers || ''}
+                        recipientDetails={selectedNode.data.recipientDetails}
+                        placeholder={t('workflowDesigner.selectRecipients')}
+                        compact={true}
+                        workflowDefinitionId={workflowId}
+                        onChange={(value, detailedValue) => {
+                          // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                          if (value === '' && detailedValue === null) {
+                            setIsRecipientModalVisible(true);
+                          } else {
+                            // 處理正常選擇或清除操作
+                            handleNodeDataChange({ 
+                              specifiedUsers: value,
+                              recipientDetails: detailedValue 
+                            });
+                          }
+                        }}
+                      />
+                      <div style={{ 
+                        position: 'absolute', 
+                        right: '8px', 
+                        top: '50%', 
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        gap: '4px'
+                      }}>
+                        {selectedNode.data.specifiedUsers && (
+                          <Button 
+                            type="text" 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNodeDataChange({ specifiedUsers: '', recipientDetails: null });
+                            }}
+                            style={{ padding: '0 4px', fontSize: '12px' }}
+                          >
+                            {t('workflowDesigner.clear')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Form.Item>
+                )}
+                
+                {/* 提示訊息標籤 */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
+                    {t('workflowDesigner.promptMessage')}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
+                    {t('workflowDesigner.promptMessageHelp')}
+                  </div>
+                </div>
+                
+                {/* 訊息模式 Tab 切換（共用組件） */}
+                <MessageModeTabsComponent
+                  selectedNode={selectedNode}
+                  handleNodeDataChange={handleNodeDataChange}
+                  setIsTemplateModalVisible={setIsTemplateModalVisible}
+                  processVariables={processVariables}
+                  form={form}
+                  t={t}
+                  messageLabel={null}
+                  messagePlaceholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
+                  messageRows={3}
+                />
+                
+                <Form.Item label={t('workflowDesigner.validationConfig')}>
+                  <Card 
+                    size="small" 
+                    title={t('workflowDesigner.validationSettings')} 
+                    style={{ marginBottom: 16 }}
+                  >
+                    <Tabs
+                      activeKey={activeValidatorTab}
+                      onChange={(key) => setActiveValidatorTab(key)}
+                    >
+                      <Tabs.TabPane tab={t('workflowDesigner.aiValidator')} key="ai">
+                        <Form.Item
+                          label={t('workflowDesigner.validatorActiveLabel')}
+                          name={['validation', 'aiIsActive']}
+                          valuePropName="checked"
+                        >
+                          <Switch
+                            className="validator-switch"
+                            checkedChildren={t('workflowDesigner.active')}
+                            unCheckedChildren={t('workflowDesigner.inactive')}
+                            onChange={(checked) => handleValidatorToggle('ai', checked)}
+                          />
+                        </Form.Item>
+                        {aiIsActive && activeValidatorTab === 'ai' && (
+                          <>
+                            {!loadingAiProviders && aiProviders.length === 0 && (
+                              <Alert
+                                type="warning"
+                                showIcon
+                                message={t('workflowDesigner.aiProviderNotConfigured')}
+                                style={{ marginBottom: 12 }}
+                              />
+                            )}
+                            {aiProvidersError && (
+                              <Alert
+                                type="error"
+                                showIcon
+                                message={t('workflowDesigner.aiProviderLoadFailed')}
+                                description={aiProvidersError}
+                                style={{ marginBottom: 12 }}
+                              />
+                            )}
+                            <Form.Item
+                              label={t('workflowDesigner.validationAiProvider')}
+                              name={['validation', 'aiProviderKey']}
+                              rules={[{ required: true, message: t('workflowDesigner.validationAiProviderRequired') }]}
+                            >
+                              <Select
+                                loading={loadingAiProviders}
+                                placeholder={t('workflowDesigner.validationAiProviderPlaceholder')}
+                                options={aiProviderOptions}
+                                allowClear
+                              />
+                            </Form.Item>
+                            <Form.Item
+                              label={t('workflowDesigner.validationAiResultVariable')}
+                              name={['validation', 'aiResultVariable']}
+                              tooltip={t('workflowDesigner.validationAiResultVariableHelp')}
+                            >
+                              <Select
+                                allowClear
+                                placeholder={t('workflowDesigner.validationAiResultVariablePlaceholder')}
+                              >
+                                {processVariables.map(pv => (
+                                  <Select.Option key={pv.id} value={pv.variableName}>
+                                    {pv.variableName} ({pv.dataType})
+                                  </Select.Option>
+                                ))}
+                              </Select>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.promptText')} name={['validation', 'prompt']}>
+                              <Input.TextArea
+                                placeholder={t('workflowDesigner.promptTextPlaceholder')}
+                                rows={6}
+                              />
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
+                              <Input placeholder={t('workflowDesigner.retryMessagePlaceholder')} />
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
+                              <Input type="number" min="1" max="10" />
+                            </Form.Item>
+                          </>
+                        )}
+                      </Tabs.TabPane>
+                      <Tabs.TabPane tab={t('workflowDesigner.timeValidatorLabel')} key="time">
+                        <Form.Item
+                          label={t('workflowDesigner.validatorActiveLabel')}
+                          name={['validation', 'timeIsActive']}
+                          valuePropName="checked"
+                        >
+                          <Switch
+                            className="validator-switch"
+                            checkedChildren={t('workflowDesigner.active')}
+                            unCheckedChildren={t('workflowDesigner.inactive')}
+                            onChange={(checked) => handleValidatorToggle('time', checked)}
+                          />
+                        </Form.Item>
+                        {timeIsActive && activeValidatorTab === 'time' && (
+                          <>
+                            <Form.Item label={t('workflowDesigner.timeValidator.retryInterval')}>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
+                                gap: isFullscreen ? '12px' : '8px'
+                              }}>
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  placeholder="0"
+                                  value={selectedNode.data.validation?.retryIntervalDays || 0}
+                                  onChange={(e) => {
+                                    const newValidation = {
+                                      ...(selectedNode.data.validation || {}),
+                                      retryIntervalDays: parseInt(e.target.value) || 0
+                                    };
+                                    handleNodeDataChange({ validation: newValidation });
+                                  }}
+                                  addonAfter={t('workflowDesigner.days')}
+                                />
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max="23"
+                                  placeholder="0"
+                                  value={selectedNode.data.validation?.retryIntervalHours || 0}
+                                  onChange={(e) => {
+                                    const newValidation = {
+                                      ...(selectedNode.data.validation || {}),
+                                      retryIntervalHours: parseInt(e.target.value) || 0
+                                    };
+                                    handleNodeDataChange({ validation: newValidation });
+                                  }}
+                                  addonAfter={t('workflowDesigner.hours')}
+                                />
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max="59"
+                                  placeholder="30"
+                                  value={selectedNode.data.validation?.retryIntervalMinutes || 0}
+                                  onChange={(e) => {
+                                    const newValidation = {
+                                      ...(selectedNode.data.validation || {}),
+                                      retryIntervalMinutes: parseInt(e.target.value) || 0
+                                    };
+                                    handleNodeDataChange({ validation: newValidation });
+                                  }}
+                                  addonAfter={t('workflowDesigner.minutes')}
+                                />
+                              </div>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.retryLimit')}>
+                              <Input
+                                type="number"
+                                min="1"
+                                placeholder="5"
+                                value={selectedNode.data.validation?.retryLimitValue || 5}
+                                onChange={(e) => {
+                                  const newValidation = {
+                                    ...(selectedNode.data.validation || {}),
+                                    retryLimitValue: parseInt(e.target.value) || 5
+                                  };
+                                  handleNodeDataChange({ validation: newValidation });
+                                }}
+                              />
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.retryMessageConfig')}>
+                              <Button
+                                icon={<MessageOutlined />}
+                                onClick={() => {
+                                  setTempRetryMessageConfig(selectedNode?.data?.validation?.retryMessageConfig || null);
+                                  setRetryMessageModalVisible(true);
+                                }}
+                              >
+                                {t('workflowDesigner.timeValidator.configureRetryMessage')}
+                              </Button>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.escalationConfig')}>
+                              <Button
+                                icon={<BellOutlined />}
+                                onClick={() => {
+                                  setTempEscalationConfig(selectedNode?.data?.validation?.escalationConfig || null);
+                                  setEscalationConfigModalVisible(true);
+                                }}
+                              >
+                                {t('workflowDesigner.timeValidator.configureEscalation')}
+                              </Button>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.overdueEscalation')}>
+                              <Button
+                                icon={<ClockCircleOutlined />}
+                                onClick={() => {
+                                  setTempOverdueEscalationConfig(selectedNode?.data?.overdueConfig?.escalationConfig || null);
+                                  setOverdueEscalationModalVisible(true);
+                                }}
+                              >
+                                {t('workflowDesigner.timeValidator.configureOverdueEscalation')}
+                              </Button>
+                            </Form.Item>
+                          </>
+                        )}
+                      </Tabs.TabPane>
+                    </Tabs>
+                  </Card>
+                </Form.Item>
+                <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
                   <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                    {t('workflowDesigner.webhookDescription1')}
+                    {t('workflowDesigner.waitReplyDescription1')}
                   </p>
                   <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                    {t('workflowDesigner.webhookDescription2')}
+                    {t('workflowDesigner.waitReplyDescription2')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.waitReplyDescription3')}
                   </p>
                   <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
-                    💡 {t('workflowDesigner.webhookDescription3')}
+                    {t('workflowDesigner.waitReplyDescription4')}
                   </p>
                 </Card>
               </>
             )}
-            
-            {selectedNode.data.activationType === 'scheduled' && (
+
+            {/* 等待 QR Code 節點 */}
+            {selectedNode.data.type === 'waitForQRCode' && (
               <>
-                <Form.Item label={t('workflowDesigner.scheduledTable')} name="scheduledTable">
-                  <Input placeholder={t('workflowDesigner.scheduledTablePlaceholder')} />
+                <Form.Item label={t('workflowDesigner.replyType')} name="replyType">
+                  <Select
+                    options={[
+                      { value: 'initiator', label: t('workflowDesigner.initiator') },
+                      { value: 'specified', label: t('workflowDesigner.specifiedPerson') }
+                    ]}
+                  />
                 </Form.Item>
-                <Form.Item label={t('workflowDesigner.scheduledQuery')} name="scheduledQuery">
-                  <Input.TextArea rows={3} placeholder={t('workflowDesigner.scheduledQueryPlaceholder')} />
+                
+                {selectedNode.data.replyType === 'specified' && (
+                  <Form.Item label={t('workflowDesigner.specifiedPerson')}>
+                    <div style={{ position: 'relative' }}>
+                      <RecipientSelector
+                        value={selectedNode.data.specifiedUsers || ''}
+                        recipientDetails={selectedNode.data.recipientDetails}
+                        placeholder={t('workflowDesigner.selectRecipients')}
+                        compact={true}
+                        workflowDefinitionId={workflowId}
+                        onChange={(value, detailedValue) => {
+                          // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                          if (value === '' && detailedValue === null) {
+                            setIsRecipientModalVisible(true);
+                          } else {
+                            // 處理正常選擇或清除操作
+                            handleNodeDataChange({ 
+                              specifiedUsers: value,
+                              recipientDetails: detailedValue 
+                            });
+                          }
+                        }}
+                      />
+                      <div style={{ 
+                        position: 'absolute', 
+                        right: '8px', 
+                        top: '50%', 
+                        transform: 'translateY(-50%)',
+                        display: 'flex',
+                        gap: '4px'
+                      }}>
+                        {selectedNode.data.specifiedUsers && (
+                          <Button 
+                            type="text" 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNodeDataChange({ specifiedUsers: '', recipientDetails: null });
+                            }}
+                            style={{ padding: '0 4px', fontSize: '12px' }}
+                          >
+                            {t('workflowDesigner.clear')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Form.Item>
+                )}
+                
+                <Form.Item label={t('workflowDesigner.qrCodeVariable')} name="qrCodeVariable">
+                  <Select
+                    placeholder={t('workflowDesigner.selectProcessVariable')}
+                    allowClear
+                  >
+                    {processVariables.map(pv => (
+                      <Select.Option key={pv.id} value={pv.variableName}>
+                        {pv.variableName} ({pv.dataType})
+                      </Select.Option>
+                    ))}
+                  </Select>
                 </Form.Item>
-                <Form.Item label={t('workflowDesigner.scheduledInterval')} name="scheduledInterval">
+                
+                {/* 提示訊息標籤 */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
+                    {t('workflowDesigner.promptMessage')}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
+                    {t('workflowDesigner.promptMessageHelp')}
+                  </div>
+                </div>
+                
+                {/* 訊息模式 Tab 切換（共用組件） */}
+                <MessageModeTabsComponent
+                  selectedNode={selectedNode}
+                  handleNodeDataChange={handleNodeDataChange}
+                  setIsTemplateModalVisible={setIsTemplateModalVisible}
+                  processVariables={processVariables}
+                  form={form}
+                  t={t}
+                  messageLabel={null}
+                  messagePlaceholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
+                  messageRows={3}
+                />
+                
+                <Form.Item label={t('workflowDesigner.timeout')} name="timeout">
                   <Input 
                     type="number" 
                     placeholder="300" 
                     addonAfter={t('workflowDesigner.seconds')}
                   />
                 </Form.Item>
-                <Card size="small" title={t('workflowDesigner.scheduledInfo')} style={{ marginTop: 16 }}>
+                
+                <Form.Item label={t('workflowDesigner.qrCodeSuccessMessage')} name="qrCodeSuccessMessage">
+                  <Input.TextArea 
+                    rows={2} 
+                    placeholder={t('workflowDesigner.dataSet.qrCodeSuccessMessage')}
+                  />
+                </Form.Item>
+                
+                <Form.Item label={t('workflowDesigner.qrCodeErrorMessage')} name="qrCodeErrorMessage">
+                  <Input.TextArea 
+                    rows={2} 
+                    placeholder={t('workflowDesigner.dataSet.qrCodeErrorMessage')}
+                  />
+                </Form.Item>
+                
+                <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
                   <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                    {t('workflowDesigner.scheduledDescription1')}
+                    {t('workflowDesigner.qrCodeDescription1')}
                   </p>
                   <p style={{ fontSize: '12px', margin: '4px 0' }}>
-                    {t('workflowDesigner.scheduledDescription2')}
+                    {t('workflowDesigner.qrCodeDescription2')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                    {t('workflowDesigner.qrCodeDescription3')}
                   </p>
                 </Card>
               </>
             )}
-            
-            {/* Overdue Settings - 流程逾期設置 */}
-            <h4 style={{ marginTop: 24 }}>{t('workflowDesigner.overdueConfig')}</h4>
-            <Card size="small" title={t('workflowDesigner.overdueSettings')} style={{ marginBottom: 16 }}>
-              {/* Enable Overdue Monitoring */}
-              <Form.Item label={t('workflowDesigner.overdue.enabled')} name={['overdueConfig', 'enabled']}>
-                <Select
-                  options={[
-                    { value: true, label: t('workflowDesigner.yes') },
-                    { value: false, label: t('workflowDesigner.no') }
-                  ]}
-                />
-              </Form.Item>
-              
-              {selectedNode.data.overdueConfig?.enabled && (
-                <>
-                  {/* Overdue Duration - 天/時/分 */}
-                  <Form.Item label={t('workflowDesigner.overdue.duration')}>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
-                      gap: isFullscreen ? '12px' : '8px'
-                    }}>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        placeholder="7"
-                        value={selectedNode.data.overdueConfig?.days || 0}
-                        onChange={(e) => {
-                          const newConfig = {
-                            ...(selectedNode.data.overdueConfig || {}),
-                            days: parseInt(e.target.value) || 0
-                          };
-                          handleNodeDataChange({ overdueConfig: newConfig });
-                        }}
-                        addonAfter={t('workflowDesigner.days')}
-                      />
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        max="23"
-                        placeholder="8"
-                        value={selectedNode.data.overdueConfig?.hours || 0}
-                        onChange={(e) => {
-                          const newConfig = {
-                            ...(selectedNode.data.overdueConfig || {}),
-                            hours: parseInt(e.target.value) || 0
-                          };
-                          handleNodeDataChange({ overdueConfig: newConfig });
-                        }}
-                        addonAfter={t('workflowDesigner.hours')}
-                      />
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        max="59"
-                        placeholder="0"
-                        value={selectedNode.data.overdueConfig?.minutes || 0}
-                        onChange={(e) => {
-                          const newConfig = {
-                            ...(selectedNode.data.overdueConfig || {}),
-                            minutes: parseInt(e.target.value) || 0
-                          };
-                          handleNodeDataChange({ overdueConfig: newConfig });
-                        }}
-                        addonAfter={t('workflowDesigner.minutes')}
-                      />
-                    </div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
-                      💡 {t('workflowDesigner.overdue.durationHelp')}
-                    </div>
-                  </Form.Item>
-                  
-                  {/* Escalation 設置按鈕 */}
-                  <Form.Item label={t('workflowDesigner.overdue.escalation')}>
-                    <Button 
-                      type="dashed" 
-                      icon={<ClockCircleOutlined />}
-                      onClick={() => setOverdueEscalationModalVisible(true)}
-                      style={{ width: '100%' }}
-                    >
-                      {t('workflowDesigner.overdue.configureEscalation')}
-                    </Button>
-                    
-                    {/* 顯示已配置的摘要 */}
-                    {selectedNode.data.overdueConfig?.escalationConfig && (
-                      <div style={{ marginTop: 8, padding: 8, backgroundColor: '#fff7e6', borderRadius: 4, border: '1px solid #ffd666' }}>
-                        <div style={{ fontSize: 12, color: '#d48806' }}>
-                          📢 Recipients: {selectedNode.data.overdueConfig.escalationConfig.recipients || 'Not set'}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#d48806', marginTop: 4 }}>
-                          {selectedNode.data.overdueConfig.escalationConfig.useTemplate 
-                            ? `📄 Template: ${selectedNode.data.overdueConfig.escalationConfig.templateName}`
-                            : `✉️ Message: ${selectedNode.data.overdueConfig.escalationConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
-                          }
-                        </div>
+
+            {/* DataSet 查詢節點 */}
+            {selectedNode.data.type === 'dataSetQuery' && (
+              <>
+                <Form.Item label={t('workflowDesigner.dataSet.selectDataSet')} name="dataSetId">
+                  <Select 
+                    placeholder={t('workflowDesigner.dataSet.selectDataSetPlaceholder')}
+                    loading={loadingDataSets}
+                    onChange={(value) => {
+                      handleNodeDataChange({ dataSetId: value });
+                      loadDataSetColumns(value);
+                    }}
+                  >
+                    {dataSets.map(ds => (
+                      <Select.Option key={ds.id} value={ds.id}>
+                        {ds.name} ({ds.dataSourceType})
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                
+                <Form.Item label={t('workflowDesigner.dataSet.operationType')} name="operationType">
+                  <Select 
+                    placeholder={t('workflowDesigner.dataSet.operationTypePlaceholder')}
+                    onChange={(value) => {
+                      // 清除查詢結果預覽
+                      setQueryPreviewData([]);
+                      setQueryPreviewModalVisible(false);
+                      handleNodeDataChange({ operationType: value });
+                    }}
+                  >
+                    <Select.Option value="SELECT">{t('workflowDesigner.dataSet.select')}</Select.Option>
+                    <Select.Option value="INSERT">{t('workflowDesigner.dataSet.insert')}</Select.Option>
+                    <Select.Option value="UPDATE">{t('workflowDesigner.dataSet.update')}</Select.Option>
+                    <Select.Option value="DELETE">{t('workflowDesigner.dataSet.delete')}</Select.Option>
+                  </Select>
+                </Form.Item>
+                
+                  {/* 查詢條件 - SELECT/UPDATE/DELETE 時顯示 */}
+                  {(selectedNode.data.operationType === 'SELECT' || 
+                    selectedNode.data.operationType === 'UPDATE' || 
+                    selectedNode.data.operationType === 'DELETE') && (
+                    <Form.Item label={t('workflowDesigner.dataSet.queryConditions')}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <Button 
+                          type="dashed" 
+                          onClick={() => {
+                            const newConditionGroup = {
+                              id: `conditionGroup${Date.now()}`,
+                              relation: 'and',
+                              conditions: [],
+                              groupIndex: -1
+                            };
+                            setEditingDataSetConditionGroup(newConditionGroup);
+                            setDataSetConditionGroupModalVisible(true);
+                          }}
+                          style={{ width: '100%' }}
+                        >
+                          {t('workflowDesigner.dataSet.addQueryConditionGroup')}
+                        </Button>
                       </div>
-                    )}
+                      {(() => {
+                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                        const currentConditionGroups = currentNode?.data?.queryConditionGroups || [];
+                        return currentConditionGroups.map((group, groupIndex) => (
+                          <Card 
+                            key={group.id} 
+                            size="small" 
+                            style={{ 
+                              marginBottom: '8px', 
+                              border: '1px solid #d9d9d9',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                              console.log('=== 編輯 DataSet 查詢條件組 ===');
+                              console.log('group:', group);
+                              console.log('groupIndex:', groupIndex);
+                              const editingGroup = { ...group, groupIndex };
+                              console.log('editingGroup:', editingGroup);
+                              setEditingDataSetConditionGroup(editingGroup);
+                              setDataSetConditionGroupModalVisible(true);
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
+                                  {t('workflowDesigner.dataSet.queryConditionGroup')} {groupIndex + 1}
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                                  {t('workflowDesigner.dataSet.conditionCount')}: {group.conditions?.length || 0}
+                                  {group.relation && ` • ${group.relation.toUpperCase()}`}
+                                </div>
+                                {group.conditions && group.conditions.length > 0 && (
+                                  <div style={{ fontSize: '11px', color: '#999' }}>
+                                    {group.conditions.slice(0, 2).map(condition => 
+                                      `${condition.fieldName} ${condition.operator} ${condition.value}`
+                                    ).join(', ')}
+                                    {group.conditions.length > 2 && ` +${group.conditions.length - 2} more`}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <Button 
+                                  type="text" 
+                                  size="small"
+                                  icon={<EditOutlined />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    console.log('=== 編輯按鈕點擊 DataSet 查詢條件組 ===');
+                                    console.log('group:', group);
+                                    console.log('groupIndex:', groupIndex);
+                                    const editingGroup = { ...group, groupIndex };
+                                    console.log('editingGroup:', editingGroup);
+                                    setEditingDataSetConditionGroup(editingGroup);
+                                    setDataSetConditionGroupModalVisible(true);
+                                  }}
+                                />
+                                <Button 
+                                  type="text" 
+                                  danger 
+                                  size="small"
+                                  icon={<DeleteOutlined />}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                                    const currentGroups = currentNode?.data?.queryConditionGroups || [];
+                                    const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
+                                    handleNodeDataChange({ queryConditionGroups: newGroups });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </Card>
+                        ));
+                      })()}
+                      
+                      {/* 顯示生成的 SQL WHERE 條件預覽 */}
+                      {(() => {
+                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                        const conditionGroups = currentNode?.data?.queryConditionGroups || [];
+                        if (conditionGroups.length > 0) {
+                          const sqlPreview = generateWhereClause(conditionGroups);
+                          return (
+                            <div style={{ 
+                              marginTop: '12px',
+                              padding: '8px 12px', 
+                              backgroundColor: '#f5f5f5', 
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              color: '#666'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{t('workflowDesigner.dataSet.generatedWhereClause')}:</div>
+                              <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                {sqlPreview}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </Form.Item>
+                  )}
+                
+                {/* 操作數據 - INSERT/UPDATE 時顯示 */}
+                {(selectedNode.data.operationType === 'INSERT' || 
+                  selectedNode.data.operationType === 'UPDATE') && (
+                  <>
+                    <Form.Item label={t('workflowDesigner.dataSet.operationData')}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <Button 
+                          type="dashed" 
+                          onClick={handleOpenOperationDataModal}
+                          icon={<SettingOutlined />}
+                          style={{ width: '100%' }}
+                          disabled={!selectedNode.data.dataSetId}
+                        >
+                          {t('workflowDesigner.dataSet.setOperationData')}
+                        </Button>
+                      </div>
+                      {operationDataFields.length > 0 && (
+                        <div style={{ 
+                          border: '1px solid #d9d9d9', 
+                          borderRadius: '4px', 
+                          padding: '8px', 
+                          backgroundColor: '#f9f9f9',
+                          fontSize: '12px',
+                          color: '#666'
+                        }}>
+                          {t('workflowDesigner.dataSet.operationDataSummary', { count: operationDataFields.length })}
+                        </div>
+                      )}
+                    </Form.Item>
+                  </>
+                )}
+                
+                  {/* 映射字段 - SELECT 時顯示 */}
+                  {selectedNode.data.operationType === 'SELECT' && (
+                    <Form.Item label={t('workflowDesigner.dataSet.fieldMapping')}>
+                      <div style={{ marginBottom: '8px' }}>
+                        <Button 
+                          type="dashed" 
+                          onClick={() => {
+                            const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                            const currentMappings = currentNode?.data?.mappedFields || [];
+                            dataSetFieldMappingForm.setFieldsValue({ mappedFields: currentMappings });
+                            setDataSetFieldMappingModalVisible(true);
+                          }}
+                          style={{ width: '100%' }}
+                          disabled={!selectedNode.data.dataSetId}
+                        >
+                          {t('workflowDesigner.dataSet.setFieldMapping')}
+                        </Button>
+                      </div>
+                      {(() => {
+                        const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                        const mappedFields = currentNode?.data?.mappedFields || [];
+                        if (mappedFields.length > 0) {
+                          return (
+                            <div style={{ 
+                              border: '1px solid #d9d9d9', 
+                              borderRadius: '4px', 
+                              padding: '8px',
+                              backgroundColor: '#fafafa'
+                            }}>
+                              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                                {t('workflowDesigner.dataSet.fieldMappingSummary', { count: mappedFields.length })}:
+                              </div>
+                              {mappedFields.slice(0, 3).map((mapping, index) => (
+                                <div key={index} style={{ fontSize: '11px', color: '#999', marginBottom: '2px' }}>
+                                  {mapping.fieldName} → ${mapping.variableName}
+                                </div>
+                              ))}
+                              {mappedFields.length > 3 && (
+                                <div style={{ fontSize: '11px', color: '#999' }}>
+                                  +{mappedFields.length - 3} 個更多...
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div style={{ 
+                            textAlign: 'center', 
+                            padding: '20px', 
+                            color: '#999',
+                            border: '1px dashed #d9d9d9',
+                            borderRadius: '4px'
+                          }}>
+                            {t('workflowDesigner.dataSet.noFieldMapping')}
+                          </div>
+                        );
+                      })()}
+                      <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                        {t('workflowDesigner.dataSet.clickToSetFieldMapping')}
+                      </div>
+                    </Form.Item>
+                  )}
+                
+                  <Form.Item label={t('workflowDesigner.dataSet.operationPreview')}>
+                    <div style={{ 
+                      padding: '8px 12px', 
+                      backgroundColor: '#f5f5f5', 
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      color: '#666',
+                      minHeight: '40px'
+                    }}>
+                      {selectedNode.data.dataSetId && selectedNode.data.operationType ? (
+                        <div>
+                          <div><strong>DataSet:</strong> {dataSets.find(ds => ds.id === selectedNode.data.dataSetId)?.name}</div>
+                          <div><strong>{t('workflowDesigner.dataSet.operationType')}:</strong> {selectedNode.data.operationType}</div>
+                          {(() => {
+                            const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                            const conditionGroups = currentNode?.data?.queryConditionGroups || [];
+                            if (conditionGroups.length > 0) {
+                              const sqlPreview = generateWhereClause(conditionGroups);
+                              return <div><strong>{t('workflowDesigner.dataSet.queryConditions')}:</strong> {sqlPreview}</div>;
+                            }
+                            return null;
+                          })()}
+                          {Object.keys(selectedNode.data.operationData || {}).length > 0 && (
+                            <div><strong>{t('workflowDesigner.dataSet.operationData')}:</strong> {JSON.stringify(selectedNode.data.operationData)}</div>
+                          )}
+                          {(() => {
+                            const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                            const mappedFields = currentNode?.data?.mappedFields || [];
+                            if (mappedFields.length > 0) {
+                              return (
+                                <div>
+                                  <strong>{t('workflowDesigner.dataSet.fieldMapping')}:</strong>
+                                  <ul style={{ margin: '4px 0', paddingLeft: '16px' }}>
+                                    {mappedFields.map((mapping, index) => (
+                                      <li key={index}>
+                                        {mapping.fieldName} → ${mapping.variableName}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      ) : (
+                        t('workflowDesigner.dataSet.pleaseSelectDataSetAndOperationType')
+                      )}
+                    </div>
                   </Form.Item>
+                
+
+                <Form.Item>
+                  <Button 
+                    type="default" 
+                    onClick={testDataSetOperation}
+                    loading={testingOperation}
+                    disabled={!selectedNode.data.dataSetId || !selectedNode.data.operationType}
+                    style={{ width: '100%' }}
+                  >
+                    {t('workflowDesigner.dataSet.testOperation')}
+                  </Button>
+                </Form.Item>
+
+              </>
+            )}
+
+            {/* API 調用節點 */}
+            {selectedNode.data.type === 'callApi' && (
+              <Form.Item label={t('workflow.apiUrl')} name="url">
+                <Input />
+              </Form.Item>
+            )}
+            
+            {/* 表單節點 */}
+            {selectedNode.data.type === 'sendEForm' && (
+              <>
+                <Form.Item label={t('workflowDesigner.selectForm')}>
+                  <Input 
+                    value={selectedNode.data.formName || ''}
+                    placeholder={t('workflowDesigner.selectEFormPlaceholder')} 
+                    readOnly 
+                    onClick={() => setIsEFormModalVisible(true)}
+                    suffix={
+                      <Space>
+                        {selectedNode.data.formName && (
+                          <Button 
+                            type="text" 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNodeDataChange({ 
+                                formName: '', 
+                                formId: '', 
+                                formDescription: '' 
+                              });
+                            }}
+                          >
+                            {t('workflowList.clear')}
+                          </Button>
+                        )}
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          onClick={() => setIsEFormModalVisible(true)}
+                        >
+                          {t('workflowDesigner.selectForm')}
+                        </Button>
+                      </Space>
+                    }
+                    style={{
+                      color: selectedNode.data.formName ? '#000' : '#999',
+                      backgroundColor: selectedNode.data.formName ? '#fff' : '#f5f5f5',
+                      width: '100%',
+                      minWidth: '300px'
+                    }}
+                  />
+                </Form.Item>
+                
+                <Form.Item label={t('workflow.to')}>
+                  <div style={{ position: 'relative' }}>
+                    <RecipientSelector
+                      value={selectedNode.data.to || ''}
+                      recipientDetails={selectedNode.data.recipientDetails}
+                      placeholder={t('workflowDesigner.selectRecipients')}
+                      compact={true}
+                      workflowDefinitionId={workflowId}
+                      t={t}
+                      onChange={(value, detailedValue) => {
+                        // 如果 value 為空且 detailedValue 為 null，表示用戶點擊了 "Select Recipients" 按鈕
+                        if (value === '' && detailedValue === null) {
+                          setIsRecipientModalVisible(true);
+                        } else {
+                          // 處理正常選擇或清除操作
+                          handleNodeDataChange({ 
+                            to: value,
+                            recipientDetails: detailedValue 
+                          });
+                        }
+                      }}
+                    />
+                    <div style={{ 
+                      position: 'absolute', 
+                      right: '8px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {selectedNode.data.to && (
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNodeDataChange({ to: '', recipientDetails: { users: [], contacts: [], groups: [], hashtags: [], useInitiator: false, phoneNumbers: [] } });
+                          }}
+                          style={{ padding: '0 4px', fontSize: '12px' }}
+                        >
+                          {t('workflowDesigner.clear')}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Form.Item>
+                
+                {selectedNode.data.formId && (
+                  <Card size="small" title={t('workflowDesigner.formInfo')} style={{ marginBottom: 16 }}>
+                    <p><strong>{t('workflowDesigner.formId')}</strong>{selectedNode.data.formId}</p>
+                    <p><strong>{t('workflowDesigner.formName')}</strong>{selectedNode.data.formName}</p>
+                    {selectedNode.data.formDescription && (
+                      <p><strong>{t('workflowDesigner.formDescription')}</strong>{selectedNode.data.formDescription}</p>
+                    )}
+                  </Card>
+                )}
+
+                {/* 表單填充模式配置 */}
+                <Form.Item label={t('workflowDesigner.sendEForm.fillMode')}>
+                  <div style={{ marginBottom: 8 }}>
+                    <Radio.Group
+                      value={selectedNode.data.sendEFormMode || 'integrateWaitReply'}
+                      onChange={(e) => {
+                        const mode = e.target.value;
+                        handleNodeDataChange({ 
+                          sendEFormMode: mode,
+                          integratedDataSetQueryNodeId: mode === 'integrateDataSetQuery' ? (selectedNode.data.integratedDataSetQueryNodeId || '') : ''
+                        });
+                      }}
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        <Radio value="integrateWaitReply">{t('workflowDesigner.sendEForm.integrateWaitReply')}</Radio>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <Radio value="integrateDataSetQuery">{t('workflowDesigner.sendEForm.integrateDataSetQuery')}</Radio>
+                      </div>
+                      <div>
+                        <Radio value="manualFill">{t('workflowDesigner.sendEForm.manualFill')}</Radio>
+                      </div>
+                    </Radio.Group>
+                  </div>
                   
-                  {/* Overdue 說明 */}
+                  {/* 模式說明 */}
                   <div style={{ 
                     padding: '8px 12px', 
                     backgroundColor: '#f0f8ff', 
@@ -2543,529 +2105,1028 @@ const NodePropertyDrawer = ({
                     color: '#666',
                     marginTop: 8
                   }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
-                      ⏰ {t('workflowDesigner.overdue.howItWorks')}
-                    </div>
-                    <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-                      <li>{t('workflowDesigner.overdue.description1')}</li>
-                      <li>{t('workflowDesigner.overdue.description2')}</li>
-                      <li>{t('workflowDesigner.overdue.description3')}</li>
-                    </ul>
+                    {selectedNode.data.sendEFormMode === 'integrateWaitReply' && (
+                      <div>{t('workflowDesigner.sendEForm.integrateWaitReplyDesc')}</div>
+                    )}
+                    {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (
+                      <div>{t('workflowDesigner.sendEForm.integrateDataSetQueryDesc')}</div>
+                    )}
+                    {selectedNode.data.sendEFormMode === 'manualFill' && (
+                      <div>{t('workflowDesigner.sendEForm.manualFillDesc')}</div>
+                    )}
                   </div>
-                </>
-              )}
-            </Card>
-          </Form>
-        </div>
-      )}
-      </div>
-
-      {/* 收件人選擇模態框 */}
-      <RecipientModal
-        visible={isRecipientModalVisible}
-        onCancel={() => setIsRecipientModalVisible(false)}
-        onSelect={(value, detailedValue) => {
-          console.log('📤 NodePropertyDrawer - 收到選擇值:', value);
-          console.log('📤 NodePropertyDrawer - 收到詳細值:', detailedValue);
-          // 根據節點類型更新對應的字段
-          if (selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm') {
-            // 保存電話號碼字符串到 to 字段
-            handleNodeDataChange({ to: value });
-            // 保存詳細信息到 recipientDetails 字段
-            if (detailedValue) {
-              handleNodeDataChange({ recipientDetails: detailedValue });
-            }
-          } else if (selectedNode.data.type === 'waitReply' || selectedNode.data.type === 'waitForQRCode') {
-            // 保存電話號碼字符串到 specifiedUsers 字段
-            handleNodeDataChange({ specifiedUsers: value });
-            // 保存詳細信息到 recipientDetails 字段
-            if (detailedValue) {
-              handleNodeDataChange({ recipientDetails: detailedValue });
-            }
-          }
-        }}
-        value={
-          selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm'
-            ? selectedNode.data.to 
-            : (selectedNode.data.type === 'waitReply' || selectedNode.data.type === 'waitForQRCode')
-            ? selectedNode.data.specifiedUsers
-            : ''
-        }
-        recipientDetails={selectedNode.data.recipientDetails}
-        allowMultiple={true}
-        placeholder={t('workflowDesigner.selectRecipients')}
-        workflowDefinitionId={workflowId}
-      />
-
-      {/* DataSet 查詢條件組模態框 */}
-      <DataSetQueryConditionModal
-        visible={dataSetConditionGroupModalVisible}
-        onCancel={() => {
-          setDataSetConditionGroupModalVisible(false);
-          setEditingDataSetConditionGroup(null);
-          dataSetConditionGroupForm.resetFields();
-        }}
-        editingConditionGroup={editingDataSetConditionGroup}
-        conditionGroupForm={dataSetConditionGroupForm}
-        dataSetColumns={dataSetColumns}
-        processVariables={processVariables}
-        onSave={handleSaveDataSetConditionGroup}
-        onEditCondition={handleEditDataSetCondition}
-        onAddCondition={handleAddDataSetCondition}
-        onDeleteCondition={handleDeleteDataSetCondition}
-        t={t}
-      />
-
-      {/* DataSet 查詢條件編輯模態框 */}
-      <DataSetQueryConditionEditModal
-        visible={dataSetConditionEditModalVisible}
-        onCancel={() => {
-          setDataSetConditionEditModalVisible(false);
-          setEditingDataSetCondition(null);
-          dataSetConditionForm.resetFields();
-        }}
-        editingCondition={editingDataSetCondition}
-        conditionForm={dataSetConditionForm}
-        dataSetColumns={dataSetColumns}
-        processVariables={processVariables}
-        onSave={handleSaveDataSetCondition}
-        t={t}
-      />
-
-      {/* DataSet 欄位映射設置模態框 */}
-      <DataSetFieldMappingModal
-        visible={dataSetFieldMappingModalVisible}
-        onCancel={() => {
-          setDataSetFieldMappingModalVisible(false);
-          dataSetFieldMappingForm.resetFields();
-        }}
-        editingMappings={(() => {
-          const currentNode = nodes.find(node => node.id === selectedNode?.id);
-          return currentNode?.data?.mappedFields || [];
-        })()}
-        mappingForm={dataSetFieldMappingForm}
-        dataSetColumns={dataSetColumns}
-        processVariables={processVariables}
-        onSave={handleSaveDataSetFieldMapping}
-        t={t}
-      />
-
-      {/* 操作數據設置模態框 */}
-      <Modal
-        title={t('workflowDesigner.dataSet.setOperationData')}
-        open={operationDataModalVisible}
-        onCancel={handleCancelOperationData}
-        width={800}
-        footer={null}
-        destroyOnClose
-      >
-        <Form
-          layout="vertical"
-          onFinish={handleSaveOperationData}
-        >
-          <Form.Item label={t('workflowDesigner.dataSet.operationData')}>
-            <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
-              {editingOperationData.map((field, index) => (
-                <div key={index} style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px', 
-                  marginBottom: '8px',
-                  padding: '8px',
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: '4px'
-                }}>
-                  <Select
-                    placeholder={t('workflowDesigner.dataSet.selectDataSetField')}
-                    value={field.name}
-                    onChange={(value) => handleUpdateOperationDataField(index, 'name', value)}
-                    style={{ width: '40%' }}
-                    showSearch
-                    filterOption={(input, option) =>
-                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
-                    options={dataSetColumns.map(col => ({
-                      value: col.columnName,
-                      label: `${col.displayName || col.columnName} (${col.dataType})`
-                    }))}
-                  />
-                  <span style={{ color: '#666', fontSize: '14px' }}>←</span>
-                  <Select
-                    placeholder={t('workflowDesigner.dataSet.selectProcessVariable')}
-                    value={field.value}
-                    onChange={(value) => handleUpdateOperationDataField(index, 'value', value)}
-                    style={{ width: '40%' }}
-                    showSearch
-                    filterOption={(input, option) =>
-                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                    }
-                    options={availableProcessVariables.map(pv => ({
-                      value: `\${${pv}}`,
-                      label: pv
-                    }))}
-                  />
-                  <Button 
-                    type="text" 
-                    danger 
-                    size="small"
-                    icon={<MinusCircleOutlined />}
-                    onClick={() => handleRemoveOperationDataField(index)}
-                  />
-                </div>
-              ))}
-              
-              {editingOperationData.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                  {t('workflowDesigner.dataSet.noOperationData')}
-                </div>
-              )}
-              
-              <Button 
-                type="dashed" 
-                icon={<PlusOutlined />}
-                onClick={handleAddOperationDataField}
-                style={{ width: '100%' }}
-              >
-                {t('workflowDesigner.dataSet.addFieldMapping')}
-              </Button>
-            </div>
-          </Form.Item>
-          
-          <div style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
-            {t('workflowDesigner.dataSet.operationDataDescription')}
-          </div>
-          
-          <div style={{ textAlign: 'right' }}>
-            <Space>
-              <Button onClick={handleCancelOperationData}>
-                {t('common.cancel')}
-              </Button>
-              <Button type="primary" htmlType="submit">
-                {t('common.save')}
-              </Button>
-            </Space>
-          </div>
-        </Form>
-      </Modal>
-
-      {/* 查詢結果預覽模態窗口 */}
-      <Modal
-        title={
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
-              {t('workflowDesigner.dataSet.queryResultPreview')}
-            </div>
-            {/* PV 模擬數據輸入 - 在模態窗口標題中顯示 */}
-            {(() => {
-              const currentNode = nodes.find(node => node.id === selectedNode?.id);
-              const conditionGroups = currentNode?.data?.queryConditionGroups || [];
-              const usedVariables = extractProcessVariablesFromConditions(conditionGroups);
-              
-              if (usedVariables.length > 0) {
-                return (
-                  <div style={{ 
-                    backgroundColor: '#f8f9fa', 
-                    padding: '12px', 
-                    borderRadius: '6px', 
-                    border: '1px solid #e9ecef',
-                    marginTop: '8px'
-                  }}>
-                    <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '12px' }}>
-                      {t('workflowDesigner.dataSet.pvSimulationDataDescription')}
-                    </div>
-                    
-                    {usedVariables.map(variableName => (
-                      <div key={variableName} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '120px', fontSize: '14px', fontWeight: '500', color: '#495057' }}>
-                          ${variableName}:
-                        </span>
-                        <Input 
-                          placeholder={`輸入 ${variableName} 的測試值`}
-                          value={pvSimulationData[variableName] || ''}
-                          onChange={(e) => {
-                            setPvSimulationData(prev => ({
-                              ...prev,
-                              [variableName]: e.target.value
-                            }));
-                          }}
-                          style={{ flex: 1 }}
+                  
+                  {selectedNode.data.sendEFormMode === 'integrateWaitReply' && (
+                    <>
+                      {!loadingAiProviders && aiProviders.length === 0 && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message={t('workflowDesigner.aiProviderNotConfigured')}
+                          style={{ marginBottom: 12 }}
                         />
-                      </div>
-                    ))}
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                      <div style={{ fontSize: '12px', color: '#6c757d' }}>
-                        {t('workflowDesigner.dataSet.pvSimulationDataHelp')}
-                      </div>
-                      <Button 
-                        type="primary" 
-                        size="small"
-                        onClick={async () => {
-                          try {
-                            setTestingOperation(true);
-                            const currentNode = nodes.find(node => node.id === selectedNode?.id);
-                            
-                            // 替換查詢條件中的流程變量為模擬數據
-                            const conditionGroups = currentNode?.data?.queryConditionGroups || [];
-                            const processedConditionGroups = conditionGroups.map(group => ({
-                              ...group,
-                              conditions: group.conditions.map(condition => ({
-                                ...condition,
-                                value: condition.value.replace(/\$\{([^}]+)\}/g, (match, variableName) => {
-                                  return pvSimulationData[variableName] || match;
-                                })
-                              }))
-                            }));
-                            
-                            const whereClause = generateWhereClause(processedConditionGroups);
-                            
-                            // 調用 API 獲取預覽數據
-                            const response = await fetch('/api/datasets/preview', {
-                              method: 'POST',
-                              headers: {
-                                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                                'Content-Type': 'application/json'
-                              },
-                              body: JSON.stringify({
-                                dataSetId: currentNode.data.dataSetId,
-                                whereClause: whereClause,
-                                limit: 10,
-                                processVariableValues: pvSimulationData
-                              })
-                            });
-
-                            if (!response.ok) {
-                              const errorText = await response.text();
-                              throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-                            }
-
-                            const result = await response.json();
-                            
-                            if (result.success && result.data) {
-                              setQueryPreviewData(result.data);
-                              message.success(`查詢成功！找到 ${result.totalCount} 條記錄。`);
-                            } else {
-                              throw new Error(result.message || '獲取預覽數據失敗');
-                            }
-                          } catch (error) {
-                            console.error('查詢失敗:', error);
-                            message.error('查詢失敗: ' + error.message);
-                          } finally {
-                            setTestingOperation(false);
-                          }
-                        }}
-                        loading={testingOperation}
-                        disabled={!selectedNode?.data?.dataSetId}
+                      )}
+                      {aiProvidersError && (
+                        <Alert
+                          type="error"
+                          showIcon
+                          message={t('workflowDesigner.aiProviderLoadFailed')}
+                          description={aiProvidersError}
+                          style={{ marginBottom: 12 }}
+                        />
+                      )}
+                      <Form.Item
+                        label={t('workflowDesigner.sendEForm.aiProvider')}
+                        name="aiProviderKey"
+                        rules={[{ required: true, message: t('workflowDesigner.sendEForm.aiProviderRequired') }]}
                       >
-                        {t('workflowDesigner.dataSet.testQuery')}
-                      </Button>
+                        <Select
+                          loading={loadingAiProviders}
+                          placeholder={t('workflowDesigner.sendEForm.aiProviderPlaceholder')}
+                          options={aiProviderOptions}
+                          allowClear
+                        />
+                      </Form.Item>
+                    </>
+                  )}
+                  
+                  {/* DataSet Query 節點選擇 */}
+                  {selectedNode.data.sendEFormMode === 'integrateDataSetQuery' && (
+                    <div style={{ marginTop: 12 }}>
+                      <Form.Item label={t('workflowDesigner.sendEForm.selectDataSetQueryNode')}>
+                        <Select
+                          placeholder={t('workflowDesigner.sendEForm.selectDataSetQueryNodePlaceholder')}
+                          value={selectedNode.data.integratedDataSetQueryNodeId || undefined}
+                          onChange={(value) => handleNodeDataChange({ integratedDataSetQueryNodeId: value })}
+                          allowClear
+                        >
+                          {(() => {
+                            // 從流程中獲取 DataSet Query 節點列表（操作類型為 SELECT）
+                            const dataSetQueryNodes = nodes.filter(node => 
+                              node.data?.type === 'dataSetQuery' && 
+                              node.data?.operationType === 'SELECT' &&
+                              node.id !== selectedNode.id // 排除當前節點
+                            );
+                            
+                            if (dataSetQueryNodes.length === 0) {
+                              return (
+                                <Select.Option value="" disabled>
+                                  {t('workflowDesigner.sendEForm.noDataSetQueryNodes')}
+                                </Select.Option>
+                              );
+                            }
+                            
+                            return dataSetQueryNodes.map(node => (
+                              <Select.Option key={node.id} value={node.id}>
+                                {node.data?.taskName || node.data?.label || `DataSet Query Node ${node.id}`}
+                              </Select.Option>
+                            ));
+                          })()}
+                        </Select>
+                        <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                          {t('workflowDesigner.sendEForm.dataSetQueryNodeHelp')}
+                        </div>
+                      </Form.Item>
                     </div>
+                  )}
+                </Form.Item>
+
+                {/* 提示訊息配置 */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
+                    {t('workflowDesigner.promptMessage')}
                   </div>
-                );
-              }
-              return null;
-            })()}
-          </div>
-        }
-        open={queryPreviewModalVisible}
-        onCancel={() => setQueryPreviewModalVisible(false)}
-        width={1000}
-        footer={[
-          <Button key="close" onClick={() => setQueryPreviewModalVisible(false)}>
-            {t('workflowDesigner.dataSet.close')}
-          </Button>
-        ]}
-        destroyOnClose
-      >
-        <div style={{ marginBottom: '16px' }}>
-          <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
-            {t('workflowDesigner.dataSet.queryResultDescription')}
-          </div>
-          {(() => {
-            const currentNode = nodes.find(node => node.id === selectedNode?.id);
-            const conditionGroups = currentNode?.data?.queryConditionGroups || [];
-            const whereClause = generateWhereClause(conditionGroups);
-            
-            return (
-              <div style={{ 
-                padding: '8px 12px', 
-                backgroundColor: '#f5f5f5', 
-                borderRadius: '4px',
-                fontSize: '12px',
-                color: '#666',
-                marginBottom: '16px'
-              }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{t('workflowDesigner.dataSet.generatedWhereClause')}:</div>
-                <div style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                  {whereClause || t('workflowDesigner.dataSet.noQueryConditions')}
+                  <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
+                    {t('workflowDesigner.promptMessageHelp')}
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
-        </div>
-        
-        {queryPreviewData.length > 0 ? (
-          <Table
-            dataSource={queryPreviewData}
-            columns={Object.keys(queryPreviewData[0] || {}).map(key => ({
-              title: key,
-              dataIndex: key,
-              key: key,
-              width: 120,
-              render: (text) => {
-                if (typeof text === 'number') {
-                  return text.toLocaleString();
-                }
-                return text;
-              }
-            }))}
-            pagination={false}
-            size="small"
-            scroll={{ x: 'max-content' }}
-            style={{ fontSize: '12px' }}
-            rowKey={(record, index) => `preview-row-${index}`}
-          />
-        ) : (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-            {t('workflowDesigner.dataSet.noQueryResultData')}
-          </div>
+                
+                {/* 訊息模式 Tab 切換（共用組件） - 提示訊息 */}
+                <Form.Item 
+                  name="promptMessage"
+                  initialValue={selectedNode.data.promptMessage || ''}
+                >
+                  <Input.TextArea 
+                    rows={3} 
+                    placeholder={t('workflowDesigner.sendEForm.promptMessagePlaceholder')}
+                  />
+                </Form.Item>
+
+                <Divider />
+
+                {/* 通知訊息配置 */}
+                <Form.Item label={t('workflowDesigner.sendEForm.notificationMessage')}>
+                  {/* 訊息模式 Tab 切換（共用組件） */}
+                  <MessageModeTabsComponent
+                    selectedNode={selectedNode}
+                    handleNodeDataChange={handleNodeDataChange}
+                    setIsTemplateModalVisible={setIsTemplateModalVisible}
+                    processVariables={processVariables}
+                    form={form}
+                    t={t}
+                    showProcessVariables={false}
+                    directMessageContent={(
+                      // sendEForm 特殊的直接訊息內容（預設訊息 vs 自定義訊息）
+                      <>
+                        <div style={{ marginBottom: 8 }}>
+                          <Radio.Group
+                            value={selectedNode.data.useCustomMessage ? 'custom' : 'default'}
+                            onChange={(e) => {
+                              const useCustom = e.target.value === 'custom';
+                              handleNodeDataChange({ 
+                                useCustomMessage: useCustom,
+                                messageTemplate: useCustom ? (selectedNode.data.messageTemplate || t('workflowDesigner.sendEForm.defaultNotificationMessage')) : t('workflowDesigner.sendEForm.defaultNotificationMessage')
+                              });
+                            }}
+                          >
+                            <Radio value="default">{t('workflowDesigner.sendEForm.useDefaultMessage')}</Radio>
+                            <Radio value="custom">{t('workflowDesigner.sendEForm.customMessage')}</Radio>
+                          </Radio.Group>
+                        </div>
+                        
+                        {selectedNode.data.useCustomMessage && (
+                          <>
+                            <Input.TextArea
+                              value={selectedNode.data.messageTemplate || ''}
+                              placeholder={t('workflowDesigner.sendEForm.notificationMessagePlaceholder')}
+                              rows={4}
+                              onChange={(e) => handleNodeDataChange({ messageTemplate: e.target.value })}
+                            />
+                            <div style={{ marginTop: 4, fontSize: '12px', color: '#666' }}>
+                              {t('workflowDesigner.sendEForm.notificationMessageHelp')}
+                            </div>
+                          </>
+                        )}
+                        
+                        {!selectedNode.data.useCustomMessage && (
+                          <div style={{ 
+                            padding: '8px 12px', 
+                            backgroundColor: '#f5f5f5', 
+                            border: '1px solid #d9d9d9',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            color: '#666'
+                          }}>
+                            {t('workflowDesigner.sendEForm.defaultNotificationMessage')}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  />
+                </Form.Item>
+                
+                <Form.Item label={t('workflowDesigner.approvalResultVariable')} name="approvalResultVariable">
+                  <Select
+                    placeholder={t('workflowDesigner.selectApprovalResultVariable')}
+                    allowClear
+                  >
+                    {processVariables.map(pv => (
+                      <Select.Option key={pv.id} value={pv.variableName}>
+                        {pv.variableName} ({pv.dataType})
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                
+                <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.eFormDescription1')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.eFormDescription2')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.eFormDescription3')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.eFormDescription4')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.eFormDescription5')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.eFormDescription6')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                    {t('workflowDesigner.eFormDescription7')}
+                  </p>
+                </Card>
+              </>
+            )}
+            
+            {/* 條件分支節點 */}
+            {selectedNode.data.type === 'switch' && (
+              <>
+                <Form.Item label={t('workflowDesigner.conditionGroups')}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <Button 
+                      type="dashed" 
+                      onClick={() => {
+                        const newGroup = {
+                          id: `group${Date.now()}`,
+                          relation: 'and',
+                          conditions: [],
+                          outputPath: '',
+                          groupIndex: -1
+                        };
+                        setEditingConditionGroup(newGroup);
+                        setConditionGroupModalVisible(true);
+                      }}
+                      style={{ width: '100%' }}
+                    >
+                      {t('workflowDesigner.addConditionGroup')}
+                    </Button>
+                  </div>
+                  {(() => {
+                    const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                    const currentConditionGroups = currentNode?.data?.conditionGroups || [];
+                    return currentConditionGroups.map((group, groupIndex) => (
+                      <Card 
+                        key={group.id} 
+                        size="small" 
+                        style={{ 
+                          marginBottom: '8px', 
+                          border: '1px solid #d9d9d9',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => {
+                          setEditingConditionGroup({ ...group, groupIndex });
+                          setConditionGroupModalVisible(true);
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
+                              {t('workflowDesigner.conditionGroup')} {groupIndex + 1}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+                              {t('workflowDesigner.conditions')}: {group.conditions?.length || 0}
+                              {group.relation && ` • ${group.relation.toUpperCase()}`}
+                            </div>
+                            {group.conditions && group.conditions.length > 0 && (
+                              <div style={{ fontSize: '11px', color: '#999' }}>
+                                {group.conditions.slice(0, 2).map(condition => 
+                                  `${condition.variableName} ${condition.operator} ${condition.value}`
+                                ).join(', ')}
+                                {group.conditions.length > 2 && ` +${group.conditions.length - 2} more`}
+                              </div>
+                            )}
+                            {group.outputPath && selectedNode && (
+                              <div style={{ fontSize: '11px', color: '#1890ff', marginTop: '2px' }}>
+                                → {getAvailableOutputPaths(selectedNode.id, edges, nodes, t).find(p => p.id === group.outputPath)?.label || group.outputPath}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <Button 
+                              type="text" 
+                              size="small"
+                              icon={<EditOutlined />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingConditionGroup({ ...group, groupIndex });
+                                setConditionGroupModalVisible(true);
+                              }}
+                            />
+                            <Button 
+                              type="text" 
+                              danger 
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                                const currentGroups = currentNode?.data?.conditionGroups || [];
+                                const newGroups = currentGroups.filter((_, i) => i !== groupIndex);
+                                handleNodeDataChange({ conditionGroups: newGroups });
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </Card>
+                    ));
+                  })()}
+                </Form.Item>
+                
+                <Form.Item label={t('workflowDesigner.defaultPath')}>
+                  <div style={{ 
+                    padding: '8px 12px', 
+                    border: '1px solid #d9d9d9', 
+                    borderRadius: '6px',
+                    backgroundColor: '#fafafa',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => {
+                    setDefaultPathModalVisible(true);
+                  }}
+                  >
+                    {selectedNode?.data?.defaultPath ? (
+                      <span style={{ color: '#1890ff' }}>
+                        → {selectedNode && getAvailableOutputPaths(selectedNode.id, edges, nodes, t).find(p => p.id === selectedNode.data.defaultPath)?.label || selectedNode?.data?.defaultPath}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#999' }}>
+                        {t('workflowDesigner.clickToSelectDefaultPath')}
+                      </span>
+                    )}
+                  </div>
+                </Form.Item>
+                
+                <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.switchDescription1')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                    {t('workflowDesigner.switchDescription2')}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                    {t('workflowDesigner.switchDescription3')}
+                  </p>
+                </Card>
+              </>
+            )}
+          </Form>
         )}
         
-        <div style={{ fontSize: '12px', color: '#666', marginTop: '12px', textAlign: 'right' }}>
-          {t('workflowDesigner.dataSet.totalRecords', { count: queryPreviewData.length })}
+        {/* Start 節點屬性 */}
+        {selectedNode && selectedNode.data.type === 'start' && (
+          <div style={{ color: '#888' }}>
+            <Form
+              form={form}
+              key={selectedNode.id}
+              layout="vertical"
+              onValuesChange={handleFormValuesChange}
+            >
+              <Form.Item label={t('workflowDesigner.taskNameLabel')} name="taskName">
+                <Input 
+                  placeholder={t('workflowDesigner.taskNamePlaceholder')}
+                  onBlur={(e) => {
+                    const value = e.target.value;
+                    if (value !== selectedNode.data.taskName) {
+                      handleNodeDataChange({ taskName: value });
+                    }
+                  }}
+                />
+              </Form.Item>
+              
+              <h4>{t('workflowDesigner.activationConfig')}</h4>
+              <Form.Item label={t('workflowDesigner.activationType')} name="activationType">
+                <Select
+                  options={[
+                    { value: 'manual', label: t('workflowDesigner.manualActivation') },
+                    { value: 'webhook', label: t('workflowDesigner.metaWebhookCall') },
+                    { value: 'scheduled', label: t('workflowDesigner.scheduledTableWatch') }
+                  ]}
+                />
+              </Form.Item>
+              
+              {selectedNode.data.activationType === 'webhook' && (
+                <>
+                  <Card size="small" title={t('workflowDesigner.webhookInfo')} style={{ marginTop: 16 }}>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.webhookDescription1')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.webhookDescription2')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0', color: '#1890ff' }}>
+                      💡 {t('workflowDesigner.webhookDescription3')}
+                    </p>
+                  </Card>
+                </>
+              )}
+              
+              {selectedNode.data.activationType === 'scheduled' && (
+                <>
+                  <Form.Item label={t('workflowDesigner.scheduledTable')} name="scheduledTable">
+                    <Input placeholder={t('workflowDesigner.scheduledTablePlaceholder')} />
+                  </Form.Item>
+                  <Form.Item label={t('workflowDesigner.scheduledQuery')} name="scheduledQuery">
+                    <Input.TextArea rows={3} placeholder={t('workflowDesigner.scheduledQueryPlaceholder')} />
+                  </Form.Item>
+                  <Form.Item label={t('workflowDesigner.scheduledInterval')} name="scheduledInterval">
+                    <Input 
+                      type="number" 
+                      placeholder="300" 
+                      addonAfter={t('workflowDesigner.seconds')}
+                    />
+                  </Form.Item>
+                  <Card size="small" title={t('workflowDesigner.scheduledInfo')} style={{ marginTop: 16 }}>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.scheduledDescription1')}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '4px 0' }}>
+                      {t('workflowDesigner.scheduledDescription2')}
+                    </p>
+                  </Card>
+                </>
+              )}
+              
+              {/* Overdue Settings - 流程逾期設置 */}
+              <h4 style={{ marginTop: 24 }}>{t('workflowDesigner.overdueConfig')}</h4>
+              <Card size="small" title={t('workflowDesigner.overdueSettings')} style={{ marginBottom: 16 }}>
+                {/* Enable Overdue Monitoring */}
+                <Form.Item label={t('workflowDesigner.overdue.enabled')} name={['overdueConfig', 'enabled']}>
+                  <Select
+                    options={[
+                      { value: true, label: t('workflowDesigner.yes') },
+                      { value: false, label: t('workflowDesigner.no') }
+                    ]}
+                  />
+                </Form.Item>
+                
+                {selectedNode.data.overdueConfig?.enabled && (
+                  <>
+                    {/* Overdue Duration - 天/時/分 */}
+                    <Form.Item label={t('workflowDesigner.overdue.duration')}>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
+                        gap: isFullscreen ? '12px' : '8px'
+                      }}>
+                        <Input 
+                          type="number" 
+                          min="0" 
+                          placeholder="7"
+                          value={selectedNode.data.overdueConfig?.days || 0}
+                          onChange={(e) => {
+                            const newConfig = {
+                              ...(selectedNode.data.overdueConfig || {}),
+                              days: parseInt(e.target.value) || 0
+                            };
+                            handleNodeDataChange({ overdueConfig: newConfig });
+                          }}
+                          addonAfter={t('workflowDesigner.days')}
+                        />
+                        <Input 
+                          type="number" 
+                          min="0" 
+                          max="23"
+                          placeholder="8"
+                          value={selectedNode.data.overdueConfig?.hours || 0}
+                          onChange={(e) => {
+                            const newConfig = {
+                              ...(selectedNode.data.overdueConfig || {}),
+                              hours: parseInt(e.target.value) || 0
+                            };
+                            handleNodeDataChange({ overdueConfig: newConfig });
+                          }}
+                          addonAfter={t('workflowDesigner.hours')}
+                        />
+                        <Input 
+                          type="number" 
+                          min="0" 
+                          max="59"
+                          placeholder="0"
+                          value={selectedNode.data.overdueConfig?.minutes || 0}
+                          onChange={(e) => {
+                            const newConfig = {
+                              ...(selectedNode.data.overdueConfig || {}),
+                              minutes: parseInt(e.target.value) || 0
+                            };
+                            handleNodeDataChange({ overdueConfig: newConfig });
+                          }}
+                          addonAfter={t('workflowDesigner.minutes')}
+                        />
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
+                        💡 {t('workflowDesigner.overdue.durationHelp')}
+                      </div>
+                    </Form.Item>
+                    
+                    {/* Escalation 設置按鈕 */}
+                    <Form.Item label={t('workflowDesigner.overdue.escalation')}>
+                      <Button 
+                        type="dashed" 
+                        icon={<ClockCircleOutlined />}
+                        onClick={() => setOverdueEscalationModalVisible(true)}
+                        style={{ width: '100%' }}
+                      >
+                        {t('workflowDesigner.overdue.configureEscalation')}
+                      </Button>
+                      
+                      {/* 顯示已配置的摘要 */}
+                      {selectedNode.data.overdueConfig?.escalationConfig && (
+                        <div style={{ marginTop: 8, padding: 8, backgroundColor: '#fff7e6', borderRadius: 4, border: '1px solid #ffd666' }}>
+                          <div style={{ fontSize: 12, color: '#d48806' }}>
+                            📢 Recipients: {selectedNode.data.overdueConfig.escalationConfig.recipients || 'Not set'}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#d48806', marginTop: 4 }}>
+                            {selectedNode.data.overdueConfig.escalationConfig.useTemplate 
+                              ? `📄 Template: ${selectedNode.data.overdueConfig.escalationConfig.templateName}`
+                              : `✉️ Message: ${selectedNode.data.overdueConfig.escalationConfig.message?.substring(0, isFullscreen ? 100 : 50)}...`
+                            }
+                          </div>
+                        </div>
+                      )}
+                    </Form.Item>
+                    
+                    {/* Overdue 說明 */}
+                    <div style={{ 
+                      padding: '8px 12px', 
+                      backgroundColor: '#f0f8ff', 
+                      border: '1px solid #1890ff',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      color: '#666',
+                      marginTop: 8
+                    }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
+                        ⏰ {t('workflowDesigner.overdue.howItWorks')}
+                      </div>
+                      <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                        <li>{t('workflowDesigner.overdue.description1')}</li>
+                        <li>{t('workflowDesigner.overdue.description2')}</li>
+                        <li>{t('workflowDesigner.overdue.description3')}</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </Card>
+            </Form>
+          </div>
+        )}
         </div>
-      </Modal>
 
-      {/* Retry Message 設置模態框 */}
-      <RetryMessageModal
-        visible={retryMessageModalVisible}
-        onCancel={() => {
-          setRetryMessageModalVisible(false);
-          setTempRetryMessageConfig(null);
-        }}
-        onSave={(config) => {
-          // 保存配置到 validation.retryMessageConfig
-          const newValidation = {
-            ...(selectedNode.data.validation || {}),
-            retryMessageConfig: config
-          };
-          handleNodeDataChange({ validation: newValidation });
-          setRetryMessageModalVisible(false);
-          setTempRetryMessageConfig(null);
-          message.success(t('workflowDesigner.timeValidator.retryMessageSaved'));
-        }}
-        initialConfig={tempRetryMessageConfig || selectedNode?.data?.validation?.retryMessageConfig}
-        onOpenTemplateModal={() => {
-          setTemplateModalSource('retryMessage');
-          setIsTemplateModalVisible(true);
-        }}
-        processVariables={processVariables}
-        t={t}
-      />
-
-      {/* Escalation Config 設置模態框 */}
-      <EscalationConfigModal
-        visible={escalationConfigModalVisible}
-        onCancel={() => {
-          setEscalationConfigModalVisible(false);
-          setTempEscalationConfig(null);
-        }}
-        onSave={(config) => {
-          // 保存配置到 validation.escalationConfig
-          const newValidation = {
-            ...(selectedNode.data.validation || {}),
-            escalationConfig: config
-          };
-          handleNodeDataChange({ validation: newValidation });
-          setEscalationConfigModalVisible(false);
-          setTempEscalationConfig(null);
-          message.success(t('workflowDesigner.timeValidator.escalationSaved'));
-        }}
-        initialConfig={tempEscalationConfig || selectedNode?.data?.validation?.escalationConfig}
-        onOpenTemplateModal={() => {
-          setTemplateModalSource('escalation');
-          setIsTemplateModalVisible(true);
-        }}
-        onOpenRecipientModal={() => {
-          setTemplateModalSource('escalation');
-          setTimeValidatorRecipientModalVisible(true);
-        }}
-        workflowDefinitionId={workflowId}
-        processVariables={processVariables}
-        t={t}
-      />
-
-      {/* Time Validator 專用的 Template Modal */}
-
-      {/* Time Validator 專用的 Recipient Modal */}
-      <RecipientModal
-        visible={timeValidatorRecipientModalVisible}
-        onCancel={() => setTimeValidatorRecipientModalVisible(false)}
-        onSelect={(recipients, recipientDetails) => {
-          // 根據來源保存到對應的臨時配置
-          if (templateModalSource === 'escalation') {
-            setTempEscalationConfig(prev => ({
-              ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
-              recipients: recipients,
-              recipientDetails: recipientDetails
-            }));
-          } else if (templateModalSource === 'overdue') {
-            setTempOverdueEscalationConfig(prev => ({
-              ...(prev || selectedNode?.data?.overdueConfig?.escalationConfig || {}),
-              recipients: recipients,
-              recipientDetails: recipientDetails
-            }));
+        {/* 收件人選擇模態框 */}
+        <RecipientModal
+          visible={isRecipientModalVisible}
+          onCancel={() => setIsRecipientModalVisible(false)}
+          onSelect={(value, detailedValue) => {
+            console.log('📤 NodePropertyDrawer - 收到選擇值:', value);
+            console.log('📤 NodePropertyDrawer - 收到詳細值:', detailedValue);
+            // 根據節點類型更新對應的字段
+            if (selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm') {
+              // 保存電話號碼字符串到 to 字段
+              handleNodeDataChange({ to: value });
+              // 保存詳細信息到 recipientDetails 字段
+              if (detailedValue) {
+                handleNodeDataChange({ recipientDetails: detailedValue });
+              }
+            } else if (selectedNode.data.type === 'waitReply' || selectedNode.data.type === 'waitForQRCode') {
+              // 保存電話號碼字符串到 specifiedUsers 字段
+              handleNodeDataChange({ specifiedUsers: value });
+              // 保存詳細信息到 recipientDetails 字段
+              if (detailedValue) {
+                handleNodeDataChange({ recipientDetails: detailedValue });
+              }
+            }
+          }}
+          value={
+            selectedNode.data.type === 'sendWhatsApp' || selectedNode.data.type === 'sendWhatsAppTemplate' || selectedNode.data.type === 'sendEForm'
+              ? selectedNode.data.to 
+              : (selectedNode.data.type === 'waitReply' || selectedNode.data.type === 'waitForQRCode')
+              ? selectedNode.data.specifiedUsers
+              : ''
           }
-          setTimeValidatorRecipientModalVisible(false);
-        }}
-        value={
-          templateModalSource === 'overdue' 
-            ? (tempOverdueEscalationConfig?.recipients || '') 
-            : (tempEscalationConfig?.recipients || '')
-        }
-        recipientDetails={
-          templateModalSource === 'overdue'
-            ? (tempOverdueEscalationConfig?.recipientDetails || null)
-            : (tempEscalationConfig?.recipientDetails || null)
-        }
-        allowMultiple={true}
-        placeholder={t('workflowDesigner.selectRecipients')}
-        workflowDefinitionId={workflowId}
-      />
+          recipientDetails={selectedNode.data.recipientDetails}
+          allowMultiple={true}
+          placeholder={t('workflowDesigner.selectRecipients')}
+          workflowDefinitionId={workflowId}
+        />
 
-      {/* Overdue Escalation 設置模態框（Start 節點）*/}
-      <OverdueEscalationModal
-        visible={overdueEscalationModalVisible}
-        onCancel={() => {
-          setOverdueEscalationModalVisible(false);
-          setTempOverdueEscalationConfig(null);
-        }}
-        onSave={(config) => {
-          // 保存配置到 overdueConfig.escalationConfig
-          const newOverdueConfig = {
-            ...(selectedNode.data.overdueConfig || {}),
-            escalationConfig: config
-          };
-          handleNodeDataChange({ overdueConfig: newOverdueConfig });
-          setOverdueEscalationModalVisible(false);
-          setTempOverdueEscalationConfig(null);
-          message.success(t('workflowDesigner.overdue.escalationSaved'));
-        }}
-        initialConfig={tempOverdueEscalationConfig || selectedNode?.data?.overdueConfig?.escalationConfig}
-        onOpenTemplateModal={() => {
-          setTemplateModalSource('overdue');
-          setIsTemplateModalVisible(true);
-        }}
-        onOpenRecipientModal={() => {
-          setTemplateModalSource('overdue');
-          setTimeValidatorRecipientModalVisible(true);
-        }}
-        workflowDefinitionId={workflowId}
-        processVariables={processVariables}
-        t={t}
-      />
-    </Drawer>
+        {/* DataSet 查詢條件組模態框 */}
+        <DataSetQueryConditionModal
+          visible={dataSetConditionGroupModalVisible}
+          onCancel={() => {
+            setDataSetConditionGroupModalVisible(false);
+            setEditingDataSetConditionGroup(null);
+            dataSetConditionGroupForm.resetFields();
+          }}
+          editingConditionGroup={editingDataSetConditionGroup}
+          conditionGroupForm={dataSetConditionGroupForm}
+          dataSetColumns={dataSetColumns}
+          processVariables={processVariables}
+          onSave={handleSaveDataSetConditionGroup}
+          onEditCondition={handleEditDataSetCondition}
+          onAddCondition={handleAddDataSetCondition}
+          onDeleteCondition={handleDeleteDataSetCondition}
+          t={t}
+        />
+
+        {/* DataSet 查詢條件編輯模態框 */}
+        <DataSetQueryConditionEditModal
+          visible={dataSetConditionEditModalVisible}
+          onCancel={() => {
+            setDataSetConditionEditModalVisible(false);
+            setEditingDataSetCondition(null);
+            dataSetConditionForm.resetFields();
+          }}
+          editingCondition={editingDataSetCondition}
+          conditionForm={dataSetConditionForm}
+          dataSetColumns={dataSetColumns}
+          processVariables={processVariables}
+          onSave={handleSaveDataSetCondition}
+          t={t}
+        />
+
+        {/* DataSet 欄位映射設置模態框 */}
+        <DataSetFieldMappingModal
+          visible={dataSetFieldMappingModalVisible}
+          onCancel={() => {
+            setDataSetFieldMappingModalVisible(false);
+            dataSetFieldMappingForm.resetFields();
+          }}
+          editingMappings={(() => {
+            const currentNode = nodes.find(node => node.id === selectedNode?.id);
+            return currentNode?.data?.mappedFields || [];
+          })()}
+          mappingForm={dataSetFieldMappingForm}
+          dataSetColumns={dataSetColumns}
+          processVariables={processVariables}
+          onSave={handleSaveDataSetFieldMapping}
+          t={t}
+        />
+
+        {/* 操作數據設置模態框 */}
+        <Modal
+          title={t('workflowDesigner.dataSet.setOperationData')}
+          open={operationDataModalVisible}
+          onCancel={handleCancelOperationData}
+          width={800}
+          footer={null}
+          destroyOnClose
+        >
+          <Form
+            layout="vertical"
+            onFinish={handleSaveOperationData}
+          >
+            <Form.Item label={t('workflowDesigner.dataSet.operationData')}>
+              <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}>
+                {editingOperationData.map((field, index) => (
+                  <div key={index} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    marginBottom: '8px',
+                    padding: '8px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '4px'
+                  }}>
+                    <Select
+                      placeholder={t('workflowDesigner.dataSet.selectDataSetField')}
+                      value={field.name}
+                      onChange={(value) => handleUpdateOperationDataField(index, 'name', value)}
+                      style={{ width: '40%' }}
+                      showSearch
+                      filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={dataSetColumns.map(col => ({
+                        value: col.columnName,
+                        label: `${col.displayName || col.columnName} (${col.dataType})`
+                      }))}
+                    />
+                    <span style={{ color: '#666', fontSize: '14px' }}>←</span>
+                    <Select
+                      placeholder={t('workflowDesigner.dataSet.selectProcessVariable')}
+                      value={field.value}
+                      onChange={(value) => handleUpdateOperationDataField(index, 'value', value)}
+                      style={{ width: '40%' }}
+                      showSearch
+                      filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={availableProcessVariables.map(pv => ({
+                        value: `\${${pv}}`,
+                        label: pv
+                      }))}
+                    />
+                    <Button 
+                      type="text" 
+                      danger 
+                      size="small"
+                      icon={<MinusCircleOutlined />}
+                      onClick={() => handleRemoveOperationDataField(index)}
+                    />
+                  </div>
+                ))}
+                
+                {editingOperationData.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+                    {t('workflowDesigner.dataSet.noOperationData')}
+                  </div>
+                )}
+                
+                <Button 
+                  type="dashed" 
+                  icon={<PlusOutlined />}
+                  onClick={handleAddOperationDataField}
+                  style={{ width: '100%' }}
+                >
+                  {t('workflowDesigner.dataSet.addFieldMapping')}
+                </Button>
+              </div>
+            </Form.Item>
+            
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
+              {t('workflowDesigner.dataSet.operationDataDescription')}
+            </div>
+            
+            <div style={{ textAlign: 'right' }}>
+              <Space>
+                <Button onClick={handleCancelOperationData}>
+                  {t('common.cancel')}
+                </Button>
+                <Button type="primary" htmlType="submit">
+                  {t('common.save')}
+                </Button>
+              </Space>
+            </div>
+          </Form>
+        </Modal>
+
+        {/* 查詢結果預覽模態窗口 */}
+        <Modal
+          title={
+            <div>
+              <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
+                {t('workflowDesigner.dataSet.queryResultPreview')}
+              </div>
+              {/* PV 模擬數據輸入 - 在模態窗口標題中顯示 */}
+              {(() => {
+                const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                const conditionGroups = currentNode?.data?.queryConditionGroups || [];
+                const usedVariables = extractProcessVariablesFromConditions(conditionGroups);
+                
+                if (usedVariables.length > 0) {
+                  return (
+                    <div style={{ 
+                      backgroundColor: '#f8f9fa', 
+                      padding: '12px', 
+                      borderRadius: '6px', 
+                      border: '1px solid #e9ecef',
+                      marginTop: '8px'
+                    }}>
+                      <div style={{ fontSize: '14px', color: '#6c757d', marginBottom: '12px' }}>
+                        {t('workflowDesigner.dataSet.pvSimulationDataDescription')}
+                      </div>
+                      
+                      {usedVariables.map(variableName => (
+                        <div key={variableName} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ width: '120px', fontSize: '14px', fontWeight: '500', color: '#495057' }}>
+                            ${variableName}:
+                          </span>
+                          <Input 
+                            placeholder={`輸入 ${variableName} 的測試值`}
+                            value={pvSimulationData[variableName] || ''}
+                            onChange={(e) => {
+                              setPvSimulationData(prev => ({
+                                ...prev,
+                                [variableName]: e.target.value
+                              }));
+                            }}
+                            style={{ flex: 1 }}
+                          />
+                        </div>
+                      ))}
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                        <div style={{ fontSize: '12px', color: '#6c757d' }}>
+                          {t('workflowDesigner.dataSet.pvSimulationDataHelp')}
+                        </div>
+                        <Button 
+                          type="primary" 
+                          size="small"
+                          onClick={async () => {
+                            try {
+                              setTestingOperation(true);
+                              const currentNode = nodes.find(node => node.id === selectedNode?.id);
+                              
+                              // 替換查詢條件中的流程變量為模擬數據
+                              const conditionGroups = currentNode?.data?.queryConditionGroups || [];
+                              const processedConditionGroups = conditionGroups.map(group => ({
+                                ...group,
+                                conditions: group.conditions.map(condition => ({
+                                  ...condition,
+                                  value: condition.value.replace(/\$\{([^}]+)\}/g, (match, variableName) => {
+                                    return pvSimulationData[variableName] || match;
+                                  })
+                                }))
+                              }));
+                              
+                              const whereClause = generateWhereClause(processedConditionGroups);
+                              
+                              // 調用 API 獲取預覽數據
+                              const response = await fetch('/api/datasets/preview', {
+                                method: 'POST',
+                                headers: {
+                                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                  'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                  dataSetId: currentNode?.data?.dataSetId || selectedNode?.data?.dataSetId,
+                                  whereClause,
+                                  limit: 10,
+                                  processVariableValues: pvSimulationData
+                                })
+                              });
+
+                              if (!response.ok) {
+                                const errorText = await response.text();
+                                console.error('API 錯誤響應:', errorText);
+                                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                              }
+
+                              const result = await response.json();
+                              console.log('API 響應結果:', result);
+
+                              if (result.success && result.data) {
+                                setQueryPreviewData(result.data);
+                                const total = result.totalCount ?? result.data.length;
+                                message.success(`查詢成功！找到 ${total} 條記錄。`);
+                              } else {
+                                throw new Error(result.message || '獲取預覽數據失敗');
+                              }
+                            } catch (previewError) {
+                              console.error('獲取預覽數據失敗:', previewError);
+                              message.error('獲取預覽數據失敗: ' + previewError.message);
+                            } finally {
+                              setTestingOperation(false);
+                            }
+                          }}
+                          loading={testingOperation}
+                        >
+                          {t('workflowDesigner.dataSet.testQuery')}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
+            </div>
+          }
+          open={queryPreviewModalVisible}
+          onCancel={() => {
+            setQueryPreviewModalVisible(false);
+            setQueryPreviewData([]);
+            setPvSimulationData({});
+          }}
+          footer={null}
+          width={isFullscreen ? '85vw' : 960}
+          style={{ top: 24 }}
+          destroyOnClose
+        >
+          {queryPreviewData.length > 0 ? (
+            <Table
+              dataSource={queryPreviewData}
+              columns={Object.keys(queryPreviewData[0]).map(key => ({
+                title: key,
+                dataIndex: key,
+                key: key,
+                width: 120,
+                render: (text) => {
+                  if (typeof text === 'number') {
+                    return text.toLocaleString();
+                  }
+                  return text;
+                }
+              }))}
+              pagination={false}
+              size="small"
+              scroll={{ x: 'max-content' }}
+              style={{ fontSize: '12px' }}
+              rowKey={(record, index) => `preview-row-${index}`}
+            />
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+              {t('workflowDesigner.dataSet.noQueryResultData')}
+            </div>
+          )}
+          
+          <div style={{ fontSize: '12px', color: '#666', marginTop: '12px', textAlign: 'right' }}>
+            {t('workflowDesigner.dataSet.totalRecords', { count: queryPreviewData.length })}
+          </div>
+        </Modal>
+
+        {/* Retry Message 設置模態框 */}
+        <RetryMessageModal
+          visible={retryMessageModalVisible}
+          onCancel={() => {
+            setRetryMessageModalVisible(false);
+            setTempRetryMessageConfig(null);
+          }}
+          onSave={(config) => {
+            const newValidation = {
+              ...(selectedNode.data.validation || {}),
+              retryMessageConfig: config
+            };
+            handleNodeDataChange({ validation: newValidation });
+            setRetryMessageModalVisible(false);
+            setTempRetryMessageConfig(null);
+            message.success(t('workflowDesigner.timeValidator.retryMessageSaved'));
+          }}
+          initialConfig={tempRetryMessageConfig || selectedNode?.data?.validation?.retryMessageConfig}
+          onOpenTemplateModal={() => {
+            setTemplateModalSource('retryMessage');
+            setIsTemplateModalVisible(true);
+          }}
+          processVariables={processVariables}
+          t={t}
+        />
+
+        {/* Escalation Config 設置模態框 */}
+        <EscalationConfigModal
+          visible={escalationConfigModalVisible}
+          onCancel={() => {
+            setEscalationConfigModalVisible(false);
+            setTempEscalationConfig(null);
+          }}
+          onSave={(config) => {
+            const newValidation = {
+              ...(selectedNode.data.validation || {}),
+              escalationConfig: config
+            };
+            handleNodeDataChange({ validation: newValidation });
+            setEscalationConfigModalVisible(false);
+            setTempEscalationConfig(null);
+            message.success(t('workflowDesigner.timeValidator.escalationSaved'));
+          }}
+          initialConfig={tempEscalationConfig || selectedNode?.data?.validation?.escalationConfig}
+          onOpenTemplateModal={() => {
+            setTemplateModalSource('escalation');
+            setIsTemplateModalVisible(true);
+          }}
+          onOpenRecipientModal={() => {
+            setTemplateModalSource('escalation');
+            setTimeValidatorRecipientModalVisible(true);
+          }}
+          workflowDefinitionId={workflowId}
+          processVariables={processVariables}
+          t={t}
+        />
+
+        {/* Overdue Escalation 設置模態框 */}
+        <OverdueEscalationModal
+          visible={overdueEscalationModalVisible}
+          onCancel={() => {
+            setOverdueEscalationModalVisible(false);
+            setTempOverdueEscalationConfig(null);
+          }}
+          onSave={(config) => {
+            const newValidation = {
+              ...(selectedNode.data.validation || {}),
+              overdueConfig: {
+                ...(selectedNode.data.validation?.overdueConfig || {}),
+                escalationConfig: config
+              }
+            };
+            handleNodeDataChange({ validation: newValidation });
+            setOverdueEscalationModalVisible(false);
+            setTempOverdueEscalationConfig(null);
+            message.success(t('workflowDesigner.timeValidator.escalationSaved'));
+          }}
+          initialConfig={tempOverdueEscalationConfig || selectedNode?.data?.validation?.overdueConfig?.escalationConfig}
+          onOpenTemplateModal={() => {
+            setTemplateModalSource('overdue');
+            setIsTemplateModalVisible(true);
+          }}
+          onOpenRecipientModal={() => {
+            setTemplateModalSource('overdue');
+            setTimeValidatorRecipientModalVisible(true);
+          }}
+          workflowDefinitionId={workflowId}
+          processVariables={processVariables}
+          t={t}
+        />
+
+        <RecipientModal
+          visible={timeValidatorRecipientModalVisible}
+          onCancel={() => setTimeValidatorRecipientModalVisible(false)}
+          onSelect={(recipients, recipientDetails) => {
+            if (templateModalSource === 'escalation') {
+              setTempEscalationConfig(prev => ({
+                ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
+                recipients,
+                recipientDetails
+              }));
+            } else if (templateModalSource === 'overdue') {
+              setTempOverdueEscalationConfig(prev => ({
+                ...(prev || selectedNode?.data?.validation?.overdueConfig?.escalationConfig || {}),
+                recipients,
+                recipientDetails
+              }));
+            }
+            setTimeValidatorRecipientModalVisible(false);
+          }}
+          value={
+            templateModalSource === 'overdue'
+              ? (tempOverdueEscalationConfig?.recipients || '')
+              : (tempEscalationConfig?.recipients || '')
+          }
+          recipientDetails={
+            templateModalSource === 'overdue'
+              ? (tempOverdueEscalationConfig?.recipientDetails || null)
+              : (tempEscalationConfig?.recipientDetails || null)
+          }
+          allowMultiple
+          t={t}
+        />
+      </Drawer>
+    </>
   );
 };
 
-export default React.memo(NodePropertyDrawer);
+export default NodePropertyDrawer;

@@ -55,6 +55,31 @@ namespace PurpleRice.Models
         /// 圖片文字說明（caption，如果圖片消息包含文字）
         /// </summary>
         public string Caption { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 媒體檔案的 MIME 類型（image/jpeg、application/pdf 等）
+        /// </summary>
+        public string? MediaMimeType { get; set; }
+
+        /// <summary>
+        /// 媒體原始檔案名稱（若提供）
+        /// </summary>
+        public string? MediaFileName { get; set; }
+
+        /// <summary>
+        /// 媒體資料的 Base64 字串（圖片、文件等）
+        /// </summary>
+        public string? MediaContentBase64 { get; set; }
+
+        /// <summary>
+        /// 針對文件類訊息，轉換後的純文字內容
+        /// </summary>
+        public string? DocumentPlainText { get; set; }
+
+        /// <summary>
+        /// 針對文件類訊息，解析後的結構化 JSON（序列化字串）
+        /// </summary>
+        public string? DocumentStructuredJson { get; set; }
     }
 }
 

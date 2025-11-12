@@ -380,7 +380,9 @@ const zhTC = {
     inactive: '停用',
     paused: '已暫停',
     activate: '啟用',
-    deactivate: '停用'
+    deactivate: '停用',
+    systemDefault: '系統默認',
+    editingCompany: '編輯公司'
   },
 
   // 收件人選擇器
@@ -831,6 +833,7 @@ const zhTC = {
     removeRole: "移除角色",
     noRoles: "無角色",
     currentRoles: "當前角色",
+    selectedRoles: "已選角色",
     userInfo: "用戶信息",
     avatar: "頭像",
     status: "狀態",
@@ -844,6 +847,9 @@ const zhTC = {
     password: "密碼",
     passwordPlaceholder: "如需修改請輸入新密碼（留空則不修改）",
     confirmPassword: "確認密碼",
+    company: "公司",
+    selectCompany: "請選擇公司",
+    companyRequired: "請選擇公司",
     confirmPasswordPlaceholder: "請再次輸入密碼",
     confirmPasswordRequired: "請再次輸入密碼以確認",
     passwordMismatch: "兩次輸入的密碼不一致",
@@ -2316,10 +2322,10 @@ const zhTC = {
       selectDataSetPlaceholder: '選擇要操作的 DataSet',
       operationType: '操作類型',
       operationTypePlaceholder: '請選擇操作類型',
-      select: 'SELECT',
-      insert: 'INSERT',
-      update: 'UPDATE',
-      delete: 'DELETE',
+      select: '查詢',
+      insert: '新增',
+      update: '更新',
+      delete: '刪除',
       queryConditions: '查詢條件',
       addQueryConditionGroup: '添加查詢條件組',
       editQueryConditionGroup: '編輯查詢條件組',
@@ -2476,6 +2482,9 @@ const zhTC = {
     promptMessageHelp: '在用戶輸入前，系統會發送以下訊息提醒用戶需要輸入',
     validationConfig: '驗證配置',
     validationSettings: '驗證設定',
+    validatorActiveLabel: '驗證狀態',
+    active: '啟用',
+    inactive: '停用',
     enableValidation: '啟用驗證',
     yes: '是',
     no: '否',
@@ -2495,6 +2504,9 @@ const zhTC = {
     validationAiProvider: 'AI 提供商',
     validationAiProviderPlaceholder: '選擇用於驗證用戶回覆的 AI 提供商',
     validationAiProviderRequired: '請選擇用於驗證的 AI 提供商',
+    validationAiResultVariable: 'AI 結果流程變數',
+    validationAiResultVariablePlaceholder: '選擇要儲存 AI 結果的流程變數',
+    validationAiResultVariableHelp: 'AI 解析完成後會將結果寫入此流程變數，供後續節點引用。',
     aiProviderInactive: '未啟用',
     aiProviderNotConfigured: '尚未配置 AI 提供商，請至 API 管理頁面新增。',
     aiProviderLoadFailed: '無法載入 AI 提供商列表',
@@ -2985,6 +2997,18 @@ const zhTC = {
     cancelSuccess: '流程實例已取消',
     retrySuccess: '流程實例重試已啟動',
     operationFailed: '操作失敗',
+    whatsappChat: 'WhatsApp 對話',
+    pause: '暫停',
+    resume: '恢復',
+    retry: '重試',
+    cancel: '取消',
+    delete: '刪除',
+    deleteSuccess: '流程實例已刪除',
+    deleteFailed: '刪除流程實例失敗',
+    deleteConfirmTitle: '刪除流程實例',
+    deleteConfirmMessage: '確定要刪除實例 {instanceId}（{workflowName}）嗎？此操作將移除相關紀錄且無法復原。',
+    cancelConfirmTitle: '取消流程實例',
+    cancelConfirmMessage: '確定要取消此流程實例嗎？流程將立即停止且無法恢復。',
     
     // 實時更新
     realTimeUpdate: '實時更新',
@@ -4008,7 +4032,8 @@ const zhTC = {
     noPermissions: '無權限',
     saveSuccess: '權限保存成功',
     saveFailed: '保存權限失敗',
-    loadFailed: '載入權限失敗'
+    loadFailed: '載入權限失敗',
+    editingCompany: '編輯公司'
   }
 };
 

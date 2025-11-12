@@ -75,25 +75,60 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                // 優先查詢公司自定義權限
-                var companyPermissions = companyId.HasValue
-                    ? await _context.RolesInterfaces
+                _loggingService.LogInformation($"開始查詢角色 {roleId} 的權限，CompanyId: {companyId}");
+
+                List<string> permissions;
+
+                if (companyId.HasValue)
+                {
+                    // 查詢公司自定義權限
+                    var companyPermissions = await _context.RolesInterfaces
                         .Where(ri => ri.RoleId == roleId && ri.CompanyId == companyId && ri.IsActive)
                         .Select(ri => ri.InterfaceKey)
-                        .ToListAsync()
-                    : new List<string>();
+                        .ToListAsync();
 
-                // 如果沒有公司自定義權限，查詢系統默認權限
-                if (!companyPermissions.Any())
+                    _loggingService.LogInformation($"角色 {roleId} 在公司 {companyId} 下的權限記錄: {string.Join(", ", companyPermissions)}");
+
+                    // 檢查該公司是否有任何角色的權限記錄
+                    var companyHasAnyPermissions = await _context.RolesInterfaces
+                        .AnyAsync(ri => ri.CompanyId == companyId);
+
+                    if (companyPermissions.Any())
+                    {
+                        // 如果該角色在公司下有權限記錄，使用公司自定義權限
+                        permissions = companyPermissions;
+                        _loggingService.LogInformation($"角色 {roleId} 使用公司自定義權限，共 {permissions.Count} 個");
+                    }
+                    else if (companyHasAnyPermissions)
+                    {
+                        // 如果該角色在公司下沒有權限記錄，但公司已經開始管理權限，返回空列表（不回退到系統默認）
+                        permissions = new List<string>();
+                        _loggingService.LogInformation($"角色 {roleId} 在公司下沒有權限記錄，但公司已開始管理權限，返回空列表");
+                    }
+                    else
+                    {
+                        // 如果公司還沒有開始管理權限，才查詢系統默認權限
+                        permissions = await _context.RolesInterfaces
+                            .Where(ri => ri.RoleId == roleId && ri.CompanyId == null && ri.IsActive)
+                            .Select(ri => ri.InterfaceKey)
+                            .ToListAsync();
+                        
+                        _loggingService.LogInformation($"角色 {roleId} 使用系統默認權限，共 {permissions.Count} 個: {string.Join(", ", permissions)}");
+                    }
+                }
+                else
                 {
-                    companyPermissions = await _context.RolesInterfaces
+                    // 如果 companyId 為 null，查詢系統默認權限
+                    permissions = await _context.RolesInterfaces
                         .Where(ri => ri.RoleId == roleId && ri.CompanyId == null && ri.IsActive)
                         .Select(ri => ri.InterfaceKey)
                         .ToListAsync();
+                    
+                    _loggingService.LogInformation($"角色 {roleId} 查詢系統默認權限，共 {permissions.Count} 個: {string.Join(", ", permissions)}");
                 }
 
-                _loggingService.LogInformation($"成功獲取角色 {roleId} 的介面權限，共 {companyPermissions.Count} 個");
-                return Ok(new { roleId, companyId, interfaces = companyPermissions });
+                _loggingService.LogInformation($"成功獲取角色 {roleId} 的介面權限，共 {permissions.Count} 個");
+                return Ok(new { roleId, companyId, interfaces = permissions });
             }
             catch (Exception ex)
             {
@@ -128,66 +163,70 @@ namespace PurpleRice.Controllers
                     return Ok(new { userId, interfaces = new List<string>() });
                 }
 
-                // 對於每個角色，查詢權限（優先公司自定義，無則系統默認）
+                // 對於每個角色，查詢權限（只返回實際設置的權限）
                 var allInterfaces = new HashSet<string>();
 
-                // 如果公司沒有權限配置，先初始化（從系統默認複製）
-                var companyPermissionCount = await _context.RolesInterfaces
-                    .CountAsync(ri => ri.CompanyId == user.CompanyId && ri.IsActive);
+                _loggingService.LogInformation($"開始查詢用戶 {userId} (公司ID: {user.CompanyId}) 的權限，角色數量: {userRoles.Count}");
 
-                if (companyPermissionCount == 0)
-                {
-                    // 自動為該公司初始化權限
-                    var systemDefaults = await _context.RolesInterfaces
-                        .Where(ri => ri.CompanyId == null && ri.IsActive)
-                        .ToListAsync();
-
-                    foreach (var systemDefault in systemDefaults)
-                    {
-                        var companyPermission = new RolesInterface
-                        {
-                            Id = Guid.NewGuid(),
-                            RoleId = systemDefault.RoleId,
-                            CompanyId = user.CompanyId,
-                            InterfaceKey = systemDefault.InterfaceKey,
-                            IsActive = true,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        };
-                        _context.RolesInterfaces.Add(companyPermission);
-                    }
-                    await _context.SaveChangesAsync();
-                    _loggingService.LogInformation($"自動為公司 {user.CompanyId} 初始化權限，共 {systemDefaults.Count} 條");
-                }
+                // 檢查該公司是否有任何角色的權限記錄（如果公司已經開始管理權限，就應該只返回明確設置的權限）
+                var companyHasAnyPermissions = await _context.RolesInterfaces
+                    .AnyAsync(ri => ri.CompanyId == user.CompanyId);
+                
+                _loggingService.LogInformation($"公司 {user.CompanyId} 是否有權限記錄: {companyHasAnyPermissions}");
 
                 foreach (var roleId in userRoles)
                 {
-                    // 先查詢公司自定義權限
+                    _loggingService.LogInformation($"查詢角色 {roleId} 的權限...");
+
+                    // 優先查詢公司自定義權限（只查詢 IsActive = true 的）
                     var companyPermissions = await _context.RolesInterfaces
                         .Where(ri => ri.RoleId == roleId && ri.CompanyId == user.CompanyId && ri.IsActive)
                         .Select(ri => ri.InterfaceKey)
                         .ToListAsync();
 
-                    // 如果沒有公司自定義，查詢系統默認（作為後備）
-                    if (!companyPermissions.Any())
+                    _loggingService.LogInformation($"角色 {roleId} 在公司 {user.CompanyId} 下的權限記錄: {string.Join(", ", companyPermissions)}");
+
+                    List<string> rolePermissions;
+
+                    if (companyPermissions.Any())
                     {
-                        companyPermissions = await _context.RolesInterfaces
+                        // 如果該角色在公司下有權限記錄，使用公司自定義權限
+                        rolePermissions = companyPermissions;
+                        _loggingService.LogInformation($"角色 {roleId} 使用公司自定義權限，共 {rolePermissions.Count} 個: {string.Join(", ", rolePermissions)}");
+                    }
+                    else if (companyHasAnyPermissions)
+                    {
+                        // 如果該角色在公司下沒有權限記錄，但公司已經開始管理權限，返回空列表（不回退到系統默認）
+                        rolePermissions = new List<string>();
+                        _loggingService.LogInformation($"角色 {roleId} 在公司下沒有權限記錄，但公司已開始管理權限，返回空列表");
+                    }
+                    else
+                    {
+                        // 如果公司還沒有開始管理權限，才查詢系統默認權限
+                        rolePermissions = await _context.RolesInterfaces
                             .Where(ri => ri.RoleId == roleId && ri.CompanyId == null && ri.IsActive)
                             .Select(ri => ri.InterfaceKey)
                             .ToListAsync();
+                        
+                        _loggingService.LogInformation($"角色 {roleId} 使用系統默認權限，共 {rolePermissions.Count} 個: {string.Join(", ", rolePermissions)}");
                     }
 
-                    // 合併權限
-                    foreach (var interfaceKey in companyPermissions)
+                    // 合併權限（只添加實際在資料庫中設置的權限）
+                    foreach (var interfaceKey in rolePermissions)
                     {
                         allInterfaces.Add(interfaceKey);
                     }
                 }
 
+                _loggingService.LogInformation($"用戶 {userId} 的角色權限（未展開前）: {string.Join(", ", allInterfaces)}");
+
                 // 處理父子級關係（有父級權限自動包含子級）
+                // 注意：只展開實際在資料庫中存在的父級權限
                 var expandedInterfaces = ExpandInterfacesWithChildren(allInterfaces.ToList());
 
+                _loggingService.LogInformation($"用戶 {userId} 的角色權限（展開後）: {string.Join(", ", expandedInterfaces)}");
                 _loggingService.LogInformation($"成功獲取用戶 {userId} 的介面權限，共 {expandedInterfaces.Count} 個");
+                
                 return Ok(new { userId, interfaces = expandedInterfaces });
             }
             catch (Exception ex)
@@ -221,10 +260,22 @@ namespace PurpleRice.Controllers
                 // 如果 companyId 為 null，則設置系統默認權限（僅 Tenant_Admin 可操作）
                 // 這裡可以添加權限檢查邏輯
 
-                // 刪除現有的權限配置
+                _loggingService.LogInformation($"開始設置角色 {roleId} 的權限，CompanyId: {request.CompanyId}, 權限數量: {request.InterfaceKeys?.Count ?? 0}");
+                if (request.InterfaceKeys != null && request.InterfaceKeys.Any())
+                {
+                    _loggingService.LogInformation($"要設置的權限: {string.Join(", ", request.InterfaceKeys)}");
+                }
+
+                // 刪除現有的權限配置（包括 IsActive = false 的，確保完全清除）
                 var existingPermissions = await _context.RolesInterfaces
                     .Where(ri => ri.RoleId == roleId && ri.CompanyId == request.CompanyId)
                     .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {existingPermissions.Count} 個現有權限記錄需要刪除");
+                if (existingPermissions.Any())
+                {
+                    _loggingService.LogInformation($"現有權限記錄: {string.Join(", ", existingPermissions.Select(ri => $"{ri.InterfaceKey}(IsActive={ri.IsActive})"))}");
+                }
 
                 _context.RolesInterfaces.RemoveRange(existingPermissions);
 
@@ -245,6 +296,11 @@ namespace PurpleRice.Controllers
                         };
                         _context.RolesInterfaces.Add(roleInterface);
                     }
+                    _loggingService.LogInformation($"添加了 {request.InterfaceKeys.Count} 個新權限記錄");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"沒有要添加的權限，所有現有權限已刪除");
                 }
 
                 await _context.SaveChangesAsync();

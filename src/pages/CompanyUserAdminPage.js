@@ -94,6 +94,7 @@ const CompanyUserAdminPage = () => {
   const [roles, setRoles] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [userRoles, setUserRoles] = useState({}); // { userId: [roleIds] }
+  const [newUserRoles, setNewUserRoles] = useState([]); // 新增用戶時選中的角色
   const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState(null);
   const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
 
@@ -626,6 +627,15 @@ const CompanyUserAdminPage = () => {
   const handleEditUser = (record) => {
     // 如果是新增用戶（record 為 null），創建一個空對象
     const browserTimezone = getBrowserTimezone(); // 獲取瀏覽器時區
+    const currentUserInfo = getUserInfo();
+    const currentIsTenantAdmin = (currentUserInfo.roles || []).some(role => (typeof role === 'string' ? role : role.name) === 'Tenant_Admin');
+    
+    // 如果是 Tenant_Admin 且新增用戶，使用第一個公司的 ID 作為默認值（如果有的話）
+    let defaultCompanyId = myCompanyId;
+    if (currentIsTenantAdmin && !record && companies.length > 0) {
+      defaultCompanyId = companies[0].id;
+    }
+    
     const userData = record || {
       id: null,
       account: '',
@@ -635,11 +645,12 @@ const CompanyUserAdminPage = () => {
       is_active: true,
       timezone: browserTimezone, // 使用瀏覽器時區作為默認值
       language: currentLanguage,
-      companyId: myCompanyId,
+      companyId: defaultCompanyId,
       avatar_url: null
     };
     setEditingUser(userData);
     setUploadedAvatarUrl(null); // 重置上傳的頭像狀態
+    setNewUserRoles([]); // 重置新增用戶的角色
     setUserEditModalVisible(true);
     
     // 立即設置表單值，確保頭像正確顯示
@@ -648,6 +659,7 @@ const CompanyUserAdminPage = () => {
         form.setFieldsValue({
           ...record,
           timezone: normalizeGMTOffsetString(record.timezone),
+          companyId: record.companyId || record.company_id,
         });
       } else {
         // 新增模式：設置默認值
@@ -661,7 +673,8 @@ const CompanyUserAdminPage = () => {
           language: currentLanguage,
           password: '',
           confirmPassword: '',
-          avatar_url: null
+          avatar_url: null,
+          companyId: defaultCompanyId, // 設置默認公司 ID
         });
       }
     }, 0);
@@ -683,12 +696,28 @@ const CompanyUserAdminPage = () => {
       // 獲取當前用戶的公司 ID
       const currentUserInfo = getUserInfo();
       const currentCompanyId = currentUserInfo.company_id || currentUserInfo.companyId || currentUserInfo.companyID || '';
+      const currentIsTenantAdmin = (currentUserInfo.roles || []).some(role => (typeof role === 'string' ? role : role.name) === 'Tenant_Admin');
+      
+      // 確定要使用的公司 ID
+      // 如果是 Tenant_Admin 且新增用戶，使用表單中選擇的公司 ID
+      // 否則使用當前用戶的公司 ID 或編輯用戶的公司 ID
+      let targetCompanyId;
+      if (isNewUser && currentIsTenantAdmin && values.companyId) {
+        // Tenant_Admin 新增用戶時，使用表單中選擇的公司 ID
+        targetCompanyId = values.companyId;
+      } else if (isNewUser) {
+        // 非 Tenant_Admin 新增用戶時，使用當前用戶的公司 ID
+        targetCompanyId = currentCompanyId;
+      } else {
+        // 編輯用戶時，使用編輯用戶的公司 ID
+        targetCompanyId = editingUser.companyId || editingUser.company_id || currentCompanyId;
+      }
       
       // 只發送必要的字段，轉換字段名稱以匹配後端期望的格式
       const requestData = {
         // 基本用戶信息 - 使用正確的字段名稱
         ...(isNewUser ? {} : { id: editingUser.id }),
-        companyId: isNewUser ? currentCompanyId : (editingUser.companyId || currentCompanyId),
+        companyId: targetCompanyId,
         account: isNewUser ? values.account : editingUser.account, // 新增時可設置，編輯時不允許修改
         email: values.email,
         googleId: isNewUser ? null : (editingUser.google_id || null), // 確保不是 undefined
@@ -726,10 +755,22 @@ const CompanyUserAdminPage = () => {
       const resultUser = await response.json();
       console.log(`用戶${isNewUser ? '創建' : '更新'}成功:`, resultUser);
       
+      // 如果是新增用戶且選中了角色，保存角色
+      if (isNewUser && newUserRoles.length > 0 && resultUser.id) {
+        try {
+          await handleUpdateUserRoles(resultUser.id, newUserRoles);
+          console.log('新增用戶的角色已保存');
+        } catch (error) {
+          console.error('保存新增用戶的角色失敗:', error);
+          message.warning('用戶創建成功，但角色設置失敗，請稍後手動設置');
+        }
+      }
+      
       message.success(`用戶信息${isNewUser ? '創建' : '更新'}成功`);
       setUserEditModalVisible(false);
       setUploadedAvatarUrl(null); // 重置上傳狀態
       setEditingUser(null); // 清除編輯狀態
+      setNewUserRoles([]); // 重置新增用戶的角色
       form.resetFields(); // 清除表單緩存
       fetchUsers(); // 重新載入用戶列表
     } catch (error) {
@@ -766,6 +807,13 @@ const CompanyUserAdminPage = () => {
         } else {
           // 新增模式：設置默認值，使用瀏覽器時區
           const browserTimezone = getBrowserTimezone();
+          const currentUserInfo = getUserInfo();
+          const currentIsTenantAdmin = (currentUserInfo.roles || []).some(role => (typeof role === 'string' ? role : role.name) === 'Tenant_Admin');
+          // 如果是 Tenant_Admin 且新增用戶，使用第一個公司的 ID 作為默認值（如果有的話）
+          let defaultCompanyId = myCompanyId;
+          if (currentIsTenantAdmin && companies.length > 0) {
+            defaultCompanyId = companies[0].id;
+          }
           form.setFieldsValue({
             account: '',
             email: '',
@@ -776,15 +824,17 @@ const CompanyUserAdminPage = () => {
             language: currentLanguage,
             password: '',
             confirmPassword: '',
-            avatar_url: null
+            avatar_url: null,
+            companyId: defaultCompanyId // 設置默認公司 ID
           });
         }
       }, 50);
     } else {
-      // Modal 關閉時重置表單
+      // Modal 關閉時重置表單和狀態
       form.resetFields();
+      setNewUserRoles([]); // 重置新增用戶的角色
     }
-  }, [userEditModalVisible, editingUser, form, currentLanguage]);
+  }, [userEditModalVisible, editingUser, form, currentLanguage, companies, myCompanyId]);
 
   return (
     <div style={{ padding: '8px' }}>
@@ -895,6 +945,7 @@ const CompanyUserAdminPage = () => {
              setUserEditModalVisible(false);
              setUploadedAvatarUrl(null);
              setEditingUser(null); // 清除編輯狀態
+             setNewUserRoles([]); // 重置新增用戶的角色
              form.resetFields(); // 清除表單緩存
            }}
           footer={[
@@ -902,6 +953,7 @@ const CompanyUserAdminPage = () => {
               setUserEditModalVisible(false);
               setUploadedAvatarUrl(null);
               setEditingUser(null); // 清除編輯狀態
+              setNewUserRoles([]); // 重置新增用戶的角色
               form.resetFields(); // 清除表單緩存
             }}>
               {t('common.cancel')}
@@ -924,6 +976,44 @@ const CompanyUserAdminPage = () => {
                   {t('companyUserAdmin.userInfo')}
                 </div>
               </Col>
+              
+              {/* 公司欄位 - 在頭像之前 */}
+              {/* 公司選擇 - 僅 Tenant_Admin 且新增用戶時顯示 */}
+              {isTenantAdmin && (!editingUser || !editingUser.id) && (
+                <Col span={24}>
+                  <Form.Item 
+                    label={t('companyUserAdmin.company')} 
+                    name="companyId"
+                    rules={[{ required: true, message: t('companyUserAdmin.companyRequired') || '請選擇公司' }]}
+                  >
+                    <Select 
+                      placeholder={t('companyUserAdmin.selectCompany') || '請選擇公司'}
+                      showSearch
+                      optionFilterProp="children"
+                      filterOption={(input, option) =>
+                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
+                      options={companies.map(company => ({
+                        value: company.id,
+                        label: company.name
+                      }))}
+                      style={{ width: '100%' }}
+                    />
+                  </Form.Item>
+                </Col>
+              )}
+              
+              {/* 公司顯示 - 僅 Tenant_Admin 且編輯模式下顯示 */}
+              {isTenantAdmin && editingUser && editingUser.id && (
+                <Col span={24}>
+                  <Form.Item label={t('companyUserAdmin.company')}>
+                    <Input 
+                      value={companies.find(c => c.id === (editingUser.companyId || editingUser.company_id))?.name || editingUser.companyId || editingUser.company_id || '未知'} 
+                      disabled 
+                    />
+                  </Form.Item>
+                </Col>
+              )}
               
               {/* 頭像上傳 */}
               <Col span={24}>
@@ -1168,8 +1258,8 @@ const CompanyUserAdminPage = () => {
                 </>
               )}
               
-              {/* 角色管理 - 只在編輯模式下顯示 */}
-              {editingUser && editingUser.id && (
+              {/* 角色管理 - 新增和編輯模式下都顯示 */}
+              {editingUser && (
                 <>
                   <Col span={24}>
                     <div style={{ marginBottom: 16, fontSize: '16px', fontWeight: 'bold', marginTop: 24 }}>
@@ -1183,8 +1273,16 @@ const CompanyUserAdminPage = () => {
                         mode="multiple"
                         placeholder={t('companyUserAdmin.selectRoles')}
                         style={{ width: '100%' }}
-                        value={userRoles[editingUser.id] || []}
-                        onChange={(value) => handleUpdateUserRoles(editingUser.id, value)}
+                        value={editingUser.id ? (userRoles[editingUser.id] || []) : newUserRoles}
+                        onChange={(value) => {
+                          if (editingUser.id) {
+                            // 編輯模式：直接更新角色
+                            handleUpdateUserRoles(editingUser.id, value);
+                          } else {
+                            // 新增模式：更新狀態
+                            setNewUserRoles(value);
+                          }
+                        }}
                         options={roles.map(role => ({
                           value: role.id,
                           label: getRoleDisplayName(role.name)
@@ -1194,13 +1292,45 @@ const CompanyUserAdminPage = () => {
                     </Form.Item>
                   </Col>
                   
-                  {/* 當前角色顯示 */}
-                  <Col span={24}>
-                    <Form.Item label={t('companyUserAdmin.currentRoles')}>
-                      <div style={{ minHeight: 40, padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', backgroundColor: '#fafafa' }}>
-                        {userRoles[editingUser.id] && userRoles[editingUser.id].length > 0 ? (
+                  {/* 當前角色顯示 - 只在編輯模式下顯示 */}
+                  {editingUser.id && (
+                    <Col span={24}>
+                      <Form.Item label={t('companyUserAdmin.currentRoles')}>
+                        <div style={{ minHeight: 40, padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', backgroundColor: '#fafafa' }}>
+                          {userRoles[editingUser.id] && userRoles[editingUser.id].length > 0 ? (
+                            <Space wrap>
+                              {userRoles[editingUser.id].map(roleId => {
+                                const role = roles.find(r => r.id === roleId);
+                                return role ? (
+                                  <Tag 
+                                    key={role.id} 
+                                    color={getRoleColor(role.name)}
+                                    closable
+                                    onClose={(e) => {
+                                      e.preventDefault();
+                                      handleRemoveUserRole(editingUser.id, role.id);
+                                    }}
+                                  >
+                                    {getRoleDisplayName(role.name)}
+                                  </Tag>
+                                ) : null;
+                              })}
+                            </Space>
+                          ) : (
+                            <span style={{ color: '#999' }}>{t('companyUserAdmin.noRoles')}</span>
+                          )}
+                        </div>
+                      </Form.Item>
+                    </Col>
+                  )}
+                  
+                  {/* 新增模式下的角色預覽 */}
+                  {!editingUser.id && newUserRoles.length > 0 && (
+                    <Col span={24}>
+                      <Form.Item label={t('companyUserAdmin.selectedRoles')}>
+                        <div style={{ minHeight: 40, padding: '8px', border: '1px solid #d9d9d9', borderRadius: '6px', backgroundColor: '#fafafa' }}>
                           <Space wrap>
-                            {userRoles[editingUser.id].map(roleId => {
+                            {newUserRoles.map(roleId => {
                               const role = roles.find(r => r.id === roleId);
                               return role ? (
                                 <Tag 
@@ -1209,7 +1339,7 @@ const CompanyUserAdminPage = () => {
                                   closable
                                   onClose={(e) => {
                                     e.preventDefault();
-                                    handleRemoveUserRole(editingUser.id, role.id);
+                                    setNewUserRoles(prev => prev.filter(id => id !== roleId));
                                   }}
                                 >
                                   {getRoleDisplayName(role.name)}
@@ -1217,12 +1347,10 @@ const CompanyUserAdminPage = () => {
                               ) : null;
                             })}
                           </Space>
-                        ) : (
-                          <span style={{ color: '#999' }}>{t('companyUserAdmin.noRoles')}</span>
-                        )}
-                      </div>
-                    </Form.Item>
-                  </Col>
+                        </div>
+                      </Form.Item>
+                    </Col>
+                  )}
                 </>
               )}
             </Row>

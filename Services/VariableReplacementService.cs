@@ -47,11 +47,12 @@ namespace PurpleRice.Services
                     object value = vv.DataType.ToLower() switch
                     {
                         "string" => vv.StringValue,
+                        "text" => vv.TextValue,
                         "int" or "decimal" => vv.NumericValue,
                         "boolean" => vv.BooleanValue,
                         "datetime" => vv.DateValue,
                         "json" => vv.JsonValue,
-                        _ => vv.StringValue
+                        _ => vv.StringValue ?? vv.TextValue ?? vv.JsonValue
                     };
 
                     if (value != null)

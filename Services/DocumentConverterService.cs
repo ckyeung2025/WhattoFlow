@@ -1,5 +1,12 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Linq;
+using System.Collections.Generic;
+using System.IO;
 
 namespace PurpleRice.Services
 {
@@ -131,6 +138,201 @@ namespace PurpleRice.Services
                 _logger.LogError(ex, $"轉換文檔時發生錯誤: {filePath}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// 根據 HTML 內容產出純文字
+        /// </summary>
+        public string ConvertHtmlToPlainText(string html)
+        {
+            if (string.IsNullOrWhiteSpace(html))
+            {
+                return string.Empty;
+            }
+
+            var normalized = Regex.Replace(html, "<(br|BR|p|P|div|DIV)[^>]*>", "\n", RegexOptions.Compiled);
+            normalized = Regex.Replace(normalized, "<[^>]+>", string.Empty, RegexOptions.Compiled);
+            normalized = WebUtility.HtmlDecode(normalized);
+            normalized = normalized.Replace("\r\n", "\n").Replace('\r', '\n');
+            normalized = Regex.Replace(normalized, "[\t ]+", " ", RegexOptions.Compiled);
+            normalized = Regex.Replace(normalized, "\n{2,}", "\n", RegexOptions.Compiled);
+            return normalized.Trim();
+        }
+
+        /// <summary>
+        /// 解析文件並輸出結構化內容（純文字、段落、表格等）
+        /// </summary>
+        public async Task<DocumentParseResult> ParseDocumentAsync(string filePath, string? mimeType = null, string? originalFileName = null)
+        {
+            var html = await ConvertToHtml(filePath);
+            var plainText = ConvertHtmlToPlainText(html);
+            var documentType = DetermineDocumentType(mimeType, originalFileName);
+
+            var paragraphs = ExtractParagraphs(html);
+            var tables = ExtractTables(html);
+
+            var metadata = new Dictionary<string, object?>
+            {
+                ["fileName"] = originalFileName ?? Path.GetFileName(filePath),
+                ["mimeType"] = mimeType ?? string.Empty,
+                ["tableCount"] = tables.Count,
+                ["paragraphCount"] = paragraphs.Count
+            };
+
+            // Excel / 試算表通常包含多個表格，記錄為 sheet-like 結構
+            if (documentType == "excel")
+            {
+                metadata["sheets"] = tables.Select((table, index) => new {
+                    name = $"Sheet{index + 1}",
+                    rowCount = table.Rows.Count,
+                    columnCount = table.Headers?.Count ?? (table.Rows.FirstOrDefault()?.Count ?? 0)
+                }).ToList();
+            }
+
+            return new DocumentParseResult
+            {
+                DocumentType = documentType,
+                PlainText = plainText,
+                Paragraphs = paragraphs,
+                Tables = tables,
+                Metadata = metadata
+            };
+        }
+
+        private string DetermineDocumentType(string? mimeType, string? fileName)
+        {
+            if (!string.IsNullOrWhiteSpace(mimeType))
+            {
+                if (mimeType.Contains("spreadsheet", StringComparison.OrdinalIgnoreCase) ||
+                    mimeType.Contains("excel", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "excel";
+                }
+
+                if (mimeType.Contains("presentation", StringComparison.OrdinalIgnoreCase) ||
+                    mimeType.Contains("powerpoint", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "presentation";
+                }
+
+                if (mimeType.Contains("word", StringComparison.OrdinalIgnoreCase) ||
+                    mimeType.Contains("document", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "word";
+                }
+
+                if (mimeType.Contains("pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "pdf";
+                }
+            }
+
+            var extension = Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant();
+            return extension switch
+            {
+                ".xls" or ".xlsx" or ".ods" => "excel",
+                ".ppt" or ".pptx" or ".odp" => "presentation",
+                ".doc" or ".docx" or ".odt" or ".rtf" => "word",
+                ".pdf" => "pdf",
+                ".txt" => "text",
+                _ => "document"
+            };
+        }
+
+        private List<string> ExtractParagraphs(string html)
+        {
+            var paragraphs = new List<string>();
+            if (string.IsNullOrWhiteSpace(html))
+            {
+                return paragraphs;
+            }
+
+            var paragraphMatches = Regex.Matches(html, "<p[^>]*>(.*?)</p>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            foreach (Match match in paragraphMatches)
+            {
+                var text = WebUtility.HtmlDecode(Regex.Replace(match.Groups[1].Value, "<[^>]+>", string.Empty)).Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    paragraphs.Add(text);
+                }
+            }
+
+            // 如果沒有 <p>，回退到根據行分割的純文字
+            if (paragraphs.Count == 0)
+            {
+                var plain = ConvertHtmlToPlainText(html);
+                paragraphs = plain.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .ToList();
+            }
+
+            return paragraphs;
+        }
+
+        private List<DocumentTable> ExtractTables(string html)
+        {
+            var tables = new List<DocumentTable>();
+            if (string.IsNullOrWhiteSpace(html))
+            {
+                return tables;
+            }
+
+            var tableMatches = Regex.Matches(html, "<table[^>]*>(.*?)</table>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            foreach (Match tableMatch in tableMatches)
+            {
+                var tableHtml = tableMatch.Groups[1].Value;
+                var headerMatch = Regex.Match(tableHtml, "<thead[^>]*>(.*?)</thead>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                List<string>? headers = null;
+                if (headerMatch.Success)
+                {
+                    headers = ExtractCells(headerMatch.Groups[1].Value, "th");
+                }
+
+                var rowMatches = Regex.Matches(tableHtml, "<tr[^>]*>(.*?)</tr>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                var rows = new List<List<string>>();
+                foreach (Match rowMatch in rowMatches)
+                {
+                    var rowHtml = rowMatch.Groups[1].Value;
+                    var cells = ExtractCells(rowHtml, "td");
+                    if (cells.Count == 0 && headers != null)
+                    {
+                        cells = ExtractCells(rowHtml, "th");
+                    }
+
+                    if (cells.Count > 0)
+                    {
+                        rows.Add(cells);
+                    }
+                }
+
+                if (headers == null && rows.Count > 0)
+                {
+                    headers = rows.First();
+                    rows = rows.Skip(1).ToList();
+                }
+
+                tables.Add(new DocumentTable
+                {
+                    Headers = headers,
+                    Rows = rows
+                });
+            }
+
+            return tables;
+        }
+
+        private List<string> ExtractCells(string rowHtml, string cellTag)
+        {
+            var pattern = $"<{cellTag}[^>]*>(.*?)</{cellTag}>";
+            var matches = Regex.Matches(rowHtml, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            var cells = new List<string>();
+            foreach (Match match in matches)
+            {
+                var text = WebUtility.HtmlDecode(Regex.Replace(match.Groups[1].Value, "<[^>]+>", string.Empty)).Trim();
+                cells.Add(text);
+            }
+            return cells;
         }
 
         /// <summary>
@@ -452,5 +654,40 @@ namespace PurpleRice.Services
 
             return supportedFormats.Contains(extension);
         }
+    }
+
+    public class DocumentParseResult
+    {
+        public string DocumentType { get; set; } = "document";
+        public string PlainText { get; set; } = string.Empty;
+        public List<string> Paragraphs { get; set; } = new();
+        public List<DocumentTable> Tables { get; set; } = new();
+        public IDictionary<string, object?> Metadata { get; set; } = new Dictionary<string, object?>();
+
+        public object ToStructuredObject() => new
+        {
+            documentType = DocumentType,
+            metadata = Metadata,
+            text = PlainText,
+            paragraphs = Paragraphs,
+            tables = Tables.Select(t => new
+            {
+                headers = t.Headers,
+                rows = t.Rows
+            }).ToList()
+        };
+
+        public string ToJson() => JsonSerializer.Serialize(ToStructuredObject(), new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        });
+    }
+
+    public class DocumentTable
+    {
+        public List<string>? Headers { get; set; }
+        public List<List<string>> Rows { get; set; } = new();
     }
 } 

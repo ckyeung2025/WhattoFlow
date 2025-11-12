@@ -38,6 +38,7 @@ const en = {
     companyUserAdmin: 'Company/User Management',
     eformList: 'Form Management',
     whatsappTemplates: 'Message Templates',
+    dataSets: 'Data Sets',
     workflowMonitor: 'Workflow Monitor',
     runningApps: 'Running Apps',
     phoneVerificationAdmin: 'Phone Number Verification',
@@ -381,7 +382,9 @@ const en = {
     inactive: 'Inactive',
     paused: 'Paused',
     activate: 'Activate',
-    deactivate: 'Deactivate'
+    deactivate: 'Deactivate',
+    systemDefault: 'System Default',
+    editingCompany: 'Editing Company'
   },
   
   // Recipient Selector
@@ -575,6 +578,7 @@ const en = {
     removeRole: "Remove Role",
     noRoles: "No Roles",
     currentRoles: "Current Roles",
+    selectedRoles: "Selected Roles",
     userInfo: "User Information",
     avatar: "Avatar",
     status: "Status",
@@ -591,7 +595,10 @@ const en = {
     confirmPasswordPlaceholder: "Please enter password again",
     confirmPasswordRequired: "Please enter password again to confirm",
     passwordMismatch: "Passwords do not match",
-    passwordMinLength: "Password must be at least 6 characters"
+    passwordMinLength: "Password must be at least 6 characters",
+    company: "Company",
+    selectCompany: "Select Company",
+    companyRequired: "Please select a company"
   },
   
   // Company edit
@@ -2025,8 +2032,11 @@ const en = {
     specifiedPerson: 'Specified Person',
     promptMessage: 'Prompt Message',
     promptMessageHelp: 'Before user input, the system will send the following message to remind the user they need to input',
-    validationConfig: 'Validation Configuration',
+    validationConfig: 'Validation Settings',
     validationSettings: 'Validation Settings',
+    validatorActiveLabel: 'Validator Status',
+    active: 'Active',
+    inactive: 'Inactive',
     enableValidation: 'Enable Validation',
     yes: 'Yes',
     no: 'No',
@@ -2036,7 +2046,7 @@ const en = {
     aiValidator: 'AI Validator',
     timeValidatorLabel: 'Time Validator (No Response Reminder)',
     promptText: 'Prompt Text',
-    promptTextPlaceholder: 'Describe the rules for a valid reply, e.g. “User must provide a 6 digit code”.',
+    promptTextPlaceholder: 'Describe the rules for a valid reply, e.g. "User must provide a 6 digit code".',
     retryMessage: 'Reminder Message',
     retryMessagePlaceholder: 'Enter the message to send when the reply does not meet the requirement.',
     maxRetries: 'Max Reminders',
@@ -2046,6 +2056,9 @@ const en = {
     validationAiProvider: 'AI Provider',
     validationAiProviderPlaceholder: 'Select the AI provider used to validate user replies',
     validationAiProviderRequired: 'Please select an AI provider for validation',
+    validationAiResultVariable: 'AI Result Process Variable',
+    validationAiResultVariablePlaceholder: 'Select the process variable to store the AI result',
+    validationAiResultVariableHelp: 'After the AI parses the message, the structured result will be stored in this process variable for later steps.',
     aiProviderInactive: 'Inactive',
     aiProviderNotConfigured: 'No AI providers configured. Please add one in API Management.',
     aiProviderLoadFailed: 'Unable to load AI providers',
@@ -2428,12 +2441,24 @@ const en = {
   },
   
   // Workflow Monitor
-  workflowMonitor: {
+    workflowMonitor: {
     title: 'Workflow Monitor',
     description: 'Monitor and manage your WhatsApp workflow instances',
     runningAppsTitle: 'Running Apps',
     runningAppsDescription: 'Monitor the status of running workflow applications',
     overview: 'Overview',
+    startLoadingInstances: 'Loading workflow instances (sort: {sortBy}, order: {sortOrder})',
+    requestUrl: 'Request URL',
+    requestParams: 'Request parameters',
+    currentPaginationParams: 'Current pagination parameters',
+    dataFromMonitorApi: 'Data received from monitor API',
+    instanceDataStructure: 'Instance data structure',
+    paginationInfo: 'Pagination information',
+    firstInstanceCompleteData: 'First instance full data',
+    inputJsonField: 'Input JSON field',
+    inputJsonType: 'Input JSON type',
+    parsedInputJson: 'Parsed Input JSON',
+    parseInputJsonFailed: 'Failed to parse Input JSON',
     activeInstances: 'Active Instances',
     completedInstances: 'Completed Instances',
     failedInstances: 'Failed Instances',
@@ -2506,6 +2531,10 @@ const en = {
     processVariables: 'Process Variables',
     workflowStarted: 'Workflow Started',
     workflowCompleted: 'Workflow Completed',
+    openWhatsAppChat: 'Opening WhatsApp chat',
+    availableFields: 'Available fields',
+    noInputJsonField: 'Input JSON field is empty',
+    sendMessage: 'Send message',
     executionStep: 'Execution Step',
     stepStatus: 'Status',
     stepStartTime: 'Start Time',
@@ -2524,6 +2553,9 @@ const en = {
     messageSendDetails: 'Message Send Details',
     messageSendStatusDetails: 'Message Send Status Details',
     sendOverview: 'Send Overview',
+    loadingEmbeddedFormInstance: 'Loading embedded form instance...',
+    loadedEmbeddedFormInstance: 'Embedded form instance loaded',
+    loadEmbeddedFormInstanceFailed: 'Failed to load embedded form instance',
     recipientDetails: 'Recipient Details',
     statusAnalysis: 'Status Analysis',
     totalRecipients: 'Total Recipients',
@@ -2676,6 +2708,12 @@ const en = {
     jumpTo: 'Go to',
     page: 'Page',
     confirm: 'OK',
+    tableChange: 'Table change event',
+    sorterDetails: 'Sorter details',
+    paginationChange: 'Pagination changed',
+    sortField: 'Sort field',
+    sortOrder: 'Sort order',
+    paginationOnlyDefaultSort: 'Pagination change with default sort',
     whatsappChat: 'WhatsApp Chat',
     openSettingsModal: 'Open settings modal',
     cannotFindMessageSendId: 'Cannot find message send record ID, please check backend data',
@@ -2819,6 +2857,8 @@ const en = {
     confirmResume: 'Are you sure you want to resume this workflow instance?',
     confirmCancel: 'Are you sure you want to cancel this workflow instance?',
     confirmRetry: 'Are you sure you want to retry this workflow instance?',
+    cancelConfirmTitle: 'Cancel Workflow Instance',
+    cancelConfirmMessage: 'Are you sure you want to cancel this workflow instance? The workflow will stop immediately.',
     
     // Action results
     pauseSuccess: 'Workflow instance paused',
@@ -2826,6 +2866,16 @@ const en = {
     cancelSuccess: 'Workflow instance cancelled',
     retrySuccess: 'Workflow instance retry started',
     operationFailed: 'Operation failed',
+    whatsappChat: 'WhatsApp Chat',
+    pause: 'Pause',
+    resume: 'Resume',
+    retry: 'Retry',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    deleteSuccess: 'Workflow instance deleted',
+    deleteFailed: 'Failed to delete workflow instance',
+    deleteConfirmTitle: 'Delete Workflow Instance',
+    deleteConfirmMessage: 'Are you sure you want to delete instance {instanceId} ({workflowName})? This action cannot be undone and related records will be removed.',
     
     // Real-time updates
     realTimeUpdate: 'Real-time Updates',
@@ -3898,7 +3948,8 @@ const en = {
     noPermissions: 'No Permissions',
     saveSuccess: 'Permissions saved successfully',
     saveFailed: 'Failed to save permissions',
-    loadFailed: 'Failed to load permissions'
+    loadFailed: 'Failed to load permissions',
+    editingCompany: 'Editing Company'
   }
 };
 

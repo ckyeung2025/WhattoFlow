@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Table, 
   Button, 
@@ -27,7 +27,7 @@ import {
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import { useLanguage } from '../contexts/LanguageContext';
-import { canAccessPermissionManagement } from '../utils/permissionUtils';
+import { canAccessPermissionManagement, INTERFACE_HIERARCHY } from '../utils/permissionUtils';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -117,9 +117,10 @@ const PermissionManagementPage = () => {
             const isTenantAdminUser = updatedUserInfo.roles?.some(role => 
               (typeof role === 'string' ? role : role.name) === 'Tenant_Admin'
             );
+            console.log(`[PermissionManagement] 檢查用戶角色，isTenantAdminUser: ${isTenantAdminUser}, company_id: ${updatedUserInfo.company_id}`);
             if (!isTenantAdminUser && updatedUserInfo.company_id) {
+              console.log(`[PermissionManagement] 設置 selectedCompanyId 為: ${updatedUserInfo.company_id}`);
               setSelectedCompanyId(updatedUserInfo.company_id);
-              console.log('Company_Admin 用戶，自動設置公司 ID:', updatedUserInfo.company_id);
             }
           }
         } catch (error) {
@@ -178,18 +179,109 @@ const PermissionManagementPage = () => {
       });
       const data = await response.json();
       
+      let companiesList = [];
+      
       // 如果是 Company_Admin，只顯示自己的公司
       if (!isTenantAdmin && userCompanyId) {
-        const filteredData = data.filter(c => c.id === userCompanyId);
-        setCompanies(filteredData);
+        companiesList = data.filter(c => c.id === userCompanyId);
+        setCompanies(companiesList);
+        // Company_Admin 自動設置為自己的公司
+        if (companiesList.length > 0 && !selectedCompanyId) {
+          console.log(`[PermissionManagement] Company_Admin 自動設置公司 ID: ${companiesList[0].id}`);
+          setSelectedCompanyId(companiesList[0].id);
+        }
       } else {
         // Tenant_Admin 可以看到所有公司
-        setCompanies(data);
+        companiesList = data;
+        setCompanies(companiesList);
+        // Tenant_Admin 如果有公司列表且 selectedCompanyId 為 null，自動選擇第一個公司
+        if (companiesList.length > 0 && selectedCompanyId === null) {
+          console.log(`[PermissionManagement] Tenant_Admin 自動設置第一個公司 ID: ${companiesList[0].id}`);
+          setSelectedCompanyId(companiesList[0].id);
+        }
       }
     } catch (error) {
-      console.error('載入公司列表失敗:', error);
+      console.error('[PermissionManagement] 載入公司列表失敗:', error);
     }
   };
+
+  const translateInterfaceLabel = useCallback((key, defaultLabel = '') => {
+    if (!key) {
+      return typeof defaultLabel === 'string' || typeof defaultLabel === 'number'
+        ? String(defaultLabel)
+        : '';
+    }
+
+    const normalizedKey = String(key).trim();
+    const lowerKey = normalizedKey.toLowerCase();
+    const safeDefaultLabel = typeof defaultLabel === 'string' || typeof defaultLabel === 'number'
+      ? String(defaultLabel)
+      : '';
+    const keySegments = normalizedKey.split('.');
+    const lowerSegments = lowerKey.split('.');
+
+    const candidatePaths = [
+      normalizedKey,
+      lowerKey,
+      `menu.${normalizedKey}`,
+      `menu.${lowerKey}`,
+      `permissionManagement.${normalizedKey}`,
+      `permissionManagement.${lowerKey}`,
+      keySegments.length > 1 ? `${keySegments[0]}.${keySegments.slice(1).join('.')}` : null,
+      keySegments.length > 1 ? `${keySegments[0]}.${lowerSegments.slice(1).join('.')}` : null,
+      keySegments.length > 1 ? `${lowerSegments[0]}.${keySegments.slice(1).join('.')}` : null,
+      keySegments.length > 1 ? `${lowerSegments[0]}.${lowerSegments.slice(1).join('.')}` : null,
+      keySegments.length > 1 ? `${keySegments[0]}.${keySegments[keySegments.length - 1]}` : null,
+      keySegments.length > 1 ? `${keySegments[0]}.${lowerSegments[lowerSegments.length - 1]}` : null,
+      keySegments.length > 1 ? `${lowerSegments[0]}.${keySegments[keySegments.length - 1]}` : null,
+      keySegments.length > 1 ? `${lowerSegments[0]}.${lowerSegments[lowerSegments.length - 1]}` : null
+    ].filter(Boolean);
+
+    const translatePath = (path) => {
+      const translated = t(path);
+      if (
+        translated &&
+        translated !== path &&
+        (typeof translated === 'string' || typeof translated === 'number')
+      ) {
+        return translated;
+      }
+      return null;
+    };
+
+    for (const path of candidatePaths) {
+      const translated = translatePath(path);
+      if (translated) {
+        return translated;
+      }
+    }
+
+    const fallbackTranslate = (path, defaultValue) => translatePath(path) || defaultValue;
+
+    switch (lowerKey) {
+      case 'dashboard': return fallbackTranslate('menu.dashboard', 'Dashboard');
+      case 'application': return fallbackTranslate('menu.application', 'Application');
+      case 'publishedapps': return fallbackTranslate('menu.publishedApps', 'Published Apps');
+      case 'pendingtasks': return fallbackTranslate('menu.pendingTasks', 'Pending Tasks');
+      case 'workflowmonitor': return fallbackTranslate('menu.workflowMonitor', 'Workflow Monitor');
+      case 'workflowmonitor.whatsappchat': return fallbackTranslate('workflowMonitor.whatsappChat', 'WhatsApp Chat');
+      case 'workflowmonitor.pause': return fallbackTranslate('workflowMonitor.pause', 'Pause');
+      case 'workflowmonitor.resume': return fallbackTranslate('workflowMonitor.resume', 'Resume');
+      case 'workflowmonitor.retry': return fallbackTranslate('workflowMonitor.retry', 'Retry');
+      case 'workflowmonitor.cancel': return fallbackTranslate('workflowMonitor.cancel', 'Cancel');
+      case 'workflowmonitor.delete': return fallbackTranslate('workflowMonitor.delete', 'Delete');
+      case 'admintools': return fallbackTranslate('menu.adminTools', 'Admin Tools');
+      case 'contactlist': return fallbackTranslate('menu.contactList', 'Contact Management');
+      case 'broadcastgroups': return fallbackTranslate('menu.broadcastGroups', 'Broadcast Group Management');
+      case 'hashtags': return fallbackTranslate('menu.hashtags', 'Hashtag Management');
+      case 'companyuseradmin': return fallbackTranslate('menu.companyUserAdmin', 'Company/User Management');
+      case 'permissionmanagement': return fallbackTranslate('menu.permissionManagement', 'Permission Management');
+      case 'apiproviders': return fallbackTranslate('menu.apiProviders', 'API Providers');
+      case 'phoneverificationadmin': return fallbackTranslate('menu.phoneVerificationAdmin', 'WhatsApp Phone Verification');
+      default:
+        return safeDefaultLabel || normalizedKey;
+    }
+  }, [t]);
 
   // 載入可用介面列表
   const fetchAvailableInterfaces = async () => {
@@ -206,7 +298,55 @@ const PermissionManagementPage = () => {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       const data = await response.json();
-      setAvailableInterfaces(data || []);
+      const interfaces = Array.isArray(data) ? [...data] : [];
+
+      const ensureOrUpdateInterface = (list, key) => {
+        const translatedLabel = translateInterfaceLabel(key);
+        const existing = list.find(item => item.key === key);
+        if (existing) {
+          existing.label = translatedLabel;
+          return existing;
+        }
+
+        const newItem = {
+          key,
+          label: translatedLabel,
+          description: ''
+        };
+        list.push(newItem);
+        return newItem;
+      };
+
+      const interfaceKeysToEnsure = [
+        'dashboard',
+        'application',
+        'publishedApps',
+        'pendingTasks',
+        'workflowMonitor',
+        'workflowMonitor.whatsappChat',
+        'workflowMonitor.pause',
+        'workflowMonitor.resume',
+        'workflowMonitor.retry',
+        'workflowMonitor.cancel',
+        'workflowMonitor.delete',
+        'studio',
+        'eformList',
+        'whatsappTemplates',
+        'whatsappWorkflow',
+        'dataSets',
+        'adminTools',
+        'contactList',
+        'broadcastGroups',
+        'hashtags',
+        'companyUserAdmin',
+        'permissionManagement',
+        'apiProviders',
+        'phoneVerificationAdmin'
+      ];
+
+      interfaceKeysToEnsure.forEach(key => ensureOrUpdateInterface(interfaces, key));
+
+      setAvailableInterfaces(interfaces);
     } catch (error) {
       console.error('載入介面列表失敗:', error);
       message.error(`載入介面列表失敗: ${error.message}`);
@@ -218,29 +358,36 @@ const PermissionManagementPage = () => {
   const fetchRolePermissions = async (roleId, companyId = null) => {
     try {
       const token = localStorage.getItem('token');
-      const url = `/api/permissions/role/${roleId}${companyId ? `?companyId=${companyId}` : ''}`;
+      // 確保 companyId 正確傳遞（即使是 null，也要明確傳遞以區分系統默認和公司權限）
+      const url = `/api/permissions/role/${roleId}${companyId !== null && companyId !== undefined ? `?companyId=${companyId}` : ''}`;
+      console.log(`[PermissionManagement] 查詢角色 ${roleId} 的權限，CompanyId: ${companyId}, URL: ${url}`);
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
+      console.log(`[PermissionManagement] 角色 ${roleId} 的權限查詢結果:`, data);
       return data.interfaces || [];
     } catch (error) {
-      console.error(`載入角色 ${roleId} 權限失敗:`, error);
+      console.error(`[PermissionManagement] 載入角色 ${roleId} 權限失敗:`, error);
       return [];
     }
   };
 
   // 載入所有角色的權限
   const loadAllRolePermissions = async () => {
+    console.log(`[PermissionManagement] 開始載入所有角色的權限，selectedCompanyId: ${selectedCompanyId}`);
     const permissions = {};
     for (const role of roles) {
       const companyId = selectedCompanyId;
+      console.log(`[PermissionManagement] 載入角色 ${role.id} (${role.name}) 的權限，CompanyId: ${companyId}`);
       const interfaces = await fetchRolePermissions(role.id, companyId);
+      console.log(`[PermissionManagement] 角色 ${role.id} 的權限列表:`, interfaces);
       if (!permissions[role.id]) {
         permissions[role.id] = {};
       }
       permissions[role.id][companyId || 'default'] = interfaces;
     }
+    console.log(`[PermissionManagement] 所有角色的權限載入完成:`, permissions);
     setRolePermissions(permissions);
   };
 
@@ -255,6 +402,13 @@ const PermissionManagementPage = () => {
     }
   }, []);
 
+  useEffect(() => {
+    setAvailableInterfaces(prev => prev.map(iface => ({
+      ...iface,
+      label: translateInterfaceLabel(iface.key, iface.label)
+    })));
+  }, [translateInterfaceLabel]);
+
   // 當 userInfo 更新後，載入公司列表
   useEffect(() => {
     if (userInfo && (userInfo.roles || userInfo.company_id)) {
@@ -264,11 +418,12 @@ const PermissionManagementPage = () => {
 
   // 當角色或選中的公司改變時，重新載入權限
   useEffect(() => {
+    console.log(`[PermissionManagement] useEffect 觸發，roles.length: ${roles.length}, selectedCompanyId: ${selectedCompanyId}`);
     if (roles.length > 0) {
       try {
         loadAllRolePermissions();
       } catch (error) {
-        console.error('載入角色權限錯誤:', error);
+        console.error('[PermissionManagement] 載入角色權限錯誤:', error);
         message.error('載入角色權限失敗');
       }
     }
@@ -277,7 +432,11 @@ const PermissionManagementPage = () => {
   // 開始編輯
   const handleEdit = (roleId) => {
     const companyKey = selectedCompanyId || 'default';
+    console.log(`[PermissionManagement] 開始編輯角色 ${roleId}，selectedCompanyId: ${selectedCompanyId}, companyKey: ${companyKey}`);
+    console.log(`[PermissionManagement] rolePermissions:`, rolePermissions);
+    console.log(`[PermissionManagement] rolePermissions[${roleId}]:`, rolePermissions[roleId]);
     const currentPermissions = rolePermissions[roleId]?.[companyKey] || [];
+    console.log(`[PermissionManagement] 當前權限列表:`, currentPermissions);
     setEditingRoleId(roleId);
     setEditingPermissions([...currentPermissions]);
   };
@@ -293,28 +452,37 @@ const PermissionManagementPage = () => {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
+      const requestBody = {
+        companyId: selectedCompanyId,
+        interfaceKeys: editingPermissions
+      };
+      console.log(`[PermissionManagement] 保存角色 ${roleId} 的權限:`, requestBody);
+      console.log(`[PermissionManagement] selectedCompanyId: ${selectedCompanyId}`);
+      console.log(`[PermissionManagement] editingPermissions:`, editingPermissions);
+      
       const response = await fetch(`/api/permissions/role/${roleId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          companyId: selectedCompanyId,
-          interfaceKeys: editingPermissions
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[PermissionManagement] 保存權限失敗，HTTP ${response.status}:`, errorText);
         throw new Error('保存失敗');
       }
 
+      const result = await response.json();
+      console.log(`[PermissionManagement] 保存權限成功:`, result);
       message.success('權限保存成功');
       setEditingRoleId(null);
       setEditingPermissions([]);
       await loadAllRolePermissions();
     } catch (error) {
-      console.error('保存權限失敗:', error);
+      console.error('[PermissionManagement] 保存權限失敗:', error);
       message.error('保存權限失敗');
     } finally {
       setSaving(false);
@@ -328,6 +496,87 @@ const PermissionManagementPage = () => {
     } else {
       setEditingPermissions([...editingPermissions, interfaceKey]);
     }
+  };
+
+  const interfaceTree = useMemo(() => {
+    const interfaceMap = new Map();
+    availableInterfaces.forEach(iface => {
+      interfaceMap.set(iface.key, iface);
+    });
+
+    const visitedGlobal = new Set();
+
+    const buildNode = (key, path = []) => {
+      if (path.includes(key)) {
+        return null;
+      }
+      const iface = interfaceMap.get(key) || {
+        key,
+        label: key,
+        description: ''
+      };
+      const childKeys = INTERFACE_HIERARCHY[key] || [];
+      const children = childKeys
+        .map(childKey => buildNode(childKey, [...path, key]))
+        .filter(Boolean);
+      return { iface, children };
+    };
+
+    const allChildKeys = new Set();
+    Object.values(INTERFACE_HIERARCHY).forEach(childArr => {
+      childArr.forEach(key => allChildKeys.add(key));
+    });
+
+    const preferredOrder = ['dashboard', 'application', 'studio', 'adminTools'];
+    const rootKeysSet = new Set();
+    availableInterfaces.forEach(iface => {
+      if (!allChildKeys.has(iface.key)) {
+        rootKeysSet.add(iface.key);
+      }
+    });
+
+    const orderedRoots = [];
+    preferredOrder.forEach(key => {
+      if (rootKeysSet.has(key)) {
+        const node = buildNode(key);
+        if (node) {
+          orderedRoots.push(node);
+        }
+        rootKeysSet.delete(key);
+      }
+    });
+
+    rootKeysSet.forEach(key => {
+      const node = buildNode(key);
+      if (node) {
+        orderedRoots.push(node);
+      }
+    });
+
+    return orderedRoots;
+  }, [availableInterfaces]);
+
+  const renderInterfaceNode = (node, level = 0) => {
+    const hasChildren = node.children && node.children.length > 0;
+    return (
+      <div key={node.iface.key} style={{ marginTop: level === 0 ? 0 : 8 }}>
+        <Checkbox
+          checked={editingPermissions.includes(node.iface.key)}
+          onChange={() => handleToggleInterface(node.iface.key)}
+          style={{
+            fontWeight: level === 0 ? 600 : 400,
+            marginLeft: level * 20
+          }}
+        >
+          {node.iface.label}
+        </Checkbox>
+        {hasChildren && (
+          <div>
+            {node.children.map(child => renderInterfaceNode(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // 表格列定義
@@ -362,9 +611,11 @@ const PermissionManagementPage = () => {
         if (editingRoleId === record.id) {
           // 編輯模式
           return (
-            <div>
-              <Space wrap>
-                {availableInterfaces.map(iface => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {interfaceTree.length > 0 ? (
+                interfaceTree.map(node => renderInterfaceNode(node))
+              ) : (
+                availableInterfaces.map(iface => (
                   <Checkbox
                     key={iface.key}
                     checked={editingPermissions.includes(iface.key)}
@@ -372,8 +623,8 @@ const PermissionManagementPage = () => {
                   >
                     {iface.label}
                   </Checkbox>
-                ))}
-              </Space>
+                ))
+              )}
             </div>
           );
         } else {
@@ -485,7 +736,7 @@ const PermissionManagementPage = () => {
                 onChange={setSelectedCompanyId}
                 allowClear
               >
-                <Option value={null}>系統默認</Option>
+                 <Option value={null}>{t('permissionManagement.systemDefault') || 'System Default'}</Option>
                 {companies.map(company => (
                   <Option key={company.id} value={company.id}>
                     {company.name}
@@ -494,7 +745,7 @@ const PermissionManagementPage = () => {
               </Select>
             ) : (
               <Text type="secondary" style={{ fontSize: '14px' }}>
-                編輯公司: {companies.find(c => c.id === selectedCompanyId)?.name || '載入中...'}
+                 {t('permissionManagement.editingCompany') || 'Editing company'}: {companies.find(c => c.id === selectedCompanyId)?.name || t('common.loading') || 'Loading...'}
               </Text>
             )}
             <Button icon={<ReloadOutlined />} onClick={() => {
