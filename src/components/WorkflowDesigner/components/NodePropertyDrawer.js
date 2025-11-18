@@ -1609,6 +1609,217 @@ const NodePropertyDrawer = ({
                   />
                 </Form.Item>
                 
+                <Form.Item label={t('workflowDesigner.validationConfig')}>
+                  <Card 
+                    size="small" 
+                    title={t('workflowDesigner.validationSettings')} 
+                    style={{ marginBottom: 16 }}
+                  >
+                    <Tabs
+                      activeKey={activeValidatorTab}
+                      onChange={(key) => setActiveValidatorTab(key)}
+                    >
+                      <Tabs.TabPane tab={t('workflowDesigner.aiValidator')} key="ai">
+                        <Form.Item
+                          label={t('workflowDesigner.validatorActiveLabel')}
+                          name={['validation', 'aiIsActive']}
+                          valuePropName="checked"
+                        >
+                          <Switch
+                            className="validator-switch"
+                            checkedChildren={t('workflowDesigner.active')}
+                            unCheckedChildren={t('workflowDesigner.inactive')}
+                            onChange={(checked) => handleValidatorToggle('ai', checked)}
+                          />
+                        </Form.Item>
+                        {aiIsActive && activeValidatorTab === 'ai' && (
+                          <>
+                            {!loadingAiProviders && aiProviders.length === 0 && (
+                              <Alert
+                                type="warning"
+                                showIcon
+                                message={t('workflowDesigner.aiProviderNotConfigured')}
+                                style={{ marginBottom: 12 }}
+                              />
+                            )}
+                            {aiProvidersError && (
+                              <Alert
+                                type="error"
+                                showIcon
+                                message={t('workflowDesigner.aiProviderLoadFailed')}
+                                description={aiProvidersError}
+                                style={{ marginBottom: 12 }}
+                              />
+                            )}
+                            <Form.Item
+                              label={t('workflowDesigner.validationAiProvider')}
+                              name={['validation', 'aiProviderKey']}
+                              rules={[{ required: true, message: t('workflowDesigner.validationAiProviderRequired') }]}
+                            >
+                              <Select
+                                loading={loadingAiProviders}
+                                placeholder={t('workflowDesigner.validationAiProviderPlaceholder')}
+                                options={aiProviderOptions}
+                                allowClear
+                              />
+                            </Form.Item>
+                            <Form.Item
+                              label={t('workflowDesigner.validationAiResultVariable')}
+                              name={['validation', 'aiResultVariable']}
+                              tooltip={t('workflowDesigner.validationAiResultVariableHelp')}
+                            >
+                              <Select
+                                allowClear
+                                placeholder={t('workflowDesigner.validationAiResultVariablePlaceholder')}
+                              >
+                                {processVariables.map(pv => (
+                                  <Select.Option key={pv.id} value={pv.variableName}>
+                                    {pv.variableName} ({pv.dataType})
+                                  </Select.Option>
+                                ))}
+                              </Select>
+                            </Form.Item>
+                            <Form.Item 
+                              label={t('workflowDesigner.promptText')} 
+                              name={['validation', 'prompt']}
+                              tooltip={t('workflowDesigner.qrCodeAiValidatorPromptHelp')}
+                            >
+                              <Input.TextArea
+                                placeholder={t('workflowDesigner.qrCodeAiValidatorPromptPlaceholder')}
+                                rows={6}
+                              />
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.retryMessage')} name={['validation', 'retryMessage']}>
+                              <Input placeholder={t('workflowDesigner.retryMessagePlaceholder')} />
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.maxRetries')} name={['validation', 'maxRetries']}>
+                              <Input type="number" min="1" max="10" />
+                            </Form.Item>
+                          </>
+                        )}
+                      </Tabs.TabPane>
+                      <Tabs.TabPane tab={t('workflowDesigner.timeValidatorLabel')} key="time">
+                        <Form.Item
+                          label={t('workflowDesigner.validatorActiveLabel')}
+                          name={['validation', 'timeIsActive']}
+                          valuePropName="checked"
+                        >
+                          <Switch
+                            className="validator-switch"
+                            checkedChildren={t('workflowDesigner.active')}
+                            unCheckedChildren={t('workflowDesigner.inactive')}
+                            onChange={(checked) => handleValidatorToggle('time', checked)}
+                          />
+                        </Form.Item>
+                        {timeIsActive && activeValidatorTab === 'time' && (
+                          <>
+                            <Form.Item label={t('workflowDesigner.timeValidator.retryInterval')}>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: isFullscreen ? '1fr 1fr 1fr' : '1fr',
+                                gap: isFullscreen ? '12px' : '8px'
+                              }}>
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  placeholder="0"
+                                  value={selectedNode.data.validation?.retryIntervalDays || 0}
+                                  onChange={(e) => {
+                                    const newValidation = {
+                                      ...(selectedNode.data.validation || {}),
+                                      retryIntervalDays: parseInt(e.target.value) || 0
+                                    };
+                                    handleNodeDataChange({ validation: newValidation });
+                                  }}
+                                  addonAfter={t('workflowDesigner.days')}
+                                />
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max="23"
+                                  placeholder="0"
+                                  value={selectedNode.data.validation?.retryIntervalHours || 0}
+                                  onChange={(e) => {
+                                    const newValidation = {
+                                      ...(selectedNode.data.validation || {}),
+                                      retryIntervalHours: parseInt(e.target.value) || 0
+                                    };
+                                    handleNodeDataChange({ validation: newValidation });
+                                  }}
+                                  addonAfter={t('workflowDesigner.hours')}
+                                />
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max="59"
+                                  placeholder="30"
+                                  value={selectedNode.data.validation?.retryIntervalMinutes || 0}
+                                  onChange={(e) => {
+                                    const newValidation = {
+                                      ...(selectedNode.data.validation || {}),
+                                      retryIntervalMinutes: parseInt(e.target.value) || 0
+                                    };
+                                    handleNodeDataChange({ validation: newValidation });
+                                  }}
+                                  addonAfter={t('workflowDesigner.minutes')}
+                                />
+                              </div>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.retryLimit')}>
+                              <Input
+                                type="number"
+                                min="1"
+                                placeholder="5"
+                                value={selectedNode.data.validation?.retryLimitValue || 5}
+                                onChange={(e) => {
+                                  const newValidation = {
+                                    ...(selectedNode.data.validation || {}),
+                                    retryLimitValue: parseInt(e.target.value) || 5
+                                  };
+                                  handleNodeDataChange({ validation: newValidation });
+                                }}
+                              />
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.retryMessageConfig')}>
+                              <Button
+                                icon={<MessageOutlined />}
+                                onClick={() => {
+                                  setTempRetryMessageConfig(selectedNode?.data?.validation?.retryMessageConfig || null);
+                                  setRetryMessageModalVisible(true);
+                                }}
+                              >
+                                {t('workflowDesigner.timeValidator.configureRetryMessage')}
+                              </Button>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.escalationConfig')}>
+                              <Button
+                                icon={<BellOutlined />}
+                                onClick={() => {
+                                  setTempEscalationConfig(selectedNode?.data?.validation?.escalationConfig || null);
+                                  setEscalationConfigModalVisible(true);
+                                }}
+                              >
+                                {t('workflowDesigner.timeValidator.configureEscalation')}
+                              </Button>
+                            </Form.Item>
+                            <Form.Item label={t('workflowDesigner.timeValidator.overdueEscalation')}>
+                              <Button
+                                icon={<ClockCircleOutlined />}
+                                onClick={() => {
+                                  setTempOverdueEscalationConfig(selectedNode?.data?.overdueConfig?.escalationConfig || null);
+                                  setOverdueEscalationModalVisible(true);
+                                }}
+                              >
+                                {t('workflowDesigner.timeValidator.configureOverdueEscalation')}
+                              </Button>
+                            </Form.Item>
+                          </>
+                        )}
+                      </Tabs.TabPane>
+                    </Tabs>
+                  </Card>
+                </Form.Item>
+                
                 <Form.Item label={t('workflowDesigner.qrCodeSuccessMessage')} name="qrCodeSuccessMessage">
                   <Input.TextArea 
                     rows={2} 

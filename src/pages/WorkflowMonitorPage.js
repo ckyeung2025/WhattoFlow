@@ -60,6 +60,10 @@ import {
   FolderOutlined,
   FileImageOutlined,
   FileOutlined,
+  FilePdfOutlined,
+  FileWordOutlined,
+  FileExcelOutlined,
+  FilePptOutlined,
   LeftOutlined,
   RightOutlined,
   RotateLeftOutlined,
@@ -1960,44 +1964,208 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
   };
 
   // 媒體文件相關函數
-  const getFileIcon = (fileName) => {
-    const extension = fileName.split('.').pop().toLowerCase();
-    switch (extension) {
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-      case 'bmp':
-      case 'webp':
-      case 'svg':
-      case 'tiff':
-      case 'ico':
-        return <FileImageOutlined style={{ color: '#52c41a' }} />;
-      case 'mp4':
-      case 'avi':
-      case 'mov':
-      case 'wmv':
-      case 'flv':
-      case 'webm':
-      case 'mkv':
-      case 'm4v':
-      case '3gp':
-        return <VideoCameraOutlined style={{ color: '#1890ff' }} />;
-      case 'mp3':
-      case 'wav':
-      case 'ogg':
-      case 'aac':
-      case 'flac':
-      case 'm4a':
-      case 'wma':
-        return <FileOutlined style={{ color: '#fa8c16' }} />;
-      default:
-        return <FileOutlined style={{ color: '#8c8c8c' }} />;
+  const getFileIcon = (fileName, file = null) => {
+    if (!fileName) {
+      return <FileOutlined style={{ color: '#8c8c8c', fontSize: '48px' }} />;
     }
+    
+    // 處理文件名，移除路徑，只保留文件名
+    const fileNameOnly = fileName.split('/').pop().split('\\').pop();
+    const fileNameLower = fileNameOnly.toLowerCase();
+    
+    // 提取擴展名
+    let extension = '';
+    if (fileNameOnly.includes('.')) {
+      extension = fileNameOnly.split('.').pop().toLowerCase().trim();
+    }
+    
+    // 檢查文件對象中的其他字段
+    let fileType = null;
+    let mimeType = null;
+    let contentType = null;
+    if (file) {
+      fileType = file.fileType || file.type;
+      mimeType = file.mimeType || file.mime;
+      contentType = file.contentType || file.content_type;
+    }
+    
+    console.log('[WorkflowMonitor] getFileIcon:', { 
+      fileName, 
+      fileNameOnly, 
+      fileNameLower, 
+      extension,
+      fileType,
+      mimeType,
+      contentType,
+      file
+    });
+    
+    // 優先根據 MIME 類型判斷
+    if (mimeType || contentType) {
+      const mime = (mimeType || contentType).toLowerCase();
+      console.log('[WorkflowMonitor] MIME type check:', mime);
+      
+      // PDF
+      if (mime.includes('pdf') || mime === 'application/pdf') {
+        return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: '48px' }} />;
+      }
+      
+      // Word 文檔
+      if (mime.includes('word') || 
+          mime.includes('msword') || 
+          mime.includes('document.wordprocessingml') ||
+          mime.includes('application/msword') ||
+          mime.includes('application/vnd.openxmlformats-officedocument.wordprocessingml')) {
+        return <FileWordOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+      }
+      
+      // Excel 表格
+      if (mime.includes('excel') || 
+          mime.includes('spreadsheet') || 
+          mime.includes('ms-excel') ||
+          mime.includes('spreadsheetml') ||
+          mime.includes('application/vnd.ms-excel') ||
+          mime.includes('application/vnd.openxmlformats-officedocument.spreadsheetml')) {
+        return <FileExcelOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+      }
+      
+      // PowerPoint 簡報
+      if (mime.includes('powerpoint') || 
+          mime.includes('presentation') || 
+          mime.includes('ms-powerpoint') ||
+          mime.includes('presentationml') ||
+          mime.includes('application/vnd.ms-powerpoint') ||
+          mime.includes('application/vnd.openxmlformats-officedocument.presentationml')) {
+        return <FilePptOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+      }
+    }
+    
+    // 根據擴展名判斷
+    if (extension) {
+      switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+        case 'png':
+        case 'gif':
+        case 'bmp':
+        case 'webp':
+        case 'svg':
+        case 'tiff':
+        case 'ico':
+          return <FileImageOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+        case 'mp4':
+        case 'avi':
+        case 'mov':
+        case 'wmv':
+        case 'flv':
+        case 'webm':
+        case 'mkv':
+        case 'm4v':
+        case '3gp':
+          return <VideoCameraOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+        case 'mp3':
+        case 'wav':
+        case 'ogg':
+        case 'aac':
+        case 'flac':
+        case 'm4a':
+        case 'wma':
+          return <FileOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+        case 'pdf':
+          return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: '48px' }} />;
+        case 'doc':
+        case 'docx':
+          return <FileWordOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+        case 'xls':
+        case 'xlsx':
+          return <FileExcelOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+        case 'ppt':
+        case 'pptx':
+          return <FilePptOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+      }
+    }
+    
+    // 如果沒有擴展名，根據文件名關鍵字判斷
+    // 優先檢查具體的文件類型關鍵字
+    if (fileNameLower.includes('pdf') || fileNameLower.endsWith('.pdf')) {
+      return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: '48px' }} />;
+    }
+    if (fileNameLower.includes('word') || fileNameLower.includes('doc') || fileNameLower.endsWith('.doc') || fileNameLower.endsWith('.docx')) {
+      return <FileWordOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+    }
+    if (fileNameLower.includes('excel') || fileNameLower.includes('xls') || fileNameLower.endsWith('.xls') || fileNameLower.endsWith('.xlsx')) {
+      return <FileExcelOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+    }
+    if (fileNameLower.includes('powerpoint') || fileNameLower.includes('ppt') || fileNameLower.endsWith('.ppt') || fileNameLower.endsWith('.pptx')) {
+      return <FilePptOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+    }
+    
+    // 檢查文件對象中的其他字段
+    if (file) {
+      // 檢查 fileType 字段
+      const fileTypeStr = (file.fileType || file.type || '').toLowerCase();
+      if (fileTypeStr.includes('pdf')) {
+        return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: '48px' }} />;
+      }
+      if (fileTypeStr.includes('word') || fileTypeStr.includes('doc')) {
+        return <FileWordOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+      }
+      if (fileTypeStr.includes('excel') || fileTypeStr.includes('xls')) {
+        return <FileExcelOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+      }
+      if (fileTypeStr.includes('powerpoint') || fileTypeStr.includes('ppt')) {
+        return <FilePptOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+      }
+      
+      // 檢查文件名中的其他字段（如 originalFileName）
+      if (file.originalFileName) {
+        const originalLower = file.originalFileName.toLowerCase();
+        if (originalLower.includes('pdf') || originalLower.endsWith('.pdf')) {
+          return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: '48px' }} />;
+        }
+        if (originalLower.includes('word') || originalLower.includes('doc') || originalLower.endsWith('.doc') || originalLower.endsWith('.docx')) {
+          return <FileWordOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+        }
+        if (originalLower.includes('excel') || originalLower.includes('xls') || originalLower.endsWith('.xls') || originalLower.endsWith('.xlsx')) {
+          return <FileExcelOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+        }
+        if (originalLower.includes('powerpoint') || originalLower.includes('ppt') || originalLower.endsWith('.ppt') || originalLower.endsWith('.pptx')) {
+          return <FilePptOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+        }
+      }
+    }
+    
+    // 檢查其他媒體類型關鍵字
+    if (fileNameLower.includes('image') || fileNameLower.includes('img') || fileNameLower.includes('photo') || fileNameLower.includes('picture')) {
+      return <FileImageOutlined style={{ color: '#52c41a', fontSize: '48px' }} />;
+    }
+    if (fileNameLower.includes('video') || fileNameLower.includes('movie') || fileNameLower.includes('film')) {
+      return <VideoCameraOutlined style={{ color: '#1890ff', fontSize: '48px' }} />;
+    }
+    if (fileNameLower.includes('audio') || fileNameLower.includes('sound') || fileNameLower.includes('music')) {
+      return <FileOutlined style={{ color: '#fa8c16', fontSize: '48px' }} />;
+    }
+    
+    // 對於 "document" 關鍵字，如果沒有其他信息，默認顯示 PDF 圖標（因為 WhatsApp 中 document 通常是 PDF）
+    if (fileNameLower.includes('document') && !fileNameLower.includes('word') && !fileNameLower.includes('excel') && !fileNameLower.includes('powerpoint')) {
+      return <FilePdfOutlined style={{ color: '#ff4d4f', fontSize: '48px' }} />;
+    }
+    
+    // 默認返回通用文件圖標
+    return <FileOutlined style={{ color: '#8c8c8c', fontSize: '48px' }} />;
   };
 
   const getFileType = (fileName) => {
-    const extension = fileName.split('.').pop().toLowerCase();
+    if (!fileName) {
+      return 'document';
+    }
+    
+    // 處理文件名，移除路徑，只保留文件名
+    const fileNameOnly = fileName.split('/').pop().split('\\').pop();
+    const extension = fileNameOnly.includes('.') 
+      ? fileNameOnly.split('.').pop().toLowerCase().trim()
+      : '';
+    
     switch (extension) {
       case 'jpg':
       case 'jpeg':
@@ -2958,7 +3126,19 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                 gap: '16px'
               }}>
                 {mediaFiles.map((file) => {
-                        const fileType = getFileType(file.fileName);
+                        console.log('[WorkflowMonitor] Rendering media file:', { 
+                          fileName: file.fileName, 
+                          filePath: file.filePath,
+                          originalFileName: file.originalFileName,
+                          name: file.name,
+                          fileType: file.fileType,
+                          mimeType: file.mimeType,
+                          contentType: file.contentType,
+                          file: file 
+                        });
+                        // 使用原始文件名或文件名
+                        const displayFileName = file.originalFileName || file.name || file.fileName || '';
+                        const fileType = getFileType(displayFileName);
                         const isImage = fileType === 'image';
                         const isVideo = fileType === 'video';
                         const isAudio = fileType === 'audio';
@@ -3044,7 +3224,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                   height: '100%',
                                   backgroundColor: '#f0f0f0'
                                 }}>
-                                  {getFileIcon(file.fileName)}
+                                  {getFileIcon(displayFileName, file)}
                                 </div>
                               </div>
                               
@@ -3059,11 +3239,11 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                                     wordBreak: 'break-all',
                                     lineHeight: '1.2'
                                   }}
-                                  title={file.fileName}
+                                  title={displayFileName}
                                 >
-                                  {file.fileName.length > 20 ? 
-                                    file.fileName.substring(0, 20) + '...' : 
-                                    file.fileName
+                                  {displayFileName.length > 20 ? 
+                                    displayFileName.substring(0, 20) + '...' : 
+                                    displayFileName
                                   }
                                 </Text>
                                 

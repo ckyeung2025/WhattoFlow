@@ -100,29 +100,29 @@ namespace PurpleRice.Controllers
                     .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted)
                     .AsQueryable();
 
-                // 搜索過濾
+                // 搜索過濾 - 修復：處理可能為 NULL 的字段
                 if (!string.IsNullOrEmpty(search))
                 {
                     query = query.Where(t => 
-                        t.Name.Contains(search) || 
-                        t.Category.Contains(search) || 
-                        t.TemplateType.Contains(search));
+                        (t.Name != null && t.Name.Contains(search)) || 
+                        (t.Category != null && t.Category.Contains(search)) || 
+                        (t.TemplateType != null && t.TemplateType.Contains(search)));
                 }
 
-                // 排序
+                // 排序 - 修復：處理可能為 NULL 的字段
                 switch (sortField.ToLower())
                 {
                     case "name":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Name) : query.OrderByDescending(t => t.Name);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Name ?? "") : query.OrderByDescending(t => t.Name ?? "");
                         break;
                     case "category":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Category) : query.OrderByDescending(t => t.Category);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Category ?? "") : query.OrderByDescending(t => t.Category ?? "");
                         break;
                     case "template_type":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.TemplateType) : query.OrderByDescending(t => t.TemplateType);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.TemplateType ?? "") : query.OrderByDescending(t => t.TemplateType ?? "");
                         break;
                     case "status":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Status) : query.OrderByDescending(t => t.Status);
+                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Status ?? "") : query.OrderByDescending(t => t.Status ?? "");
                         break;
                     case "created_at":
                     default:
@@ -131,10 +131,38 @@ namespace PurpleRice.Controllers
                 }
 
                 var total = await query.CountAsync();
-                var templates = await query
+                
+                // 修復：先查詢到內存，然後處理 NULL 值
+                // 使用 AsEnumerable() 將查詢轉換為內存查詢，避免 EF Core 在數據庫層面處理 NULL 值時出現問題
+                var templatesData = await query
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .ToListAsync();
+                
+                // 在內存中處理 NULL 值，確保所有字符串字段都有默認值
+                var templates = templatesData.Select(t => new WhatsAppTemplate
+                {
+                    Id = t.Id,
+                    Name = t.Name ?? "",
+                    Description = t.Description ?? "",
+                    Category = t.Category ?? "General",
+                    TemplateType = t.TemplateType ?? "Text",
+                    TemplateSource = t.TemplateSource ?? "Internal",
+                    Content = t.Content ?? "",
+                    Variables = t.Variables ?? "",
+                    Status = t.Status ?? "Active",
+                    HeaderUrl = t.HeaderUrl ?? "",
+                    HeaderType = t.HeaderType ?? "",
+                    HeaderFilename = t.HeaderFilename ?? "",
+                    Language = t.Language ?? "zh-TW",
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    CreatedBy = t.CreatedBy ?? "",
+                    UpdatedBy = t.UpdatedBy ?? "",
+                    CompanyId = t.CompanyId,
+                    IsDeleted = t.IsDeleted,
+                    Version = t.Version
+                }).ToList();
 
                 // 記錄每個模板的詳細信息
                 foreach (var template in templates)

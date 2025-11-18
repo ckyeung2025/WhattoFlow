@@ -1540,6 +1540,7 @@ const zhTC = {
     searchPlaceholder: "搜尋模板名稱、描述...",
     enabled: "啟用",
     disabled: "停用",
+    draft: "草稿",
     text: "文字",
     image: "圖片",
     video: "影片",
@@ -2865,6 +2866,14 @@ const zhTC = {
     clickToSelectDefaultPath: '點擊選擇默認路徑',
     
     // QR Code 節點翻譯鍵
+    qrCodeVariable: 'QR Code 變量',
+    qrCodeMessagePlaceholder: '請輸入提示訊息，例如：請上傳包含 QR Code 的圖片',
+    qrCodeAiValidatorPromptHelp: 'AI 將驗證 QR Code 圖像解析出來的「QR Code 變量」中的值是否符合要求。請描述驗證規則，例如「QR Code 內容必須是 6 位數字驗證碼」。',
+    qrCodeAiValidatorPromptPlaceholder: '描述 QR Code 變量值需要滿足的驗證條件，例如「QR Code 內容必須是 6 位數字驗證碼」。',
+    qrCodeDescription1: '此節點會等待用戶上傳包含 QR Code 的圖片',
+    qrCodeDescription2: '系統會自動掃描圖片中的 QR Code 並提取內容',
+    qrCodeDescription3: '掃描結果會保存到指定的流程變量中，供後續節點使用',
+    qrCodeSuccessMessage: 'QR Code 成功訊息',
     qrCodeErrorMessage: 'QR Code 錯誤訊息'
   },
   
@@ -3398,13 +3407,6 @@ const zhTC = {
     stepErrorMessageContainsSuccess: '步驟 {stepNumber} errorMessage 包含成功信息',
     stepErrorMessageParseFailed: '步驟 {stepNumber} errorMessage 解析失敗',
     
-    qrCodeVariable: 'QR Code 變量',
-    qrCodeMessagePlaceholder: '請輸入提示訊息，例如：請上傳包含 QR Code 的圖片',
-    qrCodeDescription1: '此節點會等待用戶上傳包含 QR Code 的圖片',
-    qrCodeDescription2: '系統會自動掃描圖片中的 QR Code 並提取內容',
-    qrCodeDescription3: '掃描結果會保存到指定的流程變量中，供後續節點使用',
-    qrCodeSuccessMessage: 'QR Code 成功訊息',
-    qrCodeErrorMessage: 'QR Code 錯誤訊息',
     seconds: '秒',
     messageWithVariablesPlaceholder: '輸入消息內容，可使用 ${變量名} 引用流程變量',
     availableVariables: '可用變量',
@@ -3539,7 +3541,11 @@ const zhTC = {
     loadingRelatedRecords: '正在查詢相關記錄...',
     warningDeleteTitle: '⚠️ 嚴重警告：刪除操作不可回復！',
     warningDeleteDescription: '刪除此流程定義將永久刪除所有相關數據，包括：流程定義本身、所有流程運行實例、表單實例、表單審批記錄、消息發送記錄、步驟執行記錄、數據集查詢記錄、流程變量、消息驗證記錄等。所有數據將被永久刪除且無法恢復！',
-    criticalWarning: '⚠️ 此操作無法撤銷！請確認您真的要刪除這些數據。'
+    criticalWarning: '⚠️ 此操作無法撤銷！請確認您真的要刪除這些數據。',
+    confirmStatusChange: '確認更改狀態',
+    confirmStatusChangeContent: '確定要將流程「{name}」的狀態更改為「{action}」嗎？',
+    successfullyChangedStatus: '狀態已成功更改為',
+    statusChangeFailed: '狀態更改失敗'
   },
 
   // 已發布應用頁面

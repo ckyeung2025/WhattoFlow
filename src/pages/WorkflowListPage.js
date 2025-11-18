@@ -68,7 +68,22 @@ const WorkflowListPage = () => {
     { title: t('workflow.createdBy'), dataIndex: 'createdBy', key: 'createdBy', width: 120, sorter: true },
     { title: t('workflow.createdAt'), dataIndex: 'createdAt', key: 'createdAt', width: 160, sorter: true, render: (text) => text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
     { title: t('workflow.updatedAt'), dataIndex: 'updatedAt', key: 'updatedAt', width: 160, sorter: true, render: (text) => text ? TimezoneUtils.formatDateWithTimezone(text, userTimezoneOffset, 'YYYY-MM-DD HH:mm') : '' },
-    { title: t('workflow.status'), dataIndex: 'status', key: 'status', width: 80, sorter: true, render: (text) => <Tag color={text === 'Enabled' ? 'green' : 'red'}>{text === 'Enabled' ? t('workflowDesigner.statusEnabled') : t('workflowDesigner.statusDisabled')}</Tag> },
+    { 
+      title: t('workflow.status'), 
+      dataIndex: 'status', 
+      key: 'status', 
+      width: 100, 
+      sorter: true, 
+      render: (text, record) => (
+        <Tag 
+          color={text === 'Enabled' ? 'green' : 'red'}
+          style={{ cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => handleToggleStatus(record)}
+        >
+          {text === 'Enabled' ? t('workflowDesigner.statusEnabled') : t('workflowDesigner.statusDisabled')}
+        </Tag>
+      )
+    },
     {
       title: t('workflow.action'),
       key: 'action',
@@ -458,6 +473,50 @@ const WorkflowListPage = () => {
     } catch {
       message.error(t('workflow.copyFailed'));
     }
+  };
+
+  // 切換流程狀態（啟用/停用）
+  const handleToggleStatus = async (record) => {
+    const isCurrentlyEnabled = record.status === 'Enabled';
+    const actionText = isCurrentlyEnabled ? t('workflowDesigner.statusDisabled') : t('workflowDesigner.statusEnabled');
+    
+    confirm({
+      title: t('workflowList.confirmStatusChange'),
+      content: t('workflowList.confirmStatusChangeContent', { 
+        name: record.name, 
+        action: actionText 
+      }),
+      okText: actionText, // 動態顯示"停用"或"啟用"
+      cancelText: t('workflow.confirmDeleteCancel'),
+      okType: isCurrentlyEnabled ? 'danger' : 'primary', // 停用時顯示危險樣式，啟用時顯示主要樣式
+      async onOk() {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch('/api/workflowdefinitions/batch-status', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              ids: [record.id],
+              isActive: !isCurrentlyEnabled // 如果當前是啟用，則設為停用(false)，反之設為啟用(true)
+            }),
+          });
+
+          if (response.ok) {
+            message.success(`${t('workflowList.successfullyChangedStatus')} ${actionText}`);
+            fetchData(pagination.current, pagination.pageSize, searchText);
+          } else {
+            const errorData = await response.json().catch(() => ({}));
+            message.error(errorData.error || t('workflowList.statusChangeFailed'));
+          }
+        } catch (error) {
+          console.error('切換狀態失敗:', error);
+          message.error(t('workflowList.statusChangeFailed'));
+        }
+      },
+    });
   };
 
   // 手動啟動流程

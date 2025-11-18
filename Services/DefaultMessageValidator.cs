@@ -10,11 +10,16 @@ namespace PurpleRice.Services
     public class MessageValidator : IMessageValidator
     {
         private readonly IAiCompletionClient _aiCompletionClient;
+        private readonly IApiProviderService _apiProviderService;
         private readonly LoggingService _logger;
 
-        public MessageValidator(IAiCompletionClient aiCompletionClient, Func<string, LoggingService> loggerFactory)
+        public MessageValidator(
+            IAiCompletionClient aiCompletionClient,
+            IApiProviderService apiProviderService,
+            Func<string, LoggingService> loggerFactory)
         {
             _aiCompletionClient = aiCompletionClient;
+            _apiProviderService = apiProviderService;
             _logger = loggerFactory("MessageValidator");
         }
 
@@ -149,7 +154,10 @@ namespace PurpleRice.Services
             }
 
             var systemPrompt = BuildAiValidationPrompt(validationConfig.Prompt);
-            var messageContext = BuildMessageContext(messageData, validationConfig.Prompt, nodeData);
+            
+            // 獲取 API provider 設置以確定最大文檔長度
+            var maxDocumentLength = await GetMaxDocumentLengthAsync(companyId, providerKey);
+            var messageContext = BuildMessageContext(messageData, validationConfig.Prompt, nodeData, maxDocumentLength);
             var serializedPayload = JsonSerializer.Serialize(messageContext, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -168,6 +176,92 @@ namespace PurpleRice.Services
             if (!aiResult.Success || string.IsNullOrWhiteSpace(aiResult.Content))
             {
                 _logger.LogWarning($"AI provider '{providerKey}' returned error: {aiResult.ErrorMessage}");
+                
+                // 檢查是否為圖片不支持錯誤，且消息類型是圖片
+                var errorMessage = aiResult.ErrorMessage ?? string.Empty;
+                var isImageNotSupported = errorMessage.Contains("Image inputs are not supported", StringComparison.OrdinalIgnoreCase) ||
+                                         errorMessage.Contains("image", StringComparison.OrdinalIgnoreCase) && errorMessage.Contains("not supported", StringComparison.OrdinalIgnoreCase);
+                
+                if (isImageNotSupported && string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 對於圖片消息，如果 provider 不支持圖片，嘗試回退到純文本驗證
+                    _logger.LogInformation($"Provider '{providerKey}' 不支持圖片輸入，嘗試回退到純文本驗證");
+                    
+                    // 移除圖片，只保留文本內容
+                    var textOnlyContext = new
+                    {
+                        messageType = messageData.MessageType,
+                        text = string.IsNullOrWhiteSpace(messageData.MessageText) ? "[圖片消息]" : messageData.MessageText,
+                        caption = string.IsNullOrWhiteSpace(messageData.Caption) ? null : messageData.Caption,
+                        prompt = validationConfig.Prompt,
+                        node = nodeData == null ? null : new
+                        {
+                            nodeData.Type,
+                            nodeData.TaskName,
+                            nodeData.AiProviderKey
+                        }
+                    };
+                    
+                    var textOnlyPayload = JsonSerializer.Serialize(textOnlyContext, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+                    });
+                    
+                    // 重新發送純文本請求
+                    var textOnlyResult = await _aiCompletionClient.SendChatAsync(
+                        companyId,
+                        providerKey,
+                        systemPrompt,
+                        new[]
+                        {
+                            new AiMessage("user", textOnlyPayload)
+                        });
+                    
+                    if (textOnlyResult.Success && !string.IsNullOrWhiteSpace(textOnlyResult.Content))
+                    {
+                        var textParsedOutcome = ParseAiValidationResponse(textOnlyResult.Content);
+                        if (textParsedOutcome != null)
+                        {
+                            var textIsValid = textParsedOutcome.IsValid ?? false;
+                            // 根據流程定義，如果提示說"只要收到圖片就是 IsValid = true"，則直接通過
+                            if (!textIsValid && validationConfig.Prompt?.Contains("只要收到圖片就是 IsValid = true", StringComparison.OrdinalIgnoreCase) == true)
+                            {
+                                _logger.LogInformation("根據流程定義，收到圖片應直接通過驗證");
+                                textIsValid = true;
+                            }
+                            
+                            return new ValidationResult
+                            {
+                                IsValid = textIsValid,
+                                ErrorMessage = textIsValid ? null : (validationConfig.RetryMessage ?? textParsedOutcome.Reason ?? "輸入內容未通過驗證，請重新輸入。"),
+                                SuggestionMessage = textParsedOutcome.Suggestion,
+                                ProcessedData = textParsedOutcome.Processed ?? messageData.MessageText,
+                                AdditionalData = new { original = messageContext, fallback = "圖片驗證回退到文本驗證", ai = textParsedOutcome },
+                                ValidatorType = "ai",
+                                ProviderKey = textOnlyResult.ProviderKey ?? providerKey,
+                                TargetProcessVariable = validationConfig.AiResultVariable
+                            };
+                        }
+                    }
+                    
+                    // 如果純文本驗證也失敗，但流程定義說圖片應該通過，則直接通過
+                    if (validationConfig.Prompt?.Contains("只要收到圖片就是 IsValid = true", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        _logger.LogInformation("Provider 不支持圖片，但根據流程定義，收到圖片應直接通過驗證");
+                        return new ValidationResult
+                        {
+                            IsValid = true,
+                            ErrorMessage = null,
+                            ProcessedData = messageData.MessageText ?? "[圖片消息]",
+                            AdditionalData = new { original = messageContext, fallback = "圖片驗證回退，根據流程定義直接通過" },
+                            ValidatorType = "ai",
+                            ProviderKey = providerKey,
+                            TargetProcessVariable = validationConfig.AiResultVariable
+                        };
+                    }
+                }
+                
                 return new ValidationResult
                 {
                     IsValid = false,
@@ -182,7 +276,25 @@ namespace PurpleRice.Services
             var parsedOutcome = ParseAiValidationResponse(aiResult.Content);
             if (parsedOutcome == null)
             {
-                _logger.LogWarning("AI response could not be parsed into expected JSON structure.");
+                _logger.LogWarning($"AI response could not be parsed into expected JSON structure. Response content: {aiResult.Content?.Substring(0, Math.Min(500, aiResult.Content?.Length ?? 0))}");
+                
+                // 如果無法解析，但流程定義說圖片應該通過，則直接通過
+                if (string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase) &&
+                    validationConfig.Prompt?.Contains("只要收到圖片就是 IsValid = true", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInformation("AI 回應無法解析，但根據流程定義，收到圖片應直接通過驗證");
+                    return new ValidationResult
+                    {
+                        IsValid = true,
+                        ErrorMessage = null,
+                        ProcessedData = messageData.MessageText ?? "[圖片消息]",
+                        AdditionalData = new { original = messageContext, fallback = "AI 回應無法解析，根據流程定義直接通過", rawResponse = aiResult.Content },
+                        ValidatorType = "ai",
+                        ProviderKey = aiResult.ProviderKey ?? providerKey,
+                        TargetProcessVariable = validationConfig.AiResultVariable
+                    };
+                }
+                
                 return new ValidationResult
                 {
                     IsValid = false,
@@ -195,6 +307,18 @@ namespace PurpleRice.Services
             }
 
             var isValid = parsedOutcome.IsValid ?? false;
+            
+            // 根據流程定義的特殊規則處理
+            // 如果 prompt 中說"只要收到圖片就是 IsValid = true"，則圖片消息直接通過
+            if (!isValid && string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase))
+            {
+                if (validationConfig.Prompt?.Contains("只要收到圖片就是 IsValid = true", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInformation("根據流程定義，收到圖片應直接通過驗證");
+                    isValid = true;
+                }
+            }
+            
             var processed = string.IsNullOrWhiteSpace(parsedOutcome.Processed)
                 ? (isValid ? messageData.MessageText : null)
                 : parsedOutcome.Processed;
@@ -245,7 +369,7 @@ namespace PurpleRice.Services
                 "請僅回傳 JSON，不要包含任何額外文字。";
         }
 
-        private object BuildMessageContext(WhatsAppMessageData messageData, string? prompt, WorkflowNodeData? nodeData)
+        private object BuildMessageContext(WhatsAppMessageData messageData, string? prompt, WorkflowNodeData? nodeData, int? maxDocumentLength = null)
         {
             JsonElement? documentElement = null;
             object? documentFallback = null;
@@ -261,10 +385,37 @@ namespace PurpleRice.Services
                 }
             }
 
+            // 處理文檔文本，如果太長則截斷
+            string? documentText = null;
+            bool isTruncated = false;
+            if (!string.IsNullOrWhiteSpace(messageData.DocumentPlainText))
+            {
+                documentText = messageData.DocumentPlainText;
+                
+                // 如果設置了最大長度且文檔文本超過限制，則截斷
+                if (maxDocumentLength.HasValue && documentText.Length > maxDocumentLength.Value)
+                {
+                    documentText = documentText.Substring(0, maxDocumentLength.Value);
+                    isTruncated = true;
+                    _logger.LogWarning($"文檔文本過長 ({messageData.DocumentPlainText.Length} 字符)，已截斷至 {maxDocumentLength.Value} 字符");
+                }
+            }
+
+            // 如果文檔文本被截斷，在末尾添加註釋
+            if (isTruncated && !string.IsNullOrWhiteSpace(documentText))
+            {
+                documentText += $"\n\n[注意：文檔內容已截斷，原始長度為 {messageData.DocumentPlainText!.Length} 字符]";
+            }
+
+            // 對於圖片消息，即使沒有文本也要確保有 messageType 標識
+            var textValue = string.IsNullOrWhiteSpace(messageData.MessageText) 
+                ? (string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase) ? "[圖片消息]" : null)
+                : messageData.MessageText;
+
             return new
             {
                 messageType = messageData.MessageType,
-                text = string.IsNullOrWhiteSpace(messageData.MessageText) ? null : messageData.MessageText,
+                text = textValue,
                 caption = string.IsNullOrWhiteSpace(messageData.Caption) ? null : messageData.Caption,
                 media = string.IsNullOrWhiteSpace(messageData.MediaContentBase64)
                     ? null
@@ -275,7 +426,7 @@ namespace PurpleRice.Services
                         base64 = messageData.MediaContentBase64
                     },
                 document = documentElement ?? (documentFallback ?? (object?)null),
-                documentText = string.IsNullOrWhiteSpace(messageData.DocumentPlainText) ? null : messageData.DocumentPlainText,
+                documentText = documentText,
                 prompt,
                 node = nodeData == null ? null : new
                 {
@@ -356,6 +507,69 @@ namespace PurpleRice.Services
                 JsonValueKind.False => "false",
                 _ => null
             };
+        }
+
+        private async Task<int?> GetMaxDocumentLengthAsync(Guid companyId, string? providerKey)
+        {
+            try
+            {
+                // 默認值：假設 1 token ≈ 4 字符，131072 tokens ≈ 524288 字符
+                // 為了安全起見，設置為 400000 字符（約 100000 tokens），為其他內容留出空間
+                const int defaultMaxLength = 400000;
+
+                if (string.IsNullOrWhiteSpace(providerKey))
+                {
+                    return defaultMaxLength;
+                }
+
+                // 嘗試從 API provider 設置中讀取 max_input_tokens 或 maxDocumentLength
+                var runtimeProvider = await _apiProviderService.GetRuntimeProviderAsync(companyId, providerKey);
+                if (runtimeProvider?.SettingsJson != null)
+                {
+                    try
+                    {
+                        using var document = JsonDocument.Parse(runtimeProvider.SettingsJson);
+                        var root = document.RootElement;
+
+                        // 優先讀取 max_input_tokens（以 tokens 為單位）
+                        if (root.TryGetProperty("max_input_tokens", out var maxInputTokensElement))
+                        {
+                            if (maxInputTokensElement.ValueKind == JsonValueKind.Number &&
+                                maxInputTokensElement.TryGetInt32(out var maxInputTokens))
+                            {
+                                // 將 tokens 轉換為字符（1 token ≈ 4 字符）
+                                var maxLength = maxInputTokens * 4;
+                                // 留出 20% 的空間給其他內容（system prompt、JSON 結構等）
+                                maxLength = (int)(maxLength * 0.8);
+                                _logger.LogInformation($"從設置中讀取 max_input_tokens: {maxInputTokens} tokens，轉換為最大文檔長度: {maxLength} 字符");
+                                return maxLength;
+                            }
+                        }
+
+                        // 其次讀取 maxDocumentLength（以字符為單位）
+                        if (root.TryGetProperty("maxDocumentLength", out var maxDocumentLengthElement))
+                        {
+                            if (maxDocumentLengthElement.ValueKind == JsonValueKind.Number &&
+                                maxDocumentLengthElement.TryGetInt32(out var maxDocumentLength))
+                            {
+                                _logger.LogInformation($"從設置中讀取 maxDocumentLength: {maxDocumentLength} 字符");
+                                return maxDocumentLength;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"解析 API provider 設置時發生錯誤: {ex.Message}");
+                    }
+                }
+
+                return defaultMaxLength;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"無法獲取最大文檔長度設置，使用默認值: {ex.Message}");
+                return 400000; // 默認值
+            }
         }
 
         private class AiValidationPayload

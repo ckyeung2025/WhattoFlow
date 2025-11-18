@@ -4,6 +4,27 @@ import { Modal, Form, Input, Switch, InputNumber, Typography, Divider, Alert, Sp
 const { TextArea } = Input;
 const { Paragraph, Text } = Typography;
 
+// 圖檔圖標組件（支持圖片的標記）
+const ImageFileIcon = ({ style = {} }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 640 640" 
+    style={{ 
+      width: '14px', 
+      height: '14px', 
+      display: 'inline-block',
+      verticalAlign: 'middle',
+      marginLeft: '4px',
+      ...style 
+    }}
+  >
+    <path 
+      d="M160 96C124.7 96 96 124.7 96 160L96 480C96 515.3 124.7 544 160 544L480 544C515.3 544 544 515.3 544 480L544 160C544 124.7 515.3 96 480 96L160 96zM224 176C250.5 176 272 197.5 272 224C272 250.5 250.5 272 224 272C197.5 272 176 250.5 176 224C176 197.5 197.5 176 224 176zM368 288C376.4 288 384.1 292.4 388.5 299.5L476.5 443.5C481 450.9 481.2 460.2 477 467.8C472.8 475.4 464.7 480 456 480L184 480C175.1 480 166.8 475 162.7 467.1C158.6 459.2 159.2 449.6 164.3 442.3L220.3 362.3C224.8 355.9 232.1 352.1 240 352.1C247.9 352.1 255.2 355.9 259.7 362.3L286.1 400.1L347.5 299.6C351.9 292.5 359.6 288.1 368 288.1z" 
+      fill="currentColor"
+    />
+  </svg>
+);
+
 const ApiProviderSettingsModal = ({
   open,
   provider,
@@ -127,7 +148,35 @@ const ApiProviderSettingsModal = ({
     });
   };
 
+  // xAI (Grok) 所有可用模型列表（根據官方文檔）
+  const xaiAllModels = React.useMemo(() => [
+    { value: 'grok-code-fast-1', label: 'grok-code-fast-1', supportsVision: false },
+    { value: 'grok-4-fast-reasoning', label: 'grok-4-fast-reasoning', supportsVision: true },
+    { value: 'grok-4-fast-non-reasoning', label: 'grok-4-fast-non-reasoning', supportsVision: true },
+    { value: 'grok-4-0709', label: 'grok-4-0709', supportsVision: true },
+    { value: 'grok-3-mini', label: 'grok-3-mini', supportsVision: false },
+    { value: 'grok-3', label: 'grok-3', supportsVision: false },
+    { value: 'grok-2-vision-1212', label: 'grok-2-vision-1212', supportsVision: true },
+    { value: 'grok-2-1212', label: 'grok-2-1212', supportsVision: false }
+  ], []);
+
   const supportedModels = React.useMemo(() => {
+    // 如果是 xai provider，返回所有可用模型
+    if (provider?.providerKey === 'xai') {
+      return xaiAllModels.map(model => ({
+        value: model.value,
+        label: model.supportsVision ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            {model.label}
+            <ImageFileIcon style={{ color: '#1890ff' }} />
+          </span>
+        ) : model.label,
+        // 添加 searchText 用於搜索過濾
+        searchText: model.label
+      }));
+    }
+
+    // 其他 provider 從 supportedModels 讀取
     if (!provider?.supportedModels) {
       return [];
     }
@@ -135,14 +184,14 @@ const ApiProviderSettingsModal = ({
     try {
       const parsed = JSON.parse(provider.supportedModels);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.map(model => ({ value: model, label: model }));
       }
     } catch (error) {
       console.warn('Failed to parse supported models', error);
     }
 
     return [];
-  }, [provider]);
+  }, [provider, xaiAllModels]);
 
   const isAiCategory = provider?.category === 'AI';
 
@@ -223,9 +272,16 @@ const ApiProviderSettingsModal = ({
                 {supportedModels.length > 0 ? (
                   <Form.Item name="model" label={t('apiProviders.form.model')} rules={[{ required: true, message: t('apiProviders.form.modelRequired') }]}> 
                     <Select
-                      options={supportedModels.map(model => ({ value: model, label: model }))}
+                      options={supportedModels}
                       placeholder={provider.defaultModel || t('apiProviders.form.modelPlaceholder')}
                       allowClear
+                      showSearch
+                      filterOption={(input, option) => {
+                        // 如果 option 有 searchText，使用它；否則嘗試從 label 提取文本
+                        const searchText = option?.searchText || 
+                          (typeof option?.label === 'string' ? option.label : option?.value || '');
+                        return searchText.toLowerCase().includes(input.toLowerCase());
+                      }}
                     />
                   </Form.Item>
                 ) : (

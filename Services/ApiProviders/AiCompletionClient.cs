@@ -126,9 +126,18 @@ namespace PurpleRice.Services.ApiProviders
                     WriteIndented = false
                 });
 
-                request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+                // 記錄請求內容（如果是多模態，記錄圖片信息）
+                var payloadPreview = payload.Length > 500 ? payload.Substring(0, 500) + "..." : payload;
+                _logger.LogInformation($"📤 發送 AI 請求到 '{runtimeProvider.ProviderKey}' -> {endpoint}");
+                _logger.LogDebug($"請求內容預覽: {payloadPreview}");
+                
+                // 檢查是否包含圖片
+                if (payload.Contains("image_url") || payload.Contains("inline_data"))
+                {
+                    _logger.LogInformation($"✅ 請求包含圖片內容（多模態）");
+                }
 
-                _logger.LogDebug($"Sending AI request to provider '{runtimeProvider.ProviderKey}' -> {endpoint}");
+                request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
 
                 var response = await httpClient.SendAsync(request, cancellationToken);
                 var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -322,11 +331,28 @@ namespace PurpleRice.Services.ApiProviders
                 }
 
                 var role = string.IsNullOrWhiteSpace(message.Role) ? "user" : message.Role;
-                messageList.Add(new Dictionary<string, object>
+                
+                // 嘗試解析 JSON 內容，檢查是否包含圖片
+                var contentParts = ParseMultimodalContent(message.Content, runtime, settings);
+                
+                if (contentParts != null && contentParts.Count > 0)
                 {
-                    ["role"] = role,
-                    ["content"] = message.Content
-                });
+                    // 多模態內容（包含圖片）
+                    messageList.Add(new Dictionary<string, object>
+                    {
+                        ["role"] = role,
+                        ["content"] = contentParts
+                    });
+                }
+                else
+                {
+                    // 純文本內容
+                    messageList.Add(new Dictionary<string, object>
+                    {
+                        ["role"] = role,
+                        ["content"] = message.Content
+                    });
+                }
             }
 
             if (messageList.Count == 0)
@@ -378,39 +404,52 @@ namespace PurpleRice.Services.ApiProviders
             AiRequestOptions? options,
             Dictionary<string, JsonElement> settings)
         {
-            var allParts = new List<string>();
+            var parts = new List<Dictionary<string, object>>();
+            
+            // 添加 system prompt 作為文本
             if (!string.IsNullOrWhiteSpace(systemPrompt))
             {
-                allParts.Add(systemPrompt!);
+                parts.Add(new Dictionary<string, object>
+                {
+                    ["text"] = systemPrompt!
+                });
             }
 
+            // 處理消息內容
             foreach (var message in messages)
             {
-                if (!string.IsNullOrWhiteSpace(message.Content))
+                if (string.IsNullOrWhiteSpace(message.Content))
                 {
-                    allParts.Add(message.Content);
+                    continue;
+                }
+
+                // 嘗試解析多模態內容
+                var geminiParts = ParseGeminiMultimodalContent(message.Content);
+                if (geminiParts != null && geminiParts.Count > 0)
+                {
+                    parts.AddRange(geminiParts);
+                }
+                else
+                {
+                    // 純文本內容
+                    parts.Add(new Dictionary<string, object>
+                    {
+                        ["text"] = message.Content
+                    });
                 }
             }
 
-            if (allParts.Count == 0)
+            if (parts.Count == 0)
             {
                 return null;
             }
-
-            var combinedContent = string.Join("\n\n", allParts);
 
             var contents = new List<Dictionary<string, object>>
             {
                 new Dictionary<string, object>
                 {
                     ["role"] = "user",
-                    ["parts"] = new List<Dictionary<string, object>>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["text"] = combinedContent
-                        }
-                    }
+                    ["parts"] = parts
                 }
             };
 
@@ -607,6 +646,311 @@ namespace PurpleRice.Services.ApiProviders
                     ErrorMessage = ex.Message,
                     RawResponse = responseContent
                 };
+            }
+        }
+
+        /// <summary>
+        /// 解析多模態內容，從 JSON 中提取圖片和文本
+        /// </summary>
+        private List<Dictionary<string, object>>? ParseMultimodalContent(
+            string content, 
+            ApiProviderRuntimeDto? runtime = null, 
+            Dictionary<string, JsonElement>? settings = null)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return null;
+            }
+
+            try
+            {
+                // 嘗試解析為 JSON
+                using var document = JsonDocument.Parse(content);
+                var root = document.RootElement;
+
+                var contentParts = new List<Dictionary<string, object>>();
+
+                // 檢查是否有 media 對象包含 base64 圖片
+                if (root.TryGetProperty("media", out var mediaElement) && mediaElement.ValueKind == JsonValueKind.Object)
+                {
+                    if (mediaElement.TryGetProperty("base64", out var base64Element) && 
+                        base64Element.ValueKind == JsonValueKind.String)
+                    {
+                        var base64 = base64Element.GetString();
+                        var mimeType = "image/jpeg"; // 默認值
+                        
+                        if (mediaElement.TryGetProperty("mimeType", out var mimeTypeElement) && 
+                            mimeTypeElement.ValueKind == JsonValueKind.String)
+                        {
+                            mimeType = mimeTypeElement.GetString() ?? mimeType;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(base64))
+                        {
+                            // 驗證 base64 格式
+                            var base64Preview = base64.Length > 50 ? base64.Substring(0, 50) + "..." : base64;
+                            _logger.LogInformation($"🔍 檢測到圖片，MIME 類型: {mimeType}, Base64 長度: {base64.Length}, 預覽: {base64Preview}");
+                            
+                            // 檢查 base64 是否有效（應該只包含 base64 字符）
+                            var isValidBase64 = System.Text.RegularExpressions.Regex.IsMatch(base64, @"^[A-Za-z0-9+/=]+$");
+                            if (!isValidBase64)
+                            {
+                                _logger.LogWarning($"⚠️ Base64 格式可能無效，包含非 base64 字符");
+                            }
+                            
+                            // 構建圖片 URL（OpenAI vision API 格式）
+                            var imageUrl = $"data:{mimeType};base64,{base64}";
+                            var imageUrlDict = new Dictionary<string, object>
+                            {
+                                ["url"] = imageUrl
+                            };
+                            
+                            // 為 xai 和其他支持 detail 的 provider 添加 detail 參數
+                            var providerKey = runtime?.ProviderKey?.ToLowerInvariant();
+                            if (providerKey == "xai" || providerKey == "openai")
+                            {
+                                // 從 settings 讀取 imageDetail，默認使用 "high"
+                                var imageDetail = "high";
+                                if (settings != null && settings.TryGetValue("imageDetail", out var detailElement))
+                                {
+                                    if (detailElement.ValueKind == JsonValueKind.String)
+                                    {
+                                        imageDetail = detailElement.GetString() ?? "high";
+                                    }
+                                }
+                                imageUrlDict["detail"] = imageDetail;
+                            }
+                            
+                            contentParts.Add(new Dictionary<string, object>
+                            {
+                                ["type"] = "image_url",
+                                ["image_url"] = imageUrlDict
+                            });
+
+                            var detailInfo = imageUrlDict.ContainsKey("detail") ? $", detail: {imageUrlDict["detail"]}" : "";
+                            _logger.LogInformation($"✅ 已添加圖片到多模態內容，圖片 URL 長度: {imageUrl.Length}{detailInfo}");
+                        }
+                    }
+                }
+
+                // 添加文本內容（優先級：prompt > text > caption）
+                var textParts = new List<string>();
+                
+                // 優先添加 prompt（驗證規則）
+                if (root.TryGetProperty("prompt", out var promptElement) && promptElement.ValueKind == JsonValueKind.String)
+                {
+                    var prompt = promptElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(prompt))
+                    {
+                        textParts.Add(prompt);
+                    }
+                }
+
+                // 添加用戶輸入的文本
+                if (root.TryGetProperty("text", out var textElement) && textElement.ValueKind == JsonValueKind.String)
+                {
+                    var text = textElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(text) && text != "[圖片消息]")
+                    {
+                        textParts.Add(text);
+                    }
+                }
+
+                // 添加圖片說明（如果有）
+                if (root.TryGetProperty("caption", out var captionElement) && captionElement.ValueKind == JsonValueKind.String)
+                {
+                    var caption = captionElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(caption))
+                    {
+                        textParts.Add($"圖片說明: {caption}");
+                    }
+                }
+
+                // 如果沒有找到文本，但有圖片，添加一個默認提示
+                if (textParts.Count == 0 && contentParts.Any(p => p.ContainsKey("type") && p["type"]?.ToString() == "image_url"))
+                {
+                    // 檢查是否有 prompt
+                    if (root.TryGetProperty("prompt", out var promptCheck) && promptCheck.ValueKind == JsonValueKind.String)
+                    {
+                        var promptText = promptCheck.GetString();
+                        if (!string.IsNullOrWhiteSpace(promptText))
+                        {
+                            textParts.Add(promptText);
+                        }
+                    }
+                    
+                    // 如果還是沒有文本，添加一個默認提示（用於圖片驗證）
+                    if (textParts.Count == 0)
+                    {
+                        textParts.Add("請分析這張圖片");
+                    }
+                }
+                else if (textParts.Count == 0)
+                {
+                    // 沒有圖片也沒有文本，使用整個 JSON 作為文本（向後兼容）
+                    textParts.Add(content);
+                }
+
+                // 添加文本部分
+                foreach (var text in textParts)
+                {
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        contentParts.Add(new Dictionary<string, object>
+                        {
+                            ["type"] = "text",
+                            ["text"] = text
+                        });
+                    }
+                }
+
+                // 只有在找到圖片時才返回多模態格式，否則返回 null（使用純文本）
+                return contentParts.Any(p => p.ContainsKey("type") && p["type"]?.ToString() == "image_url") 
+                    ? contentParts 
+                    : null;
+            }
+            catch (JsonException)
+            {
+                // 不是有效的 JSON，返回 null（使用純文本）
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"解析多模態內容時發生錯誤: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 解析 Gemini 多模態內容，從 JSON 中提取圖片和文本
+        /// </summary>
+        private List<Dictionary<string, object>>? ParseGeminiMultimodalContent(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return null;
+            }
+
+            try
+            {
+                // 嘗試解析為 JSON
+                using var document = JsonDocument.Parse(content);
+                var root = document.RootElement;
+
+                var parts = new List<Dictionary<string, object>>();
+                bool hasImage = false;
+
+                // 檢查是否有 media 對象包含 base64 圖片
+                if (root.TryGetProperty("media", out var mediaElement) && mediaElement.ValueKind == JsonValueKind.Object)
+                {
+                    if (mediaElement.TryGetProperty("base64", out var base64Element) && 
+                        base64Element.ValueKind == JsonValueKind.String)
+                    {
+                        var base64 = base64Element.GetString();
+                        var mimeType = "image/jpeg"; // 默認值
+                        
+                        if (mediaElement.TryGetProperty("mimeType", out var mimeTypeElement) && 
+                            mimeTypeElement.ValueKind == JsonValueKind.String)
+                        {
+                            mimeType = mimeTypeElement.GetString() ?? mimeType;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(base64))
+                        {
+                            // 驗證 base64 格式
+                            var base64Preview = base64.Length > 50 ? base64.Substring(0, 50) + "..." : base64;
+                            _logger.LogInformation($"🔍 Gemini: 檢測到圖片，MIME 類型: {mimeType}, Base64 長度: {base64.Length}, 預覽: {base64Preview}");
+                            
+                            // 檢查 base64 是否有效
+                            var isValidBase64 = System.Text.RegularExpressions.Regex.IsMatch(base64, @"^[A-Za-z0-9+/=]+$");
+                            if (!isValidBase64)
+                            {
+                                _logger.LogWarning($"⚠️ Gemini: Base64 格式可能無效，包含非 base64 字符");
+                            }
+                            
+                            // Gemini API 格式：inline_data
+                            parts.Add(new Dictionary<string, object>
+                            {
+                                ["inline_data"] = new Dictionary<string, object>
+                                {
+                                    ["mime_type"] = mimeType,
+                                    ["data"] = base64
+                                }
+                            });
+                            hasImage = true;
+                            _logger.LogInformation($"✅ Gemini: 已添加圖片到多模態內容");
+                        }
+                    }
+                }
+
+                // 添加文本內容（優先級：prompt > text > caption）
+                var textParts = new List<string>();
+                
+                // 優先添加 prompt（驗證規則）
+                if (root.TryGetProperty("prompt", out var promptElement) && promptElement.ValueKind == JsonValueKind.String)
+                {
+                    var prompt = promptElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(prompt))
+                    {
+                        textParts.Add(prompt);
+                    }
+                }
+
+                // 添加用戶輸入的文本
+                if (root.TryGetProperty("text", out var textElement) && textElement.ValueKind == JsonValueKind.String)
+                {
+                    var text = textElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(text) && text != "[圖片消息]")
+                    {
+                        textParts.Add(text);
+                    }
+                }
+
+                // 添加圖片說明（如果有）
+                if (root.TryGetProperty("caption", out var captionElement) && captionElement.ValueKind == JsonValueKind.String)
+                {
+                    var caption = captionElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(caption))
+                    {
+                        textParts.Add($"圖片說明: {caption}");
+                    }
+                }
+
+                // 如果沒有找到文本，但有圖片，添加一個默認提示
+                if (textParts.Count == 0 && hasImage)
+                {
+                    textParts.Add("請分析這張圖片");
+                }
+                else if (textParts.Count == 0)
+                {
+                    // 沒有圖片也沒有文本，使用整個 JSON 作為文本（向後兼容）
+                    textParts.Add(content);
+                }
+
+                // 添加文本部分
+                foreach (var text in textParts)
+                {
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        parts.Add(new Dictionary<string, object>
+                        {
+                            ["text"] = text
+                        });
+                    }
+                }
+
+                // 只有在找到圖片時才返回多模態格式，否則返回 null（使用純文本）
+                return hasImage ? parts : null;
+            }
+            catch (JsonException)
+            {
+                // 不是有效的 JSON，返回 null（使用純文本）
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"解析 Gemini 多模態內容時發生錯誤: {ex.Message}");
+                return null;
             }
         }
     }

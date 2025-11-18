@@ -476,16 +476,49 @@ namespace PurpleRice.Controllers
                     {
                         var folderName = Path.GetFileName(Path.GetDirectoryName(directory)) ?? "root";
                         var files = Directory.GetFiles(directory)
-                            .Where(file => IsMediaFile(file))
-                            .Select(file => new
+                            .Where(file => IsMediaFile(file) && !file.EndsWith(".metadata.json"))
+                            .Select(file =>
                             {
-                                id = Path.GetFileNameWithoutExtension(file),
-                                fileName = Path.GetFileName(file),
-                                filePath = file.Replace(Directory.GetCurrentDirectory(), "").Replace("\\", "/"),
-                                fileSize = new FileInfo(file).Length,
-                                createdAt = System.IO.File.GetCreationTime(file),
-                                folderPath = folderName,
-                                fileType = GetFileType(file)
+                                var fileName = Path.GetFileName(file);
+                                var fileBaseName = Path.GetFileNameWithoutExtension(file);
+                                var metadataPath = Path.Combine(directory, fileBaseName + ".metadata.json");
+                                string? originalFileName = null;
+                                string? mimeType = null;
+                                
+                                // 嘗試讀取元數據文件
+                                if (System.IO.File.Exists(metadataPath))
+                                {
+                                    try
+                                    {
+                                        var metadataJson = System.IO.File.ReadAllText(metadataPath);
+                                        var metadata = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(metadataJson);
+                                        if (metadata.TryGetProperty("originalFileName", out var originalFileNameElement))
+                                        {
+                                            originalFileName = originalFileNameElement.GetString();
+                                        }
+                                        if (metadata.TryGetProperty("mimeType", out var mimeTypeElement))
+                                        {
+                                            mimeType = mimeTypeElement.GetString();
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _loggingService.LogWarning($"讀取元數據文件失敗: {metadataPath}, 錯誤: {ex.Message}");
+                                    }
+                                }
+                                
+                                return new
+                                {
+                                    id = fileBaseName,
+                                    fileName = fileName,
+                                    originalFileName = originalFileName,
+                                    filePath = file.Replace(Directory.GetCurrentDirectory(), "").Replace("\\", "/"),
+                                    fileSize = new FileInfo(file).Length,
+                                    createdAt = System.IO.File.GetCreationTime(file),
+                                    folderPath = folderName,
+                                    fileType = GetFileType(file),
+                                    mimeType = mimeType
+                                };
                             })
                             .OrderByDescending(file => file.createdAt)
                             .ToList();

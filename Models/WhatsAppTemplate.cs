@@ -33,13 +33,13 @@ namespace PurpleRice.Models
         
         // Meta 模板的 Header 相關字段（用於 IMAGE/VIDEO/DOCUMENT）
         [MaxLength(1000)]
-        public string HeaderUrl { get; set; } // Meta template 的 header URL（用於發送消息時）
+        public string? HeaderUrl { get; set; } // Meta template 的 header URL（用於發送消息時）
         
         [MaxLength(50)]
-        public string HeaderType { get; set; } // image, video, document
+        public string? HeaderType { get; set; } // image, video, document
         
         [MaxLength(500)]
-        public string HeaderFilename { get; set; } // 僅 document 需要
+        public string? HeaderFilename { get; set; } // 僅 document 需要
         
         [MaxLength(10)]
         public string Language { get; set; } = "zh-TW";

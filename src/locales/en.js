@@ -1193,6 +1193,7 @@ const en = {
     searchPlaceholder: "Search template name, description...",
     enabled: "Enabled",
     disabled: "Disabled",
+    draft: "Draft",
     text: "Text",
     image: "Image",
     video: "Video",
@@ -2345,6 +2346,8 @@ const en = {
     selectProcessVariable: 'Select Process Variable',
     qrCodeVariable: 'QR Code Variable',
     qrCodeMessagePlaceholder: 'Enter prompt message, e.g.: Please upload an image containing QR Code',
+    qrCodeAiValidatorPromptHelp: 'AI will validate the value in the "QR Code Variable" extracted from the QR Code image. Please describe the validation rules, e.g., "QR Code content must be a 6-digit verification code".',
+    qrCodeAiValidatorPromptPlaceholder: 'Describe the validation conditions that the QR Code variable value must meet, e.g., "QR Code content must be a 6-digit verification code".',
     qrCodeDescription1: 'This node will wait for user to upload an image containing QR Code',
     qrCodeDescription2: 'System will automatically scan the QR Code in the image and extract content',
     qrCodeDescription3: 'Scan result will be saved to the specified process variable for use by subsequent nodes',
@@ -3015,7 +3018,11 @@ const en = {
     loadingRelatedRecords: 'Loading related records...',
     warningDeleteTitle: '⚠️ CRITICAL WARNING: Deletion Cannot Be Undone!',
     warningDeleteDescription: 'Deleting this workflow definition will permanently delete all related data, including: the workflow definition itself, all workflow execution instances, form instances, form approval records, message send records, step execution records, dataset query records, process variables, message validation records, etc. All data will be permanently deleted and cannot be recovered!',
-    criticalWarning: '⚠️ This operation cannot be undone! Please confirm you really want to delete this data.'
+    criticalWarning: '⚠️ This operation cannot be undone! Please confirm you really want to delete this data.',
+    confirmStatusChange: 'Confirm Status Change',
+    confirmStatusChangeContent: 'Are you sure you want to change the status of workflow "{name}" to "{action}"?',
+    successfullyChangedStatus: 'Status successfully changed to',
+    statusChangeFailed: 'Status change failed'
   },
 
   // Process Variables Management

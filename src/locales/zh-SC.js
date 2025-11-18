@@ -1557,6 +1557,7 @@ const zhSC = {
     searchPlaceholder: "搜索模板名称、描述...",
     enabled: "启用",
     disabled: "停用",
+    draft: "草稿",
     text: "文字",
     image: "图片",
     video: "视频",
@@ -2164,7 +2165,11 @@ const zhSC = {
     loadingRelatedRecords: '正在查询相关记录...',
     warningDeleteTitle: '⚠️ 严重警告：删除操作不可回复！',
     warningDeleteDescription: '删除此流程定义将永久删除所有相关数据，包括：流程定义本身、所有流程运行实例、表单实例、表单审批记录、消息发送记录、步骤执行记录、数据集查询记录、流程变量、消息验证记录等。所有数据将被永久删除且无法恢复！',
-    criticalWarning: '⚠️ 此操作无法撤销！请确认您真的要删除这些数据。'
+    criticalWarning: '⚠️ 此操作无法撤销！请确认您真的要删除这些数据。',
+    confirmStatusChange: '确认更改状态',
+    confirmStatusChangeContent: '确定要将流程「{name}」的状态更改为「{action}」吗？',
+    successfullyChangedStatus: '状态已成功更改为',
+    statusChangeFailed: '状态更改失败'
   },
 
   // 已发布应用页面
@@ -2991,6 +2996,8 @@ const zhSC = {
     selectProcessVariable: '选择流程变量',
     qrCodeVariable: 'QR Code 变量',
     qrCodeMessagePlaceholder: '输入提示消息，例如：请上传包含 QR Code 的图片',
+    qrCodeAiValidatorPromptHelp: 'AI 将验证 QR Code 图像解析出来的「QR Code 变量」中的值是否符合要求。请描述验证规则，例如「QR Code 内容必须是 6 位数字验证码」。',
+    qrCodeAiValidatorPromptPlaceholder: '描述 QR Code 变量值需要满足的验证条件，例如「QR Code 内容必须是 6 位数字验证码」。',
     qrCodeDescription1: '此节点会等待用户上传包含 QR Code 的图片',
     qrCodeDescription2: '系统会自动扫描图片中的 QR Code 并提取内容',
     qrCodeDescription3: '扫描结果会保存到指定的流程变量中供后续节点使用',

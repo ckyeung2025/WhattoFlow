@@ -559,24 +559,29 @@ namespace PurpleRice.Services.WebhookServices
                     }
                     else
                     {
-                        messageData.MediaMimeType = downloadedMedia.MimeType;
-                        messageData.MediaFileName = downloadedMedia.FileName;
+                        messageData.MediaMimeType = downloadedMedia.MimeType ?? messageData.MediaMimeType;
+                        // 優先使用從原始消息中提取的文件名，如果沒有則使用下載響應中的文件名
+                        messageData.MediaFileName = messageData.MediaFileName ?? downloadedMedia.FileName;
                         messageData.MediaContentBase64 = Convert.ToBase64String(downloadedMedia.Content);
+
+                        // 使用最終確定的文件名（優先使用原始消息中的文件名）
+                        var finalFileName = messageData.MediaFileName ?? downloadedMedia.FileName;
+                        var finalMimeType = messageData.MediaMimeType ?? downloadedMedia.MimeType;
 
                         // 依不同消息類型作額外處理
                         if (string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase))
                         {
-                            savedMediaPath = await SaveWaitReplyImageAsync(execution.Id, downloadedMedia.Content, downloadedMedia.MimeType);
+                            savedMediaPath = await SaveWaitReplyImageAsync(execution.Id, downloadedMedia.Content, finalFileName, finalMimeType);
                         }
                         else if (string.Equals(messageData.MessageType, "document", StringComparison.OrdinalIgnoreCase))
                         {
-                            savedMediaPath = await SaveWaitReplyDocumentAsync(execution.Id, downloadedMedia.Content, downloadedMedia.FileName, downloadedMedia.MimeType);
+                            savedMediaPath = await SaveWaitReplyDocumentAsync(execution.Id, downloadedMedia.Content, finalFileName, finalMimeType);
 
                             // 將文件寫入暫存檔供 LibreOffice 解析
-                            var extension = Path.GetExtension(downloadedMedia.FileName ?? string.Empty);
-                            if (string.IsNullOrWhiteSpace(extension) && !string.IsNullOrWhiteSpace(downloadedMedia.MimeType))
+                            var extension = Path.GetExtension(finalFileName ?? string.Empty);
+                            if (string.IsNullOrWhiteSpace(extension) && !string.IsNullOrWhiteSpace(finalMimeType))
                             {
-                                extension = GetFileExtensionFromMimeType(downloadedMedia.MimeType) ?? ".tmp";
+                                extension = GetFileExtensionFromMimeType(finalMimeType) ?? ".tmp";
                             }
 
                             var tempFilePath = Path.Combine(Path.GetTempPath(), $"whatsapp_doc_{Guid.NewGuid():N}{extension}");
@@ -1589,6 +1594,136 @@ namespace PurpleRice.Services.WebhookServices
                 
                 _loggingService.LogInformation($"成功掃描 QR Code: {qrCodeValue}");
                 
+                // 處理 QR Code 輸入 - 先將 QR Code 值寫入流程變量
+                var qrCodeProcessResult = await workflowExecutionService.ProcessQRCodeInputAsync(execution.Id, nodeInfo.NodeId, imageBytes, qrCodeValue);
+                if (!qrCodeProcessResult)
+                {
+                    _loggingService.LogError("QR Code 處理失敗");
+                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
+                        ? nodeInfo.QrCodeErrorMessage 
+                        : "QR Code 處理失敗，請重新上傳。";
+                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    return;
+                }
+                
+                _loggingService.LogInformation($"✅ QR Code 值已寫入流程變量: {nodeInfo.QrCodeVariable ?? "qrCodeResult"}");
+                
+                // 檢查是否有 AI 驗證配置
+                var hasAiValidation = nodeInfo.Validation != null && 
+                                     (nodeInfo.Validation.AiIsActive == true || 
+                                      (nodeInfo.Validation.Enabled == true && 
+                                       string.Equals(nodeInfo.Validation.ValidatorType, "ai", StringComparison.OrdinalIgnoreCase)));
+                
+                if (hasAiValidation && stepExecution != null)
+                {
+                    _loggingService.LogInformation($"🔍 檢測到 AI 驗證配置，開始驗證 QR Code 變量值");
+                    
+                    // 創建一個新的 WhatsAppMessageData，將 QR Code 值作為 MessageText
+                    var qrCodeMessageData = new WhatsAppMessageData
+                    {
+                        WaId = messageData.WaId,
+                        ContactName = messageData.ContactName,
+                        MessageId = messageData.MessageId,
+                        MessageText = qrCodeValue, // ✅ 使用 QR Code 值作為驗證內容
+                        Timestamp = DateTime.UtcNow,
+                        Source = "QRCodeValidation",
+                        MessageType = "text", // QR Code 值作為文字驗證
+                        MediaId = messageData.MediaId,
+                        MediaMimeType = messageData.MediaMimeType,
+                        MediaFileName = messageData.MediaFileName
+                    };
+                    
+                    // 執行 AI 驗證
+                    var validationResult = await _messageValidator.ValidateMessageAsync(
+                        qrCodeMessageData,
+                        execution,
+                        stepExecution);
+                    
+                    // 更新驗證記錄
+                    validation.IsValid = validationResult.IsValid;
+                    validation.ErrorMessage = validationResult.ErrorMessage;
+                    validation.ValidatorType = validationResult.ValidatorType ?? "ai";
+                    
+                    if (stepExecution != null && validationResult.AdditionalData != null)
+                    {
+                        try
+                        {
+                            stepExecution.AiResultJson = JsonSerializer.Serialize(validationResult.AdditionalData, PayloadJsonOptions);
+                        }
+                        catch (Exception serializeEx)
+                        {
+                            _loggingService.LogError($"序列化 AI 結果失敗: {serializeEx.Message}");
+                        }
+                    }
+                    
+                    if (validationResult.IsValid)
+                    {
+                        if (validationResult.ProcessedData is string processedText)
+                        {
+                            validation.ProcessedData = processedText;
+                        }
+                        else if (validationResult.ProcessedData != null)
+                        {
+                            validation.ProcessedData = JsonSerializer.Serialize(validationResult.ProcessedData);
+                        }
+                        
+                        // 將 AI 驗證結果寫入流程變量（如果配置了）
+                        if (!string.IsNullOrWhiteSpace(validationResult.TargetProcessVariable))
+                        {
+                            try
+                            {
+                                using var pvScope = _serviceProvider.CreateScope();
+                                var processVariableService = pvScope.ServiceProvider.GetRequiredService<IProcessVariableService>();
+                                
+                                object? valueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? qrCodeValue;
+                                if (valueToStore == null || (valueToStore is string s && string.IsNullOrWhiteSpace(s)))
+                                {
+                                    valueToStore = validationResult.AdditionalData ?? qrCodeValue;
+                                }
+                                
+                                if (valueToStore != null && valueToStore is not string)
+                                {
+                                    valueToStore = JsonSerializer.Serialize(valueToStore, PayloadJsonOptions);
+                                }
+                                
+                                await processVariableService.SetVariableValueAsync(
+                                    execution.Id,
+                                    validationResult.TargetProcessVariable,
+                                    valueToStore ?? string.Empty,
+                                    setBy: "AIValidator",
+                                    sourceType: "AIValidation",
+                                    sourceReference: execution.Id.ToString()
+                                );
+                                
+                                _loggingService.LogInformation($"✅ AI 驗證結果寫入流程變量: {validationResult.TargetProcessVariable}");
+                            }
+                            catch (Exception pvEx)
+                            {
+                                _loggingService.LogError($"AI 驗證結果寫入流程變量失敗: {pvEx.Message}", pvEx);
+                            }
+                        }
+                    }
+                    
+                    await _context.SaveChangesAsync();
+                    
+                    if (!validationResult.IsValid)
+                    {
+                        // AI 驗證失敗，發送錯誤訊息並保持等待狀態
+                        var errorMessage = validationResult.ErrorMessage ?? 
+                                          nodeInfo.Validation?.RetryMessage ?? 
+                                          menuSettings.InputErrorMessage;
+                        await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                        _loggingService.LogInformation($"❌ AI 驗證失敗，保持等待狀態: {errorMessage}");
+                        return;
+                    }
+                    
+                    _loggingService.LogInformation($"✅ AI 驗證通過，繼續執行流程");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"ℹ️ 未配置 AI 驗證，直接繼續流程");
+                }
+                
                 // ✅ 更新步驟執行記錄狀態為 Completed（stepExecution 已在上面查詢過）
                 if (stepExecution != null)
                 {
@@ -1611,27 +1746,14 @@ namespace PurpleRice.Services.WebhookServices
                 await _context.SaveChangesAsync();
                 _loggingService.LogInformation($"✅ 流程執行狀態已更新為 Running");
                 
-                // 處理 QR Code 輸入
-                var result = await workflowExecutionService.ProcessQRCodeInputAsync(execution.Id, nodeInfo.NodeId, imageBytes, qrCodeValue);
-                if (result)
-                {
-                    _loggingService.LogInformation($"QR Code 處理成功，繼續執行流程");
-                    var successMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeSuccessMessage) 
-                        ? nodeInfo.QrCodeSuccessMessage 
-                        : "QR Code 掃描成功！流程將繼續執行。";
-                    await SendWhatsAppMessage(company, messageData.WaId, successMessage);
-                    
-                    // 繼續執行流程
-                    await _workflowEngine.ContinueWorkflowFromWaitReply(execution, messageData);
-                }
-                else
-                {
-                    _loggingService.LogError("QR Code 處理失敗");
-                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
-                        ? nodeInfo.QrCodeErrorMessage 
-                        : "QR Code 處理失敗，請重新上傳。";
-                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
-                }
+                // 發送成功訊息並繼續執行流程
+                var successMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeSuccessMessage) 
+                    ? nodeInfo.QrCodeSuccessMessage 
+                    : "QR Code 掃描成功！流程將繼續執行。";
+                await SendWhatsAppMessage(company, messageData.WaId, successMessage);
+                
+                // 繼續執行流程
+                await _workflowEngine.ContinueWorkflowFromWaitReply(execution, messageData);
             }
             catch (Exception ex)
             {
@@ -1669,7 +1791,9 @@ namespace PurpleRice.Services.WebhookServices
                         {
                             NodeId = waitForQRCodeNode.Id,
                             QrCodeSuccessMessage = waitForQRCodeNode.Data?.QrCodeSuccessMessage,
-                            QrCodeErrorMessage = waitForQRCodeNode.Data?.QrCodeErrorMessage
+                            QrCodeErrorMessage = waitForQRCodeNode.Data?.QrCodeErrorMessage,
+                            QrCodeVariable = waitForQRCodeNode.Data?.QrCodeVariable,
+                            Validation = waitForQRCodeNode.Data?.Validation
                         };
                     }
                 }
@@ -1688,6 +1812,8 @@ namespace PurpleRice.Services.WebhookServices
             public string NodeId { get; set; }
             public string QrCodeSuccessMessage { get; set; }
             public string QrCodeErrorMessage { get; set; }
+            public string QrCodeVariable { get; set; }
+            public WorkflowValidation Validation { get; set; }
         }
 
         /// <summary>
@@ -1764,7 +1890,7 @@ namespace PurpleRice.Services.WebhookServices
         /// <param name="executionId">工作流程執行 ID</param>
         /// <param name="imageData">圖片數據</param>
         /// <returns>保存的圖片路徑</returns>
-        private async Task<string> SaveWaitReplyImageAsync(int executionId, byte[] imageData, string? mimeType = null)
+        private async Task<string> SaveWaitReplyImageAsync(int executionId, byte[] imageData, string? fileName = null, string? mimeType = null)
         {
             _loggingService.LogInformation($"開始保存 waitReply 圖片，執行ID: {executionId}");
             
@@ -1795,17 +1921,35 @@ namespace PurpleRice.Services.WebhookServices
                 // 生成文件名：使用時間戳和 GUID 確保唯一性
                 var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 var guid = Guid.NewGuid().ToString("N").Substring(0, 8); // 取前8位
-                var fileName = $"reply_image_{timestamp}_{guid}{extension}";
+                var savedFileName = $"reply_image_{timestamp}_{guid}{extension}";
                 
-                var filePath = Path.Combine(uploadsPath, fileName);
+                var filePath = Path.Combine(uploadsPath, savedFileName);
                 _loggingService.LogInformation($"目標文件路徑: {filePath}");
 
                 // 保存圖片文件
                 await File.WriteAllBytesAsync(filePath, imageData);
                 _loggingService.LogInformation($"圖片保存成功: {filePath}, 大小: {imageData.Length} bytes");
                 
+                // 保存原始文件名到元數據文件
+                if (!string.IsNullOrWhiteSpace(fileName))
+                {
+                    var metadataFileName = Path.GetFileNameWithoutExtension(savedFileName) + ".metadata.json";
+                    var metadataPath = Path.Combine(uploadsPath, metadataFileName);
+                    var metadata = new
+                    {
+                        originalFileName = fileName,
+                        savedFileName = savedFileName,
+                        mimeType = mimeType,
+                        fileSize = imageData.Length,
+                        savedAt = DateTime.UtcNow
+                    };
+                    var metadataJson = System.Text.Json.JsonSerializer.Serialize(metadata, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    await File.WriteAllTextAsync(metadataPath, metadataJson);
+                    _loggingService.LogInformation($"元數據文件保存成功: {metadataPath}");
+                }
+                
                 // ✅ 返回相對 URL 路徑而不是絕對路徑，以便前端可以直接使用
-                var relativeUrl = $"/Uploads/Whatsapp_Images/{directoryName}/{fileName}";
+                var relativeUrl = $"/Uploads/Whatsapp_Images/{directoryName}/{savedFileName}";
                 _loggingService.LogInformation($"返回相對 URL: {relativeUrl}");
                 return relativeUrl;
             }
@@ -2051,6 +2195,24 @@ namespace PurpleRice.Services.WebhookServices
                 var filePath = Path.Combine(uploadsPath, safeFileName);
                 await File.WriteAllBytesAsync(filePath, documentData);
                 _loggingService.LogInformation($"文件保存成功: {filePath}, 大小: {documentData.Length} bytes");
+
+                // 保存原始文件名到元數據文件
+                if (!string.IsNullOrWhiteSpace(fileName))
+                {
+                    var metadataFileName = Path.GetFileNameWithoutExtension(safeFileName) + ".metadata.json";
+                    var metadataPath = Path.Combine(uploadsPath, metadataFileName);
+                    var metadata = new
+                    {
+                        originalFileName = fileName,
+                        savedFileName = safeFileName,
+                        mimeType = mimeType,
+                        fileSize = documentData.Length,
+                        savedAt = DateTime.UtcNow
+                    };
+                    var metadataJson = System.Text.Json.JsonSerializer.Serialize(metadata, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    await File.WriteAllTextAsync(metadataPath, metadataJson);
+                    _loggingService.LogInformation($"元數據文件保存成功: {metadataPath}");
+                }
 
                 var relativeUrl = $"/Uploads/Whatsapp_Documents/{directoryName}/{safeFileName}";
                 return relativeUrl;
