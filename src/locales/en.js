@@ -2088,6 +2088,10 @@ const en = {
       escalationMessage: 'Escalation Message',
       retryMessageSaved: 'Reminder message configuration saved',
       escalationSaved: 'Escalation configuration saved',
+      retryMessageConfig: 'Reminder Message Settings',
+      escalationConfig: 'Escalation Settings',
+      overdueEscalation: 'Overdue Escalation',
+      configureOverdueEscalation: 'Configure Overdue Escalation',
     },
     
     // Drawer fullscreen related

@@ -1063,6 +1063,10 @@ const zhSC = {
     uploadImage: '上传图片',
     aiGenerate: 'AI 生成',
     aiGenerateForm: 'AI 生成表单',
+    aiSmartGeneration: 'AI 智能生成',
+    describeTheFormTypeAndRequirements: '描述您需要的表单类型和要求，AI 将为您生成相应的 HTML 表单。适合用于审批流程、申请表单等。',
+    requirementsDescription: '需求描述',
+    placeholderExample: '例如：我需要一个请假申请表单，包含员工信息、请假类型、开始日期、结束日期、请假原因等字段...',
     welcomeMessage: '欢迎使用表单设计器',
     
     // Component Editor translations
@@ -2796,6 +2800,10 @@ const zhSC = {
       escalationMessage: '升级通知消息',
       retryMessageSaved: '提醒消息配置已保存',
       escalationSaved: '升级通知配置已保存',
+      retryMessageConfig: '提醒消息设置',
+      escalationConfig: '升级通知设置',
+      overdueEscalation: '逾期升级通知',
+      configureOverdueEscalation: '设置逾期升级通知',
     },
     
     enterFullscreen: '全屏显示',

@@ -19,16 +19,40 @@ const EFormDesignerUpload = ({
       const formData = new FormData();
       formData.append('file', file);
 
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        setIsUploading(false);
+        return;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000);
 
       const response = await fetch('/api/FormsUpload/word', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      // 檢查響應狀態
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      // 檢查響應內容類型
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Invalid response format. Expected JSON, got: ${contentType || 'unknown'}. Response: ${text.substring(0, 100)}`);
+      }
+
       const result = await response.json();
 
       if (result.success) {
@@ -36,14 +60,16 @@ const EFormDesignerUpload = ({
         onSuccess(result.htmlContent, result.formName || t('eformDesigner.formCreatedFromWord'));
         onClose();
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
         message.error(`❌ ${t('eformDesigner.requestTimeoutWordFileConversion')}`);
+      } else if (error.message) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.message}`);
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.toString()}`);
       }
     } finally {
       setIsUploading(false);
@@ -56,16 +82,40 @@ const EFormDesignerUpload = ({
       const formData = new FormData();
       formData.append('file', file);
 
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        setIsUploading(false);
+        return;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000);
 
       const response = await fetch('/api/FormsUpload/excel', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      // 檢查響應狀態
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      // 檢查響應內容類型
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Invalid response format. Expected JSON, got: ${contentType || 'unknown'}. Response: ${text.substring(0, 100)}`);
+      }
+
       const result = await response.json();
 
       if (result.success) {
@@ -73,14 +123,16 @@ const EFormDesignerUpload = ({
         onSuccess(result.htmlContent, result.formName || t('eformDesigner.formCreatedFromExcel'));
         onClose();
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
         message.error(`❌ ${t('eformDesigner.requestTimeoutExcelFileConversion')}`);
+      } else if (error.message) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.message}`);
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.toString()}`);
       }
     } finally {
       setIsUploading(false);
@@ -93,16 +145,40 @@ const EFormDesignerUpload = ({
       const formData = new FormData();
       formData.append('file', file);
 
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        setIsUploading(false);
+        return;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 300000);
 
       const response = await fetch('/api/FormsUpload/pdf', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      // 檢查響應狀態
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      // 檢查響應內容類型
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Invalid response format. Expected JSON, got: ${contentType || 'unknown'}. Response: ${text.substring(0, 100)}`);
+      }
+
       const result = await response.json();
 
       if (result.success) {
@@ -110,14 +186,16 @@ const EFormDesignerUpload = ({
         onSuccess(result.htmlContent, result.formName || t('eformDesigner.formCreatedFromPdf'));
         onClose();
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
         message.error(`❌ ${t('eformDesigner.requestTimeoutPdfFileConversion')}`);
+      } else if (error.message) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.message}`);
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.toString()}`);
       }
     } finally {
       setIsUploading(false);
@@ -130,16 +208,40 @@ const EFormDesignerUpload = ({
       const formData = new FormData();
       formData.append('file', file);
 
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        setIsUploading(false);
+        return;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       const response = await fetch('/api/FormsUpload/image', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      // 檢查響應狀態
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      // 檢查響應內容類型
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Invalid response format. Expected JSON, got: ${contentType || 'unknown'}. Response: ${text.substring(0, 100)}`);
+      }
+
       const result = await response.json();
 
       if (result.success) {
@@ -150,14 +252,16 @@ const EFormDesignerUpload = ({
         onSuccess(imageHtml, null, true); // 第三個參數表示是圖片插入
         onClose();
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${result.error || t('eformDesigner.unknownError')}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${result.error || t('eformDesigner.unknownError')}`);
       }
     } catch (error) {
       console.error('❌ 上傳錯誤:', error);
       if (error.name === 'AbortError') {
         message.error(`❌ ${t('eformDesigner.requestTimeoutImageUpload')}`);
+      } else if (error.message) {
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.message}`);
       } else {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}${error.message}`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${error.toString()}`);
       }
     } finally {
       setIsUploading(false);

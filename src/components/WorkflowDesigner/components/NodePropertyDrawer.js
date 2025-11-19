@@ -185,7 +185,7 @@ const NodePropertyDrawer = ({
   const handleValidatorToggle = useCallback((key, isActive) => {
     const updates = key === 'ai'
       ? { aiIsActive: isActive }
-      : { timeIsActive: isActive };
+      : { timeIsActive: isActive }; // 明確設置 timeIsActive 為 true 或 false
 
     syncValidationState({
       ...updates,

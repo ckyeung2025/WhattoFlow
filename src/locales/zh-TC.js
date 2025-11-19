@@ -1282,6 +1282,7 @@ const zhTC = {
     generating: "生成中...",
     generateForm: "生成表單",
     requirementsDescription: "需求描述",
+    placeholderExample: "例如：我需要一個請假申請表單，包含員工信息、請假類型、開始日期、結束日期、請假原因等欄位...",
     exampleRequirementsDescription: "例如：我需要一個請假申請表單，包含員工信息、請假類型、開始日期、結束日期、請假原因等欄位...",
     basedOnCurrentContentModified: "將基於當前內容修改",
     generatingNewForm: "將生成全新表單",
@@ -2536,6 +2537,10 @@ const zhTC = {
       escalationMessage: '升級通知訊息',
       retryMessageSaved: '提醒訊息配置已保存',
       escalationSaved: '升級通知配置已保存',
+      retryMessageConfig: '提醒訊息設置',
+      escalationConfig: '升級通知設置',
+      overdueEscalation: '逾期升級通知',
+      configureOverdueEscalation: '設置逾期升級通知',
     },
     
     // 模板變量配置相關翻譯

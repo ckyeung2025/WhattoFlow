@@ -96,73 +96,85 @@ namespace PurpleRice.Controllers
                 }
 
                 // 修復：根據公司ID過濾模板
-                var query = _context.WhatsAppTemplates
-                    .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted)
-                    .AsQueryable();
+                var baseQuery = _context.WhatsAppTemplates
+                    .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted);
 
                 // 搜索過濾 - 修復：處理可能為 NULL 的字段
                 if (!string.IsNullOrEmpty(search))
                 {
-                    query = query.Where(t => 
+                    baseQuery = baseQuery.Where(t => 
                         (t.Name != null && t.Name.Contains(search)) || 
                         (t.Category != null && t.Category.Contains(search)) || 
                         (t.TemplateType != null && t.TemplateType.Contains(search)));
                 }
 
-                // 排序 - 修復：處理可能為 NULL 的字段
-                switch (sortField.ToLower())
+                // 先計算總數
+                var total = await baseQuery.CountAsync();
+
+                // 排序 - 修復：使用 Select 投影處理 NULL 值，避免在讀取實體時遇到 NULL
+                // 支持前端發送的駝峰命名（createdAt）和下劃線命名（created_at）
+                IQueryable<WhatsAppTemplate> sortedQuery;
+                var sortFieldLower = sortField.ToLower().Replace("_", "").Replace("-", "");
+                switch (sortFieldLower)
                 {
                     case "name":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Name ?? "") : query.OrderByDescending(t => t.Name ?? "");
+                        sortedQuery = sortOrder.ToLower() == "asc" 
+                            ? baseQuery.OrderBy(t => t.Name ?? "") 
+                            : baseQuery.OrderByDescending(t => t.Name ?? "");
                         break;
                     case "category":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Category ?? "") : query.OrderByDescending(t => t.Category ?? "");
+                        sortedQuery = sortOrder.ToLower() == "asc" 
+                            ? baseQuery.OrderBy(t => t.Category ?? "") 
+                            : baseQuery.OrderByDescending(t => t.Category ?? "");
                         break;
-                    case "template_type":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.TemplateType ?? "") : query.OrderByDescending(t => t.TemplateType ?? "");
+                    case "templatetype":
+                        sortedQuery = sortOrder.ToLower() == "asc" 
+                            ? baseQuery.OrderBy(t => t.TemplateType ?? "") 
+                            : baseQuery.OrderByDescending(t => t.TemplateType ?? "");
                         break;
                     case "status":
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.Status ?? "") : query.OrderByDescending(t => t.Status ?? "");
+                        sortedQuery = sortOrder.ToLower() == "asc" 
+                            ? baseQuery.OrderBy(t => t.Status ?? "") 
+                            : baseQuery.OrderByDescending(t => t.Status ?? "");
                         break;
-                    case "created_at":
+                    case "createdat":
+                    case "updatedat":
                     default:
-                        query = sortOrder.ToLower() == "asc" ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt);
+                        // 默認按創建時間排序
+                        sortedQuery = sortOrder.ToLower() == "asc" 
+                            ? baseQuery.OrderBy(t => t.CreatedAt) 
+                            : baseQuery.OrderByDescending(t => t.CreatedAt);
                         break;
                 }
 
-                var total = await query.CountAsync();
-                
-                // 修復：先查詢到內存，然後處理 NULL 值
-                // 使用 AsEnumerable() 將查詢轉換為內存查詢，避免 EF Core 在數據庫層面處理 NULL 值時出現問題
-                var templatesData = await query
+                // 使用 Select 投影在數據庫層面處理 NULL 值，避免讀取實體時出現 NULL 錯誤
+                var templates = await sortedQuery
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
+                    .Select(t => new WhatsAppTemplate
+                    {
+                        Id = t.Id,
+                        Name = t.Name ?? "",
+                        Description = t.Description ?? "",
+                        Category = t.Category ?? "General",
+                        TemplateType = t.TemplateType ?? "Text",
+                        TemplateSource = t.TemplateSource ?? "Internal",
+                        Content = t.Content ?? "",
+                        Variables = t.Variables ?? "",
+                        Status = t.Status ?? "Active",
+                        HeaderUrl = t.HeaderUrl ?? "",
+                        HeaderType = t.HeaderType ?? "",
+                        HeaderFilename = t.HeaderFilename ?? "",
+                        Language = t.Language ?? "zh-TW",
+                        CreatedAt = t.CreatedAt,
+                        UpdatedAt = t.UpdatedAt,
+                        CreatedBy = t.CreatedBy ?? "",
+                        UpdatedBy = t.UpdatedBy ?? "",
+                        CompanyId = t.CompanyId,
+                        IsDeleted = t.IsDeleted,
+                        Version = t.Version
+                    })
                     .ToListAsync();
-                
-                // 在內存中處理 NULL 值，確保所有字符串字段都有默認值
-                var templates = templatesData.Select(t => new WhatsAppTemplate
-                {
-                    Id = t.Id,
-                    Name = t.Name ?? "",
-                    Description = t.Description ?? "",
-                    Category = t.Category ?? "General",
-                    TemplateType = t.TemplateType ?? "Text",
-                    TemplateSource = t.TemplateSource ?? "Internal",
-                    Content = t.Content ?? "",
-                    Variables = t.Variables ?? "",
-                    Status = t.Status ?? "Active",
-                    HeaderUrl = t.HeaderUrl ?? "",
-                    HeaderType = t.HeaderType ?? "",
-                    HeaderFilename = t.HeaderFilename ?? "",
-                    Language = t.Language ?? "zh-TW",
-                    CreatedAt = t.CreatedAt,
-                    UpdatedAt = t.UpdatedAt,
-                    CreatedBy = t.CreatedBy ?? "",
-                    UpdatedBy = t.UpdatedBy ?? "",
-                    CompanyId = t.CompanyId,
-                    IsDeleted = t.IsDeleted,
-                    Version = t.Version
-                }).ToList();
 
                 // 記錄每個模板的詳細信息
                 foreach (var template in templates)
@@ -474,19 +486,27 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("❌ [GetCategories] 無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 修復：處理 NULL 值，並根據公司ID過濾
                 var categories = await _context.WhatsAppTemplates
-                    .Where(t => !t.IsDeleted)
-                    .Select(t => t.Category)
+                    .Where(t => t.CompanyId == companyId.Value && !t.IsDeleted && t.Category != null)
+                    .Select(t => t.Category ?? "General")
                     .Distinct()
                     .OrderBy(c => c)
                     .ToListAsync();
 
-                return Ok(categories);
+                return Ok(new { success = true, data = categories });
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"❌ [GetCategories] 獲取分類失敗: {ex.Message}");
-                return StatusCode(500, new { error = ex.Message });
+                _loggingService.LogError($"❌ [GetCategories] 獲取分類失敗: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, error = ex.Message });
             }
         }
 

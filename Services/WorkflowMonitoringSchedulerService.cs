@@ -223,10 +223,26 @@ namespace PurpleRice.Services
                             continue;
                         }
 
-                        var timeValidatorActive = validation.TimeIsActive ?? string.Equals(validation.ValidatorType, "time", StringComparison.OrdinalIgnoreCase);
+                        // 檢查 Time Validator 是否啟用
+                        // 優先檢查 TimeIsActive：
+                        // - 如果 TimeIsActive 明確為 false，跳過（不管 ValidatorType 是什麼）
+                        // - 如果 TimeIsActive 為 true，繼續處理
+                        // - 如果 TimeIsActive 為 null，回退到檢查 ValidatorType == "time"
+                        bool timeValidatorActive;
+                        if (validation.TimeIsActive.HasValue)
+                        {
+                            // TimeIsActive 有明確值，使用該值
+                            timeValidatorActive = validation.TimeIsActive.Value;
+                        }
+                        else
+                        {
+                            // TimeIsActive 為 null，回退到檢查 ValidatorType
+                            timeValidatorActive = string.Equals(validation.ValidatorType, "time", StringComparison.OrdinalIgnoreCase);
+                        }
+                        
                         if (!timeValidatorActive)
                         {
-                            continue; // 不是 Time Validator，跳過
+                            continue; // Time Validator 未啟用，跳過
                         }
 
                         // 計算重試間隔（轉換為總分鐘數）
