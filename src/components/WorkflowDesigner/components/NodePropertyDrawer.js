@@ -8,6 +8,7 @@ import DataSetQueryConditionModal from '../modals/DataSetQueryConditionModal';
 import DataSetQueryConditionEditModal from '../modals/DataSetQueryConditionEditModal';
 import DataSetFieldMappingModal from '../modals/DataSetFieldMappingModal';
 import MessageModeTabsComponent from './MessageModeTabsComponent';
+import QRCodeMessageTabsComponent from './QRCodeMessageTabsComponent';
 import RetryMessageModal from '../modals/RetryMessageModal';
 import EscalationConfigModal from '../modals/EscalationConfigModal';
 import OverdueEscalationModal from '../modals/OverdueEscalationModal';
@@ -562,8 +563,25 @@ const NodePropertyDrawer = ({
         replyType: selectedNode.data.replyType || '',
         specifiedUsers: selectedNode.data.specifiedUsers || '',
         qrCodeVariable: selectedNode.data.qrCodeVariable || '',
+        // QR Code 提示訊息（使用 messageMode 和 message）
+        messageMode: selectedNode.data.messageMode || 'direct',
+        message: selectedNode.data.message || '',
+        // QR Code 成功訊息
         qrCodeSuccessMessage: selectedNode.data.qrCodeSuccessMessage || t('workflowDesigner.dataSet.qrCodeSuccessMessage'),
+        qrCodeSuccessMessageMode: selectedNode.data.qrCodeSuccessMessageMode || 'direct',
+        qrCodeSuccessTemplateId: selectedNode.data.qrCodeSuccessTemplateId || '',
+        qrCodeSuccessTemplateName: selectedNode.data.qrCodeSuccessTemplateName || '',
+        qrCodeSuccessIsMetaTemplate: selectedNode.data.qrCodeSuccessIsMetaTemplate || false,
+        qrCodeSuccessTemplateLanguage: selectedNode.data.qrCodeSuccessTemplateLanguage || null,
+        qrCodeSuccessTemplateVariables: selectedNode.data.qrCodeSuccessTemplateVariables || [],
+        // QR Code 錯誤訊息
         qrCodeErrorMessage: selectedNode.data.qrCodeErrorMessage || t('workflowDesigner.dataSet.qrCodeErrorMessage'),
+        qrCodeErrorMessageMode: selectedNode.data.qrCodeErrorMessageMode || 'direct',
+        qrCodeErrorTemplateId: selectedNode.data.qrCodeErrorTemplateId || '',
+        qrCodeErrorTemplateName: selectedNode.data.qrCodeErrorTemplateName || '',
+        qrCodeErrorIsMetaTemplate: selectedNode.data.qrCodeErrorIsMetaTemplate || false,
+        qrCodeErrorTemplateLanguage: selectedNode.data.qrCodeErrorTemplateLanguage || null,
+        qrCodeErrorTemplateVariables: selectedNode.data.qrCodeErrorTemplateVariables || [],
         approvalResultVariable: selectedNode.data.approvalResultVariable || '',
         activationType: selectedNode.data.activationType || 'manual',
         scheduledTable: selectedNode.data.scheduledTable || '',
@@ -1121,13 +1139,42 @@ const NodePropertyDrawer = ({
                   </div>
                 </Form.Item>
                 <Form.Item label={t('workflowDesigner.dataSet.template')}>
-                  <Input 
-                    value={selectedNode.data.templateName || ''}
-                    placeholder={t('workflowDesigner.selectTemplate')} 
-                    readOnly 
-                    onClick={() => setIsTemplateModalVisible(true)}
-                    suffix={<FormOutlined />}
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <Input 
+                      value={selectedNode.data.templateName || ''}
+                      placeholder={t('workflowDesigner.selectTemplate')} 
+                      readOnly 
+                      onClick={() => setIsTemplateModalVisible(true)}
+                      suffix={<FormOutlined />}
+                    />
+                    {selectedNode.data.templateId && (
+                      <div style={{ 
+                        position: 'absolute', 
+                        right: '30px', 
+                        top: '50%', 
+                        transform: 'translateY(-50%)',
+                        zIndex: 1
+                      }}>
+                        <Button 
+                          type="text" 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNodeDataChange({ 
+                              templateId: '', 
+                              templateName: '', 
+                              isMetaTemplate: false,
+                              templateLanguage: null,
+                              variables: {}
+                            });
+                          }}
+                          style={{ padding: '0 4px', fontSize: '12px' }}
+                        >
+                          {t('workflowDesigner.clear')}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </Form.Item>
                 {selectedNode.data.templateId && (
                   <Card size="small" title={t('workflowDesigner.templateInfo')} style={{ marginBottom: 16 }}>
@@ -1578,27 +1625,14 @@ const NodePropertyDrawer = ({
                   </Select>
                 </Form.Item>
                 
-                {/* 提示訊息標籤 */}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
-                    {t('workflowDesigner.promptMessage')}
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
-                    {t('workflowDesigner.promptMessageHelp')}
-                  </div>
-                </div>
-                
-                {/* 訊息模式 Tab 切換（共用組件） */}
-                <MessageModeTabsComponent
+                {/* QR Code 訊息配置（包含提示訊息、成功訊息、錯誤訊息） */}
+                <QRCodeMessageTabsComponent
                   selectedNode={selectedNode}
                   handleNodeDataChange={handleNodeDataChange}
                   setIsTemplateModalVisible={setIsTemplateModalVisible}
                   processVariables={processVariables}
                   form={form}
                   t={t}
-                  messageLabel={null}
-                  messagePlaceholder={t('workflowDesigner.qrCodeMessagePlaceholder')}
-                  messageRows={3}
                 />
                 
                 <Form.Item label={t('workflowDesigner.timeout')} name="timeout">
@@ -1818,20 +1852,6 @@ const NodePropertyDrawer = ({
                       </Tabs.TabPane>
                     </Tabs>
                   </Card>
-                </Form.Item>
-                
-                <Form.Item label={t('workflowDesigner.qrCodeSuccessMessage')} name="qrCodeSuccessMessage">
-                  <Input.TextArea 
-                    rows={2} 
-                    placeholder={t('workflowDesigner.dataSet.qrCodeSuccessMessage')}
-                  />
-                </Form.Item>
-                
-                <Form.Item label={t('workflowDesigner.qrCodeErrorMessage')} name="qrCodeErrorMessage">
-                  <Input.TextArea 
-                    rows={2} 
-                    placeholder={t('workflowDesigner.dataSet.qrCodeErrorMessage')}
-                  />
                 </Form.Item>
                 
                 <Card size="small" title={t('workflowDesigner.functionDescription')} style={{ marginTop: 16 }}>

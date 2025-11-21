@@ -333,14 +333,16 @@ namespace PurpleRice.Controllers
                     .ToListAsync();
 
                 // 動態計算各種狀態的數量
+                // running 包含所有運行中的狀態，包括 Waiting、WaitingForQRCode、WaitingForFormApproval 等
+                // 因為這些狀態表示流程仍在運行中，只是在等待用戶輸入
                 var running = await _db.WorkflowExecutions.CountAsync(e => 
-                    e.Status != null && e.Status.ToLower().Contains("run"));
+                    e.Status != null && (e.Status.ToLower().Contains("run") || e.Status.ToLower().Contains("wait")));
                 var completed = await _db.WorkflowExecutions.CountAsync(e => 
                     e.Status != null && e.Status.ToLower().Contains("complete"));
                 var failed = await _db.WorkflowExecutions.CountAsync(e => 
                     e.Status != null && e.Status.ToLower().Contains("fail"));
-                var waiting = await _db.WorkflowExecutions.CountAsync(e => 
-                    e.Status != null && e.Status.ToLower().Contains("wait"));
+                // waiting 不再單獨計算，因為已經包含在 running 中
+                var waiting = 0;
 
                 var successRate = total > 0 ? Math.Round((double)completed / total * 100, 1) : 0;
 

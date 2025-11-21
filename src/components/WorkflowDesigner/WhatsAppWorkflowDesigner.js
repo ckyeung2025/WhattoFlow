@@ -98,6 +98,22 @@ const WhatsAppWorkflowDesignerRefactored = () => {
 
   // Time Validator 模板選擇相關狀態
   const [templateModalSource, setTemplateModalSource] = useState(null);
+  
+  // 監聽 QR Code 模板選擇請求
+  useEffect(() => {
+    const handleQRCodeTemplateSelectRequest = (event) => {
+      const { messageType } = event.detail;
+      console.log('🎯 WhatsAppWorkflowDesigner 收到 QR Code 模板選擇請求:', { messageType });
+      window.qrCodeTemplateSelectMessageType = messageType;
+    };
+
+    window.addEventListener('qrCodeTemplateSelectRequest', handleQRCodeTemplateSelectRequest);
+    
+    return () => {
+      window.removeEventListener('qrCodeTemplateSelectRequest', handleQRCodeTemplateSelectRequest);
+      window.qrCodeTemplateSelectMessageType = null;
+    };
+  }, []);
 
   // 處理 Time Validator 模板選擇
   const handleTimeValidatorTemplateSelect = useCallback((template, isMetaTemplate) => {
@@ -492,8 +508,21 @@ const WhatsAppWorkflowDesignerRefactored = () => {
         templates={templates}
         metaTemplates={metaTemplates}
         onSelectTemplate={(template, isMetaTemplate) => {
-          // 檢查是否有 templateModalSource（來自 Time Validator 或 Overdue）
-          if (templateModalSource) {
+          // 檢查是否有 QR Code 模板選擇請求
+          const qrCodeMessageType = window.qrCodeTemplateSelectMessageType;
+          if (qrCodeMessageType) {
+            console.log('🎯 主要 TemplateModal 處理 QR Code 模板選擇:', { template: template.name, isMetaTemplate, messageType: qrCodeMessageType });
+            // 發送 QR Code 模板選擇事件
+            window.dispatchEvent(new CustomEvent('qrCodeTemplateSelected', {
+              detail: {
+                template,
+                isMetaTemplate,
+                messageType: qrCodeMessageType
+              }
+            }));
+            window.qrCodeTemplateSelectMessageType = null; // 清除
+            setIsTemplateModalVisible(false);
+          } else if (templateModalSource) {
             console.log('🎯 主要 TemplateModal 處理 Time Validator 模板選擇:', { template: template.name, isMetaTemplate, source: templateModalSource });
             // 調用 NodePropertyDrawer 的處理函數
             handleTimeValidatorTemplateSelect(template, isMetaTemplate);

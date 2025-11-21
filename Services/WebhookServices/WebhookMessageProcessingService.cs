@@ -1193,6 +1193,117 @@ namespace PurpleRice.Services.WebhookServices
         }
 
         /// <summary>
+        /// 發送 QR Code 訊息（支持模板和直接訊息）
+        /// </summary>
+        private async Task SendQRCodeMessageAsync(
+            Company company, 
+            WorkflowExecution execution,
+            string waId, 
+            QRCodeNodeInfo nodeInfo,
+            bool isSuccessMessage)
+        {
+            try
+            {
+                string messageMode;
+                string message;
+                string templateId;
+                string templateName;
+                bool isMetaTemplate;
+                string templateLanguage;
+                List<object> templateVariables;
+
+                if (isSuccessMessage)
+                {
+                    messageMode = nodeInfo.QrCodeSuccessMessageMode ?? "direct";
+                    message = nodeInfo.QrCodeSuccessMessage;
+                    templateId = nodeInfo.QrCodeSuccessTemplateId;
+                    templateName = nodeInfo.QrCodeSuccessTemplateName;
+                    isMetaTemplate = nodeInfo.QrCodeSuccessIsMetaTemplate;
+                    templateLanguage = nodeInfo.QrCodeSuccessTemplateLanguage;
+                    templateVariables = nodeInfo.QrCodeSuccessTemplateVariables;
+                }
+                else
+                {
+                    messageMode = nodeInfo.QrCodeErrorMessageMode ?? "direct";
+                    message = nodeInfo.QrCodeErrorMessage;
+                    templateId = nodeInfo.QrCodeErrorTemplateId;
+                    templateName = nodeInfo.QrCodeErrorTemplateName;
+                    isMetaTemplate = nodeInfo.QrCodeErrorIsMetaTemplate;
+                    templateLanguage = nodeInfo.QrCodeErrorTemplateLanguage;
+                    templateVariables = nodeInfo.QrCodeErrorTemplateVariables;
+                }
+
+                if (messageMode == "template" && !string.IsNullOrEmpty(templateName))
+                {
+                    _loggingService.LogInformation($"📝 QR Code {(isSuccessMessage ? "成功" : "錯誤")}訊息使用模板模式: {templateName}");
+                    
+                    // 處理模板變數
+                    Dictionary<string, string> processedVariables = new Dictionary<string, string>();
+                    if (templateVariables != null && templateVariables.Any())
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var variableReplacementService = scope.ServiceProvider.GetRequiredService<IVariableReplacementService>();
+                        foreach (var tv in templateVariables)
+                        {
+                            if (tv != null)
+                            {
+                                try
+                                {
+                                    var tvJson = JsonSerializer.Serialize(tv);
+                                    var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                                    if (tvElement.TryGetProperty("parameterName", out var paramName) &&
+                                        tvElement.TryGetProperty("value", out var value))
+                                    {
+                                        var paramNameStr = paramName.GetString();
+                                        var valueStr = value.GetString() ?? "";
+                                        // 替換流程變數
+                                        var processedValue = await variableReplacementService.ReplaceVariablesAsync(valueStr, execution.Id);
+                                        processedVariables[paramNameStr] = processedValue;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _loggingService.LogWarning($"處理模板變數時發生錯誤: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 發送模板訊息
+                    await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(
+                        waId,
+                        templateId,
+                        execution,
+                        _context,
+                        processedVariables,
+                        isMetaTemplate,
+                        templateName,
+                        templateLanguage
+                    );
+                }
+                else
+                {
+                    // 發送直接訊息
+                    var finalMessage = !string.IsNullOrEmpty(message) 
+                        ? message 
+                        : (isSuccessMessage 
+                            ? "QR Code 掃描成功！流程將繼續執行。" 
+                            : "無法處理您上傳的圖片，請重新上傳。");
+                    await SendWhatsAppMessage(company, waId, finalMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"發送 QR Code {(isSuccessMessage ? "成功" : "錯誤")}訊息失敗: {ex.Message}", ex);
+                // 回退到直接訊息
+                var fallbackMessage = isSuccessMessage 
+                    ? "QR Code 掃描成功！流程將繼續執行。" 
+                    : "無法處理您上傳的圖片，請重新上傳。";
+                await SendWhatsAppMessage(company, waId, fallbackMessage);
+            }
+        }
+
+        /// <summary>
         /// 發送 WhatsApp 消息
         /// </summary>
         /// <param name="company">公司信息</param>
@@ -1499,10 +1610,7 @@ namespace PurpleRice.Services.WebhookServices
                 if (string.IsNullOrEmpty(messageData.MediaId))
                 {
                     _loggingService.LogError("沒有找到媒體 ID");
-                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
-                        ? nodeInfo.QrCodeErrorMessage 
-                        : "無法獲取圖片信息，請重新上傳。";
-                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    await SendQRCodeMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
                     return;
                 }
                 
@@ -1512,10 +1620,7 @@ namespace PurpleRice.Services.WebhookServices
                 if (qrMedia == null || imageBytes == null || imageBytes.Length == 0)
                 {
                     _loggingService.LogError("無法下載 WhatsApp 圖片");
-                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
-                        ? nodeInfo.QrCodeErrorMessage 
-                        : "無法處理您上傳的圖片，請重新上傳。";
-                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    await SendQRCodeMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
                     return;
                 }
                 
@@ -1585,10 +1690,7 @@ namespace PurpleRice.Services.WebhookServices
                 if (string.IsNullOrEmpty(qrCodeValue))
                 {
                     _loggingService.LogWarning("無法從圖片中掃描到 QR Code");
-                    var scanErrorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
-                        ? nodeInfo.QrCodeErrorMessage 
-                        : "無法識別圖片中的 QR Code，請確保圖片清晰且包含有效的 QR Code。";
-                    await SendWhatsAppMessage(company, messageData.WaId, scanErrorMessage);
+                    await SendQRCodeMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
                     return;
                 }
                 
@@ -1599,10 +1701,7 @@ namespace PurpleRice.Services.WebhookServices
                 if (!qrCodeProcessResult)
                 {
                     _loggingService.LogError("QR Code 處理失敗");
-                    var errorMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeErrorMessage) 
-                        ? nodeInfo.QrCodeErrorMessage 
-                        : "QR Code 處理失敗，請重新上傳。";
-                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    await SendQRCodeMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
                     return;
                 }
                 
@@ -1747,10 +1846,7 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogInformation($"✅ 流程執行狀態已更新為 Running");
                 
                 // 發送成功訊息並繼續執行流程
-                var successMessage = !string.IsNullOrEmpty(nodeInfo.QrCodeSuccessMessage) 
-                    ? nodeInfo.QrCodeSuccessMessage 
-                    : "QR Code 掃描成功！流程將繼續執行。";
-                await SendWhatsAppMessage(company, messageData.WaId, successMessage);
+                await SendQRCodeMessageAsync(company, execution, messageData.WaId, nodeInfo, true);
                 
                 // 繼續執行流程
                 await _workflowEngine.ContinueWorkflowFromWaitReply(execution, messageData);
@@ -1791,7 +1887,19 @@ namespace PurpleRice.Services.WebhookServices
                         {
                             NodeId = waitForQRCodeNode.Id,
                             QrCodeSuccessMessage = waitForQRCodeNode.Data?.QrCodeSuccessMessage,
+                            QrCodeSuccessMessageMode = waitForQRCodeNode.Data?.QrCodeSuccessMessageMode ?? "direct",
+                            QrCodeSuccessTemplateId = waitForQRCodeNode.Data?.QrCodeSuccessTemplateId,
+                            QrCodeSuccessTemplateName = waitForQRCodeNode.Data?.QrCodeSuccessTemplateName,
+                            QrCodeSuccessIsMetaTemplate = waitForQRCodeNode.Data?.QrCodeSuccessIsMetaTemplate ?? false,
+                            QrCodeSuccessTemplateLanguage = waitForQRCodeNode.Data?.QrCodeSuccessTemplateLanguage,
+                            QrCodeSuccessTemplateVariables = waitForQRCodeNode.Data?.QrCodeSuccessTemplateVariables,
                             QrCodeErrorMessage = waitForQRCodeNode.Data?.QrCodeErrorMessage,
+                            QrCodeErrorMessageMode = waitForQRCodeNode.Data?.QrCodeErrorMessageMode ?? "direct",
+                            QrCodeErrorTemplateId = waitForQRCodeNode.Data?.QrCodeErrorTemplateId,
+                            QrCodeErrorTemplateName = waitForQRCodeNode.Data?.QrCodeErrorTemplateName,
+                            QrCodeErrorIsMetaTemplate = waitForQRCodeNode.Data?.QrCodeErrorIsMetaTemplate ?? false,
+                            QrCodeErrorTemplateLanguage = waitForQRCodeNode.Data?.QrCodeErrorTemplateLanguage,
+                            QrCodeErrorTemplateVariables = waitForQRCodeNode.Data?.QrCodeErrorTemplateVariables,
                             QrCodeVariable = waitForQRCodeNode.Data?.QrCodeVariable,
                             Validation = waitForQRCodeNode.Data?.Validation
                         };
@@ -1811,7 +1919,19 @@ namespace PurpleRice.Services.WebhookServices
         {
             public string NodeId { get; set; }
             public string QrCodeSuccessMessage { get; set; }
+            public string QrCodeSuccessMessageMode { get; set; }
+            public string QrCodeSuccessTemplateId { get; set; }
+            public string QrCodeSuccessTemplateName { get; set; }
+            public bool QrCodeSuccessIsMetaTemplate { get; set; }
+            public string QrCodeSuccessTemplateLanguage { get; set; }
+            public List<object> QrCodeSuccessTemplateVariables { get; set; }
             public string QrCodeErrorMessage { get; set; }
+            public string QrCodeErrorMessageMode { get; set; }
+            public string QrCodeErrorTemplateId { get; set; }
+            public string QrCodeErrorTemplateName { get; set; }
+            public bool QrCodeErrorIsMetaTemplate { get; set; }
+            public string QrCodeErrorTemplateLanguage { get; set; }
+            public List<object> QrCodeErrorTemplateVariables { get; set; }
             public string QrCodeVariable { get; set; }
             public WorkflowValidation Validation { get; set; }
         }

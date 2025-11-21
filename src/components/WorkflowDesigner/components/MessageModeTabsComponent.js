@@ -84,13 +84,42 @@ const MessageModeTabsComponent = ({
   const renderTemplateTab = () => (
     <>
       <Form.Item label={t('workflowDesigner.dataSet.template')}>
-        <Input 
-          value={selectedNode.data.templateName || ''}
-          placeholder={t('workflowDesigner.selectTemplate')} 
-          readOnly 
-          onClick={() => setIsTemplateModalVisible(true)}
-          suffix={<FormOutlined />}
-        />
+        <div style={{ position: 'relative' }}>
+          <Input 
+            value={selectedNode.data.templateName || ''}
+            placeholder={t('workflowDesigner.selectTemplate')} 
+            readOnly 
+            onClick={() => setIsTemplateModalVisible(true)}
+            suffix={<FormOutlined />}
+          />
+          {selectedNode.data.templateId && (
+            <div style={{ 
+              position: 'absolute', 
+              right: '30px', 
+              top: '50%', 
+              transform: 'translateY(-50%)',
+              zIndex: 1
+            }}>
+              <Button 
+                type="text" 
+                size="small" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNodeDataChange({ 
+                    templateId: '', 
+                    templateName: '', 
+                    isMetaTemplate: false,
+                    templateLanguage: null,
+                    templateVariables: []
+                  });
+                }}
+                style={{ padding: '0 4px', fontSize: '12px' }}
+              >
+                {t('workflowDesigner.clear')}
+              </Button>
+            </div>
+          )}
+        </div>
       </Form.Item>
       
       {selectedNode.data.templateId && (

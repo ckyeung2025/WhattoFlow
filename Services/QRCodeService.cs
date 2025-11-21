@@ -5,6 +5,9 @@ using ZXing;
 using ZXing.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Hosting;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 
 namespace PurpleRice.Services
 {
@@ -43,10 +46,11 @@ namespace PurpleRice.Services
 
         public async Task<string> ScanQRCodeAsync(Stream imageStream)
         {
+            Bitmap bitmap = null;
             try
             {
                 // 讀取圖片
-                var bitmap = new System.Drawing.Bitmap(imageStream);
+                bitmap = new Bitmap(imageStream);
                 
                 // 嘗試多種掃描策略
                 var strategies = new[]
@@ -94,13 +98,17 @@ namespace PurpleRice.Services
                     }
                 };
                 
-                // 依次嘗試各種策略
+                // 依次嘗試各種策略，每個都啟用 AutoRotate 和 TryInverted
                 foreach (var options in strategies)
                 {
                     try
                     {
-                        var reader = new BarcodeReader();
-                        reader.Options = options;
+                        var reader = new BarcodeReader
+                        {
+                            AutoRotate = true,      // ✅ 添加自動旋轉，處理旋轉的圖片
+                            TryInverted = true,     // ✅ 添加嘗試反色，處理反色的 QR code
+                            Options = options
+                        };
                         
                         var result = reader.Decode(bitmap);
                         
@@ -118,6 +126,62 @@ namespace PurpleRice.Services
                     }
                 }
                 
+                // ✅ 如果標準掃描失敗，嘗試多種圖片預處理後再掃描（適用於拍照螢幕、收據等情況）
+                _logger.LogInformation("標準掃描失敗，嘗試多種圖片預處理後重新掃描");
+                
+                // 定義多種預處理方法
+                var preprocessingMethods = new Func<Bitmap, Bitmap>[]
+                {
+                    EnhanceContrastAndBrightness,      // 策略 1: 增強對比度和亮度
+                    ConvertToGrayscaleAndEnhance,     // 策略 2: 灰度轉換並增強對比度
+                    BinarizeImage,                     // 策略 3: 二值化處理（黑白轉換）
+                    EnhanceContrastStrong              // 策略 4: 強對比度增強
+                };
+                
+                foreach (var preprocessMethod in preprocessingMethods)
+                {
+                    Bitmap enhancedBitmap = null;
+                    try
+                    {
+                        enhancedBitmap = preprocessMethod(bitmap);
+                        _logger.LogInformation("嘗試預處理方法: {MethodName}", preprocessMethod.Method.Name);
+                        
+                        foreach (var options in strategies)
+                        {
+                            try
+                            {
+                                var reader = new BarcodeReader
+                                {
+                                    AutoRotate = true,
+                                    TryInverted = true,
+                                    Options = options
+                                };
+                                
+                                var result = reader.Decode(enhancedBitmap);
+                                
+                                if (result != null)
+                                {
+                                    _logger.LogInformation("圖片預處理後掃描成功 - 方法: {MethodName}, 格式: {Format}, 內容: {Text}", 
+                                        preprocessMethod.Method.Name, result.BarcodeFormat, result.Text);
+                                    enhancedBitmap.Dispose();
+                                    return result.Text;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogDebug(ex, "預處理方法 {MethodName} 後此策略掃描失敗", preprocessMethod.Method.Name);
+                            }
+                        }
+                        
+                        enhancedBitmap?.Dispose();
+                    }
+                    catch (Exception preprocessEx)
+                    {
+                        _logger.LogDebug(preprocessEx, "預處理方法 {MethodName} 失敗，嘗試下一個", preprocessMethod.Method.Name);
+                        enhancedBitmap?.Dispose();
+                    }
+                }
+                
                 _logger.LogWarning("使用所有策略後仍未找到條碼");
                 return null;
             }
@@ -126,6 +190,230 @@ namespace PurpleRice.Services
                 _logger.LogError(ex, "掃描條碼時發生錯誤");
                 throw;
             }
+            finally
+            {
+                bitmap?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 預處理方法 1: 增強對比度和亮度，提高拍照螢幕的 QR code 識別率
+        /// </summary>
+        private Bitmap EnhanceContrastAndBrightness(Bitmap original)
+        {
+            var enhanced = new Bitmap(original.Width, original.Height);
+            
+            using (var graphics = Graphics.FromImage(enhanced))
+            {
+                // 設置高品質渲染
+                graphics.CompositingQuality = CompositingQuality.HighQuality;
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.SmoothingMode = SmoothingMode.HighQuality;
+                
+                // 創建顏色矩陣來調整對比度和亮度
+                // 增強對比度（1.5倍）和稍微增加亮度（0.1）
+                var colorMatrix = new ColorMatrix(new float[][]
+                {
+                    new float[] { 1.5f, 0, 0, 0, 0 },      // Red - 增強對比度
+                    new float[] { 0, 1.5f, 0, 0, 0 },      // Green
+                    new float[] { 0, 0, 1.5f, 0, 0 },      // Blue
+                    new float[] { 0, 0, 0, 1, 0 },         // Alpha
+                    new float[] { 0.1f, 0.1f, 0.1f, 0, 1 } // 稍微增加亮度
+                });
+                
+                var imageAttributes = new ImageAttributes();
+                imageAttributes.SetColorMatrix(colorMatrix);
+                
+                var rect = new Rectangle(0, 0, original.Width, original.Height);
+                graphics.DrawImage(original, rect, 0, 0, original.Width, original.Height, 
+                    GraphicsUnit.Pixel, imageAttributes);
+            }
+            
+            return enhanced;
+        }
+
+        /// <summary>
+        /// 預處理方法 2: 轉換為灰度並增強對比度，適用於彩色圖片中的 QR code
+        /// </summary>
+        private Bitmap ConvertToGrayscaleAndEnhance(Bitmap original)
+        {
+            var enhanced = new Bitmap(original.Width, original.Height);
+            
+            using (var graphics = Graphics.FromImage(enhanced))
+            {
+                graphics.CompositingQuality = CompositingQuality.HighQuality;
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.SmoothingMode = SmoothingMode.HighQuality;
+                
+                // 先轉換為灰度
+                var grayMatrix = new ColorMatrix(new float[][]
+                {
+                    new float[] { 0.299f, 0.299f, 0.299f, 0, 0 },      // Red 轉灰度
+                    new float[] { 0.587f, 0.587f, 0.587f, 0, 0 },      // Green 轉灰度
+                    new float[] { 0.114f, 0.114f, 0.114f, 0, 0 },      // Blue 轉灰度
+                    new float[] { 0, 0, 0, 1, 0 },                      // Alpha
+                    new float[] { 0, 0, 0, 0, 1 }                       // 亮度調整
+                });
+                
+                // 然後增強對比度
+                var contrastMatrix = new ColorMatrix(new float[][]
+                {
+                    new float[] { 2.2f, 0, 0, 0, 0 },      // 增強對比度
+                    new float[] { 0, 2.2f, 0, 0, 0 },
+                    new float[] { 0, 0, 2.2f, 0, 0 },
+                    new float[] { 0, 0, 0, 1, 0 },
+                    new float[] { -0.15f, -0.15f, -0.15f, 0, 1 } // 稍微降低亮度以增強對比
+                });
+                
+                // 組合兩個矩陣
+                var combinedMatrix = new ColorMatrix(new float[][]
+                {
+                    new float[] { 0.658f, 0.658f, 0.658f, 0, 0 },     // 灰度轉換後的對比度增強
+                    new float[] { 1.291f, 1.291f, 1.291f, 0, 0 },
+                    new float[] { 0.251f, 0.251f, 0.251f, 0, 0 },
+                    new float[] { 0, 0, 0, 1, 0 },
+                    new float[] { -0.15f, -0.15f, -0.15f, 0, 1 }
+                });
+                
+                var imageAttributes = new ImageAttributes();
+                imageAttributes.SetColorMatrix(combinedMatrix);
+                
+                var rect = new Rectangle(0, 0, original.Width, original.Height);
+                graphics.DrawImage(original, rect, 0, 0, original.Width, original.Height, 
+                    GraphicsUnit.Pixel, imageAttributes);
+            }
+            
+            return enhanced;
+        }
+
+        /// <summary>
+        /// 預處理方法 3: 二值化處理（黑白轉換），適用於低對比度圖片
+        /// </summary>
+        private Bitmap BinarizeImage(Bitmap original)
+        {
+            var binarized = new Bitmap(original.Width, original.Height);
+            
+            // 使用 LockBits 提高性能
+            var rect = new Rectangle(0, 0, original.Width, original.Height);
+            var originalData = original.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            var binarizedData = binarized.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+            
+            unsafe
+            {
+                byte* originalPtr = (byte*)originalData.Scan0;
+                byte* binarizedPtr = (byte*)binarizedData.Scan0;
+                int stride = originalData.Stride;
+                
+                // 計算自適應閾值（使用 Otsu 方法簡化版）
+                int threshold = CalculateAdaptiveThreshold(original, originalData);
+                
+                for (int y = 0; y < original.Height; y++)
+                {
+                    byte* originalRow = originalPtr + (y * stride);
+                    byte* binarizedRow = binarizedPtr + (y * stride);
+                    
+                    for (int x = 0; x < original.Width; x++)
+                    {
+                        int index = x * 3;
+                        
+                        // 計算灰度值
+                        int gray = (int)(originalRow[index + 2] * 0.299 + 
+                                        originalRow[index + 1] * 0.587 + 
+                                        originalRow[index] * 0.114);
+                        
+                        // 二值化
+                        byte value = (byte)(gray > threshold ? 255 : 0);
+                        
+                        // 設置 RGB 值（黑白）
+                        binarizedRow[index] = value;     // B
+                        binarizedRow[index + 1] = value; // G
+                        binarizedRow[index + 2] = value; // R
+                    }
+                }
+            }
+            
+            original.UnlockBits(originalData);
+            binarized.UnlockBits(binarizedData);
+            
+            return binarized;
+        }
+
+        /// <summary>
+        /// 計算自適應閾值（簡化版 Otsu 方法）
+        /// </summary>
+        private int CalculateAdaptiveThreshold(Bitmap bitmap, BitmapData bitmapData)
+        {
+            int[] histogram = new int[256];
+            
+            unsafe
+            {
+                byte* ptr = (byte*)bitmapData.Scan0;
+                int stride = bitmapData.Stride;
+                
+                for (int y = 0; y < bitmap.Height; y++)
+                {
+                    byte* row = ptr + (y * stride);
+                    for (int x = 0; x < bitmap.Width; x++)
+                    {
+                        int index = x * 3;
+                        int gray = (int)(row[index + 2] * 0.299 + 
+                                        row[index + 1] * 0.587 + 
+                                        row[index] * 0.114);
+                        histogram[gray]++;
+                    }
+                }
+            }
+            
+            // 簡化版：使用中位數作為閾值
+            int totalPixels = bitmap.Width * bitmap.Height;
+            int sum = 0;
+            int threshold = 128; // 默認值
+            
+            for (int i = 0; i < 256; i++)
+            {
+                sum += histogram[i];
+                if (sum >= totalPixels / 2)
+                {
+                    threshold = i;
+                    break;
+                }
+            }
+            
+            return threshold;
+        }
+
+        /// <summary>
+        /// 預處理方法 4: 強對比度增強，適用於非常模糊的圖片
+        /// </summary>
+        private Bitmap EnhanceContrastStrong(Bitmap original)
+        {
+            var enhanced = new Bitmap(original.Width, original.Height);
+            
+            using (var graphics = Graphics.FromImage(enhanced))
+            {
+                graphics.CompositingQuality = CompositingQuality.HighQuality;
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.SmoothingMode = SmoothingMode.HighQuality;
+                
+                // 強對比度增強（2.5倍）
+                var colorMatrix = new ColorMatrix(new float[][]
+                {
+                    new float[] { 2.5f, 0, 0, 0, 0 },      // Red - 強增強對比度
+                    new float[] { 0, 2.5f, 0, 0, 0 },      // Green
+                    new float[] { 0, 0, 2.5f, 0, 0 },      // Blue
+                    new float[] { 0, 0, 0, 1, 0 },         // Alpha
+                    new float[] { -0.3f, -0.3f, -0.3f, 0, 1 } // 降低亮度以增強對比
+                });
+                
+                var imageAttributes = new ImageAttributes();
+                imageAttributes.SetColorMatrix(colorMatrix);
+                
+                var rect = new Rectangle(0, 0, original.Width, original.Height);
+                graphics.DrawImage(original, rect, 0, 0, original.Width, original.Height, 
+                    GraphicsUnit.Pixel, imageAttributes);
+            }
+            
+            return enhanced;
         }
 
         public async Task<string> ScanQRCodeAndSaveImageAsync(byte[] imageData, int executionId)

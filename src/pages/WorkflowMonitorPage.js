@@ -541,12 +541,27 @@ const WorkflowMonitorPage = () => {
       running: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: t('workflowMonitor.statusRunning') },
       completed: { color: 'success', icon: <CheckCircleFilled />, text: t('workflowMonitor.statusCompleted') },
       failed: { color: 'error', icon: <CloseCircleFilled />, text: t('workflowMonitor.statusFailed') },
-      waiting: { color: 'warning', icon: <ClockCircleFilled />, text: t('workflowMonitor.statusWaiting') },
+      waiting: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: t('workflowMonitor.statusRunning') },
+      waitingforqrcode: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: t('workflowMonitor.statusRunning') },
+      waitingforformapproval: { color: 'processing', icon: <SyncOutlinedIcon spin />, text: t('workflowMonitor.statusRunning') },
       paused: { color: 'default', icon: <PauseCircleOutlined />, text: t('workflowMonitor.statusPaused') },
       cancelled: { color: 'default', icon: <StopOutlined />, text: t('workflowMonitor.statusCancelled') }
     };
     
-    const config = statusConfig[status.toLowerCase()] || statusConfig.running;
+    // 將狀態轉為小寫進行匹配
+    const statusLower = status?.toLowerCase() || '';
+    let config = statusConfig[statusLower];
+    
+    // 如果直接匹配失敗，檢查是否為運行相關狀態（包括 waiting）
+    if (!config) {
+      if (statusLower.includes('wait') || statusLower.includes('run')) {
+        // waiting 狀態也視為 running（因為流程仍在運行中，只是在等待用戶輸入）
+        config = statusConfig.running;
+      } else {
+        // 默認使用 running
+        config = statusConfig.running;
+      }
+    }
     
     return (
       <Tag color={config.color} icon={config.icon}>
@@ -769,7 +784,10 @@ const WorkflowMonitorPage = () => {
       width: 120,
       sorter: true,
       render: (step, record) => {
-        if (record.status === 'running' && step !== null) {
+        // 判斷是否為運行中狀態（包括 waiting）
+        const status = typeof record.status === 'string' ? record.status.toLowerCase() : '';
+        const isRunning = status === 'running' || status.includes('wait');
+        if (isRunning && step !== null) {
           return (
             <div>
               <Text>{step}</Text>
@@ -800,7 +818,10 @@ const WorkflowMonitorPage = () => {
       width: 120,
       sorter: true,
       render: (duration, record) => {
-        if (record.status === 'running') {
+        // 判斷是否為運行中狀態（包括 waiting）
+        const status = typeof record.status === 'string' ? record.status.toLowerCase() : '';
+        const isRunning = status === 'running' || status.includes('wait');
+        if (isRunning) {
           const runningDuration = TimezoneUtils.calculateDuration(record.startedAt, new Date());
           return getDurationText(runningDuration);
         }
@@ -820,6 +841,8 @@ const WorkflowMonitorPage = () => {
       width: 250,
       render: (_, record) => {
         const status = typeof record.status === 'string' ? record.status.toLowerCase() : '';
+        // 判斷是否為運行中狀態（包括 waiting，因為它們仍在運行中）
+        const isRunning = status === 'running' || status.includes('wait');
         return (
         <Space size="small" onClick={(e) => e.stopPropagation()}>
           {/* WhatsApp 對話按鈕 */}
@@ -837,7 +860,7 @@ const WorkflowMonitorPage = () => {
             </Tooltip>
           )}
           
-          {status === 'running' && (
+          {isRunning && (
             <>
               {canPauseExecution && (
                 <Tooltip title={t('workflowMonitor.pause')}>
@@ -879,7 +902,7 @@ const WorkflowMonitorPage = () => {
             </Tooltip>
           )}
           
-          {(status === 'waiting' || status === 'paused') && canResumeExecution && (
+          {status === 'paused' && canResumeExecution && (
             <Tooltip title={t('workflowMonitor.resume')}>
               <Button 
                 type="text" 

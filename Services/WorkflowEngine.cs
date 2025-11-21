@@ -3345,8 +3345,44 @@ namespace PurpleRice.Services
         [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessage")]
         public string QrCodeSuccessMessage { get; set; }
         
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessMessageMode")]
+        public string QrCodeSuccessMessageMode { get; set; } // "direct" 或 "template"
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessTemplateId")]
+        public string QrCodeSuccessTemplateId { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessTemplateName")]
+        public string QrCodeSuccessTemplateName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessIsMetaTemplate")]
+        public bool QrCodeSuccessIsMetaTemplate { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessTemplateLanguage")]
+        public string QrCodeSuccessTemplateLanguage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeSuccessTemplateVariables")]
+        public List<object> QrCodeSuccessTemplateVariables { get; set; }
+        
         [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessage")]
         public string QrCodeErrorMessage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorMessageMode")]
+        public string QrCodeErrorMessageMode { get; set; } // "direct" 或 "template"
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorTemplateId")]
+        public string QrCodeErrorTemplateId { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorTemplateName")]
+        public string QrCodeErrorTemplateName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorIsMetaTemplate")]
+        public bool QrCodeErrorIsMetaTemplate { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorTemplateLanguage")]
+        public string QrCodeErrorTemplateLanguage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorTemplateVariables")]
+        public List<object> QrCodeErrorTemplateVariables { get; set; }
         
         // e-Form 節點相關屬性
         [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]
