@@ -74,12 +74,8 @@ const WorkflowListPage = () => {
       key: 'status', 
       width: 100, 
       sorter: true, 
-      render: (text, record) => (
-        <Tag 
-          color={text === 'Enabled' ? 'green' : 'red'}
-          style={{ cursor: 'pointer', userSelect: 'none' }}
-          onClick={() => handleToggleStatus(record)}
-        >
+      render: (text) => (
+        <Tag color={text === 'Enabled' ? 'green' : 'red'}>
           {text === 'Enabled' ? t('workflowDesigner.statusEnabled') : t('workflowDesigner.statusDisabled')}
         </Tag>
       )
@@ -87,40 +83,50 @@ const WorkflowListPage = () => {
     {
       title: t('workflow.action'),
       key: 'action',
-      width: 120,
-      render: (_, record) => (
-        <Space size="small">
-          <Tooltip title={t('workflow.design')}>
-            <Button 
-              type="text" 
-              icon={<EditOutlined />} 
-              onClick={() => handleEdit(record)}
-            />
-          </Tooltip>
-          <Tooltip title={t('workflowList.manualStart')}>
-            <Button 
-              type="text" 
-              icon={<PlayCircleOutlined />} 
-              onClick={() => handleManualStart(record)}
-            />
-          </Tooltip>
-          <Tooltip title={t('workflow.copy')}>
-            <Button 
-              type="text" 
-              icon={<CopyOutlined />} 
-              onClick={() => handleCopy(record)}
-            />
-          </Tooltip>
-          <Tooltip title={t('workflow.delete')}>
-            <Button 
-              type="text" 
-              danger 
-              icon={<DeleteOutlined />} 
-              onClick={() => handleDelete(record)}
-            />
-          </Tooltip>
-        </Space>
-      ),
+      width: 160,
+      render: (_, record) => {
+        const isEnabled = record.status === 'Enabled';
+        return (
+          <Space size="small">
+            <Tooltip title={t('workflow.design')}>
+              <Button 
+                type="text" 
+                icon={<EditOutlined />} 
+                onClick={() => handleEdit(record)}
+              />
+            </Tooltip>
+            <Tooltip title={t('workflowList.manualStart')}>
+              <Button 
+                type="text" 
+                icon={<PlayCircleOutlined />} 
+                onClick={() => handleManualStart(record)}
+              />
+            </Tooltip>
+            <Tooltip title={isEnabled ? t('workflowDesigner.statusDisabled') : t('workflowDesigner.statusEnabled')}>
+              <Button 
+                type="text" 
+                icon={isEnabled ? <StopOutlined /> : <CheckCircleOutlined />}
+                onClick={() => handleToggleStatus(record)}
+              />
+            </Tooltip>
+            <Tooltip title={t('workflow.copy')}>
+              <Button 
+                type="text" 
+                icon={<CopyOutlined />} 
+                onClick={() => handleCopy(record)}
+              />
+            </Tooltip>
+            <Tooltip title={t('workflow.delete')}>
+              <Button 
+                type="text" 
+                danger 
+                icon={<DeleteOutlined />} 
+                onClick={() => handleDelete(record)}
+              />
+            </Tooltip>
+          </Space>
+        );
+      },
     },
   ], [t, userTimezoneOffset]); // 依賴 userTimezoneOffset 和 t
   const [resizableColumns, setResizableColumns] = useState(

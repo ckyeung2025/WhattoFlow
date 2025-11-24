@@ -240,6 +240,10 @@ const Dashboard = ({ onMenuSelect }) => {
           },
           dataSets: 4,
           totalUsers: 15,
+          activeUsers: 12,
+          inactiveUsers: 3,
+          companyTotalUsers: 8,
+          companyActiveUsers: 7,
           broadcastGroups: 5,
           activeGroups: 4,
           totalMembers: 120,
@@ -592,6 +596,10 @@ const Dashboard = ({ onMenuSelect }) => {
           },
           dataSets: 4,
           totalUsers: 15,
+          activeUsers: 12,
+          inactiveUsers: 3,
+          companyTotalUsers: 8,
+          companyActiveUsers: 7,
           broadcastGroups: 5,
           activeGroups: 4,
           totalMembers: 120,
@@ -647,9 +655,13 @@ const Dashboard = ({ onMenuSelect }) => {
         recentDataSetItems: recentDataSetItems,
         
         // 管理工具統計（從 API 獲取真實數據）
+        // Contact Management 使用聯絡人統計（contact_lists 表）
         totalUsers: contactsStats.total || 0,
         activeUsers: contactsStats.active || 0,
         inactiveUsers: contactsStats.inactive || 0,
+        // Company/User Management 使用公司用戶統計（users 表）
+        companyTotalUsers: companyUserStats.totalUsers || 0,
+        companyActiveUsers: companyUserStats.activeUsers || 0,
         broadcastGroups: broadcastGroupsStats.totalGroups || 0,
         activeGroups: broadcastGroupsStats.activeGroups || 0,
         totalMembers: broadcastGroupsStats.totalMembers || 0,
@@ -1566,13 +1578,13 @@ const Dashboard = ({ onMenuSelect }) => {
                     description={t('dashboard.companyUserManagementDescription')}
                     icon={<SettingOutlined />}
                     menuKey="companyUserAdmin"
-                    count={stats.totalUsers || 0}
+                    count={stats.companyTotalUsers || 0}
                     color={colorPalette[3].color}
                     gradient={colorPalette[3].gradient}
                     numberColor="positive"
                     onClick={() => handleNavigation('companyUserAdmin')}
                     stats={{
-                      [t('dashboard.totalUsers')]: stats.totalUsers || 0,
+                      [t('dashboard.totalUsers')]: stats.companyTotalUsers || 0,
                       [t('dashboard.admins')]: stats.adminUsers || 0,
                       [t('dashboard.totalCompanies')]: stats.totalCompanies || 0
                     }}
