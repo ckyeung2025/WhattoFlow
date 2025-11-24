@@ -12,57 +12,77 @@ const TemplateVariableConfig = ({
   templateId,
   isMetaTemplate,
   processVariables = [],
+  fixedVariables = [], // 新增：固化變量列表，格式：[{ id: 'formName', name: 'formName', displayName: 'Form Name', description: 'Form Name' }]
   value = [],
   onChange,
   t
 }) => {
   const [templateVariables, setTemplateVariables] = useState([]);
 
-  // 調試 processVariables 數據結構
-  useEffect(() => {
-    console.log('🔍 TemplateVariableConfig - processVariables 數據結構:', processVariables);
-    console.log('🔍 TemplateVariableConfig - processVariables 數量:', processVariables.length);
-    if (processVariables.length > 0) {
-      console.log('🔍 TemplateVariableConfig - 第一個流程變量:', processVariables[0]);
-      console.log('🔍 TemplateVariableConfig - 第一個流程變量的屬性:', Object.keys(processVariables[0]));
-    }
-  }, [processVariables]);
-
   // 使用 useRef 來避免無限循環
   const isInitialized = useRef(false);
-  const lastValue = useRef(value);
-  const lastTemplateVariables = useRef(templateVariables);
+  const lastValueStr = useRef(JSON.stringify(value));
+  const lastTemplateVariablesStr = useRef(JSON.stringify(templateVariables));
+  const onChangeRef = useRef(onChange);
+  const lastFixedVariablesStr = useRef(JSON.stringify(fixedVariables));
+
+  // 更新 onChange ref 當它改變時
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   // 當外部 value 變化時更新內部狀態
   useEffect(() => {
-    const valueChanged = lastValue.current !== value;
+    const currentValueStr = JSON.stringify(value);
+    const currentFixedVariablesStr = JSON.stringify(fixedVariables);
+    const valueChanged = lastValueStr.current !== currentValueStr;
+    const fixedVariablesChanged = lastFixedVariablesStr.current !== currentFixedVariablesStr;
     
-    if (!valueChanged && isInitialized.current) {
+    if (!valueChanged && !fixedVariablesChanged && isInitialized.current) {
       return;
     }
 
     if (value) {
-      setTemplateVariables(value);
+      // 處理固化變量的標記
+      const processedValue = value.map(v => {
+        // 如果 processVariableId 以 fixed_ 開頭，標記為固化變量
+        if (v.processVariableId && v.processVariableId.startsWith('fixed_')) {
+          const fixedVarId = v.processVariableId.substring(6); // 移除 "fixed_" 前綴
+          const fixedVar = fixedVariables.find(fv => fv.id === fixedVarId);
+          return {
+            ...v,
+            isFixedVariable: true,
+            fixedVariableId: fixedVarId,
+            processVariableName: fixedVar ? (fixedVar.displayName || fixedVar.name) : v.processVariableName
+          };
+        }
+        return v;
+      });
+      setTemplateVariables(processedValue);
+    } else {
+      setTemplateVariables([]);
     }
     
-    lastValue.current = value;
+    lastValueStr.current = currentValueStr;
+    lastFixedVariablesStr.current = currentFixedVariablesStr;
     isInitialized.current = true;
-  }, [value]);
+  }, [value, fixedVariables]);
 
   // 當模板變量變化時通知父組件
   useEffect(() => {
-    const variablesChanged = lastTemplateVariables.current !== templateVariables;
+    const currentVariablesStr = JSON.stringify(templateVariables);
+    const variablesChanged = lastTemplateVariablesStr.current !== currentVariablesStr;
     
     if (!variablesChanged || !isInitialized.current) {
       return;
     }
 
-    if (onChange) {
-      onChange(templateVariables);
+    if (onChangeRef.current) {
+      onChangeRef.current(templateVariables);
     }
     
-    lastTemplateVariables.current = templateVariables;
-  }, [templateVariables, onChange]);
+    lastTemplateVariablesStr.current = currentVariablesStr;
+  }, [templateVariables]);
 
   // 添加新的模板變量
   const addTemplateVariable = useCallback(() => {
@@ -88,18 +108,31 @@ const TemplateVariableConfig = ({
     });
   }, []);
 
-  // 更新流程變量
-  const updateProcessVariable = useCallback((index, processVariableId) => {
+  // 更新流程變量（支持流程變量和固化變量）
+  const updateProcessVariable = useCallback((index, variableId) => {
     setTemplateVariables(prev => {
       const newVariables = [...prev];
-      const selectedVariable = processVariables.find(pv => pv.id === processVariableId);
-      newVariables[index].processVariableId = processVariableId;
-      newVariables[index].processVariableName = selectedVariable 
-        ? (selectedVariable.variableName || selectedVariable.name || selectedVariable.displayName || `變量 ${selectedVariable.id}`) 
-        : '';
+      // 先檢查是否為固化變量
+      const fixedVariable = fixedVariables.find(fv => fv.id === variableId);
+      if (fixedVariable) {
+        // 使用固化變量
+        newVariables[index].processVariableId = `fixed_${fixedVariable.id}`;
+        newVariables[index].processVariableName = fixedVariable.displayName || fixedVariable.name;
+        newVariables[index].isFixedVariable = true;
+        newVariables[index].fixedVariableId = fixedVariable.id;
+      } else {
+        // 使用流程變量
+        const selectedVariable = processVariables.find(pv => pv.id === variableId);
+        newVariables[index].processVariableId = variableId;
+        newVariables[index].processVariableName = selectedVariable 
+          ? (selectedVariable.variableName || selectedVariable.name || selectedVariable.displayName || `變量 ${selectedVariable.id}`) 
+          : '';
+        newVariables[index].isFixedVariable = false;
+        newVariables[index].fixedVariableId = undefined;
+      }
       return newVariables;
     });
-  }, [processVariables]);
+  }, [processVariables, fixedVariables]);
 
   // 獲取模板類型說明
   const templateInfo = useMemo(() => {
@@ -198,7 +231,7 @@ const TemplateVariableConfig = ({
               </Text>
               <Select
                 placeholder={t('workflowDesigner.selectProcessVariable')}
-                value={variable.processVariableId || undefined}
+                value={variable.isFixedVariable ? variable.fixedVariableId : (variable.processVariableId || undefined)}
                 onChange={(value) => updateProcessVariable(index, value)}
                 style={{ width: '100%' }}
                 showSearch
@@ -206,19 +239,42 @@ const TemplateVariableConfig = ({
                   option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
                 }
               >
-                {processVariables.map(pv => {
-                  const displayName = pv.variableName || pv.name || pv.displayName || `變量 ${pv.id}`;
-                  const dataType = pv.dataType || pv.type || 'Unknown';
-                  
-                  return (
-                    <Select.Option key={pv.id} value={pv.id}>
-                      <Space>
-                        <Text>{displayName}</Text>
-                        <Tag size="small" color="orange">{dataType}</Tag>
-                      </Space>
-                    </Select.Option>
-                  );
-                })}
+                {/* 固化變量選項 */}
+                {fixedVariables.length > 0 && (
+                  <Select.OptGroup label={t('workflowDesigner.fixedVariables') || '固化變量'}>
+                    {fixedVariables.map(fv => (
+                      <Select.Option key={`fixed_${fv.id}`} value={fv.id}>
+                        <Space>
+                          <Text>{fv.displayName || fv.name}</Text>
+                          <Tag size="small" color="purple">{t('workflowDesigner.fixedVariable') || '固化'}</Tag>
+                          {fv.description && (
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              ({fv.description})
+                            </Text>
+                          )}
+                        </Space>
+                      </Select.Option>
+                    ))}
+                  </Select.OptGroup>
+                )}
+                {/* 流程變量選項 */}
+                {processVariables.length > 0 && (
+                  <Select.OptGroup label={t('workflowDesigner.processVariables') || '流程變量'}>
+                    {processVariables.map(pv => {
+                      const displayName = pv.variableName || pv.name || pv.displayName || `變量 ${pv.id}`;
+                      const dataType = pv.dataType || pv.type || 'Unknown';
+                      
+                      return (
+                        <Select.Option key={pv.id} value={pv.id}>
+                          <Space>
+                            <Text>{displayName}</Text>
+                            <Tag size="small" color="orange">{dataType}</Tag>
+                          </Space>
+                        </Select.Option>
+                      );
+                    })}
+                  </Select.OptGroup>
+                )}
               </Select>
             </div>
           </Space>

@@ -1,0 +1,8 @@
+version: "2"
+authtoken: 2zu7TyRbZW1gUwOf5IhDlFSqI7k_3JbCC7sy9x6hoQtHcHeiq
+
+tunnels:
+  anw:
+    proto: http
+    addr: 10443
+    domain: anw.ngrok.app     # ★你的自定義 ngrok 域名

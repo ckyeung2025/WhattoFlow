@@ -351,26 +351,78 @@ const ContactImportPage = () => {
     setImportProgress(0);
     
     try {
+      // 驗證：如果勾選了保存為定時匯入，排程名稱必須填寫
+      if (saveAsSchedule && (!scheduleName || scheduleName.trim() === '')) {
+        message.error(t('contactImport.scheduleNameRequired'));
+        setImportStatus('idle');
+        return;
+      }
+      
       // 準備匯入數據
+      const mapping = mappingForm.getFieldsValue();
+      
+      // 處理 hashtags：如果是數組，轉換為字符串（取第一個值，因為數據源中只有一個列）
+      let hashtagsMapping = mapping.hashtags;
+      if (hashtagsMapping && Array.isArray(hashtagsMapping)) {
+        hashtagsMapping = hashtagsMapping.length > 0 ? hashtagsMapping[0] : null;
+      }
+      
+      // 處理 broadcastGroupId：確保是字符串
+      const broadcastGroupId = (mapping.broadcastGroupId && mapping.broadcastGroupId !== '') 
+        ? mapping.broadcastGroupId 
+        : '';
+      
       const importData = previewData.map((row, index) => {
-        const mapping = mappingForm.getFieldsValue();
+        // 獲取 hashtags 值：如果 hashtagsMapping 是字符串，從 row 中獲取；如果是數組，取第一個
+        let hashtagsValue = '';
+        if (hashtagsMapping) {
+          const hashtagsData = row[hashtagsMapping];
+          if (hashtagsData !== undefined && hashtagsData !== null) {
+            hashtagsValue = String(hashtagsData);
+          }
+        }
+        
+        // 確保所有值都轉換為字符串，避免數字或其他類型
+        const getStringValue = (value) => {
+          if (value === undefined || value === null) return '';
+          return String(value);
+        };
+        
         return {
           rowNumber: index + 1,
-          name: row[mapping.name] || '',
-          title: row[mapping.title] || '',
-          occupation: row[mapping.occupation] || '',
-          whatsAppNumber: row[mapping.whatsappNumber] || '',
-          email: row[mapping.email] || '',
-          companyName: row[mapping.companyName] || '',
-          department: row[mapping.department] || '',
-          position: row[mapping.position] || '',
-          hashtags: row[mapping.hashtags] || '',
-          broadcastGroupId: mapping.broadcastGroupId || ''
+          name: getStringValue(row[mapping.name]),
+          title: getStringValue(row[mapping.title]),
+          occupation: getStringValue(row[mapping.occupation]),
+          whatsAppNumber: getStringValue(row[mapping.whatsappNumber]),
+          email: getStringValue(row[mapping.email]),
+          companyName: getStringValue(row[mapping.companyName]),
+          department: getStringValue(row[mapping.department]),
+          position: getStringValue(row[mapping.position]),
+          hashtags: hashtagsValue,
+          broadcastGroupId: broadcastGroupId || ''
         };
       });
 
+      // 確保所有字段都是字符串類型，避免 null/undefined
+      const cleanedImportData = importData.map(item => ({
+        rowNumber: item.rowNumber,
+        name: String(item.name || ''),
+        title: String(item.title || ''),
+        occupation: String(item.occupation || ''),
+        whatsAppNumber: String(item.whatsAppNumber || ''),
+        email: String(item.email || ''),
+        companyName: String(item.companyName || ''),
+        department: String(item.department || ''),
+        position: String(item.position || ''),
+        hashtags: String(item.hashtags || ''),
+        broadcastGroupId: String(item.broadcastGroupId || '')
+      }));
+
+      console.log('📤 準備發送檢查重複的數據:', cleanedImportData);
+      console.log('📤 第一個聯絡人數據:', cleanedImportData[0]);
+
       // 檢查重複的 WhatsApp 號碼
-      const duplicateCheckResult = await contactImportApi.checkDuplicateWhatsApp(importData);
+      const duplicateCheckResult = await contactImportApi.checkDuplicateWhatsApp(cleanedImportData);
       
       if (duplicateCheckResult.hasDuplicates) {
         // 顯示重複確認頁面
@@ -399,6 +451,22 @@ const ContactImportPage = () => {
     try {
       const mappingValues = mappingForm.getFieldsValue();
       
+      // 處理 hashtags：如果是數組，轉換為字符串（取第一個值）
+      let fieldMapping = { ...mappingValues };
+      if (fieldMapping.hashtags && Array.isArray(fieldMapping.hashtags)) {
+        fieldMapping.hashtags = fieldMapping.hashtags.length > 0 ? fieldMapping.hashtags[0] : null;
+      }
+      // 如果轉換後是 null 或空字符串，移除該字段
+      if (!fieldMapping.hashtags) {
+        delete fieldMapping.hashtags;
+      }
+      
+      // 從 fieldMapping 中分離出 broadcastGroupId
+      const broadcastGroupId = (fieldMapping.broadcastGroupId && fieldMapping.broadcastGroupId !== '') 
+        ? fieldMapping.broadcastGroupId 
+        : null;
+      const { broadcastGroupId: _, ...fieldMappingWithoutBroadcastGroup } = fieldMapping;
+      
       // 構建 sourceConfig 對象
       let sourceConfig = {};
       if (importType === 'excel') {
@@ -417,9 +485,9 @@ const ContactImportPage = () => {
         intervalMinutes: intervalMinutes,
         scheduleCron: "", // 暫時不使用 Cron
         sourceConfig: sourceConfig,
-        fieldMapping: mappingValues,
+        fieldMapping: fieldMappingWithoutBroadcastGroup,
         allowUpdateDuplicates: false,
-        broadcastGroupId: mappingValues.broadcastGroupId || null
+        broadcastGroupId: broadcastGroupId
       };
       
       console.log('🔍 準備創建排程數據:', JSON.stringify(scheduleData, null, 2));
@@ -1050,12 +1118,21 @@ const ContactImportPage = () => {
           {saveAsSchedule && (
             <div style={{ marginTop: '16px', paddingLeft: '24px' }}>
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Input 
-                  placeholder={t('contactImport.scheduleNamePlaceholder')}
-                  value={scheduleName}
-                  onChange={(e) => !editScheduleId && setScheduleName(e.target.value)}
-                  disabled={!!editScheduleId}
-                />
+                <div>
+                  <Input 
+                    placeholder={t('contactImport.scheduleNamePlaceholder')}
+                    value={scheduleName}
+                    onChange={(e) => !editScheduleId && setScheduleName(e.target.value)}
+                    disabled={!!editScheduleId}
+                    required
+                    status={saveAsSchedule && !scheduleName?.trim() ? 'error' : ''}
+                  />
+                  {saveAsSchedule && !scheduleName?.trim() && (
+                    <div style={{ color: '#ff4d4f', fontSize: '14px', marginTop: '4px' }}>
+                      {t('contactImport.scheduleNameRequired')}
+                    </div>
+                  )}
+                </div>
                 <Select 
                   value={scheduleType} 
                   onChange={setScheduleType} 

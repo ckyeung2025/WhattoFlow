@@ -1,5 +1,5 @@
 ﻿#define MyAppName "WhatoFlow"
-#define MyAppVersion "1.25.1121.1"
+#define MyAppVersion "1.25.1124.1"
 #define MyAppPublisher "Starchy Solution"
 #define MyAppURL "https://www.starchysolution.com/"
 #define MyAppExeName "WhatoFlow.exe"

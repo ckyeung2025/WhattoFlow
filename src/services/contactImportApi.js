@@ -44,6 +44,8 @@ export const contactImportApi = {
     try {
       console.log('🚀 ContactImportApi - 開始檢查重複 WhatsApp 號碼');
       console.log('📋 ContactImportApi - 聯絡人數量:', contacts.length);
+      console.log('📋 ContactImportApi - 第一個聯絡人數據:', contacts[0]);
+      console.log('📋 ContactImportApi - 發送數據 (JSON):', JSON.stringify(contacts.slice(0, 2), null, 2));
       
       const response = await api.post('/check-duplicates', contacts);
       
@@ -59,6 +61,8 @@ export const contactImportApi = {
         data: error.response?.data,
         message: error.message
       });
+      console.error('📋 ContactImportApi - 錯誤 response.data:', error.response?.data);
+      console.error('📋 ContactImportApi - 發送的數據樣本:', contacts.slice(0, 2));
       throw error;
     }
   },
@@ -69,10 +73,21 @@ export const contactImportApi = {
       console.log('🚀 ContactImportApi - 開始批量創建聯絡人');
       console.log('📋 ContactImportApi - 聯絡人數量:', contacts.length);
       console.log('📋 ContactImportApi - 允許更新:', allowUpdate);
+      console.log('📋 ContactImportApi - 第一個聯絡人數據:', contacts[0]);
+      console.log('📋 ContactImportApi - 發送數據 (JSON):', JSON.stringify({
+        contacts: contacts.slice(0, 2),
+        allowUpdate: allowUpdate
+      }, null, 2));
       
-      const response = await api.post('/batch', { 
+      const requestData = { 
         contacts,
         allowUpdate 
+      };
+      
+      const response = await api.post('/batch', requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       console.log('✅ ContactImportApi - 批量創建成功');
@@ -87,6 +102,8 @@ export const contactImportApi = {
         data: error.response?.data,
         message: error.message
       });
+      console.error('📋 ContactImportApi - 錯誤 response.data:', error.response?.data);
+      console.error('📋 ContactImportApi - 發送的數據樣本:', contacts.slice(0, 2));
       throw error;
     }
   },

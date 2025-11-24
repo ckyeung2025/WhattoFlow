@@ -694,31 +694,103 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                _logger.LogInformation("=== 開始檢查重複 WhatsApp 號碼 ===");
+                
                 var companyId = GetCurrentCompanyId();
+                _logger.LogInformation("公司ID: {CompanyId}", companyId);
+                
                 if (companyId == Guid.Empty)
+                {
+                    _logger.LogError("無法識別公司資訊");
                     return Unauthorized("無法識別公司資訊");
+                }
 
-                if (contacts == null || !contacts.Any())
+                // 檢查模型狀態
+                if (!ModelState.IsValid)
+                {
+                    _logger.LogError("模型驗證失敗");
+                    foreach (var error in ModelState)
+                    {
+                        _logger.LogError("字段: {Key}, 錯誤: {Errors}", 
+                            error.Key, 
+                            string.Join(", ", error.Value.Errors.Select(e => e.ErrorMessage)));
+                    }
+                    return BadRequest(new { success = false, message = "請求數據驗證失敗", errors = ModelState });
+                }
+
+                if (contacts == null)
+                {
+                    _logger.LogError("contacts 為 NULL");
                     return BadRequest("沒有要檢查的聯絡人數據");
+                }
+
+                _logger.LogInformation("收到聯絡人數量: {Count}", contacts.Count);
+                
+                if (!contacts.Any())
+                {
+                    _logger.LogWarning("聯絡人列表為空");
+                    return BadRequest("沒有要檢查的聯絡人數據");
+                }
+
+                // 記錄第一個聯絡人的詳細信息
+                if (contacts.Count > 0)
+                {
+                    var firstContact = contacts[0];
+                    _logger.LogInformation("第一個聯絡人數據 - RowNumber: {RowNumber}, Name: {Name}, WhatsAppNumber: {WhatsAppNumber}, BroadcastGroupId: {BroadcastGroupId}, Hashtags: {Hashtags}",
+                        firstContact.RowNumber,
+                        firstContact.Name ?? "NULL",
+                        firstContact.WhatsAppNumber ?? "NULL",
+                        firstContact.BroadcastGroupId ?? "NULL",
+                        firstContact.Hashtags ?? "NULL");
+                    
+                    // 記錄所有字段
+                    _logger.LogInformation("第一個聯絡人完整數據: RowNumber={RowNumber}, Name={Name}, Title={Title}, Occupation={Occupation}, WhatsAppNumber={WhatsAppNumber}, Email={Email}, CompanyName={CompanyName}, Department={Department}, Position={Position}, Hashtags={Hashtags}, BroadcastGroupId={BroadcastGroupId}",
+                        firstContact.RowNumber,
+                        firstContact.Name ?? "NULL",
+                        firstContact.Title ?? "NULL",
+                        firstContact.Occupation ?? "NULL",
+                        firstContact.WhatsAppNumber ?? "NULL",
+                        firstContact.Email ?? "NULL",
+                        firstContact.CompanyName ?? "NULL",
+                        firstContact.Department ?? "NULL",
+                        firstContact.Position ?? "NULL",
+                        firstContact.Hashtags ?? "NULL",
+                        firstContact.BroadcastGroupId ?? "NULL");
+                }
 
                 var duplicates = new List<object>();
+                var processedCount = 0;
+                var skippedCount = 0;
                 
                 foreach (var contact in contacts)
                 {
                     if (string.IsNullOrEmpty(contact.WhatsAppNumber))
+                    {
+                        skippedCount++;
+                        _logger.LogDebug("跳過聯絡人 RowNumber {RowNumber}，因為 WhatsAppNumber 為空", contact.RowNumber);
                         continue;
+                    }
 
                     // 標準化 WhatsApp 號碼（移除所有非數字字符）
                     var normalizedNumber = NormalizeWhatsAppNumber(contact.WhatsAppNumber);
+                    _logger.LogDebug("聯絡人 RowNumber {RowNumber} - 原始號碼: {Original}, 標準化號碼: {Normalized}",
+                        contact.RowNumber, contact.WhatsAppNumber, normalizedNumber);
                     
                     if (string.IsNullOrEmpty(normalizedNumber))
+                    {
+                        skippedCount++;
+                        _logger.LogDebug("跳過聯絡人 RowNumber {RowNumber}，因為標準化後號碼為空", contact.RowNumber);
                         continue;
+                    }
 
+                    processedCount++;
                     // 查找現有的聯絡人
                     var existingContact = await _contactListService.FindByNormalizedWhatsAppAsync(companyId, normalizedNumber);
                     
                     if (existingContact != null)
                     {
+                        _logger.LogInformation("找到重複聯絡人 - RowNumber: {RowNumber}, WhatsAppNumber: {WhatsAppNumber}, 現有聯絡人ID: {ExistingId}",
+                            contact.RowNumber, contact.WhatsAppNumber, existingContact.Id);
                         duplicates.Add(new
                         {
                             rowNumber = contact.RowNumber,
@@ -736,6 +808,9 @@ namespace PurpleRice.Controllers
                     }
                 }
 
+                _logger.LogInformation("檢查完成 - 總數: {Total}, 處理: {Processed}, 跳過: {Skipped}, 重複: {Duplicates}",
+                    contacts.Count, processedCount, skippedCount, duplicates.Count);
+
                 return Ok(new
                 {
                     hasDuplicates = duplicates.Any(),
@@ -744,8 +819,15 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "檢查重複 WhatsApp 號碼時發生錯誤");
-                return StatusCode(500, "檢查重複時發生錯誤");
+                _logger.LogError(ex, "檢查重複 WhatsApp 號碼時發生錯誤 - 異常詳情");
+                _logger.LogError("異常類型: {ExceptionType}", ex.GetType().Name);
+                _logger.LogError("異常訊息: {Message}", ex.Message);
+                _logger.LogError("堆疊追蹤: {StackTrace}", ex.StackTrace);
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError("內部異常: {InnerException}", ex.InnerException.Message);
+                }
+                return StatusCode(500, new { success = false, message = "檢查重複時發生錯誤: " + ex.Message });
             }
         }
 
@@ -769,9 +851,29 @@ namespace PurpleRice.Controllers
         {
             try
             {
+                _logger.LogInformation("=== 開始批量創建聯絡人 ===");
+                
+                // 檢查模型狀態
+                if (!ModelState.IsValid)
+                {
+                    _logger.LogError("模型驗證失敗");
+                    foreach (var error in ModelState)
+                    {
+                        _logger.LogError("字段: {Key}, 錯誤: {Errors}", 
+                            error.Key, 
+                            string.Join(", ", error.Value.Errors.Select(e => e.ErrorMessage)));
+                    }
+                    return BadRequest(new { success = false, message = "請求數據驗證失敗", errors = ModelState });
+                }
+
                 var companyId = GetCurrentCompanyId();
+                _logger.LogInformation("公司ID: {CompanyId}", companyId);
+                
                 if (companyId == Guid.Empty)
+                {
+                    _logger.LogError("無法識別公司資訊");
                     return Unauthorized("無法識別公司資訊");
+                }
 
                 var createdBy = GetCurrentUserId();
                 if (string.IsNullOrEmpty(createdBy))
@@ -779,9 +881,50 @@ namespace PurpleRice.Controllers
                     _logger.LogWarning("BatchCreateContacts - No user ID found, using 'system'");
                     createdBy = "system";
                 }
+                _logger.LogInformation("創建者: {CreatedBy}", createdBy);
+
+                if (request == null)
+                {
+                    _logger.LogError("請求數據為 NULL");
+                    return BadRequest(new { success = false, message = "請求數據不能為空" });
+                }
+
+                _logger.LogInformation("請求數據 - AllowUpdate: {AllowUpdate}", request.AllowUpdate);
+                _logger.LogInformation("請求數據 - Contacts 是否為 NULL: {IsNull}", request.Contacts == null);
 
                 if (request.Contacts == null || !request.Contacts.Any())
-                    return BadRequest("沒有要創建的聯絡人數據");
+                {
+                    _logger.LogError("沒有要創建的聯絡人數據 - Contacts 為 NULL 或空");
+                    return BadRequest(new { success = false, message = "沒有要創建的聯絡人數據" });
+                }
+
+                _logger.LogInformation("收到聯絡人數量: {Count}", request.Contacts.Count());
+                
+                // 記錄第一個聯絡人的詳細信息
+                if (request.Contacts.Any())
+                {
+                    var firstContact = request.Contacts.First();
+                    _logger.LogInformation("第一個聯絡人數據 - RowNumber: {RowNumber}, Name: {Name}, WhatsAppNumber: {WhatsAppNumber}, BroadcastGroupId: {BroadcastGroupId}, Hashtags: {Hashtags}",
+                        firstContact.RowNumber,
+                        firstContact.Name ?? "NULL",
+                        firstContact.WhatsAppNumber ?? "NULL",
+                        firstContact.BroadcastGroupId ?? "NULL",
+                        firstContact.Hashtags ?? "NULL");
+                    
+                    // 記錄所有字段
+                    _logger.LogInformation("第一個聯絡人完整數據: RowNumber={RowNumber}, Name={Name}, Title={Title}, Occupation={Occupation}, WhatsAppNumber={WhatsAppNumber}, Email={Email}, CompanyName={CompanyName}, Department={Department}, Position={Position}, Hashtags={Hashtags}, BroadcastGroupId={BroadcastGroupId}",
+                        firstContact.RowNumber,
+                        firstContact.Name ?? "NULL",
+                        firstContact.Title ?? "NULL",
+                        firstContact.Occupation ?? "NULL",
+                        firstContact.WhatsAppNumber ?? "NULL",
+                        firstContact.Email ?? "NULL",
+                        firstContact.CompanyName ?? "NULL",
+                        firstContact.Department ?? "NULL",
+                        firstContact.Position ?? "NULL",
+                        firstContact.Hashtags ?? "NULL",
+                        firstContact.BroadcastGroupId ?? "NULL");
+                }
 
                 var results = new List<ContactImportResult>();
                 var successCount = 0;
@@ -933,12 +1076,22 @@ namespace PurpleRice.Controllers
                 _logger.LogInformation("批量創建聯絡人完成 - 總數: {Total}, 成功: {Success}, 失敗: {Failed}", 
                     response.TotalCount, response.SuccessCount, response.FailedCount);
 
+                _logger.LogInformation("批量創建聯絡人完成 - 總數: {Total}, 成功: {Success}, 失敗: {Failed}", 
+                    response.TotalCount, response.SuccessCount, response.FailedCount);
+
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "批量創建聯絡人失敗");
-                return StatusCode(500, "批量創建聯絡人失敗");
+                _logger.LogError(ex, "批量創建聯絡人失敗 - 異常詳情");
+                _logger.LogError("異常類型: {ExceptionType}", ex.GetType().Name);
+                _logger.LogError("異常訊息: {Message}", ex.Message);
+                _logger.LogError("堆疊追蹤: {StackTrace}", ex.StackTrace);
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError("內部異常: {InnerException}", ex.InnerException.Message);
+                }
+                return StatusCode(500, new { success = false, message = "批量創建聯絡人失敗: " + ex.Message });
             }
         }
 

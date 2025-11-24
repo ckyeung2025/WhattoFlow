@@ -679,6 +679,7 @@ const zhSC = {
     // 定时导入设定
     saveAsSchedule: '保存为定时导入',
     scheduleNamePlaceholder: '请输入排程名称',
+    scheduleNameRequired: '请输入排程名称',
     everyXMinutes: '每 N 分钟',
     daily: '每天',
     weekly: '每周',

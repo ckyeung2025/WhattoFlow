@@ -353,6 +353,22 @@ const NodePropertyDrawer = ({
     }));
   }, [aiProviders, t]);
 
+  // 記憶化 sendEForm 的固定變量列表，避免每次渲染都創建新數組
+  const sendEFormFixedVariables = useMemo(() => [
+    {
+      id: 'formName',
+      name: 'formName',
+      displayName: '{formName}',
+      description: t('workflowDesigner.sendEForm.formNameVariable') || 'Form Name'
+    },
+    {
+      id: 'formUrl',
+      name: 'formUrl',
+      displayName: '{formUrl}',
+      description: t('workflowDesigner.sendEForm.formUrlVariable') || 'Form Link'
+    }
+  ], [t]);
+
   const loadAiProviders = useCallback(async () => {
     try {
       setLoadingAiProviders(true);
@@ -2456,6 +2472,7 @@ const NodePropertyDrawer = ({
                     form={form}
                     t={t}
                     showProcessVariables={false}
+                    fixedVariables={sendEFormFixedVariables}
                     directMessageContent={(
                       // sendEForm 特殊的直接訊息內容（預設訊息 vs 自定義訊息）
                       <>

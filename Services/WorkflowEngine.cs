@@ -2255,29 +2255,43 @@ namespace PurpleRice.Services
                         var parameterName = varElement.GetProperty("parameterName").GetString();
                         var processVariableId = varElement.GetProperty("processVariableId").GetString();
                         
-                        if (string.IsNullOrEmpty(parameterName) || string.IsNullOrEmpty(processVariableId))
+                        if (string.IsNullOrEmpty(parameterName))
                         {
-                            WriteLog($"⚠️ [WARNING] 跳過無效的模板變數配置: parameterName={parameterName}, processVariableId={processVariableId}");
+                            WriteLog($"⚠️ [WARNING] 跳過無效的模板變數配置: parameterName 為空");
                             continue;
                         }
                         
+                        // 檢查是否為固化變數（以 fixed_ 開頭）
+                        bool isFixedVariable = !string.IsNullOrEmpty(processVariableId) && processVariableId.StartsWith("fixed_");
+                        string fixedVariableId = isFixedVariable ? processVariableId.Substring(6) : null; // 移除 "fixed_" 前綴
+                        
                         string variableValue = "";
                         
-                        // 處理流程變數
-                        if (Guid.TryParse(processVariableId, out var processVarId))
+                        if (isFixedVariable)
                         {
-                            var processVar = await dbContext.ProcessVariableDefinitions
-                                .FirstOrDefaultAsync(pv => pv.Id == processVarId);
-                            
-                            if (processVar != null)
+                            // 固化變數將在節點執行時由具體節點處理（如 sendEForm 節點會添加 formName 和 formUrl）
+                            // 這裡先跳過，讓節點自己處理
+                            WriteLog($"🔍 [DEBUG] 檢測到固化變數: {fixedVariableId}，將由節點自行處理");
+                            continue; // 跳過固化變數，讓節點自己處理
+                        }
+                        else if (!string.IsNullOrEmpty(processVariableId))
+                        {
+                            // 處理流程變數
+                            if (Guid.TryParse(processVariableId, out var processVarId))
                             {
-                                variableValue = await _variableReplacementService.ReplaceVariablesAsync(
-                                    $"${{{processVar.VariableName}}}", executionId);
-                                WriteLog($"🔍 [DEBUG] 流程變數 {processVar.VariableName}: {variableValue}");
-                            }
-                            else
-                            {
-                                WriteLog($"⚠️ [WARNING] 找不到流程變數 ID: {processVariableId}");
+                                var processVar = await dbContext.ProcessVariableDefinitions
+                                    .FirstOrDefaultAsync(pv => pv.Id == processVarId);
+                                
+                                if (processVar != null)
+                                {
+                                    variableValue = await _variableReplacementService.ReplaceVariablesAsync(
+                                        $"${{{processVar.VariableName}}}", executionId);
+                                    WriteLog($"🔍 [DEBUG] 流程變數 {processVar.VariableName}: {variableValue}");
+                                }
+                                else
+                                {
+                                    WriteLog($"⚠️ [WARNING] 找不到流程變數 ID: {processVariableId}");
+                                }
                             }
                         }
                         
@@ -3065,22 +3079,59 @@ namespace PurpleRice.Services
                 if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
                 {
                     processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
-                }
-                else
-                {
-                    processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
-                }
-                
-                // 為每個收件人發送個性化的模板消息
-                foreach (var recipient in resolvedRecipients)
-                {
-                    var instance = instances.FirstOrDefault(i => i.RecipientWhatsAppNo == recipient.PhoneNumber);
-                    if (instance != null)
+                    
+                    // 檢查 templateVariables 中是否配置了固定變數
+                    var hasFormUrl = nodeData.TemplateVariables.Any(tv =>
                     {
-                        // 添加個性化的表單 URL
-                        processedVariables["formUrl"] = instance.FormUrl;
-                        processedVariables["formName"] = nodeData.FormName ?? "";
-                        processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
+                        try
+                        {
+                            var tvJson = JsonSerializer.Serialize(tv);
+                            var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                            if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                            {
+                                var pvId = pvIdProp.GetString();
+                                return !string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formUrl";
+                            }
+                        }
+                        catch { }
+                        return false;
+                    });
+                    
+                    var hasFormName = nodeData.TemplateVariables.Any(tv =>
+                    {
+                        try
+                        {
+                            var tvJson = JsonSerializer.Serialize(tv);
+                            var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                            if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                            {
+                                var pvId = pvIdProp.GetString();
+                                return !string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formName";
+                            }
+                        }
+                        catch { }
+                        return false;
+                    });
+                    
+                    // 為每個收件人發送個性化的模板消息
+                    foreach (var recipient in resolvedRecipients)
+                    {
+                        var instance = instances.FirstOrDefault(i => i.RecipientWhatsAppNo == recipient.PhoneNumber);
+                        if (instance != null)
+                        {
+                            // 只有配置了固定變數才添加
+                            if (hasFormUrl)
+                            {
+                                processedVariables["formUrl"] = instance.FormUrl;
+                                WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 添加固定變數 formUrl: {instance.FormUrl}");
+                            }
+                            if (hasFormName)
+                            {
+                                processedVariables["formName"] = nodeData.FormName ?? "";
+                                WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 添加固定變數 formName: {nodeData.FormName ?? ""}");
+                            }
+                            // recipientName 暫時保留（如果需要的話）
+                            // processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
                         
                         // 發送模板訊息
                         messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
@@ -3099,6 +3150,43 @@ namespace PurpleRice.Services
                         );
                         
                         WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 發送表單通知，ID: {messageSendId}");
+                    }
+                }
+                }
+                else
+                {
+                    processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                    
+                    // 舊的 variables 模式：無條件添加（向後兼容）
+                    // 為每個收件人發送個性化的模板消息
+                    foreach (var recipient in resolvedRecipients)
+                    {
+                        var instance = instances.FirstOrDefault(i => i.RecipientWhatsAppNo == recipient.PhoneNumber);
+                        if (instance != null)
+                        {
+                            // 添加個性化的表單 URL（舊模式：無條件添加）
+                            processedVariables["formUrl"] = instance.FormUrl;
+                            processedVariables["formName"] = nodeData.FormName ?? "";
+                            processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
+                            
+                            // 發送模板訊息
+                            messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
+                                recipient.PhoneNumber,
+                                null, // Manual Fill 不需要複雜的收件人配置
+                                nodeData.TemplateId,
+                                nodeData.TemplateName,
+                                processedVariables,
+                                execution,
+                                stepExec,
+                                stepExec.Id.ToString(),
+                                "sendEForm",
+                                db,
+                                nodeData.IsMetaTemplate,
+                                nodeData.TemplateLanguage
+                            );
+                            
+                            WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 發送表單通知，ID: {messageSendId}");
+                        }
                     }
                 }
             }
@@ -3174,15 +3262,60 @@ namespace PurpleRice.Services
                 if (nodeData.TemplateVariables != null && nodeData.TemplateVariables.Any())
                 {
                     processedVariables = await ProcessTemplateVariableConfigAsync(nodeData.TemplateVariables, execution.Id, db);
+                    
+                    // 檢查 templateVariables 中是否配置了固定變數，只有配置了才添加
+                    var hasFormUrl = nodeData.TemplateVariables.Any(tv =>
+                    {
+                        try
+                        {
+                            var tvJson = JsonSerializer.Serialize(tv);
+                            var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                            if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                            {
+                                var pvId = pvIdProp.GetString();
+                                return !string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formUrl";
+                            }
+                        }
+                        catch { }
+                        return false;
+                    });
+                    
+                    var hasFormName = nodeData.TemplateVariables.Any(tv =>
+                    {
+                        try
+                        {
+                            var tvJson = JsonSerializer.Serialize(tv);
+                            var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                            if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                            {
+                                var pvId = pvIdProp.GetString();
+                                return !string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formName";
+                            }
+                        }
+                        catch { }
+                        return false;
+                    });
+                    
+                    // 只有配置了固定變數才添加
+                    if (hasFormUrl)
+                    {
+                        processedVariables["formUrl"] = eFormInstance.FormUrl;
+                        WriteLog($"🔍 [DEBUG] 添加固定變數 formUrl: {eFormInstance.FormUrl}");
+                    }
+                    if (hasFormName)
+                    {
+                        processedVariables["formName"] = nodeData.FormName ?? "";
+                        WriteLog($"🔍 [DEBUG] 添加固定變數 formName: {nodeData.FormName ?? ""}");
+                    }
                 }
                 else
                 {
                     processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
+                    
+                    // 舊的 variables 模式：無條件添加（向後兼容）
+                    processedVariables["formUrl"] = eFormInstance.FormUrl;
+                    processedVariables["formName"] = nodeData.FormName ?? "";
                 }
-                
-                // 添加表單 URL 作為變數
-                processedVariables["formUrl"] = eFormInstance.FormUrl;
-                processedVariables["formName"] = nodeData.FormName ?? "";
                 
                 // 發送模板訊息
                 messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(

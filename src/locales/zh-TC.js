@@ -683,6 +683,7 @@ const zhTC = {
     // 定時匯入設定
     saveAsSchedule: '保存為定時匯入',
     scheduleNamePlaceholder: '請輸入排程名稱',
+    scheduleNameRequired: '請輸入排程名稱',
     everyXMinutes: '每 N 分鐘',
     daily: '每天',
     weekly: '每週',

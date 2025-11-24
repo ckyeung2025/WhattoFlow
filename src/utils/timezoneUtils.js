@@ -178,19 +178,27 @@ export class TimezoneUtils {
 
   /**
    * 計算兩個日期之間的持續時間（分鐘）
-   * @param {string|Date|moment} startDate - 開始日期
-   * @param {string|Date|moment} endDate - 結束日期
+   * 注意：數據庫存儲的時間是 GMT，需要統一轉換為 UTC 後計算差異
+   * @param {string|Date|moment} startDate - 開始日期（GMT，來自數據庫）
+   * @param {string|Date|moment} endDate - 結束日期（可能是本地時間）
    * @returns {number} 持續時間（分鐘）
    */
   static calculateDurationInMinutes(startDate, endDate) {
     if (!startDate || !endDate) return 0;
     
     try {
-      const start = moment(startDate);
-      const end = moment(endDate);
+      // 將開始時間解析為 UTC（因為數據庫存儲的是 GMT）
+      // 無論輸入格式如何，統一轉換為 UTC 時間
+      const start = moment.utc(startDate);
+      
+      // 將結束時間也轉換為 UTC
+      // 如果 endDate 是 Date 對象（本地時間），moment.utc() 會正確轉換為 UTC
+      // 如果 endDate 是字符串（可能沒有時區信息），moment.utc() 會假設為 UTC
+      const end = moment.utc(endDate);
       
       if (!start.isValid() || !end.isValid()) return 0;
       
+      // 計算 UTC 時間差（不受時區影響）
       return end.diff(start, 'minutes');
     } catch (error) {
       console.error('計算持續時間錯誤:', error);
@@ -200,7 +208,8 @@ export class TimezoneUtils {
 
   /**
    * 計算從開始日期到現在的時間（分鐘）
-   * @param {string|Date|moment} startDate - 開始日期
+   * @param {string|Date|moment} startDate - 開始日期（GMT，來自數據庫）
+   * @param {string|Date|moment} endDate - 結束日期（默認為當前時間）
    * @returns {number} 持續時間（分鐘）
    */
   static calculateDuration(startDate, endDate = new Date()) {

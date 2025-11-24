@@ -3,7 +3,7 @@ REM Build script for Inno Setup installer
 setlocal enabledelayedexpansion
 
 echo ====================================
-echo WhatoFlow Inno Setup Build Script
+echo WhatoFlow Inno Setup Build Script 2025Nov
 echo ====================================
 echo.
 

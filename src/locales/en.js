@@ -3679,6 +3679,7 @@ const en = {
     // Schedule related
     saveAsSchedule: 'Save as Scheduled Import',
     scheduleNamePlaceholder: 'Enter schedule name',
+    scheduleNameRequired: 'Please enter schedule name',
     everyXMinutes: 'Every X Minutes',
     daily: 'Daily',
     weekly: 'Weekly',

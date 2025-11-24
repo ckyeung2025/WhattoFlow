@@ -53,6 +53,7 @@ const ContactImportSchedulePage = () => {
   const [loading, setLoading] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [activeTabKey, setActiveTabKey] = useState('basic');
   
   // 字段映射相關狀態
   const [previewData, setPreviewData] = useState([]);
@@ -301,10 +302,29 @@ const ContactImportSchedulePage = () => {
       }
       
       // 從字段映射表單獲取最新的映射值
+      let broadcastGroupId = null;
       try {
         const mappingValues = fieldMappingForm.getFieldsValue();
         if (mappingValues && Object.keys(mappingValues).length > 0) {
-          fieldMapping = mappingValues;
+          // 從 fieldMapping 中分離出 broadcastGroupId
+          broadcastGroupId = (mappingValues.broadcastGroupId && mappingValues.broadcastGroupId !== '') 
+            ? mappingValues.broadcastGroupId 
+            : null;
+          
+          // 創建不包含 broadcastGroupId 的 fieldMapping
+          const { broadcastGroupId: _, ...fieldMappingWithoutBroadcastGroup } = mappingValues;
+          fieldMapping = fieldMappingWithoutBroadcastGroup;
+          
+          // 處理 hashtags：如果是數組，轉換為字符串（取第一個值，因為 fieldMapping 只需要一個列名）
+          if (fieldMapping.hashtags !== undefined && fieldMapping.hashtags !== null) {
+            if (Array.isArray(fieldMapping.hashtags)) {
+              fieldMapping.hashtags = fieldMapping.hashtags.length > 0 ? fieldMapping.hashtags[0] : null;
+            }
+            // 如果轉換後是 null 或空字符串，移除該字段
+            if (!fieldMapping.hashtags) {
+              delete fieldMapping.hashtags;
+            }
+          }
         }
       } catch (e) {
         console.warn('獲取字段映射表單值失敗，使用原有值:', e);
@@ -313,9 +333,44 @@ const ContactImportSchedulePage = () => {
       if (typeof fieldMapping === 'string') {
         try {
           fieldMapping = JSON.parse(fieldMapping);
+          // 如果解析後是字符串，再次檢查並移除 broadcastGroupId
+          if (fieldMapping && typeof fieldMapping === 'object' && 'broadcastGroupId' in fieldMapping) {
+            broadcastGroupId = fieldMapping.broadcastGroupId || broadcastGroupId;
+            const { broadcastGroupId: _, ...fieldMappingWithoutBroadcastGroup } = fieldMapping;
+            fieldMapping = fieldMappingWithoutBroadcastGroup;
+          }
+          // 處理 hashtags：如果是數組，轉換為字符串
+          if (fieldMapping && typeof fieldMapping === 'object' && fieldMapping.hashtags !== undefined && fieldMapping.hashtags !== null) {
+            if (Array.isArray(fieldMapping.hashtags)) {
+              fieldMapping.hashtags = fieldMapping.hashtags.length > 0 ? fieldMapping.hashtags[0] : null;
+            }
+            // 如果轉換後是 null 或空字符串，移除該字段
+            if (!fieldMapping.hashtags) {
+              delete fieldMapping.hashtags;
+            }
+          }
         } catch (e) {
           console.error('解析 fieldMapping 失敗:', e);
           fieldMapping = {};
+        }
+      }
+      
+      // 如果 fieldMapping 是對象，確保移除 broadcastGroupId 並處理 hashtags
+      if (fieldMapping && typeof fieldMapping === 'object') {
+        if ('broadcastGroupId' in fieldMapping) {
+          broadcastGroupId = fieldMapping.broadcastGroupId || broadcastGroupId;
+          const { broadcastGroupId: _, ...fieldMappingWithoutBroadcastGroup } = fieldMapping;
+          fieldMapping = fieldMappingWithoutBroadcastGroup;
+        }
+        // 處理 hashtags：如果是數組，轉換為字符串
+        if (fieldMapping.hashtags !== undefined && fieldMapping.hashtags !== null) {
+          if (Array.isArray(fieldMapping.hashtags)) {
+            fieldMapping.hashtags = fieldMapping.hashtags.length > 0 ? fieldMapping.hashtags[0] : null;
+          }
+          // 如果轉換後是 null 或空字符串，移除該字段
+          if (!fieldMapping.hashtags) {
+            delete fieldMapping.hashtags;
+          }
         }
       }
       
@@ -334,7 +389,7 @@ const ContactImportSchedulePage = () => {
         sourceConfig: sourceConfig,
         fieldMapping: fieldMapping,
         allowUpdateDuplicates: editingSchedule?.allowUpdateDuplicates || false,
-        broadcastGroupId: editingSchedule?.broadcastGroupId || null
+        broadcastGroupId: (broadcastGroupId && broadcastGroupId !== '') ? broadcastGroupId : (editingSchedule?.broadcastGroupId || null)
       };
       
       console.log('📤 發送更新排程數據:', updateData);
@@ -404,8 +459,16 @@ const ContactImportSchedulePage = () => {
       fieldMapping: fieldMapping
     });
     
-    // 設置字段映射表單值
-    fieldMappingForm.setFieldsValue(fieldMapping);
+    // 設置字段映射表單值（包括 broadcastGroupId）
+    const formValues = { ...fieldMapping };
+    // 將 broadcastGroupId 添加到表單值中
+    if (schedule.broadcastGroupId) {
+      formValues.broadcastGroupId = schedule.broadcastGroupId;
+    }
+    fieldMappingForm.setFieldsValue(formValues);
+    
+    console.log('📋 設置表單值:', formValues);
+    console.log('📋 schedule.broadcastGroupId:', schedule.broadcastGroupId);
     
     // 打開編輯 modal（useEffect 會自動載入預覽數據）
     setEditModalVisible(true);
@@ -595,16 +658,55 @@ const ContactImportSchedulePage = () => {
           setPreviewColumns([]);
           fieldMappingForm.resetFields();
           previewDataLoadedRef.current = false;
+          setActiveTabKey('basic');
         }}
-        width={1000}
+        width="95vw"
+        style={{ top: 20 }}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
-        styles={{ body: { minHeight: '500px' } }}
+        styles={{ 
+          body: { 
+            height: 'calc(100vh - 180px)', 
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          } 
+        }}
       >
         {editingSchedule && (
-          <Tabs
-            defaultActiveKey="basic"
-            items={[
+          <>
+            <style>{`
+              .edit-schedule-tabs .ant-tabs-content-holder {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+              }
+              .edit-schedule-tabs .ant-tabs-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+              }
+              .edit-schedule-tabs .ant-tabs-tabpane {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+              }
+              .edit-schedule-tabs .ant-tabs-tabpane-hidden {
+                display: none !important;
+              }
+            `}</style>
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <Tabs
+                className="edit-schedule-tabs"
+                activeKey={activeTabKey}
+                onChange={setActiveTabKey}
+                destroyInactiveTabPane={true}
+                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                items={[
               {
                 key: 'basic',
                 label: (
@@ -614,9 +716,10 @@ const ContactImportSchedulePage = () => {
                   </span>
                 ),
                 children: (
-                  <Space direction="vertical" style={{ width: '100%' }} size="large">
-                    <div>
-                      <Text strong>{t('contactImport.scheduleName')}：</Text>
+                  <div style={{ height: '100%', overflowY: 'auto', paddingRight: '8px' }}>
+                    <Space direction="vertical" style={{ width: '100%' }} size="large">
+                      <div>
+                        <Text strong>{t('contactImport.scheduleName')}：</Text>
                       <Input 
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -815,7 +918,8 @@ const ContactImportSchedulePage = () => {
                         </Text>
                       </div>
                     )}
-                  </Space>
+                    </Space>
+                  </div>
                 )
               },
               {
@@ -827,13 +931,14 @@ const ContactImportSchedulePage = () => {
                   </span>
                 ),
                 children: (
-                  <Spin spinning={loadingPreview}>
-                    <Row gutter={16} style={{ minHeight: '400px' }}>
-                      <Col span={12}>
+                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <Spin spinning={loadingPreview} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                      <Row gutter={16} style={{ height: '100%', flex: 1, display: 'flex', margin: 0, minHeight: 0 }}>
+                        <Col span={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, paddingRight: '8px' }}>
                         <Card 
                           title={t('contactImport.dataPreview')}
-                          style={{ height: '450px' }}
-                          styles={{ body: { height: '400px', padding: '16px', overflow: 'auto' } }}
+                          style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+                          styles={{ body: { flex: 1, padding: '16px', overflow: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 } }}
                         >
                           {loadingPreview ? (
                             <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -868,7 +973,7 @@ const ContactImportSchedulePage = () => {
                                 showTotal: (total, range) => `第 ${range[0]}-${range[1]} 筆，共 ${total} 筆`
                               }}
                               size="small"
-                              scroll={{ x: 'max-content', y: 350 }}
+                              scroll={{ x: 'max-content', y: '100%' }}
                               bordered
                               components={{
                                 header: {
@@ -896,12 +1001,12 @@ const ContactImportSchedulePage = () => {
                             </div>
                           )}
                         </Card>
-                      </Col>
-                      <Col span={12}>
+                        </Col>
+                      <Col span={12} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, paddingLeft: '8px' }}>
                         <Card 
                           title={t('contactImport.fieldMapping')}
-                          style={{ height: '450px' }}
-                          styles={{ body: { height: '400px', padding: '16px' } }}
+                          style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+                          styles={{ body: { flex: 1, padding: '16px', overflow: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 } }}
                         >
                           <ContactImportFieldMapping
                             form={fieldMappingForm}
@@ -910,13 +1015,16 @@ const ContactImportSchedulePage = () => {
                             hashtags={hashtags}
                           />
                         </Card>
-                      </Col>
-                    </Row>
-                  </Spin>
+                        </Col>
+                      </Row>
+                    </Spin>
+                  </div>
                 )
               }
             ]}
-          />
+            />
+            </div>
+          </>
         )}
       </Modal>
     </div>

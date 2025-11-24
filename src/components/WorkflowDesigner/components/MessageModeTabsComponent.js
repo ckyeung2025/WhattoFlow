@@ -20,6 +20,7 @@ const MessageModeTabsComponent = ({
   messageRows = 3,  // 訊息輸入框的行數
   showProcessVariables = true,  // 是否顯示流程變數
   directMessageContent = null,  // 自定義直接訊息內容（用於 sendEForm 的特殊情況）
+  fixedVariables = [],  // 新增：固化變量列表（用於 sendEForm 的 formName 和 formUrl）
 }) => {
   // 渲染直接訊息 Tab 內容
   const renderDirectMessageTab = () => {
@@ -140,6 +141,7 @@ const MessageModeTabsComponent = ({
           templateId={selectedNode.data.templateId}
           isMetaTemplate={selectedNode.data.isMetaTemplate}
           processVariables={processVariables}
+          fixedVariables={fixedVariables}
           value={selectedNode.data.templateVariables || []}
           onChange={(templateVariables) => handleNodeDataChange({ templateVariables })}
           t={t}
