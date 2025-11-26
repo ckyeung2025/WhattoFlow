@@ -2880,7 +2880,11 @@ const zhTC = {
     qrCodeDescription2: '系統會自動掃描圖片中的 QR Code 並提取內容',
     qrCodeDescription3: '掃描結果會保存到指定的流程變量中，供後續節點使用',
     qrCodeSuccessMessage: 'QR Code 成功訊息',
-    qrCodeErrorMessage: 'QR Code 錯誤訊息'
+    qrCodeErrorMessage: 'QR Code 錯誤訊息',
+    waitReplySuccessMessage: '等待回覆成功訊息',
+    waitReplyErrorMessage: '等待回覆錯誤訊息',
+    waitReplySuccessMessagePlaceholder: '輸入驗證成功時發送的訊息',
+    waitReplyErrorMessagePlaceholder: '輸入驗證失敗時發送的訊息'
   },
   
   // 流程實例監控

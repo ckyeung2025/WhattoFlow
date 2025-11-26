@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Layout, 
   Card, 
@@ -166,6 +166,15 @@ const WorkflowMonitorPage = () => {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [userTimezoneOffset, setUserTimezoneOffset] = useState('UTC+8'); // 默認香港時區
   
+  // 使用 ref 存儲最新的 filters 和 pagination，確保自動刷新時使用最新值
+  const filtersRef = useRef(filters);
+  const paginationRef = useRef(pagination);
+  
+  // 當 filters 或 pagination 改變時，立即更新 ref（同步更新，不等待 useEffect）
+  // 這樣可以確保自動刷新時總是使用最新的值
+  filtersRef.current = filters;
+  paginationRef.current = pagination;
+  
   // 右側詳情面板狀態
   const [detailPanelVisible, setDetailPanelVisible] = useState(false);
   const [selectedInstanceId, setSelectedInstanceId] = useState(null);
@@ -230,7 +239,8 @@ const WorkflowMonitorPage = () => {
     
     if (autoRefresh) {
       const interval = setInterval(() => {
-        loadInstances();
+        // 自動刷新時使用 ref 的值，確保使用最新的 filters 和 pagination
+        loadInstances('startedAt', 'desc', true);
         loadStatistics();
       }, refreshInterval * 1000);
       
@@ -275,40 +285,69 @@ const WorkflowMonitorPage = () => {
     loadInstances();
   }, [filters, pagination.current, pagination.pageSize]);
 
-  const loadInstances = async (sortBy = 'startedAt', sortOrder = 'desc') => {
-    console.log('[WorkflowMonitor] start loading instances', { sortBy, sortOrder });
+  const loadInstances = async (sortBy = 'startedAt', sortOrder = 'desc', useRefValues = false) => {
+    // 使用 ref 的值（自動刷新時）或當前狀態值（手動刷新時）
+    const currentFilters = useRefValues ? filtersRef.current : filters;
+    const currentPagination = useRefValues ? paginationRef.current : pagination;
+    
+    console.log('[WorkflowMonitor] start loading instances', { 
+      sortBy, 
+      sortOrder, 
+      useRefValues,
+      currentFiltersStatus: currentFilters.status,
+      filtersStatus: filters.status,
+      filtersRefStatus: filtersRef.current.status
+    });
+    
     setLoading(true);
     try {
+      
       // 構建查詢參數
       const params = new URLSearchParams({
-        page: pagination.current,
-        pageSize: pagination.pageSize,
+        page: currentPagination.current,
+        pageSize: currentPagination.pageSize,
         sortBy: sortBy,
         sortOrder: sortOrder
       });
 
-      if (filters.status !== 'all') {
-        params.append('status', filters.status);
+      // 狀態值映射：將前端的小寫狀態值轉換為後端期望的格式
+      // 注意：後端使用精確匹配，所以需要正確的格式
+      if (currentFilters.status !== 'all') {
+        const statusMap = {
+          'running': 'Running',
+          'completed': 'Completed',
+          'failed': 'Failed',
+          'paused': 'Paused',
+          'cancelled': 'Cancelled'
+        };
+        // 如果狀態值在映射中，使用映射值；否則使用首字母大寫的原始值
+        const mappedStatus = statusMap[currentFilters.status.toLowerCase()] || 
+          (currentFilters.status.charAt(0).toUpperCase() + currentFilters.status.slice(1).toLowerCase());
+        params.append('status', mappedStatus);
+        console.log('[WorkflowMonitor] status filter mapping:', { 
+          original: currentFilters.status, 
+          mapped: mappedStatus 
+        });
       }
 
-      if (filters.searchText) {
-        params.append('search', filters.searchText);
+      if (currentFilters.searchText) {
+        params.append('search', currentFilters.searchText);
       }
 
-      if (filters.startDateRange && filters.startDateRange.length === 2) {
-        params.append('startDateFrom', filters.startDateRange[0].toISOString());
-        params.append('startDateTo', filters.startDateRange[1].toISOString());
+      if (currentFilters.startDateRange && currentFilters.startDateRange.length === 2) {
+        params.append('startDateFrom', currentFilters.startDateRange[0].toISOString());
+        params.append('startDateTo', currentFilters.startDateRange[1].toISOString());
       }
 
-      if (filters.endDateRange && filters.endDateRange.length === 2) {
-        params.append('endDateFrom', filters.endDateRange[0].toISOString());
-        params.append('endDateTo', filters.endDateRange[1].toISOString());
+      if (currentFilters.endDateRange && currentFilters.endDateRange.length === 2) {
+        params.append('endDateFrom', currentFilters.endDateRange[0].toISOString());
+        params.append('endDateTo', currentFilters.endDateRange[1].toISOString());
       }
 
       const url = `/api/workflowexecutions/monitor?${params}`;
       console.log('[WorkflowMonitor] request url', url);
       console.log('[WorkflowMonitor] request params', Object.fromEntries(params));
-      console.log('[WorkflowMonitor] current pagination', { current: pagination.current, pageSize: pagination.pageSize });
+      console.log('[WorkflowMonitor] current pagination', { current: currentPagination.current, pageSize: currentPagination.pageSize });
 
       const response = await fetch(url, {
         headers: {
@@ -1049,7 +1088,6 @@ const WorkflowMonitorPage = () => {
                 <Option value="running">{t('workflowMonitor.filterRunning')}</Option>
                 <Option value="completed">{t('workflowMonitor.filterCompleted')}</Option>
                 <Option value="failed">{t('workflowMonitor.filterFailed')}</Option>
-                <Option value="waiting">{t('workflowMonitor.filterWaiting')}</Option>
               </Select>
             </Col>
             
@@ -1850,27 +1888,172 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
   const loadMediaFiles = async () => {
     try {
       setLoadingMediaFiles(true);
+      console.log('🔵 [WorkflowMonitor] loadMediaFiles STARTED for instance:', instance.id);
       console.log(t('workflowMonitor.loadingMediaFiles', { instanceId: instance.id }));
       
-      const response = await fetch(`/api/workflowexecutions/${instance.id}/media-files`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      // 並行獲取媒體文件、步驟執行信息和消息驗證記錄
+      const [mediaFilesResponse, stepExecutionsResponse, messageValidationsResponse] = await Promise.all([
+        fetch(`/api/workflowexecutions/${instance.id}/media-files`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }),
+        fetch(`/api/workflowexecutions/${instance.id}/details`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }),
+        fetch(`/api/workflowexecutions/${instance.id}/message-validations`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        })
+      ]);
+      
+      // 處理媒體文件
+      let mediaFiles = [];
+      if (mediaFilesResponse.ok) {
+        const mediaData = await mediaFilesResponse.json();
+        mediaFiles = mediaData.data || [];
+        console.log('🔵 [WorkflowMonitor] Raw media files loaded:', mediaFiles.length, mediaFiles);
+      } else if (mediaFilesResponse.status === 404) {
+        console.log(t('workflowMonitor.mediaFilesApiNotExists'));
+        setMediaFiles([]);
+        message.warning(t('workflowMonitor.mediaFilesApiNotImplemented'));
+        return;
+      } else {
+        throw new Error(`HTTP ${mediaFilesResponse.status}: ${mediaFilesResponse.statusText}`);
+      }
+      
+      // 處理步驟執行信息
+      let stepExecutions = [];
+      if (stepExecutionsResponse.ok) {
+        const stepData = await stepExecutionsResponse.json();
+        stepExecutions = stepData.stepExecutions || [];
+      } else {
+        console.warn('Failed to load step executions:', stepExecutionsResponse.status);
+      }
+      
+      // 處理消息驗證記錄
+      let messageValidations = [];
+      if (messageValidationsResponse.ok) {
+        const validationData = await messageValidationsResponse.json();
+        messageValidations = validationData.data || [];
+      } else {
+        console.warn('Failed to load message validations:', messageValidationsResponse.status);
+      }
+      
+      // 創建步驟索引到步驟名稱的映射
+      const stepIndexToNameMap = {};
+      stepExecutions.forEach(step => {
+        stepIndexToNameMap[step.stepIndex] = step.stepName || step.stepType || `Step ${step.stepIndex}`;
+      });
+      
+      console.log('[WorkflowMonitor] Step index to name map:', stepIndexToNameMap);
+      
+      // 創建媒體URL到步驟索引的映射（通過消息驗證記錄）
+      const mediaUrlToStepIndexMap = {};
+      messageValidations.forEach(validation => {
+        if (validation.mediaUrl) {
+          // 標準化路徑格式以便匹配
+          const normalizedUrl = validation.mediaUrl.replace(/\\/g, '/');
+          mediaUrlToStepIndexMap[normalizedUrl] = validation.stepIndex;
         }
       });
       
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.log(t('workflowMonitor.mediaFilesApiNotExists'));
-          setMediaFiles([]);
-          message.warning(t('workflowMonitor.mediaFilesApiNotImplemented'));
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      console.log('[WorkflowMonitor] Media URL to step index map:', mediaUrlToStepIndexMap);
+      console.log('[WorkflowMonitor] Total media files to enrich:', mediaFiles.length);
       
-      const data = await response.json();
-      console.log(t('workflowMonitor.loadedMediaFilesData'), data);
-      setMediaFiles(data.data || []);
+      // 為每個媒體文件添加步驟信息
+      const enrichedMediaFiles = mediaFiles.map((file, index) => {
+        // 標準化文件路徑以便匹配
+        const normalizedFilePath = file.filePath.replace(/\\/g, '/');
+        // 移除前導斜線以便匹配
+        const normalizedFilePathNoLeading = normalizedFilePath.startsWith('/') 
+          ? normalizedFilePath.substring(1) 
+          : normalizedFilePath;
+        
+        // 嘗試從消息驗證記錄中獲取步驟索引
+        let stepIndex = null;
+        let stepName = '未知步驟';
+        
+        console.log(`[WorkflowMonitor] Processing file ${index + 1}/${mediaFiles.length}:`, {
+          fileName: file.fileName,
+          filePath: file.filePath,
+          normalizedFilePath,
+          normalizedFilePathNoLeading
+        });
+        
+        // 方法1: 通過完整的文件路徑匹配（帶前導斜線）
+        if (mediaUrlToStepIndexMap[normalizedFilePath]) {
+          stepIndex = mediaUrlToStepIndexMap[normalizedFilePath];
+          console.log(`[WorkflowMonitor] Matched via method 1 (full path with leading slash): stepIndex=${stepIndex}`);
+        }
+        // 方法2: 通過完整的文件路徑匹配（不帶前導斜線）
+        else if (mediaUrlToStepIndexMap[normalizedFilePathNoLeading]) {
+          stepIndex = mediaUrlToStepIndexMap[normalizedFilePathNoLeading];
+          console.log(`[WorkflowMonitor] Matched via method 2 (full path without leading slash): stepIndex=${stepIndex}`);
+        }
+        // 方法3: 通過文件名匹配（如果路徑不完整）
+        else {
+          const fileName = file.fileName;
+          console.log(`[WorkflowMonitor] Trying method 3 (filename matching) for: ${fileName}`);
+          for (const [url, idx] of Object.entries(mediaUrlToStepIndexMap)) {
+            // 標準化 URL 以便匹配
+            const normalizedUrl = url.replace(/\\/g, '/');
+            const normalizedUrlNoLeading = normalizedUrl.startsWith('/') 
+              ? normalizedUrl.substring(1) 
+              : normalizedUrl;
+            
+            // 檢查是否包含文件名
+            if (normalizedUrl.includes(fileName) || normalizedUrlNoLeading.includes(fileName)) {
+              stepIndex = idx;
+              console.log(`[WorkflowMonitor] Matched via method 3a (URL contains filename): stepIndex=${stepIndex}, url=${url}`);
+              break;
+            }
+            // 也檢查反向匹配（文件名包含 URL 的一部分）
+            const urlFileName = normalizedUrl.split('/').pop() || normalizedUrlNoLeading.split('/').pop();
+            if (urlFileName && (fileName.includes(urlFileName) || urlFileName.includes(fileName))) {
+              stepIndex = idx;
+              console.log(`[WorkflowMonitor] Matched via method 3b (filename contains URL filename): stepIndex=${stepIndex}, urlFileName=${urlFileName}`);
+              break;
+            }
+          }
+        }
+        
+        // 如果找到了步驟索引，獲取步驟名稱
+        if (stepIndex !== null && stepIndexToNameMap[stepIndex]) {
+          stepName = stepIndexToNameMap[stepIndex];
+        }
+        
+        console.log('[WorkflowMonitor] Enriching media file result:', {
+          fileName: file.fileName,
+          filePath: file.filePath,
+          stepIndex,
+          stepName,
+          availableStepIndices: Object.keys(stepIndexToNameMap),
+          availableMediaUrls: Object.keys(mediaUrlToStepIndexMap)
+        });
+        
+        return {
+          ...file,
+          stepIndex: stepIndex,
+          stepName: stepName
+        };
+      });
+      
+      console.log('🔵 [WorkflowMonitor] Enriched media files:', enrichedMediaFiles);
+      const grouped = enrichedMediaFiles.reduce((acc, file) => {
+        const stepName = file.stepName || '未知步驟';
+        if (!acc[stepName]) acc[stepName] = [];
+        acc[stepName].push(file);
+        return acc;
+      }, {});
+      console.log('🔵 [WorkflowMonitor] Grouped by step:', grouped);
+      console.log('🔵 [WorkflowMonitor] Step names:', Object.keys(grouped));
+      
+      setMediaFiles(enrichedMediaFiles);
+      console.log('🔵 [WorkflowMonitor] loadMediaFiles COMPLETED, setMediaFiles called with', enrichedMediaFiles.length, 'files');
     } catch (error) {
       console.error(t('workflowMonitor.loadMediaFilesFailed'), error);
       
@@ -3143,207 +3326,265 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                 </Text>
               </div>
               
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                gap: '16px'
-              }}>
-                {mediaFiles.map((file) => {
-                        console.log('[WorkflowMonitor] Rendering media file:', { 
-                          fileName: file.fileName, 
-                          filePath: file.filePath,
-                          originalFileName: file.originalFileName,
-                          name: file.name,
-                          fileType: file.fileType,
-                          mimeType: file.mimeType,
-                          contentType: file.contentType,
-                          file: file 
-                        });
-                        // 使用原始文件名或文件名
-                        const displayFileName = file.originalFileName || file.name || file.fileName || '';
-                        const fileType = getFileType(displayFileName);
-                        const isImage = fileType === 'image';
-                        const isVideo = fileType === 'video';
-                        const isAudio = fileType === 'audio';
-                        const isDocument = fileType === 'document';
-                        
-                        return (
-                          <Card
-                            key={file.id}
-                            size="small"
-                            hoverable
-                            style={{ 
-                              border: '1px solid #e8e8e8',
-                              borderRadius: '8px',
-                              overflow: 'hidden'
-                            }}
-                            bodyStyle={{ padding: '8px' }}
-                          >
-                            <div style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              textAlign: 'center'
-                            }}>
-                              {/* 文件預覽 */}
-                              <div 
-                                style={{ 
-                                  width: '100%', 
-                                  height: '120px',
-                                  backgroundColor: '#f5f5f5',
-                                  borderRadius: '6px',
-                                  marginBottom: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  overflow: 'hidden',
-                                  position: 'relative',
-                                  cursor: (isImage || isVideo) ? 'pointer' : 'default'
-                                }}
-                                onClick={() => {
-                                  if (isImage || isVideo) {
-                                    openLightbox(file, mediaFiles);
-                                  }
-                                }}
-                              >
-                                {isImage ? (
-                                  <img
-                                    src={file.filePath}
-                                    alt={file.fileName}
-                                    style={{
-                                      width: '100%',
-                                      height: '100%',
-                                      objectFit: 'cover',
-                                      borderRadius: '4px'
-                                    }}
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      e.target.nextSibling.style.display = 'flex';
-                                    }}
-                                  />
-                                ) : isVideo ? (
-                                  <video
-                                    src={file.filePath}
-                                    style={{
-                                      width: '100%',
-                                      height: '100%',
-                                      objectFit: 'cover',
-                                      borderRadius: '4px'
-                                    }}
-                                    controls={false}
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      e.target.nextSibling.style.display = 'flex';
-                                    }}
-                                  />
-                                ) : null}
-                                
-                                {/* 備用圖標 */}
-                                <div style={{ 
-                                  display: isImage || isVideo ? 'none' : 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: '100%',
-                                  height: '100%',
-                                  backgroundColor: '#f0f0f0'
-                                }}>
-                                  {getFileIcon(displayFileName, file)}
-                                </div>
-                              </div>
+              {/* 按步驟分組顯示 */}
+              {(() => {
+                // 按步驟名稱分組
+                const groupedByStep = mediaFiles.reduce((acc, file) => {
+                  const stepName = file.stepName || '未知步驟';
+                  if (!acc[stepName]) {
+                    acc[stepName] = [];
+                  }
+                  acc[stepName].push(file);
+                  return acc;
+                }, {});
+                
+                // 獲取所有步驟名稱並排序
+                const stepNames = Object.keys(groupedByStep).sort();
+                
+                console.log('[WorkflowMonitor] Grouping media files:', {
+                  totalFiles: mediaFiles.length,
+                  filesWithStepName: mediaFiles.filter(f => f.stepName && f.stepName !== '未知步驟').length,
+                  filesWithoutStepName: mediaFiles.filter(f => !f.stepName || f.stepName === '未知步驟').length,
+                  groupedByStep,
+                  stepNames
+                });
+                
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {stepNames.map((stepName) => {
+                      const files = groupedByStep[stepName];
+                      console.log(`[WorkflowMonitor] Rendering step group "${stepName}" with ${files.length} files`);
+                      return (
+                        <div key={stepName} style={{ marginBottom: '8px' }}>
+                          {/* 步驟標題 */}
+                          <div style={{
+                            padding: '8px 12px',
+                            backgroundColor: '#f0f8ff',
+                            border: '1px solid #91d5ff',
+                            borderRadius: '4px',
+                            marginBottom: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}>
+                            <Text strong style={{ fontSize: '13px', color: '#1890ff' }}>
+                              {stepName}
+                            </Text>
+                            <Tag color="blue" style={{ fontSize: '10px', margin: 0 }}>
+                              {files.length} 個文件
+                            </Tag>
+                          </div>
+                          
+                          {/* 該步驟的文件列表 */}
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                            gap: '16px'
+                          }}>
+                            {files.map((file) => {
+                              console.log('[WorkflowMonitor] Rendering media file:', { 
+                                fileName: file.fileName, 
+                                filePath: file.filePath,
+                                originalFileName: file.originalFileName,
+                                name: file.name,
+                                fileType: file.fileType,
+                                mimeType: file.mimeType,
+                                contentType: file.contentType,
+                                stepName: file.stepName,
+                                stepIndex: file.stepIndex,
+                                file: file 
+                              });
+                              // 使用原始文件名或文件名
+                              const displayFileName = file.originalFileName || file.name || file.fileName || '';
+                              const fileType = getFileType(displayFileName);
+                              const isImage = fileType === 'image';
+                              const isVideo = fileType === 'video';
+                              const isAudio = fileType === 'audio';
+                              const isDocument = fileType === 'document';
                               
-                              {/* 文件信息 */}
-                              <div style={{ width: '100%' }}>
-                                <Text 
-                                  strong 
+                              return (
+                                <Card
+                                  key={file.id}
+                                  size="small"
+                                  hoverable
                                   style={{ 
-                                    fontSize: '12px',
-                                    display: 'block',
-                                    marginBottom: '4px',
-                                    wordBreak: 'break-all',
-                                    lineHeight: '1.2'
+                                    border: '1px solid #e8e8e8',
+                                    borderRadius: '8px',
+                                    overflow: 'hidden'
                                   }}
-                                  title={displayFileName}
+                                  bodyStyle={{ padding: '8px' }}
                                 >
-                                  {displayFileName.length > 20 ? 
-                                    displayFileName.substring(0, 20) + '...' : 
-                                    displayFileName
-                                  }
-                                </Text>
-                                
-                                <div style={{ 
-                                  display: 'flex', 
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  fontSize: '11px',
-                                  color: '#666'
-                                }}>
-                                  <span>{formatFileSize(file.fileSize || 0)}</span>
-                                  <Tag 
-                                    color={isImage ? 'green' : isVideo ? 'blue' : isAudio ? 'orange' : 'default'}
-                                    style={{ fontSize: '10px', margin: 0 }}
-                                  >
-                                    {isImage ? t('workflowMonitor.image') : 
-                                     isVideo ? t('workflowMonitor.video') : 
-                                     isAudio ? t('workflowMonitor.audio') :
-                                     t('workflowMonitor.document')}
-                                  </Tag>
-                                </div>
-                                
-                                {file.createdAt && (
                                   <div style={{ 
-                                    fontSize: '10px', 
-                                    color: '#999',
-                                    marginTop: '4px'
+                                    display: 'flex', 
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    textAlign: 'center'
                                   }}>
-                                    {new Date(file.createdAt).toLocaleDateString('zh-TW')}
+                                    {/* 文件預覽 */}
+                                    <div 
+                                      style={{ 
+                                        width: '100%', 
+                                        height: '120px',
+                                        backgroundColor: '#f5f5f5',
+                                        borderRadius: '6px',
+                                        marginBottom: '8px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        overflow: 'hidden',
+                                        position: 'relative',
+                                        cursor: (isImage || isVideo) ? 'pointer' : 'default'
+                                      }}
+                                      onClick={() => {
+                                        if (isImage || isVideo) {
+                                          openLightbox(file, mediaFiles);
+                                        }
+                                      }}
+                                    >
+                                      {isImage ? (
+                                        <img
+                                          src={file.filePath}
+                                          alt={file.fileName}
+                                          style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover',
+                                            borderRadius: '4px'
+                                          }}
+                                          onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            e.target.nextSibling.style.display = 'flex';
+                                          }}
+                                        />
+                                      ) : isVideo ? (
+                                        <video
+                                          src={file.filePath}
+                                          style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            objectFit: 'cover',
+                                            borderRadius: '4px'
+                                          }}
+                                          controls={false}
+                                          onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            e.target.nextSibling.style.display = 'flex';
+                                          }}
+                                        />
+                                      ) : null}
+                                      
+                                      {/* 備用圖標 */}
+                                      <div style={{ 
+                                        display: isImage || isVideo ? 'none' : 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: '100%',
+                                        height: '100%',
+                                        backgroundColor: '#f0f0f0'
+                                      }}>
+                                        {getFileIcon(displayFileName, file)}
+                                      </div>
+                                    </div>
+                                    
+                                    {/* 文件信息 */}
+                                    <div style={{ width: '100%' }}>
+                                      <Text 
+                                        strong 
+                                        style={{ 
+                                          fontSize: '12px',
+                                          display: 'block',
+                                          marginBottom: '4px',
+                                          wordBreak: 'break-all',
+                                          lineHeight: '1.2'
+                                        }}
+                                        title={displayFileName}
+                                      >
+                                        {displayFileName.length > 20 ? 
+                                          displayFileName.substring(0, 20) + '...' : 
+                                          displayFileName
+                                        }
+                                      </Text>
+                                      
+                                      <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        fontSize: '11px',
+                                        color: '#666'
+                                      }}>
+                                        <span>{formatFileSize(file.fileSize || 0)}</span>
+                                        <Tag 
+                                          color={isImage ? 'green' : isVideo ? 'blue' : isAudio ? 'orange' : 'default'}
+                                          style={{ fontSize: '10px', margin: 0 }}
+                                        >
+                                          {isImage ? t('workflowMonitor.image') : 
+                                           isVideo ? t('workflowMonitor.video') : 
+                                           isAudio ? t('workflowMonitor.audio') :
+                                           t('workflowMonitor.document')}
+                                        </Tag>
+                                      </div>
+                                      
+                                      {file.createdAt && (
+                                        <div style={{ 
+                                          fontSize: '10px', 
+                                          color: '#999',
+                                          marginTop: '4px'
+                                        }}>
+                                          {new Date(file.createdAt).toLocaleDateString('zh-TW')}
+                                        </div>
+                                      )}
+                                      
+                                      {/* 操作按鈕 */}
+                                      <div style={{ 
+                                        marginTop: '8px',
+                                        display: 'flex',
+                                        gap: '4px',
+                                        justifyContent: 'center'
+                                      }}>
+                                        <Button 
+                                          type="text" 
+                                          size="small"
+                                          icon={<EyeOutlined />}
+                                          onClick={() => {
+                                            if (isImage || isVideo) {
+                                              openLightbox(file, mediaFiles);
+                                            } else {
+                                              // 對於非圖片/視頻文件，在新標籤頁中打開
+                                              window.open(file.filePath, '_blank');
+                                            }
+                                          }}
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                        >
+                                          {t('workflowMonitor.view')}
+                                        </Button>
+                                        <Button 
+                                          type="text" 
+                                          size="small"
+                                          icon={<DownloadOutlined />}
+                                          onClick={() => {
+                                            // 下載文件
+                                            const link = document.createElement('a');
+                                            link.href = file.filePath;
+                                            link.download = file.fileName;
+                                            link.click();
+                                          }}
+                                          style={{ fontSize: '10px', padding: '2px 6px' }}
+                                        >
+                                          {t('workflowMonitor.download')}
+                                        </Button>
+                                      </div>
+                                    </div>
                                   </div>
-                                )}
-                                
-                                {/* 操作按鈕 */}
-                                <div style={{ 
-                                  marginTop: '8px',
-                                  display: 'flex',
-                                  gap: '4px',
-                                  justifyContent: 'center'
-                                }}>
-                                  <Button 
-                                    type="text" 
-                                    size="small"
-                                    icon={<EyeOutlined />}
-                                    onClick={() => {
-                                      if (isImage || isVideo) {
-                                        openLightbox(file, mediaFiles);
-                                      } else {
-                                        // 對於非圖片/視頻文件，在新標籤頁中打開
-                                        window.open(file.filePath, '_blank');
-                                      }
-                                    }}
-                                    style={{ fontSize: '10px', padding: '2px 6px' }}
-                                  >
-                                    {t('workflowMonitor.view')}
-                                  </Button>
-                                  <Button 
-                                    type="text" 
-                                    size="small"
-                                    icon={<DownloadOutlined />}
-                                    onClick={() => {
-                                      // 下載文件
-                                      const link = document.createElement('a');
-                                      link.href = file.filePath;
-                                      link.download = file.fileName;
-                                      link.click();
-                                    }}
-                                    style={{ fontSize: '10px', padding: '2px 6px' }}
-                                  >
-                                    {t('workflowMonitor.download')}
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          </Card>
-                        );
-                      })}
-              </div>
+                                </Card>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <Empty 

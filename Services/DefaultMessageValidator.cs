@@ -49,20 +49,26 @@ namespace PurpleRice.Services
                 return defaultResult;
             }
 
-            var rawValidatorType = (validationConfig.ValidatorType ?? "default").ToLowerInvariant();
-            var aiValidatorAliases = new[] { "ai", "openai", "xai" };
-            var aiActive = validationConfig.AiIsActive ?? Array.Exists(aiValidatorAliases, alias => string.Equals(rawValidatorType, alias, StringComparison.OrdinalIgnoreCase));
+            // ✅ 簡化：完全依賴 aiIsActive，validatorType 僅用於向後兼容
+            var aiActive = validationConfig.AiIsActive ?? 
+                (!string.IsNullOrWhiteSpace(validationConfig.ValidatorType) && 
+                 Array.Exists(new[] { "ai", "openai", "xai" }, alias => 
+                     string.Equals(validationConfig.ValidatorType, alias, StringComparison.OrdinalIgnoreCase)));
 
             if (aiActive)
             {
-                if ((string.Equals(rawValidatorType, "openai", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(rawValidatorType, "xai", StringComparison.OrdinalIgnoreCase)) &&
-                    string.IsNullOrWhiteSpace(validationConfig.AiProviderKey))
+                // ✅ 簡化：如果 aiProviderKey 未設置，嘗試從 validatorType 推斷（向後兼容）
+                if (string.IsNullOrWhiteSpace(validationConfig.AiProviderKey) && 
+                    !string.IsNullOrWhiteSpace(validationConfig.ValidatorType))
                 {
-                    validationConfig.AiProviderKey = rawValidatorType;
+                    var rawValidatorType = validationConfig.ValidatorType.ToLowerInvariant();
+                    if (rawValidatorType == "openai" || rawValidatorType == "xai")
+                    {
+                        validationConfig.AiProviderKey = rawValidatorType;
+                    }
                 }
 
-                validationConfig.ValidatorType = "ai";
+                validationConfig.ValidatorType = "ai"; // 用於記錄
                 return await ValidateWithAiAsync(messageData, execution, stepExecution, validationConfig);
             }
 

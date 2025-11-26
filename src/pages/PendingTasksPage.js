@@ -1084,25 +1084,105 @@ const PendingTasksPage = () => {
         return;
       }
       
-      // 使用與 WorkflowMonitorPage.js 相同的 API
-      const response = await fetch(`/api/workflowexecutions/${workflowInstanceId}/media-files`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      // 並行獲取媒體文件、步驟執行信息和消息驗證記錄
+      const [mediaFilesResponse, stepExecutionsResponse, messageValidationsResponse] = await Promise.all([
+        fetch(`/api/workflowexecutions/${workflowInstanceId}/media-files`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }),
+        fetch(`/api/workflowexecutions/${workflowInstanceId}/details`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }),
+        fetch(`/api/workflowexecutions/${workflowInstanceId}/message-validations`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        })
+      ]);
+      
+      // 處理媒體文件
+      let mediaFiles = [];
+      if (mediaFilesResponse.ok) {
+        const mediaData = await mediaFilesResponse.json();
+        mediaFiles = mediaData.data || [];
+      } else if (mediaFilesResponse.status !== 404) {
+        console.warn('Failed to load media files:', mediaFilesResponse.status);
+      }
+      
+      // 處理步驟執行信息
+      let stepExecutions = [];
+      if (stepExecutionsResponse.ok) {
+        const stepData = await stepExecutionsResponse.json();
+        stepExecutions = stepData.stepExecutions || [];
+      } else {
+        console.warn('Failed to load step executions:', stepExecutionsResponse.status);
+      }
+      
+      // 處理消息驗證記錄
+      let messageValidations = [];
+      if (messageValidationsResponse.ok) {
+        const validationData = await messageValidationsResponse.json();
+        messageValidations = validationData.data || [];
+      } else {
+        console.warn('Failed to load message validations:', messageValidationsResponse.status);
+      }
+      
+      // 創建步驟索引到步驟名稱的映射
+      const stepIndexToNameMap = {};
+      stepExecutions.forEach(step => {
+        stepIndexToNameMap[step.stepIndex] = step.stepName || step.stepType || `Step ${step.stepIndex}`;
+      });
+      
+      // 創建媒體URL到步驟索引的映射（通過消息驗證記錄）
+      const mediaUrlToStepIndexMap = {};
+      messageValidations.forEach(validation => {
+        if (validation.mediaUrl) {
+          // 標準化路徑格式以便匹配
+          const normalizedUrl = validation.mediaUrl.replace(/\\/g, '/');
+          mediaUrlToStepIndexMap[normalizedUrl] = validation.stepIndex;
         }
       });
       
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.log('Media files API not exists or no media files for this workflow instance');
-          setRelatedAttachments([]);
-          return;
+      // 為每個媒體文件添加步驟信息
+      const enrichedMediaFiles = mediaFiles.map(file => {
+        // 標準化文件路徑以便匹配
+        const normalizedFilePath = file.filePath.replace(/\\/g, '/');
+        
+        // 嘗試從消息驗證記錄中獲取步驟索引
+        let stepIndex = null;
+        let stepName = '未知步驟';
+        
+        // 方法1: 通過完整的文件路徑匹配
+        if (mediaUrlToStepIndexMap[normalizedFilePath]) {
+          stepIndex = mediaUrlToStepIndexMap[normalizedFilePath];
+        } else {
+          // 方法2: 通過文件名匹配（如果路徑不完整）
+          const fileName = file.fileName;
+          for (const [url, idx] of Object.entries(mediaUrlToStepIndexMap)) {
+            if (url.includes(fileName)) {
+              stepIndex = idx;
+              break;
+            }
+          }
         }
-        throw new Error(`Failed to load media files: ${response.status}`);
-      }
+        
+        // 如果找到了步驟索引，獲取步驟名稱
+        if (stepIndex !== null && stepIndexToNameMap[stepIndex]) {
+          stepName = stepIndexToNameMap[stepIndex];
+        }
+        
+        return {
+          ...file,
+          stepIndex: stepIndex,
+          stepName: stepName
+        };
+      });
       
-      const data = await response.json();
-      console.log('Loaded media files for workflow instance:', data);
-      setRelatedAttachments(data.data || []);
+      console.log('Loaded and enriched media files:', enrichedMediaFiles);
+      setRelatedAttachments(enrichedMediaFiles);
     } catch (error) {
       console.error('Failed to load related attachments:', error);
       setRelatedAttachments([]);
@@ -3840,184 +3920,231 @@ const PendingTasksPage = () => {
                             </Text>
                           </div>
                           
-                          <div style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-                            gap: '12px'
-                          }}>
-                            {relatedAttachments.map((file) => {
-                              const fileType = getFileType(file.fileName);
-                              const isImage = fileType === 'image';
-                              const isVideo = fileType === 'video';
-                              
-                              return (
-                                <Card
-                                  key={file.id}
-                                  size="small"
-                                  hoverable
-                                  style={{ 
-                                    border: '1px solid #e8e8e8',
-                                    borderRadius: '6px',
-                                    overflow: 'hidden'
-                                  }}
-                                  styles={{ body: { padding: '6px' } }}
-                                >
-                                  <div style={{ 
-                                    display: 'flex', 
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    textAlign: 'center'
-                                  }}>
-                                    {/* 文件預覽 */}
-                                    <div 
-                                      style={{ 
-                                        width: '100%', 
-                                        height: '80px',
-                                        backgroundColor: '#f5f5f5',
+                          {/* 按步驟分組顯示 */}
+                          {(() => {
+                            // 按步驟名稱分組
+                            const groupedByStep = relatedAttachments.reduce((acc, file) => {
+                              const stepName = file.stepName || '未知步驟';
+                              if (!acc[stepName]) {
+                                acc[stepName] = [];
+                              }
+                              acc[stepName].push(file);
+                              return acc;
+                            }, {});
+                            
+                            // 獲取所有步驟名稱並排序
+                            const stepNames = Object.keys(groupedByStep).sort();
+                            
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {stepNames.map((stepName) => {
+                                  const files = groupedByStep[stepName];
+                                  return (
+                                    <div key={stepName} style={{ marginBottom: '8px' }}>
+                                      {/* 步驟標題 */}
+                                      <div style={{
+                                        padding: '8px 12px',
+                                        backgroundColor: '#f0f8ff',
+                                        border: '1px solid #91d5ff',
                                         borderRadius: '4px',
-                                        marginBottom: '6px',
+                                        marginBottom: '12px',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        justifyContent: 'center',
-                                        overflow: 'hidden',
-                                        position: 'relative',
-                                        cursor: (isImage || isVideo) ? 'pointer' : 'default'
-                                      }}
-                                      onClick={() => {
-                                        if (isImage || isVideo) {
-                                          openLightbox(file, relatedAttachments);
-                                        }
-                                      }}
-                                    >
-                                      {isImage ? (
-                                        <img
-                                          src={file.filePath}
-                                          alt={file.fileName}
-                                          style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            objectFit: 'cover',
-                                            borderRadius: '3px'
-                                          }}
-                                          onError={(e) => {
-                                            e.target.style.display = 'none';
-                                            e.target.nextSibling.style.display = 'flex';
-                                          }}
-                                        />
-                                      ) : isVideo ? (
-                                        <video
-                                          src={file.filePath}
-                                          style={{
-                                            width: '100%',
-                                            height: '100%',
-                                            objectFit: 'cover',
-                                            borderRadius: '3px'
-                                          }}
-                                          controls={false}
-                                          onError={(e) => {
-                                            e.target.style.display = 'none';
-                                            e.target.nextSibling.style.display = 'flex';
-                                          }}
-                                        />
-                                      ) : null}
-                                      
-                                      {/* 備用圖標 */}
-                                      <div style={{ 
-                                        display: isImage || isVideo ? 'none' : 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '100%',
-                                        height: '100%',
-                                        backgroundColor: '#f0f0f0'
+                                        justifyContent: 'space-between'
                                       }}>
-                                        {getFileIcon(file.fileName)}
-                                      </div>
-                                    </div>
-                                    
-                                    {/* 文件信息 */}
-                                    <div style={{ width: '100%' }}>
-                                      <Text 
-                                        strong 
-                                        style={{ 
-                                          fontSize: '11px',
-                                          display: 'block',
-                                          marginBottom: '3px',
-                                          wordBreak: 'break-all',
-                                          lineHeight: '1.2'
-                                        }}
-                                        title={file.fileName}
-                                      >
-                                        {file.fileName.length > 15 ? 
-                                          file.fileName.substring(0, 15) + '...' : 
-                                          file.fileName
-                                        }
-                                      </Text>
-                                      
-                                      <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        fontSize: '10px',
-                                        color: '#666',
-                                        marginBottom: '4px'
-                                      }}>
-                                        <span>{formatFileSize(file.fileSize || 0)}</span>
-                                        <Tag 
-                                          color={isImage ? 'green' : isVideo ? 'blue' : 'default'}
-                                          style={{ fontSize: '9px', margin: 0, padding: '0 4px' }}
-                                        >
-                                          {isImage ? '圖片' : isVideo ? '視頻' : '文件'}
+                                        <Text strong style={{ fontSize: '13px', color: '#1890ff' }}>
+                                          {stepName}
+                                        </Text>
+                                        <Tag color="blue" style={{ fontSize: '10px', margin: 0 }}>
+                                          {files.length} 個文件
                                         </Tag>
                                       </div>
                                       
-                                      {file.createdAt && (
-                                        <div style={{ 
-                                          fontSize: '9px', 
-                                          color: '#999',
-                                          marginBottom: '6px'
-                                        }}>
-                                          {TimezoneUtils.formatDateWithTimezone(file.createdAt, userTimezoneOffset, 'MM/DD/YYYY')}
-                                        </div>
-                                      )}
-                                      
-                                      {/* 操作按鈕 */}
+                                      {/* 該步驟的文件列表 */}
                                       <div style={{ 
-                                        display: 'flex',
-                                        gap: '3px',
-                                        justifyContent: 'center'
+                                        display: 'grid', 
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                                        gap: '12px'
                                       }}>
-                                        <Button 
-                                          type="text" 
-                                          size="small"
-                                          icon={<EyeOutlined />}
-                                          onClick={() => {
-                                            if (isImage || isVideo) {
-                                              openLightbox(file, relatedAttachments);
-                                            } else {
-                                              window.open(file.filePath, '_blank');
-                                            }
-                                          }}
-                                          style={{ fontSize: '9px', padding: '1px 4px', minWidth: 'auto' }}
-                                        />
-                                        <Button 
-                                          type="text" 
-                                          size="small"
-                                          icon={<DownloadOutlined />}
-                                          onClick={() => {
-                                            const link = document.createElement('a');
-                                            link.href = file.filePath;
-                                            link.download = file.fileName;
-                                            link.click();
-                                          }}
-                                          style={{ fontSize: '9px', padding: '1px 4px', minWidth: 'auto' }}
-                                        />
+                                        {files.map((file) => {
+                                          const fileType = getFileType(file.fileName);
+                                          const isImage = fileType === 'image';
+                                          const isVideo = fileType === 'video';
+                                          
+                                          return (
+                                            <Card
+                                              key={file.id}
+                                              size="small"
+                                              hoverable
+                                              style={{ 
+                                                border: '1px solid #e8e8e8',
+                                                borderRadius: '6px',
+                                                overflow: 'hidden'
+                                              }}
+                                              styles={{ body: { padding: '6px' } }}
+                                            >
+                                              <div style={{ 
+                                                display: 'flex', 
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                textAlign: 'center'
+                                              }}>
+                                                {/* 文件預覽 */}
+                                                <div 
+                                                  style={{ 
+                                                    width: '100%', 
+                                                    height: '80px',
+                                                    backgroundColor: '#f5f5f5',
+                                                    borderRadius: '4px',
+                                                    marginBottom: '6px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    overflow: 'hidden',
+                                                    position: 'relative',
+                                                    cursor: (isImage || isVideo) ? 'pointer' : 'default'
+                                                  }}
+                                                  onClick={() => {
+                                                    if (isImage || isVideo) {
+                                                      openLightbox(file, relatedAttachments);
+                                                    }
+                                                  }}
+                                                >
+                                                  {isImage ? (
+                                                    <img
+                                                      src={file.filePath}
+                                                      alt={file.fileName}
+                                                      style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        objectFit: 'cover',
+                                                        borderRadius: '3px'
+                                                      }}
+                                                      onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                        e.target.nextSibling.style.display = 'flex';
+                                                      }}
+                                                    />
+                                                  ) : isVideo ? (
+                                                    <video
+                                                      src={file.filePath}
+                                                      style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        objectFit: 'cover',
+                                                        borderRadius: '3px'
+                                                      }}
+                                                      controls={false}
+                                                      onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                        e.target.nextSibling.style.display = 'flex';
+                                                      }}
+                                                    />
+                                                  ) : null}
+                                                  
+                                                  {/* 備用圖標 */}
+                                                  <div style={{ 
+                                                    display: isImage || isVideo ? 'none' : 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    width: '100%',
+                                                    height: '100%',
+                                                    backgroundColor: '#f0f0f0'
+                                                  }}>
+                                                    {getFileIcon(file.fileName)}
+                                                  </div>
+                                                </div>
+                                                
+                                                {/* 文件信息 */}
+                                                <div style={{ width: '100%' }}>
+                                                  <Text 
+                                                    strong 
+                                                    style={{ 
+                                                      fontSize: '11px',
+                                                      display: 'block',
+                                                      marginBottom: '3px',
+                                                      wordBreak: 'break-all',
+                                                      lineHeight: '1.2'
+                                                    }}
+                                                    title={file.fileName}
+                                                  >
+                                                    {file.fileName.length > 15 ? 
+                                                      file.fileName.substring(0, 15) + '...' : 
+                                                      file.fileName
+                                                    }
+                                                  </Text>
+                                                  
+                                                  <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    fontSize: '10px',
+                                                    color: '#666',
+                                                    marginBottom: '4px'
+                                                  }}>
+                                                    <span>{formatFileSize(file.fileSize || 0)}</span>
+                                                    <Tag 
+                                                      color={isImage ? 'green' : isVideo ? 'blue' : 'default'}
+                                                      style={{ fontSize: '9px', margin: 0, padding: '0 4px' }}
+                                                    >
+                                                      {isImage ? '圖片' : isVideo ? '視頻' : '文件'}
+                                                    </Tag>
+                                                  </div>
+                                                  
+                                                  {file.createdAt && (
+                                                    <div style={{ 
+                                                      fontSize: '9px', 
+                                                      color: '#999',
+                                                      marginBottom: '6px'
+                                                    }}>
+                                                      {TimezoneUtils.formatDateWithTimezone(file.createdAt, userTimezoneOffset, 'MM/DD/YYYY')}
+                                                    </div>
+                                                  )}
+                                                  
+                                                  {/* 操作按鈕 */}
+                                                  <div style={{ 
+                                                    display: 'flex',
+                                                    gap: '3px',
+                                                    justifyContent: 'center'
+                                                  }}>
+                                                    <Button 
+                                                      type="text" 
+                                                      size="small"
+                                                      icon={<EyeOutlined />}
+                                                      onClick={() => {
+                                                        if (isImage || isVideo) {
+                                                          openLightbox(file, relatedAttachments);
+                                                        } else {
+                                                          window.open(file.filePath, '_blank');
+                                                        }
+                                                      }}
+                                                      style={{ fontSize: '9px', padding: '1px 4px', minWidth: 'auto' }}
+                                                    />
+                                                    <Button 
+                                                      type="text" 
+                                                      size="small"
+                                                      icon={<DownloadOutlined />}
+                                                      onClick={() => {
+                                                        const link = document.createElement('a');
+                                                        link.href = file.filePath;
+                                                        link.download = file.fileName;
+                                                        link.click();
+                                                      }}
+                                                      style={{ fontSize: '9px', padding: '1px 4px', minWidth: 'auto' }}
+                                                    />
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </Card>
+                                          );
+                                        })}
                                       </div>
                                     </div>
-                                  </div>
-                                </Card>
-                              );
-                            })}
-                          </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <Empty 

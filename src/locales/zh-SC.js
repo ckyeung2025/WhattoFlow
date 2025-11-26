@@ -3090,7 +3090,11 @@ const zhSC = {
     clickToSelectDefaultPath: '点击选择默认路径',
     
     // QR Code 节点翻译键
-    qrCodeErrorMessage: 'QR Code 错误消息'
+    qrCodeErrorMessage: 'QR Code 错误消息',
+    waitReplySuccessMessage: '等待回复成功消息',
+    waitReplyErrorMessage: '等待回复错误消息',
+    waitReplySuccessMessagePlaceholder: '输入验证成功时发送的消息',
+    waitReplyErrorMessagePlaceholder: '输入验证失败时发送的消息'
   },
 
   // Workflow Monitor

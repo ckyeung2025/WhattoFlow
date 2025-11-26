@@ -317,12 +317,11 @@ namespace PurpleRice.Services
             if (await IsNodeAlreadyExecuted(execution.Id, sendEFormNodeId, "sendEForm"))
             {
                 WriteLog($"警告: sendEForm 節點 {sendEFormNodeId} 已經執行過，直接執行後續節點");
-                        }
-                        else
-                        {
-                // 標記 sendEForm 步驟完成
-                await MarkSendEFormStepComplete(execution.Id);
             }
+            
+            // 無論節點是否已經執行過，都應該標記 sendEForm 步驟為完成
+            // 因為表單已經被審批，sendEForm 節點應該從 Waiting 狀態更新為 Completed
+            await MarkSendEFormStepComplete(execution.Id);
 
             // 更新流程狀態
             execution.Status = "Running";
@@ -641,16 +640,15 @@ namespace PurpleRice.Services
                     escalationConfig.IsMetaTemplate = TemplateHelper.IsMetaTemplateId(escalationConfig.TemplateId);
                 }
                 
-                var validatorType = validation.ValidatorType;
                 var aiProviderKey = validation.AiProviderKey;
 
-                if (!string.IsNullOrWhiteSpace(validatorType))
+                // ✅ 簡化：如果 aiProviderKey 是 "openai" 或 "xai"，直接使用
+                if (string.IsNullOrWhiteSpace(aiProviderKey) && !string.IsNullOrWhiteSpace(validation.ValidatorType))
                 {
-                    var normalized = validatorType.ToLowerInvariant();
+                    var normalized = validation.ValidatorType.ToLowerInvariant();
                     if (normalized == "openai" || normalized == "xai")
                     {
-                        aiProviderKey ??= normalized;
-                        validatorType = "ai";
+                        aiProviderKey = normalized;
                     }
                 }
 
@@ -659,21 +657,28 @@ namespace PurpleRice.Services
                     nodeData.AiProviderKey = aiProviderKey;
                 }
 
-                validation.ValidatorType = validatorType;
                 validation.AiProviderKey = aiProviderKey;
 
-                var aiIsActive = validation.AiIsActive ?? (validation.Enabled && string.Equals(validatorType, "ai", StringComparison.OrdinalIgnoreCase));
-                var timeIsActive = validation.TimeIsActive ?? (validation.Enabled && string.Equals(validatorType, "time", StringComparison.OrdinalIgnoreCase));
+                // ✅ 簡化：完全依賴 aiIsActive 和 timeIsActive，validatorType 僅用於向後兼容
+                var aiIsActive = validation.AiIsActive.HasValue 
+                    ? validation.AiIsActive.Value 
+                    : (validation.Enabled && !string.IsNullOrWhiteSpace(validation.ValidatorType) && 
+                       string.Equals(validation.ValidatorType, "ai", StringComparison.OrdinalIgnoreCase));
+                var timeIsActive = validation.TimeIsActive.HasValue
+                    ? validation.TimeIsActive.Value
+                    : (validation.Enabled && !string.IsNullOrWhiteSpace(validation.ValidatorType) && 
+                       string.Equals(validation.ValidatorType, "time", StringComparison.OrdinalIgnoreCase));
 
                 validation.AiIsActive = aiIsActive;
                 validation.TimeIsActive = timeIsActive;
                 validation.Enabled = aiIsActive || timeIsActive;
 
                 // 創建標準化的 ValidationConfig 對象
+                // ✅ 簡化：validatorType 僅用於向後兼容，主要依賴 aiIsActive 和 timeIsActive
                 var standardValidationConfig = new ValidationConfig
                 {
                     Enabled = validation.Enabled,
-                    ValidatorType = validatorType,
+                    ValidatorType = validation.ValidatorType, // 保留用於向後兼容
                     AiIsActive = aiIsActive,
                     TimeIsActive = timeIsActive,
                     RetryIntervalDays = validation.RetryIntervalDays,
@@ -2326,9 +2331,14 @@ namespace PurpleRice.Services
                     WriteLog($"=== End 節點完成檢查 ===");
                     WriteLog($"已完成 End 節點數: {completedEndNodes}");
                     
+            // 標記 end 節點本身為完成
+            stepExec.Status = "Completed";
+            stepExec.EndedAt = DateTime.UtcNow;
+            await SaveStepExecution(stepExec);
+                    
             // 標記整個流程為完成
-                        execution.Status = "Completed";
-                        execution.EndedAt = DateTime.UtcNow;
+            execution.Status = "Completed";
+            execution.EndedAt = DateTime.UtcNow;
             await SaveExecution(execution);
             
             // 清理用戶會話中的已完成流程
@@ -3119,16 +3129,80 @@ namespace PurpleRice.Services
                         var instance = instances.FirstOrDefault(i => i.RecipientWhatsAppNo == recipient.PhoneNumber);
                         if (instance != null)
                         {
-                            // 只有配置了固定變數才添加
+                            // 只有配置了固定變數才添加，使用對應的 parameterName 作為鍵
                             if (hasFormUrl)
                             {
-                                processedVariables["formUrl"] = instance.FormUrl;
-                                WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 添加固定變數 formUrl: {instance.FormUrl}");
+                                // 找到 formUrl 對應的 parameterName
+                                var formUrlParamName = nodeData.TemplateVariables
+                                    .Select(tv =>
+                                    {
+                                        try
+                                        {
+                                            var tvJson = JsonSerializer.Serialize(tv);
+                                            var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                                            if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                                            {
+                                                var pvId = pvIdProp.GetString();
+                                                if (!string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formUrl")
+                                                {
+                                                    return tvElement.TryGetProperty("parameterName", out var paramNameProp) 
+                                                        ? paramNameProp.GetString() 
+                                                        : null;
+                                                }
+                                            }
+                                        }
+                                        catch { }
+                                        return null;
+                                    })
+                                    .FirstOrDefault(p => !string.IsNullOrEmpty(p));
+                                
+                                if (!string.IsNullOrEmpty(formUrlParamName))
+                                {
+                                    processedVariables[formUrlParamName] = instance.FormUrl;
+                                    WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 添加固定變數 formUrl 到參數位置 {formUrlParamName}: {instance.FormUrl}");
+                                }
+                                else
+                                {
+                                    WriteLog($"⚠️ [WARNING] 找不到 formUrl 對應的 parameterName，使用默認鍵 'formUrl'");
+                                    processedVariables["formUrl"] = instance.FormUrl;
+                                }
                             }
                             if (hasFormName)
                             {
-                                processedVariables["formName"] = nodeData.FormName ?? "";
-                                WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 添加固定變數 formName: {nodeData.FormName ?? ""}");
+                                // 找到 formName 對應的 parameterName
+                                var formNameParamName = nodeData.TemplateVariables
+                                    .Select(tv =>
+                                    {
+                                        try
+                                        {
+                                            var tvJson = JsonSerializer.Serialize(tv);
+                                            var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                                            if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                                            {
+                                                var pvId = pvIdProp.GetString();
+                                                if (!string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formName")
+                                                {
+                                                    return tvElement.TryGetProperty("parameterName", out var paramNameProp) 
+                                                        ? paramNameProp.GetString() 
+                                                        : null;
+                                                }
+                                            }
+                                        }
+                                        catch { }
+                                        return null;
+                                    })
+                                    .FirstOrDefault(p => !string.IsNullOrEmpty(p));
+                                
+                                if (!string.IsNullOrEmpty(formNameParamName))
+                                {
+                                    processedVariables[formNameParamName] = nodeData.FormName ?? "";
+                                    WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 添加固定變數 formName 到參數位置 {formNameParamName}: {nodeData.FormName ?? ""}");
+                                }
+                                else
+                                {
+                                    WriteLog($"⚠️ [WARNING] 找不到 formName 對應的 parameterName，使用默認鍵 'formName'");
+                                    processedVariables["formName"] = nodeData.FormName ?? "";
+                                }
                             }
                             // recipientName 暫時保留（如果需要的話）
                             // processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
@@ -3296,16 +3370,80 @@ namespace PurpleRice.Services
                         return false;
                     });
                     
-                    // 只有配置了固定變數才添加
+                    // 只有配置了固定變數才添加，使用對應的 parameterName 作為鍵
                     if (hasFormUrl)
                     {
-                        processedVariables["formUrl"] = eFormInstance.FormUrl;
-                        WriteLog($"🔍 [DEBUG] 添加固定變數 formUrl: {eFormInstance.FormUrl}");
+                        // 找到 formUrl 對應的 parameterName
+                        var formUrlParamName = nodeData.TemplateVariables
+                            .Select(tv =>
+                            {
+                                try
+                                {
+                                    var tvJson = JsonSerializer.Serialize(tv);
+                                    var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                                    if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                                    {
+                                        var pvId = pvIdProp.GetString();
+                                        if (!string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formUrl")
+                                        {
+                                            return tvElement.TryGetProperty("parameterName", out var paramNameProp) 
+                                                ? paramNameProp.GetString() 
+                                                : null;
+                                        }
+                                    }
+                                }
+                                catch { }
+                                return null;
+                            })
+                            .FirstOrDefault(p => !string.IsNullOrEmpty(p));
+                        
+                        if (!string.IsNullOrEmpty(formUrlParamName))
+                        {
+                            processedVariables[formUrlParamName] = eFormInstance.FormUrl;
+                            WriteLog($"🔍 [DEBUG] 添加固定變數 formUrl 到參數位置 {formUrlParamName}: {eFormInstance.FormUrl}");
+                        }
+                        else
+                        {
+                            WriteLog($"⚠️ [WARNING] 找不到 formUrl 對應的 parameterName，使用默認鍵 'formUrl'");
+                            processedVariables["formUrl"] = eFormInstance.FormUrl;
+                        }
                     }
                     if (hasFormName)
                     {
-                        processedVariables["formName"] = nodeData.FormName ?? "";
-                        WriteLog($"🔍 [DEBUG] 添加固定變數 formName: {nodeData.FormName ?? ""}");
+                        // 找到 formName 對應的 parameterName
+                        var formNameParamName = nodeData.TemplateVariables
+                            .Select(tv =>
+                            {
+                                try
+                                {
+                                    var tvJson = JsonSerializer.Serialize(tv);
+                                    var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                                    if (tvElement.TryGetProperty("processVariableId", out var pvIdProp))
+                                    {
+                                        var pvId = pvIdProp.GetString();
+                                        if (!string.IsNullOrEmpty(pvId) && pvId.StartsWith("fixed_") && pvId.Substring(6) == "formName")
+                                        {
+                                            return tvElement.TryGetProperty("parameterName", out var paramNameProp) 
+                                                ? paramNameProp.GetString() 
+                                                : null;
+                                        }
+                                    }
+                                }
+                                catch { }
+                                return null;
+                            })
+                            .FirstOrDefault(p => !string.IsNullOrEmpty(p));
+                        
+                        if (!string.IsNullOrEmpty(formNameParamName))
+                        {
+                            processedVariables[formNameParamName] = nodeData.FormName ?? "";
+                            WriteLog($"🔍 [DEBUG] 添加固定變數 formName 到參數位置 {formNameParamName}: {nodeData.FormName ?? ""}");
+                        }
+                        else
+                        {
+                            WriteLog($"⚠️ [WARNING] 找不到 formName 對應的 parameterName，使用默認鍵 'formName'");
+                            processedVariables["formName"] = nodeData.FormName ?? "";
+                        }
                     }
                 }
                 else
@@ -3516,6 +3654,50 @@ namespace PurpleRice.Services
         
         [System.Text.Json.Serialization.JsonPropertyName("qrCodeErrorTemplateVariables")]
         public List<object> QrCodeErrorTemplateVariables { get; set; }
+        
+        // Wait Reply 節點相關屬性（成功訊息）
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessMessage")]
+        public string WaitReplySuccessMessage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessMessageMode")]
+        public string WaitReplySuccessMessageMode { get; set; } // "direct" 或 "template"
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessTemplateId")]
+        public string WaitReplySuccessTemplateId { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessTemplateName")]
+        public string WaitReplySuccessTemplateName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessIsMetaTemplate")]
+        public bool WaitReplySuccessIsMetaTemplate { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessTemplateLanguage")]
+        public string WaitReplySuccessTemplateLanguage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplySuccessTemplateVariables")]
+        public List<object> WaitReplySuccessTemplateVariables { get; set; }
+        
+        // Wait Reply 節點相關屬性（錯誤訊息）
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorMessage")]
+        public string WaitReplyErrorMessage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorMessageMode")]
+        public string WaitReplyErrorMessageMode { get; set; } // "direct" 或 "template"
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorTemplateId")]
+        public string WaitReplyErrorTemplateId { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorTemplateName")]
+        public string WaitReplyErrorTemplateName { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorIsMetaTemplate")]
+        public bool WaitReplyErrorIsMetaTemplate { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorTemplateLanguage")]
+        public string WaitReplyErrorTemplateLanguage { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("waitReplyErrorTemplateVariables")]
+        public List<object> WaitReplyErrorTemplateVariables { get; set; }
         
         // e-Form 節點相關屬性
         [System.Text.Json.Serialization.JsonPropertyName("approvalResultVariable")]

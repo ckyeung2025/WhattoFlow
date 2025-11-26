@@ -730,18 +730,42 @@ namespace PurpleRice.Services.WebhookServices
                 _context.MessageValidations.Add(validation);
                 await _context.SaveChangesAsync();
 
+                // 獲取節點信息以發送正確的訊息
+                var nodeInfo = await GetWaitReplyNodeInfo(execution, stepExecution);
+                
                 if (!validationResult.IsValid)
                 {
                     // 驗證失敗，發送錯誤訊息並保持等待狀態
-                    var menuSettings = WhatsAppMenuSettings.FromCompany(company);
-                    var errorMessage = validationResult.ErrorMessage ?? menuSettings.InputErrorMessage;
-                    await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
-                    _loggingService.LogInformation($"驗證失敗，保持等待狀態: {errorMessage}");
+                    if (nodeInfo != null)
+                    {
+                        // 使用節點配置的錯誤訊息
+                        await SendWaitReplyMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
+                    }
+                    else
+                    {
+                        // 回退到默認錯誤訊息
+                        var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                        var errorMessage = validationResult.ErrorMessage ?? menuSettings.InputErrorMessage;
+                        await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                    }
+                    _loggingService.LogInformation($"驗證失敗，保持等待狀態");
                     return;
                 }
 
-                // 驗證通過，繼續執行流程
+                // 驗證通過，發送成功訊息並繼續執行流程
                 _loggingService.LogInformation($"驗證通過，繼續執行流程");
+                
+                // 發送成功訊息（如果配置了）
+                if (nodeInfo != null)
+                {
+                    _loggingService.LogInformation($"發送 Wait Reply 成功訊息");
+                    await SendWaitReplyMessageAsync(company, execution, messageData.WaId, nodeInfo, true);
+                }
+                else
+                {
+                    _loggingService.LogWarning($"無法獲取 Wait Reply 節點信息，跳過成功訊息發送");
+                }
+                
                 execution.IsWaiting = false;
                 execution.WaitingSince = null;
                 execution.LastUserActivity = DateTime.UtcNow;
@@ -1707,10 +1731,13 @@ namespace PurpleRice.Services.WebhookServices
                 
                 _loggingService.LogInformation($"✅ QR Code 值已寫入流程變量: {nodeInfo.QrCodeVariable ?? "qrCodeResult"}");
                 
-                // 檢查是否有 AI 驗證配置
+                // ✅ 簡化：完全依賴 aiIsActive，與 waitReply 節點保持一致
+                // 優先使用 aiIsActive，如果為 null 則回退到檢查 validatorType（向後兼容）
                 var hasAiValidation = nodeInfo.Validation != null && 
                                      (nodeInfo.Validation.AiIsActive == true || 
-                                      (nodeInfo.Validation.Enabled == true && 
+                                      (nodeInfo.Validation.AiIsActive == null && 
+                                       nodeInfo.Validation.Enabled == true && 
+                                       !string.IsNullOrWhiteSpace(nodeInfo.Validation.ValidatorType) &&
                                        string.Equals(nodeInfo.Validation.ValidatorType, "ai", StringComparison.OrdinalIgnoreCase)));
                 
                 if (hasAiValidation && stepExecution != null)
@@ -1860,6 +1887,206 @@ namespace PurpleRice.Services.WebhookServices
         }
 
         /// <summary>
+        /// 從工作流程定義中獲取 waitReply 節點信息
+        /// </summary>
+        /// <param name="execution">流程執行記錄</param>
+        /// <param name="stepExecution">步驟執行記錄</param>
+        /// <returns>節點信息</returns>
+        private async Task<WaitReplyNodeInfo> GetWaitReplyNodeInfo(WorkflowExecution execution, WorkflowStepExecution stepExecution)
+        {
+            try
+            {
+                if (execution.WorkflowDefinition == null || string.IsNullOrEmpty(execution.WorkflowDefinition.Json))
+                {
+                    return null;
+                }
+                
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
+                
+                if (flowData?.Nodes != null)
+                {
+                    // ✅ 修復：根據 stepExecution 的 TaskName 來匹配正確的節點
+                    // 如果流程中有多個 waitReply 節點，需要找到當前正在等待的那個
+                    WorkflowNode waitReplyNode = null;
+                    
+                    if (stepExecution != null && !string.IsNullOrEmpty(stepExecution.TaskName))
+                    {
+                        // 優先通過 TaskName 匹配
+                        waitReplyNode = flowData.Nodes.FirstOrDefault(n => 
+                            (n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply") &&
+                            n.Data?.TaskName == stepExecution.TaskName);
+                    }
+                    
+                    // 如果 TaskName 匹配失敗，嘗試通過 StepType 匹配
+                    if (waitReplyNode == null && stepExecution != null && !string.IsNullOrEmpty(stepExecution.StepType))
+                    {
+                        waitReplyNode = flowData.Nodes.FirstOrDefault(n => 
+                            (n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply") &&
+                            (n.Data?.Type == stepExecution.StepType || 
+                             (stepExecution.StepType == "waitReply" && n.Data?.Type == "waitForUserReply") ||
+                             (stepExecution.StepType == "waitForUserReply" && n.Data?.Type == "waitReply")));
+                    }
+                    
+                    // 如果還是找不到，使用第一個 waitReply 節點（向後兼容）
+                    if (waitReplyNode == null)
+                    {
+                        waitReplyNode = flowData.Nodes.FirstOrDefault(n => 
+                            n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply");
+                    }
+                    
+                    if (waitReplyNode != null)
+                    {
+                        return new WaitReplyNodeInfo
+                        {
+                            NodeId = waitReplyNode.Id,
+                            WaitReplySuccessMessage = waitReplyNode.Data?.WaitReplySuccessMessage,
+                            WaitReplySuccessMessageMode = waitReplyNode.Data?.WaitReplySuccessMessageMode ?? "direct",
+                            WaitReplySuccessTemplateId = waitReplyNode.Data?.WaitReplySuccessTemplateId,
+                            WaitReplySuccessTemplateName = waitReplyNode.Data?.WaitReplySuccessTemplateName,
+                            WaitReplySuccessIsMetaTemplate = waitReplyNode.Data?.WaitReplySuccessIsMetaTemplate ?? false,
+                            WaitReplySuccessTemplateLanguage = waitReplyNode.Data?.WaitReplySuccessTemplateLanguage,
+                            WaitReplySuccessTemplateVariables = waitReplyNode.Data?.WaitReplySuccessTemplateVariables,
+                            WaitReplyErrorMessage = waitReplyNode.Data?.WaitReplyErrorMessage,
+                            WaitReplyErrorMessageMode = waitReplyNode.Data?.WaitReplyErrorMessageMode ?? "direct",
+                            WaitReplyErrorTemplateId = waitReplyNode.Data?.WaitReplyErrorTemplateId,
+                            WaitReplyErrorTemplateName = waitReplyNode.Data?.WaitReplyErrorTemplateName,
+                            WaitReplyErrorIsMetaTemplate = waitReplyNode.Data?.WaitReplyErrorIsMetaTemplate ?? false,
+                            WaitReplyErrorTemplateLanguage = waitReplyNode.Data?.WaitReplyErrorTemplateLanguage,
+                            WaitReplyErrorTemplateVariables = waitReplyNode.Data?.WaitReplyErrorTemplateVariables,
+                            Validation = waitReplyNode.Data?.Validation
+                        };
+                    }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取 waitReply 節點信息時發生錯誤: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 發送 Wait Reply 訊息（支持模板和直接訊息）
+        /// </summary>
+        private async Task SendWaitReplyMessageAsync(
+            Company company, 
+            WorkflowExecution execution,
+            string waId, 
+            WaitReplyNodeInfo nodeInfo,
+            bool isSuccessMessage)
+        {
+            try
+            {
+                string messageMode;
+                string message;
+                string templateId;
+                string templateName;
+                bool isMetaTemplate;
+                string templateLanguage;
+                List<object> templateVariables;
+
+                if (isSuccessMessage)
+                {
+                    messageMode = nodeInfo.WaitReplySuccessMessageMode ?? "direct";
+                    message = nodeInfo.WaitReplySuccessMessage;
+                    templateId = nodeInfo.WaitReplySuccessTemplateId;
+                    templateName = nodeInfo.WaitReplySuccessTemplateName;
+                    isMetaTemplate = nodeInfo.WaitReplySuccessIsMetaTemplate;
+                    templateLanguage = nodeInfo.WaitReplySuccessTemplateLanguage;
+                    templateVariables = nodeInfo.WaitReplySuccessTemplateVariables;
+                }
+                else
+                {
+                    messageMode = nodeInfo.WaitReplyErrorMessageMode ?? "direct";
+                    message = nodeInfo.WaitReplyErrorMessage;
+                    templateId = nodeInfo.WaitReplyErrorTemplateId;
+                    templateName = nodeInfo.WaitReplyErrorTemplateName;
+                    isMetaTemplate = nodeInfo.WaitReplyErrorIsMetaTemplate;
+                    templateLanguage = nodeInfo.WaitReplyErrorTemplateLanguage;
+                    templateVariables = nodeInfo.WaitReplyErrorTemplateVariables;
+                }
+
+                // 如果沒有配置訊息，不發送
+                if ((messageMode == "direct" && string.IsNullOrEmpty(message)) ||
+                    (messageMode == "template" && string.IsNullOrEmpty(templateName)))
+                {
+                    _loggingService.LogInformation($"Wait Reply {(isSuccessMessage ? "成功" : "錯誤")}訊息未配置，跳過發送");
+                    return;
+                }
+                
+                _loggingService.LogInformation($"準備發送 Wait Reply {(isSuccessMessage ? "成功" : "錯誤")}訊息，模式: {messageMode}");
+
+                if (messageMode == "template" && !string.IsNullOrEmpty(templateName))
+                {
+                    _loggingService.LogInformation($"📝 Wait Reply {(isSuccessMessage ? "成功" : "錯誤")}訊息使用模板模式: {templateName}");
+                    
+                    // 處理模板變數
+                    Dictionary<string, string> processedVariables = new Dictionary<string, string>();
+                    if (templateVariables != null && templateVariables.Any())
+                    {
+                        using var scope = _serviceProvider.CreateScope();
+                        var variableReplacementService = scope.ServiceProvider.GetRequiredService<IVariableReplacementService>();
+                        foreach (var tv in templateVariables)
+                        {
+                            if (tv != null)
+                            {
+                                try
+                                {
+                                    var tvJson = JsonSerializer.Serialize(tv);
+                                    var tvElement = JsonSerializer.Deserialize<JsonElement>(tvJson);
+                                    if (tvElement.TryGetProperty("parameterName", out var paramName) &&
+                                        tvElement.TryGetProperty("value", out var value))
+                                    {
+                                        var paramNameStr = paramName.GetString();
+                                        var valueStr = value.GetString() ?? "";
+                                        // 替換流程變數
+                                        var processedValue = await variableReplacementService.ReplaceVariablesAsync(valueStr, execution.Id);
+                                        processedVariables[paramNameStr] = processedValue;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _loggingService.LogWarning($"處理模板變數時發生錯誤: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 發送模板訊息
+                    await _whatsAppWorkflowService.SendWhatsAppTemplateMessageAsync(
+                        waId,
+                        templateId,
+                        execution,
+                        _context,
+                        processedVariables,
+                        isMetaTemplate,
+                        templateName,
+                        templateLanguage
+                    );
+                }
+                else
+                {
+                    // 發送直接訊息
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        // 替換流程變數
+                        using var scope = _serviceProvider.CreateScope();
+                        var variableReplacementService = scope.ServiceProvider.GetRequiredService<IVariableReplacementService>();
+                        var processedMessage = await variableReplacementService.ReplaceVariablesAsync(message, execution.Id);
+                        await SendWhatsAppMessage(company, waId, processedMessage);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"發送 Wait Reply {(isSuccessMessage ? "成功" : "錯誤")}訊息失敗: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
         /// 從工作流程定義中獲取 waitForQRCode 節點 ID
         /// </summary>
         /// <param name="execution">流程執行記錄</param>
@@ -1933,6 +2160,26 @@ namespace PurpleRice.Services.WebhookServices
             public string QrCodeErrorTemplateLanguage { get; set; }
             public List<object> QrCodeErrorTemplateVariables { get; set; }
             public string QrCodeVariable { get; set; }
+            public WorkflowValidation Validation { get; set; }
+        }
+
+        private class WaitReplyNodeInfo
+        {
+            public string NodeId { get; set; }
+            public string WaitReplySuccessMessage { get; set; }
+            public string WaitReplySuccessMessageMode { get; set; }
+            public string WaitReplySuccessTemplateId { get; set; }
+            public string WaitReplySuccessTemplateName { get; set; }
+            public bool WaitReplySuccessIsMetaTemplate { get; set; }
+            public string WaitReplySuccessTemplateLanguage { get; set; }
+            public List<object> WaitReplySuccessTemplateVariables { get; set; }
+            public string WaitReplyErrorMessage { get; set; }
+            public string WaitReplyErrorMessageMode { get; set; }
+            public string WaitReplyErrorTemplateId { get; set; }
+            public string WaitReplyErrorTemplateName { get; set; }
+            public bool WaitReplyErrorIsMetaTemplate { get; set; }
+            public string WaitReplyErrorTemplateLanguage { get; set; }
+            public List<object> WaitReplyErrorTemplateVariables { get; set; }
             public WorkflowValidation Validation { get; set; }
         }
 

@@ -30,7 +30,12 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
   // 載入所有消息發送記錄
   useEffect(() => {
     if (visible && workflowExecutionId) {
+      // 每次打開模態框時，清空當前選中的消息發送記錄
+      setCurrentMessageSend(null);
       loadAllMessageSends();
+    } else if (!visible) {
+      // 當模態框關閉時，也清空當前選中的消息發送記錄
+      setCurrentMessageSend(null);
     }
   }, [visible, workflowExecutionId]);
 

@@ -115,6 +115,22 @@ const WhatsAppWorkflowDesignerRefactored = () => {
     };
   }, []);
 
+  // 監聽 Wait Reply 模板選擇請求
+  useEffect(() => {
+    const handleWaitReplyTemplateSelectRequest = (event) => {
+      const { messageType } = event.detail;
+      console.log('🎯 WhatsAppWorkflowDesigner 收到 Wait Reply 模板選擇請求:', { messageType });
+      window.waitReplyTemplateSelectMessageType = messageType;
+    };
+
+    window.addEventListener('waitReplyTemplateSelectRequest', handleWaitReplyTemplateSelectRequest);
+    
+    return () => {
+      window.removeEventListener('waitReplyTemplateSelectRequest', handleWaitReplyTemplateSelectRequest);
+      window.waitReplyTemplateSelectMessageType = null;
+    };
+  }, []);
+
   // 處理 Time Validator 模板選擇
   const handleTimeValidatorTemplateSelect = useCallback((template, isMetaTemplate) => {
     console.log('🎯 WhatsAppWorkflowDesigner 處理 Time Validator 模板選擇:', { template: template.name, isMetaTemplate, source: templateModalSource });
@@ -521,6 +537,20 @@ const WhatsAppWorkflowDesignerRefactored = () => {
               }
             }));
             window.qrCodeTemplateSelectMessageType = null; // 清除
+            setIsTemplateModalVisible(false);
+          } else if (window.waitReplyTemplateSelectMessageType) {
+            // 檢查是否有 Wait Reply 模板選擇請求
+            const waitReplyMessageType = window.waitReplyTemplateSelectMessageType;
+            console.log('🎯 主要 TemplateModal 處理 Wait Reply 模板選擇:', { template: template.name, isMetaTemplate, messageType: waitReplyMessageType });
+            // 發送 Wait Reply 模板選擇事件
+            window.dispatchEvent(new CustomEvent('waitReplyTemplateSelected', {
+              detail: {
+                template,
+                isMetaTemplate,
+                messageType: waitReplyMessageType
+              }
+            }));
+            window.waitReplyTemplateSelectMessageType = null; // 清除
             setIsTemplateModalVisible(false);
           } else if (templateModalSource) {
             console.log('🎯 主要 TemplateModal 處理 Time Validator 模板選擇:', { template: template.name, isMetaTemplate, source: templateModalSource });

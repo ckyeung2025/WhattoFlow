@@ -2436,6 +2436,10 @@ const en = {
     
     // QR Code node translation keys
     qrCodeErrorMessage: 'QR Code Error Message',
+    waitReplySuccessMessage: 'Wait Reply Success Message',
+    waitReplyErrorMessage: 'Wait Reply Error Message',
+    waitReplySuccessMessagePlaceholder: 'Enter message to send when validation succeeds',
+    waitReplyErrorMessagePlaceholder: 'Enter message to send when validation fails',
     
     // Alignment functions
     alignNodes: 'Align Nodes',

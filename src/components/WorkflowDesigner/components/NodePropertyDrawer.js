@@ -9,6 +9,7 @@ import DataSetQueryConditionEditModal from '../modals/DataSetQueryConditionEditM
 import DataSetFieldMappingModal from '../modals/DataSetFieldMappingModal';
 import MessageModeTabsComponent from './MessageModeTabsComponent';
 import QRCodeMessageTabsComponent from './QRCodeMessageTabsComponent';
+import WaitReplyMessageTabsComponent from './WaitReplyMessageTabsComponent';
 import RetryMessageModal from '../modals/RetryMessageModal';
 import EscalationConfigModal from '../modals/EscalationConfigModal';
 import OverdueEscalationModal from '../modals/OverdueEscalationModal';
@@ -155,23 +156,15 @@ const NodePropertyDrawer = ({
       ...updates
     };
 
-    const previousValidatorType = (mergedValidation.validatorType || currentFormValidation.validatorType || selectedNode.data.validation?.validatorType || '').toLowerCase();
     const aiActive = mergedValidation.aiIsActive ?? false;
     const timeActive = mergedValidation.timeIsActive ?? false;
 
-    let preferredValidatorType = updates.validatorType
-      ?? mergedValidation.validatorType
-      ?? currentFormValidation.validatorType
-      ?? selectedNode.data.validation?.validatorType
-      ?? 'ai';
-
-    preferredValidatorType = (preferredValidatorType || '').toLowerCase();
-
-    if (!allowedValidatorTypes.includes(preferredValidatorType)) {
-      preferredValidatorType = aiActive ? 'ai' : timeActive ? 'time' : 'ai';
+    // ✅ 簡化：validatorType 僅用於決定初始 tab 顯示，不再強制設置
+    // 如果沒有明確設置，根據 IsActive 狀態推斷（僅用於向後兼容）
+    if (!updates.validatorType && !mergedValidation.validatorType) {
+      mergedValidation.validatorType = aiActive ? 'ai' : timeActive ? 'time' : 'ai';
     }
 
-    mergedValidation.validatorType = preferredValidatorType;
     mergedValidation.enabled = aiActive || timeActive;
 
     form?.setFieldsValue?.({
@@ -188,10 +181,8 @@ const NodePropertyDrawer = ({
       ? { aiIsActive: isActive }
       : { timeIsActive: isActive }; // 明確設置 timeIsActive 為 true 或 false
 
-    syncValidationState({
-      ...updates,
-      ...(isActive ? { validatorType: key } : {})
-    });
+    // ✅ 簡化：不再強制設置 validatorType，僅在啟用時切換到對應的 tab
+    syncValidationState(updates);
 
     if (isActive) {
       setActiveValidatorTab(key);
@@ -1322,27 +1313,14 @@ const NodePropertyDrawer = ({
                   </Form.Item>
                 )}
                 
-                {/* 提示訊息標籤 */}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(0, 0, 0, 0.88)', marginBottom: 4 }}>
-                    {t('workflowDesigner.promptMessage')}
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
-                    {t('workflowDesigner.promptMessageHelp')}
-                  </div>
-                </div>
-                
-                {/* 訊息模式 Tab 切換（共用組件） */}
-                <MessageModeTabsComponent
+                {/* 訊息配置 Tab（提示訊息、成功訊息、錯誤訊息） */}
+                <WaitReplyMessageTabsComponent
                   selectedNode={selectedNode}
                   handleNodeDataChange={handleNodeDataChange}
                   setIsTemplateModalVisible={setIsTemplateModalVisible}
                   processVariables={processVariables}
                   form={form}
                   t={t}
-                  messageLabel={null}
-                  messagePlaceholder={t('workflowDesigner.waitReplyMessagePlaceholder')}
-                  messageRows={3}
                 />
                 
                 <Form.Item label={t('workflowDesigner.validationConfig')}>

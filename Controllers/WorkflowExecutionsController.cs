@@ -162,9 +162,31 @@ namespace PurpleRice.Controllers
                     .AsQueryable();
 
                 // 狀態篩選
+                // 使用與統計邏輯一致的模糊匹配，以支持包含多種狀態值的篩選
                 if (!string.IsNullOrEmpty(status) && status != "all")
                 {
-                    query = query.Where(e => e.Status == status);
+                    var statusLower = status.ToLower();
+                    if (statusLower == "running")
+                    {
+                        // running 包含所有運行中的狀態，包括 Running、Waiting、WaitingForQRCode、WaitingForFormApproval 等
+                        query = query.Where(e => e.Status != null && 
+                            (e.Status.ToLower().Contains("run") || e.Status.ToLower().Contains("wait")));
+                    }
+                    else if (statusLower == "completed")
+                    {
+                        // completed 包含所有完成的狀態
+                        query = query.Where(e => e.Status != null && e.Status.ToLower().Contains("complete"));
+                    }
+                    else if (statusLower == "failed")
+                    {
+                        // failed 包含所有失敗的狀態
+                        query = query.Where(e => e.Status != null && e.Status.ToLower().Contains("fail"));
+                    }
+                    else
+                    {
+                        // 其他狀態使用精確匹配（如 Paused, Cancelled）
+                        query = query.Where(e => e.Status == status);
+                    }
                 }
 
                 // 搜索篩選
