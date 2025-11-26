@@ -1866,6 +1866,7 @@ namespace PurpleRice.Services.WebhookServices
                 // 更新流程執行狀態
                 execution.IsWaiting = false;
                 execution.WaitingSince = null;
+                execution.WaitingForUser = null; // ✅ 修復：清除 WaitingForUser，避免影響後續 waitReply 節點
                 execution.LastUserActivity = DateTime.UtcNow;
                 execution.Status = "Running";
                 

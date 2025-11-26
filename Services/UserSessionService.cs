@@ -57,17 +57,29 @@ namespace PurpleRice.Services
                 var oldExecution = await _context.WorkflowExecutions.FindAsync(session.CurrentWorkflowExecutionId.Value);
                 if (oldExecution != null)
                 {
-                // 只有未完成的流程才應該被取消，但排除 eform 等待審批的流程
-                // eform 等待審批不會干擾 WhatsApp 對話會話，因此不應該被取消
-                if (oldExecution.Status != "Completed" && 
-                    oldExecution.Status != "Cancelled" && 
-                    oldExecution.Status != "Failed" &&
-                    oldExecution.Status != "WaitingForFormApproval")
-                {
-                    oldExecution.Status = "Cancelled";
-                    oldExecution.IsWaiting = false;
-                    oldExecution.EndedAt = DateTime.UtcNow;
-                }
+                    // 只有未完成的流程才應該被取消，但排除 eform 等待審批的流程
+                    // eform 等待審批不會干擾 WhatsApp 對話會話，因此不應該被取消
+                    if (oldExecution.Status != "Completed" && 
+                        oldExecution.Status != "Cancelled" && 
+                        oldExecution.Status != "Failed" &&
+                        oldExecution.Status != "WaitingForFormApproval")
+                    {
+                        // ✅ 改進：檢查流程是否已經轉移到其他人
+                        // 如果 WaitingForUser 不等於 InitiatedBy，說明流程已經不在等待啟動者
+                        // 這種情況下不應該取消，因為流程已經轉移到其他人操作
+                        bool isWaitingForInitiator = string.IsNullOrEmpty(oldExecution.WaitingForUser) || 
+                                                    string.IsNullOrEmpty(oldExecution.InitiatedBy) ||
+                                                    oldExecution.WaitingForUser == oldExecution.InitiatedBy;
+                        
+                        // ✅ 改進：只有當流程還在等待啟動者且處於等待狀態時才取消
+                        // 如果流程已經轉移到其他人（WaitingForUser != InitiatedBy），則不取消
+                        if (isWaitingForInitiator && oldExecution.IsWaiting)
+                        {
+                            oldExecution.Status = "Cancelled";
+                            oldExecution.IsWaiting = false;
+                            oldExecution.EndedAt = DateTime.UtcNow;
+                        }
+                    }
                 }
             }
 
@@ -84,7 +96,8 @@ namespace PurpleRice.Services
         /// </summary>
         public async Task<WorkflowExecution> GetCurrentUserWorkflowAsync(string userWaId)
         {
-            // 直接查詢等待中的流程執行，包括 Waiting 和 WaitingForQRCode 狀態
+            // ✅ 修復：只查詢 WaitingForUser 匹配的流程，不檢查 UserSession
+            // 因為當流程轉移到新的 waitReply 節點時，WaitingForUser 會改變，但 UserSession 可能還指向舊的流程
             var waitingWorkflow = await _context.WorkflowExecutions
                 .Where(w => w.WaitingForUser == userWaId && 
                            (w.Status == "Waiting" || w.Status == "WaitingForQRCode") && 
@@ -97,18 +110,9 @@ namespace PurpleRice.Services
                 return waitingWorkflow;
             }
 
-            // 如果沒有找到等待中的流程，再檢查 UserSession
-            var session = await _context.UserSessions
-                .Include(s => s.CurrentWorkflowExecution)
-                .FirstOrDefaultAsync(s => s.UserWaId == userWaId && s.Status == "Active");
-
-            var workflow = session?.CurrentWorkflowExecution;
-            
-            // 檢查流程是否真的在等待狀態
-            if (workflow != null && (workflow.Status == "Waiting" || workflow.Status == "WaitingForQRCode") && workflow.IsWaiting)
-            {
-                return workflow;
-            }
+            // ❌ 移除 UserSession 檢查，因為它可能指向 WaitingForUser 已經改變的流程
+            // 這會導致錯誤匹配：例如流程 2668 的 WaitingForUser 已經改為 85260166232，
+            // 但 UserSession 還指向這個流程，導致司機 85296366318 的訊息被錯誤匹配
             
             return null;
         }

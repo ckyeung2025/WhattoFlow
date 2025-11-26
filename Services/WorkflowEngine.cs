@@ -415,6 +415,7 @@ namespace PurpleRice.Services
                             // 更新執行狀態
                             execution.IsWaiting = false;
                             execution.WaitingSince = null;
+                            execution.WaitingForUser = null; // ✅ 修復：清除 WaitingForUser，避免影響後續 waitReply 節點
                             execution.LastUserActivity = DateTime.UtcNow;
                             execution.Status = "Running";
                             execution.CurrentStep = (execution.CurrentStep ?? 0) + 1;
@@ -1052,7 +1053,8 @@ namespace PurpleRice.Services
             WriteLog($"=== 執行 waitReply 節點 ===");
             
             // ✅ 修復：先解析收件人，然後設置正確的 WaitingForUser
-            string actualWaitingUser = userId ?? "85296366318"; // 默認值
+            // 不要使用 userId 作為默認值，因為 userId 可能是上一個等待節點的用戶
+            string actualWaitingUser = null; // 初始化為 null，必須從收件人解析中獲取
             
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
@@ -1116,6 +1118,13 @@ namespace PurpleRice.Services
                 {
                     WriteLog($"⚠️ [WARNING] 沒有解析到收件人，使用默認值: {actualWaitingUser}");
                 }
+            }
+            
+            // ✅ 修復：確保 actualWaitingUser 不為 null
+            if (string.IsNullOrEmpty(actualWaitingUser))
+            {
+                WriteLog($"❌ [ERROR] actualWaitingUser 為空，無法設置等待狀態");
+                throw new InvalidOperationException("waitReply 節點無法確定等待的用戶");
             }
             
             // 設置等待狀態
@@ -1243,7 +1252,8 @@ namespace PurpleRice.Services
             WriteLog($"超時時間: {nodeData.Timeout} 秒");
             
             // ✅ 修復：先解析收件人，然後設置正確的 WaitingForUser
-            string actualWaitingUser = userId ?? "85296366318"; // 默認值
+            // 不要使用 userId 作為默認值，因為 userId 可能是上一個等待節點的用戶
+            string actualWaitingUser = null; // 初始化為 null，必須從收件人解析中獲取
             
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
@@ -1275,7 +1285,8 @@ namespace PurpleRice.Services
                         phoneNumbers = new List<string>()
                     });
                     WriteLog($"🔍 [DEBUG] 使用流程啟動人作為收件人");
-                    actualWaitingUser = userId ?? "85296366318"; // 使用流程啟動人
+                    // 對於 initiator，使用 execution.InitiatedBy
+                    actualWaitingUser = execution.InitiatedBy;
                 }
                 else
                 {
@@ -1303,8 +1314,15 @@ namespace PurpleRice.Services
                 }
                 else
                 {
-                    WriteLog($"⚠️ [WARNING] 沒有解析到收件人，使用默認值: {actualWaitingUser}");
+                    WriteLog($"❌ [ERROR] 沒有解析到收件人，無法設置 WaitingForUser");
                 }
+            }
+            
+            // ✅ 修復：確保 actualWaitingUser 不為 null
+            if (string.IsNullOrEmpty(actualWaitingUser))
+            {
+                WriteLog($"❌ [ERROR] actualWaitingUser 為空，無法設置等待狀態");
+                throw new InvalidOperationException("waitForQRCode 節點無法確定等待的用戶");
             }
             
             // 設置等待狀態
