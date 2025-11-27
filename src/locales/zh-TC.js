@@ -2528,6 +2528,8 @@ const zhTC = {
       retryMessageDescription: '設置當用戶在指定時間內沒有回應時，重新發送的提醒訊息內容：',
       retryMessagePlaceholder: '請輸入提醒訊息內容，提醒用戶儘快回覆...',
       retryMessageTip: '提示：此訊息會在每次提醒時發送給用戶',
+      retryMessageRecipients: '提醒訊息收件人',
+      retryMessageRecipientsDescription: '選擇需要接收提醒訊息的人員（可選擇用戶、聯絡人、流程變量或流程啟動人）：',
       templateDescription: '選擇一個已建立的模板作為提醒訊息：',
       noTemplateSelected: '尚未選擇模板',
       escalationMessageDescription: '設置當達到提醒上限後，發送給升級對象的通知訊息：',

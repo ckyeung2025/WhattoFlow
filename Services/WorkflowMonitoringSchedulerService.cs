@@ -613,8 +613,32 @@ namespace PurpleRice.Services
                 var recipientResolver = serviceProvider.GetRequiredService<RecipientResolverService>();
                 var whatsAppService = serviceProvider.GetRequiredService<WhatsAppWorkflowService>();
 
-                // 獲取收件人（從 step.WaitingForUser 或使用流程啟動人）
-                var recipients = await ResolveRecipientsForStep(db, step);
+                // 解析重試訊息的收件人
+                List<ResolvedRecipient> recipients;
+                
+                // 如果配置了收件人，使用配置的收件人；否則使用默認邏輯（從 step.WaitingForUser 或流程啟動人）
+                if (messageConfig != null && !string.IsNullOrEmpty(messageConfig.Recipients))
+                {
+                    // 使用配置的收件人
+                    var recipientDetailsJson = messageConfig.RecipientDetails != null 
+                        ? JsonSerializer.Serialize(messageConfig.RecipientDetails) 
+                        : null;
+                        
+                    recipients = await recipientResolver.ResolveRecipientsAsync(
+                        messageConfig.Recipients,
+                        recipientDetailsJson,
+                        step.WorkflowExecutionId,
+                        step.WorkflowExecution.WorkflowDefinition.CompanyId
+                    );
+                    
+                    loggingService.LogInformation($"步驟 {step.Id} 使用配置的收件人進行重試，收件人數量: {recipients?.Count ?? 0}");
+                }
+                else
+                {
+                    // 使用默認邏輯（從 step.WaitingForUser 或使用流程啟動人）
+                    recipients = await ResolveRecipientsForStep(db, step);
+                    loggingService.LogInformation($"步驟 {step.Id} 使用默認收件人進行重試，收件人數量: {recipients?.Count ?? 0}");
+                }
 
                 if (recipients == null || recipients.Count == 0)
                 {
@@ -1808,6 +1832,8 @@ namespace PurpleRice.Services
     /// </summary>
     public class RetryMessageConfig
     {
+        public string Recipients { get; set; } = string.Empty;
+        public RecipientDetailsConfig RecipientDetails { get; set; } = new RecipientDetailsConfig();
         public bool UseTemplate { get; set; }
         public string Message { get; set; } = string.Empty;
         public string TemplateId { get; set; } = string.Empty;

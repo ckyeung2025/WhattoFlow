@@ -102,6 +102,21 @@ const EscalationConfigModal = ({
     }
   };
 
+  // 檢查是否有收件人選擇（包括 groups, hashtags, processVariables, useInitiator）
+  const hasRecipients = () => {
+    if (recipients && recipients.trim()) {
+      return true;
+    }
+    if (recipientDetails) {
+      const hasGroups = recipientDetails.groups && recipientDetails.groups.length > 0;
+      const hasHashtags = recipientDetails.hashtags && recipientDetails.hashtags.length > 0;
+      const hasProcessVariables = recipientDetails.processVariables && recipientDetails.processVariables.length > 0;
+      const hasUseInitiator = recipientDetails.useInitiator === true;
+      return hasGroups || hasHashtags || hasProcessVariables || hasUseInitiator;
+    }
+    return false;
+  };
+
   const tabItems = [
     {
       key: 'direct',
@@ -230,7 +245,7 @@ const EscalationConfigModal = ({
           type="primary" 
           onClick={handleSave}
           disabled={
-            !recipients.trim() || 
+            !hasRecipients() || 
             (activeTab === 'direct' ? !directMessage.trim() : !selectedTemplate)
           }
         >

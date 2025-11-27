@@ -2078,6 +2078,8 @@ const en = {
       retryMessageDescription: 'Set the reminder message content to be resent when the user does not respond within the specified time:',
       retryMessagePlaceholder: 'Enter reminder message content to remind users to reply as soon as possible...',
       retryMessageTip: 'Tip: This message will be sent to the user on each reminder',
+      retryMessageRecipients: 'Reminder Message Recipients',
+      retryMessageRecipientsDescription: 'Select personnel who need to receive reminder messages (you can choose users, contacts, process variables, or process initiator):',
       templateDescription: 'Select an existing template as the reminder message:',
       noTemplateSelected: 'No template selected',
       escalationMessageDescription: 'Set the notification message to be sent to escalation recipients when the reminder limit is reached:',

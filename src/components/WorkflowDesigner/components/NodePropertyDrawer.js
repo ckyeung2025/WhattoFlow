@@ -3249,6 +3249,11 @@ const NodePropertyDrawer = ({
             setTemplateModalSource('retryMessage');
             setIsTemplateModalVisible(true);
           }}
+          onOpenRecipientModal={() => {
+            setTemplateModalSource('retryMessage');
+            setTimeValidatorRecipientModalVisible(true);
+          }}
+          workflowDefinitionId={workflowId}
           processVariables={processVariables}
           t={t}
         />
@@ -3322,7 +3327,13 @@ const NodePropertyDrawer = ({
           visible={timeValidatorRecipientModalVisible}
           onCancel={() => setTimeValidatorRecipientModalVisible(false)}
           onSelect={(recipients, recipientDetails) => {
-            if (templateModalSource === 'escalation') {
+            if (templateModalSource === 'retryMessage') {
+              setTempRetryMessageConfig(prev => ({
+                ...(prev || selectedNode?.data?.validation?.retryMessageConfig || {}),
+                recipients,
+                recipientDetails
+              }));
+            } else if (templateModalSource === 'escalation') {
               setTempEscalationConfig(prev => ({
                 ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
                 recipients,
@@ -3338,16 +3349,21 @@ const NodePropertyDrawer = ({
             setTimeValidatorRecipientModalVisible(false);
           }}
           value={
-            templateModalSource === 'overdue'
+            templateModalSource === 'retryMessage'
+              ? (tempRetryMessageConfig?.recipients || '')
+              : templateModalSource === 'overdue'
               ? (tempOverdueEscalationConfig?.recipients || '')
               : (tempEscalationConfig?.recipients || '')
           }
           recipientDetails={
-            templateModalSource === 'overdue'
+            templateModalSource === 'retryMessage'
+              ? (tempRetryMessageConfig?.recipientDetails || null)
+              : templateModalSource === 'overdue'
               ? (tempOverdueEscalationConfig?.recipientDetails || null)
               : (tempEscalationConfig?.recipientDetails || null)
           }
           allowMultiple
+          workflowDefinitionId={workflowId}
           t={t}
         />
       </Drawer>

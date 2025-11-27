@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Tabs, Input, Button, Space, Tag } from 'antd';
-import { MessageOutlined, FileTextOutlined, FormOutlined } from '@ant-design/icons';
+import { Modal, Tabs, Input, Button, Space, Tag, Divider } from 'antd';
+import { MessageOutlined, FileTextOutlined, FormOutlined, UserAddOutlined } from '@ant-design/icons';
+import RecipientSelector from '../components/RecipientSelector';
 import TemplateVariableConfig from '../components/TemplateVariableConfig';
 
 const { TextArea } = Input;
@@ -15,11 +16,15 @@ const RetryMessageModal = ({
   onSave,
   initialConfig,
   onOpenTemplateModal,
+  onOpenRecipientModal,
+  workflowDefinitionId,
   processVariables = [], // 新增：流程變量列表
   t 
 }) => {
   console.log('🚀 RetryMessageModal 渲染:', { visible, initialConfig });
   const [activeTab, setActiveTab] = useState('direct');
+  const [recipients, setRecipients] = useState('');
+  const [recipientDetails, setRecipientDetails] = useState(null);
   const [directMessage, setDirectMessage] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateVariables, setTemplateVariables] = useState([]); // 新增：模板變量配置
@@ -27,6 +32,9 @@ const RetryMessageModal = ({
   // 當 modal 打開時，載入初始配置
   useEffect(() => {
     if (visible && initialConfig) {
+      setRecipients(initialConfig.recipients || '');
+      setRecipientDetails(initialConfig.recipientDetails || null);
+      
       if (initialConfig.useTemplate) {
         setActiveTab('template');
         setSelectedTemplate({
@@ -43,6 +51,8 @@ const RetryMessageModal = ({
     } else if (visible && !initialConfig) {
       // 重置為默認值
       setActiveTab('direct');
+      setRecipients('');
+      setRecipientDetails(null);
       setDirectMessage('');
       setSelectedTemplate(null);
       setTemplateVariables([]);
@@ -50,15 +60,20 @@ const RetryMessageModal = ({
   }, [visible, initialConfig]);
 
   const handleSave = () => {
-    let config = {};
+    let config = {
+      recipients,
+      recipientDetails
+    };
     
     if (activeTab === 'direct') {
       config = {
+        ...config,
         useTemplate: false,
         message: directMessage
       };
     } else {
       config = {
+        ...config,
         useTemplate: true,
         templateId: selectedTemplate?.id || '',
         templateName: selectedTemplate?.name || '',
@@ -70,6 +85,32 @@ const RetryMessageModal = ({
     }
     
     onSave(config);
+  };
+
+  const handleRecipientChange = (value, detailedValue) => {
+    if (value === '' && detailedValue === null) {
+      // 點擊了 "Select Recipients" 按鈕
+      onOpenRecipientModal();
+    } else {
+      // 正常選擇或清除
+      setRecipients(value);
+      setRecipientDetails(detailedValue);
+    }
+  };
+
+  // 檢查是否有收件人選擇（包括 groups, hashtags, processVariables, useInitiator）
+  const hasRecipients = () => {
+    if (recipients && recipients.trim()) {
+      return true;
+    }
+    if (recipientDetails) {
+      const hasGroups = recipientDetails.groups && recipientDetails.groups.length > 0;
+      const hasHashtags = recipientDetails.hashtags && recipientDetails.hashtags.length > 0;
+      const hasProcessVariables = recipientDetails.processVariables && recipientDetails.processVariables.length > 0;
+      const hasUseInitiator = recipientDetails.useInitiator === true;
+      return hasGroups || hasHashtags || hasProcessVariables || hasUseInitiator;
+    }
+    return false;
   };
 
   const handleTemplateSelect = (template, isMetaTemplate) => {
@@ -198,7 +239,7 @@ const RetryMessageModal = ({
       }
       open={visible}
       onCancel={onCancel}
-      width={600}
+      width={700}
       zIndex={1050}
       destroyOnHidden
       footer={[
@@ -209,17 +250,88 @@ const RetryMessageModal = ({
           key="save" 
           type="primary" 
           onClick={handleSave}
-          disabled={activeTab === 'direct' ? !directMessage.trim() : !selectedTemplate}
+          disabled={
+            !hasRecipients() || 
+            (activeTab === 'direct' ? !directMessage.trim() : !selectedTemplate)
+          }
         >
           {t('common.save')}
         </Button>
       ]}
     >
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={tabItems}
-      />
+      {/* Recipients 選擇區域 */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ 
+          marginBottom: 8, 
+          fontSize: 14, 
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          <UserAddOutlined style={{ marginRight: 6 }} />
+          {t('workflowDesigner.timeValidator.retryMessageRecipients')}
+        </div>
+        <div style={{ marginBottom: 8, fontSize: 13, color: '#666' }}>
+          {t('workflowDesigner.timeValidator.retryMessageRecipientsDescription')}
+        </div>
+        <div style={{ position: 'relative' }}>
+          <RecipientSelector
+            value={recipients}
+            recipientDetails={recipientDetails}
+            placeholder={t('workflowDesigner.selectRecipients')}
+            compact={false}
+            workflowDefinitionId={workflowDefinitionId}
+            t={t}
+            onChange={handleRecipientChange}
+          />
+          <div style={{ 
+            position: 'absolute', 
+            right: '8px', 
+            top: '50%', 
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            gap: '4px',
+            zIndex: 10
+          }}>
+            {recipients && (
+              <Button 
+                type="text" 
+                size="small" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRecipients('');
+                  setRecipientDetails(null);
+                }}
+                style={{ padding: '0 4px', fontSize: '12px' }}
+              >
+                {t('workflowDesigner.clear')}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <Divider />
+
+      {/* Message 配置區域 */}
+      <div>
+        <div style={{ 
+          marginBottom: 12, 
+          fontSize: 14, 
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          <MessageOutlined style={{ marginRight: 6 }} />
+          {t('workflowDesigner.timeValidator.retryMessage')}
+        </div>
+        
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={tabItems}
+        />
+      </div>
     </Modal>
   );
 };

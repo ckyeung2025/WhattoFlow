@@ -440,21 +440,21 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
                   dataIndex: 'sentAt',
                   key: 'sentAt',
                   width: 120,
-                  render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.deliveredTime'),
                   dataIndex: 'deliveredAt',
                   key: 'deliveredAt',
                   width: 120,
-                  render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.readTime'),
                   dataIndex: 'readAt',
                   key: 'readAt',
                   width: 120,
-                  render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'MM-DD HH:mm:ss') : '-'
                 },
                 {
                   title: t('workflowMonitor.retryCount'),
@@ -492,7 +492,7 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
                   dataIndex: 'createdAt',
                   key: 'createdAt',
                   width: 120,
-                  render: (date) => date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+                  render: (date) => date ? TimezoneUtils.formatDateWithTimezone(date, userTimezoneOffset, 'MM-DD HH:mm:ss') : '-'
                 }
               ]}
             />
