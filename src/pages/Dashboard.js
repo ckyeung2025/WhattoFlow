@@ -1338,6 +1338,32 @@ const Dashboard = ({ onMenuSelect }) => {
               </Text>
       
       <Row gutter={[16, 16]}>
+                {hasInterfacePermission(userInterfaces, 'dataSets') && (
+                <Col xs={24} sm={12} lg={12}>
+                  <SmartButton
+                    title={t('dashboard.datasetManagement')}
+                    description={t('dashboard.datasetManagementDescription')}
+                    icon={<DatabaseOutlined />}
+                    menuKey="dataSets"
+                    count={stats.dataSets}
+                    color={colorPalette[3].color}
+                    gradient={colorPalette[3].gradient}
+                    numberColor="positive"
+                    onClick={() => handleNavigation('dataSets')}
+                    stats={{
+                      [t('dashboard.totalDatasets')]: stats.dataSets,
+                      [t('dashboard.active')]: stats.activeDataSets || 0,
+                      [t('dashboard.error')]: stats.errorDataSets || 0
+                    }}
+                    recentItems={stats.recentDataSetItems || []}
+                    onRecentClick={(item) => {
+                      // 跳轉到數據集管理頁面並自動打開編輯器
+                      handleNavigationWithParams('/data-sets', { edit: item.id });
+                    }}
+                  />
+        </Col>
+                )}
+                
         {hasInterfacePermission(userInterfaces, 'eformList') && (
         <Col xs={24} sm={12} lg={12}>
                   <SmartButton
@@ -1456,32 +1482,6 @@ const Dashboard = ({ onMenuSelect }) => {
                     }}
                   />
                 </Col>
-                )}
-                
-                {hasInterfacePermission(userInterfaces, 'dataSets') && (
-                <Col xs={24} sm={12} lg={12}>
-                  <SmartButton
-                    title={t('dashboard.datasetManagement')}
-                    description={t('dashboard.datasetManagementDescription')}
-                    icon={<DatabaseOutlined />}
-                    menuKey="dataSets"
-                    count={stats.dataSets}
-                    color={colorPalette[3].color}
-                    gradient={colorPalette[3].gradient}
-                    numberColor="positive"
-                    onClick={() => handleNavigation('dataSets')}
-                    stats={{
-                      [t('dashboard.totalDatasets')]: stats.dataSets,
-                      [t('dashboard.active')]: stats.activeDataSets || 0,
-                      [t('dashboard.error')]: stats.errorDataSets || 0
-                    }}
-                    recentItems={stats.recentDataSetItems || []}
-                    onRecentClick={(item) => {
-                      // 跳轉到數據集管理頁面並自動打開編輯器
-                      handleNavigationWithParams('/data-sets', { edit: item.id });
-                    }}
-                  />
-        </Col>
                 )}
                 
                 

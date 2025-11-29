@@ -940,7 +940,6 @@ namespace PurpleRice.Data
                 entity.Property(e => e.DefaultApiUrl).HasColumnName("DefaultApiUrl").HasMaxLength(500).IsRequired();
                 entity.Property(e => e.DefaultModel).HasColumnName("DefaultModel").HasMaxLength(100);
                 entity.Property(e => e.SupportedModels).HasColumnName("SupportedModels");
-                entity.Property(e => e.Description).HasColumnName("Description");
                 entity.Property(e => e.AuthType).HasColumnName("AuthType").HasMaxLength(50);
                 entity.Property(e => e.DefaultSettingsJson).HasColumnName("DefaultSettingsJson");
                 entity.Property(e => e.EnableStreaming).HasColumnName("EnableStreaming");

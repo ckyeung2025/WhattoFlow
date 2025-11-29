@@ -181,6 +181,13 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
         icon: <ToolOutlined />,
         label: t('menu.studio'),
         children: [
+          // 數據集管理
+          {
+            key: 'dataSets',
+            icon: <DatabaseOutlined />,
+            label: t('dataSetManagement.title'),
+            url: '/data-sets',
+          },
           // 表單管理
           {
             key: 'eformList',
@@ -201,13 +208,6 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
             icon: <BranchesOutlined />,
             label: t('menu.whatsappWorkflow'),
             url: '/workflow-list',
-          },
-          // 數據集管理
-          {
-            key: 'dataSets',
-            icon: <DatabaseOutlined />,
-            label: t('dataSetManagement.title'),
-            url: '/data-sets',
           }
         ]
       },

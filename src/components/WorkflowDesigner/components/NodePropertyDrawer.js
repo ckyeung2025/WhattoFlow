@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Drawer, Form, Input, Select, Card, Button, Space, Tag, message, Alert, Table, Modal, Radio, Tabs, Divider, Switch } from 'antd';
-import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined, BellOutlined, FullscreenOutlined, FullscreenExitOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined, SettingOutlined, FormOutlined, EditOutlined, DeleteOutlined, MessageOutlined, FileTextOutlined, BellOutlined, FullscreenOutlined, FullscreenExitOutlined, ClockCircleOutlined, CloseOutlined } from '@ant-design/icons';
 import ProcessVariableSelect from './ProcessVariableSelect';
 import RecipientModal from '../modals/RecipientModal';
 import RecipientSelector from './RecipientSelector';
@@ -10,9 +10,7 @@ import DataSetFieldMappingModal from '../modals/DataSetFieldMappingModal';
 import MessageModeTabsComponent from './MessageModeTabsComponent';
 import QRCodeMessageTabsComponent from './QRCodeMessageTabsComponent';
 import WaitReplyMessageTabsComponent from './WaitReplyMessageTabsComponent';
-import RetryMessageModal from '../modals/RetryMessageModal';
-import EscalationConfigModal from '../modals/EscalationConfigModal';
-import OverdueEscalationModal from '../modals/OverdueEscalationModal';
+import TimeValidatorConfigSection from './TimeValidatorConfigSection';
 import TemplateModal from '../modals/TemplateModal';
 import { getAvailableOutputPaths } from '../utils';
 import { apiService } from '../services/apiService';
@@ -112,15 +110,12 @@ const NodePropertyDrawer = ({
   const [queryPreviewModalVisible, setQueryPreviewModalVisible] = useState(false);
 
   // Time Validator 相關狀態（Wait for Reply 節點）
-  const [retryMessageModalVisible, setRetryMessageModalVisible] = useState(false);
-  const [escalationConfigModalVisible, setEscalationConfigModalVisible] = useState(false);
-  const [tempRetryMessageConfig, setTempRetryMessageConfig] = useState(null);
-  const [tempEscalationConfig, setTempEscalationConfig] = useState(null);
+  const [retryMessageExpanded, setRetryMessageExpanded] = useState(false);
+  const [escalationConfigExpanded, setEscalationConfigExpanded] = useState(false);
   const [timeValidatorRecipientModalVisible, setTimeValidatorRecipientModalVisible] = useState(false); // Time Validator 專用的 Recipient Modal
   
   // Overdue Settings 相關狀態（Start 節點）
-  const [overdueEscalationModalVisible, setOverdueEscalationModalVisible] = useState(false);
-  const [tempOverdueEscalationConfig, setTempOverdueEscalationConfig] = useState(null);
+  const [overdueEscalationExpanded, setOverdueEscalationExpanded] = useState(false);
   
   // Drawer 全屏狀態
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -206,31 +201,52 @@ const NodePropertyDrawer = ({
       const { template, isMetaTemplate, source } = event.detail;
       console.log('🎯 NodePropertyDrawer 收到 Time Validator 模板選擇事件:', { template: template.name, isMetaTemplate, source });
       
-      // 根據來源保存到對應的臨時配置
+      // 根據來源直接更新節點數據（不再使用臨時狀態）
       if (source === 'retryMessage') {
-        setTempRetryMessageConfig(prev => ({
-          ...(prev || selectedNode?.data?.validation?.retryMessageConfig || {}),
-          useTemplate: true,
-          templateId: template.id,
-          templateName: template.name,
-          isMetaTemplate: isMetaTemplate
-        }));
+        const currentConfig = selectedNode?.data?.validation?.retryMessageConfig || {};
+        const newValidation = {
+          ...(selectedNode.data.validation || {}),
+          retryMessageConfig: {
+            ...currentConfig,
+            useTemplate: true,
+            messageMode: 'template',
+            templateId: template.id,
+            templateName: template.name,
+            isMetaTemplate: isMetaTemplate,
+            templateLanguage: template.language || null
+          }
+        };
+        handleNodeDataChange({ validation: newValidation });
       } else if (source === 'escalation') {
-        setTempEscalationConfig(prev => ({
-          ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
-          useTemplate: true,
-          templateId: template.id,
-          templateName: template.name,
-          isMetaTemplate: isMetaTemplate
-        }));
+        const currentConfig = selectedNode?.data?.validation?.escalationConfig || {};
+        const newValidation = {
+          ...(selectedNode.data.validation || {}),
+          escalationConfig: {
+            ...currentConfig,
+            useTemplate: true,
+            messageMode: 'template',
+            templateId: template.id,
+            templateName: template.name,
+            isMetaTemplate: isMetaTemplate,
+            templateLanguage: template.language || null
+          }
+        };
+        handleNodeDataChange({ validation: newValidation });
       } else if (source === 'overdue') {
-        setTempOverdueEscalationConfig(prev => ({
-          ...(prev || selectedNode?.data?.overdueConfig?.escalationConfig || {}),
-          useTemplate: true,
-          templateId: template.id,
-          templateName: template.name,
-          isMetaTemplate: isMetaTemplate
-        }));
+        const currentConfig = selectedNode?.data?.overdueConfig?.escalationConfig || {};
+        const newOverdueConfig = {
+          ...(selectedNode.data.overdueConfig || {}),
+          escalationConfig: {
+            ...currentConfig,
+            useTemplate: true,
+            messageMode: 'template',
+            templateId: template.id,
+            templateName: template.name,
+            isMetaTemplate: isMetaTemplate,
+            templateLanguage: template.language || null
+          }
+        };
+        handleNodeDataChange({ overdueConfig: newOverdueConfig });
       }
     };
 
@@ -557,6 +573,15 @@ const NodePropertyDrawer = ({
       const derivedTimeIsActive = typeof validation.timeIsActive === 'boolean'
         ? validation.timeIsActive
         : (validation.enabled === true && normalizedInitialValidatorType === 'time');
+      // 獲取 emailConfig，確保所有字段都存在
+      const emailConfig = selectedNode.data.emailConfig || {};
+      const emailConfigFields = {
+        'emailConfig.providerKey': emailConfig.providerKey || '',
+        'emailConfig.subject': emailConfig.subject || '',
+        'emailConfig.body': emailConfig.body || '',
+        'emailConfig.replyTo': emailConfig.replyTo || '',
+      };
+
       form.setFieldsValue({
         taskName: selectedNode.data.taskName || selectedNode.data.label,
         to: selectedNode.data.to || '',
@@ -606,6 +631,8 @@ const NodePropertyDrawer = ({
         queryConditions: selectedNode.data.queryConditions || '',
         operationData: selectedNode.data.operationData || {},
         mappedFields: selectedNode.data.mappedFields || [],
+        // Email 配置字段
+        ...emailConfigFields,
         ...selectedNode.data
       });
     }
@@ -959,6 +986,39 @@ const NodePropertyDrawer = ({
         }
       }
       
+      // 特殊處理 emailConfig 字段，確保所有字段都正確保存
+      // 檢查是否有 emailConfig 相關的字段變化
+      const hasEmailConfigChange = otherValues.emailConfig || 
+        changedValues['emailConfig.providerKey'] !== undefined || 
+        changedValues['emailConfig.subject'] !== undefined || 
+        changedValues['emailConfig.body'] !== undefined;
+      
+      if (hasEmailConfigChange) {
+        const currentEmailConfig = selectedNode?.data?.emailConfig || {};
+        const newEmailConfig = {
+          ...currentEmailConfig,
+          // 優先使用 changedValues 中的值，然後是 otherValues.emailConfig，最後是當前值
+          providerKey: changedValues['emailConfig.providerKey'] !== undefined 
+            ? changedValues['emailConfig.providerKey'] 
+            : (otherValues.emailConfig?.providerKey !== undefined ? otherValues.emailConfig.providerKey : currentEmailConfig.providerKey || ''),
+          subject: changedValues['emailConfig.subject'] !== undefined 
+            ? changedValues['emailConfig.subject'] 
+            : (otherValues.emailConfig?.subject !== undefined ? otherValues.emailConfig.subject : currentEmailConfig.subject || ''),
+          body: changedValues['emailConfig.body'] !== undefined 
+            ? changedValues['emailConfig.body'] 
+            : (otherValues.emailConfig?.body !== undefined ? otherValues.emailConfig.body : currentEmailConfig.body || ''),
+          replyTo: otherValues.emailConfig?.replyTo !== undefined 
+            ? otherValues.emailConfig.replyTo 
+            : (currentEmailConfig.replyTo || ''),
+        };
+        otherValues.emailConfig = newEmailConfig;
+        // 移除單獨的字段，因為我們已經合併到 emailConfig 對象中
+        delete otherValues['emailConfig.providerKey'];
+        delete otherValues['emailConfig.subject'];
+        delete otherValues['emailConfig.body'];
+        console.log('🟡 NodePropertyDrawer.handleFormValuesChange - emailConfig:', newEmailConfig);
+      }
+      
       // 使用 setTimeout 來避免在輸入過程中觸發重新渲染
       setTimeout(() => {
         handleNodeDataChange(otherValues);
@@ -1092,6 +1152,7 @@ const NodePropertyDrawer = ({
                   messagePlaceholder={t('workflowDesigner.messageWithVariablesPlaceholder')}
                   messageRows={3}
                   showProcessVariables={true}
+                  enableEmailMode={true}
                 />
               </>
             )}
@@ -1490,39 +1551,60 @@ const NodePropertyDrawer = ({
                                 }}
                               />
                             </Form.Item>
-                            <Form.Item label={t('workflowDesigner.timeValidator.retryMessageConfig')}>
-                              <Button
-                                icon={<MessageOutlined />}
-                                onClick={() => {
-                                  setTempRetryMessageConfig(selectedNode?.data?.validation?.retryMessageConfig || null);
-                                  setRetryMessageModalVisible(true);
-                                }}
-                              >
-                                {t('workflowDesigner.timeValidator.configureRetryMessage')}
-                              </Button>
-                            </Form.Item>
-                            <Form.Item label={t('workflowDesigner.timeValidator.escalationConfig')}>
-                              <Button
-                                icon={<BellOutlined />}
-                                onClick={() => {
-                                  setTempEscalationConfig(selectedNode?.data?.validation?.escalationConfig || null);
-                                  setEscalationConfigModalVisible(true);
-                                }}
-                              >
-                                {t('workflowDesigner.timeValidator.configureEscalation')}
-                              </Button>
-                            </Form.Item>
-                            <Form.Item label={t('workflowDesigner.timeValidator.overdueEscalation')}>
-                              <Button
-                                icon={<ClockCircleOutlined />}
-                                onClick={() => {
-                                  setTempOverdueEscalationConfig(selectedNode?.data?.overdueConfig?.escalationConfig || null);
-                                  setOverdueEscalationModalVisible(true);
-                                }}
-                              >
-                                {t('workflowDesigner.timeValidator.configureOverdueEscalation')}
-                              </Button>
-                            </Form.Item>
+                            <TimeValidatorConfigSection
+                              type="retryMessage"
+                              selectedNode={selectedNode}
+                              handleNodeDataChange={handleNodeDataChange}
+                              form={form}
+                              processVariables={processVariables}
+                              workflowDefinitionId={workflowId}
+                              onOpenTemplateModal={() => {
+                                setTemplateModalSource('retryMessage');
+                                setIsTemplateModalVisible(true);
+                              }}
+                              onOpenRecipientModal={() => {
+                                setTemplateModalSource('retryMessage');
+                                setTimeValidatorRecipientModalVisible(true);
+                              }}
+                              t={t}
+                              config={selectedNode?.data?.validation?.retryMessageConfig}
+                              title={t('workflowDesigner.timeValidator.configureRetryMessage')}
+                              recipientsLabel={t('workflowDesigner.timeValidator.retryMessageRecipients')}
+                              recipientsDescription={t('workflowDesigner.timeValidator.retryMessageRecipientsDescription')}
+                              messageLabel={t('workflowDesigner.timeValidator.retryMessage')}
+                              messageDescription={t('workflowDesigner.timeValidator.retryMessageDescription')}
+                              messagePlaceholder={t('workflowDesigner.timeValidator.retryMessagePlaceholder')}
+                              messageTip={t('workflowDesigner.timeValidator.retryMessageTip')}
+                              expanded={retryMessageExpanded}
+                              onToggleExpanded={setRetryMessageExpanded}
+                            />
+                            <TimeValidatorConfigSection
+                              type="escalation"
+                              selectedNode={selectedNode}
+                              handleNodeDataChange={handleNodeDataChange}
+                              form={form}
+                              processVariables={processVariables}
+                              workflowDefinitionId={workflowId}
+                              onOpenTemplateModal={() => {
+                                setTemplateModalSource('escalation');
+                                setIsTemplateModalVisible(true);
+                              }}
+                              onOpenRecipientModal={() => {
+                                setTemplateModalSource('escalation');
+                                setTimeValidatorRecipientModalVisible(true);
+                              }}
+                              t={t}
+                              config={selectedNode?.data?.validation?.escalationConfig}
+                              title={t('workflowDesigner.timeValidator.configureEscalation')}
+                              recipientsLabel={t('workflowDesigner.timeValidator.escalationRecipients')}
+                              recipientsDescription={t('workflowDesigner.timeValidator.escalationRecipientsDescription')}
+                              messageLabel={t('workflowDesigner.timeValidator.escalationMessage')}
+                              messageDescription={t('workflowDesigner.timeValidator.escalationMessageDescription')}
+                              messagePlaceholder={t('workflowDesigner.timeValidator.escalationMessagePlaceholder')}
+                              messageTip={t('workflowDesigner.timeValidator.escalationMessageTip')}
+                              expanded={escalationConfigExpanded}
+                              onToggleExpanded={setEscalationConfigExpanded}
+                            />
                           </>
                         )}
                       </Tabs.TabPane>
@@ -1808,39 +1890,60 @@ const NodePropertyDrawer = ({
                                 }}
                               />
                             </Form.Item>
-                            <Form.Item label={t('workflowDesigner.timeValidator.retryMessageConfig')}>
-                              <Button
-                                icon={<MessageOutlined />}
-                                onClick={() => {
-                                  setTempRetryMessageConfig(selectedNode?.data?.validation?.retryMessageConfig || null);
-                                  setRetryMessageModalVisible(true);
-                                }}
-                              >
-                                {t('workflowDesigner.timeValidator.configureRetryMessage')}
-                              </Button>
-                            </Form.Item>
-                            <Form.Item label={t('workflowDesigner.timeValidator.escalationConfig')}>
-                              <Button
-                                icon={<BellOutlined />}
-                                onClick={() => {
-                                  setTempEscalationConfig(selectedNode?.data?.validation?.escalationConfig || null);
-                                  setEscalationConfigModalVisible(true);
-                                }}
-                              >
-                                {t('workflowDesigner.timeValidator.configureEscalation')}
-                              </Button>
-                            </Form.Item>
-                            <Form.Item label={t('workflowDesigner.timeValidator.overdueEscalation')}>
-                              <Button
-                                icon={<ClockCircleOutlined />}
-                                onClick={() => {
-                                  setTempOverdueEscalationConfig(selectedNode?.data?.overdueConfig?.escalationConfig || null);
-                                  setOverdueEscalationModalVisible(true);
-                                }}
-                              >
-                                {t('workflowDesigner.timeValidator.configureOverdueEscalation')}
-                              </Button>
-                            </Form.Item>
+                            <TimeValidatorConfigSection
+                              type="retryMessage"
+                              selectedNode={selectedNode}
+                              handleNodeDataChange={handleNodeDataChange}
+                              form={form}
+                              processVariables={processVariables}
+                              workflowDefinitionId={workflowId}
+                              onOpenTemplateModal={() => {
+                                setTemplateModalSource('retryMessage');
+                                setIsTemplateModalVisible(true);
+                              }}
+                              onOpenRecipientModal={() => {
+                                setTemplateModalSource('retryMessage');
+                                setTimeValidatorRecipientModalVisible(true);
+                              }}
+                              t={t}
+                              config={selectedNode?.data?.validation?.retryMessageConfig}
+                              title={t('workflowDesigner.timeValidator.configureRetryMessage')}
+                              recipientsLabel={t('workflowDesigner.timeValidator.retryMessageRecipients')}
+                              recipientsDescription={t('workflowDesigner.timeValidator.retryMessageRecipientsDescription')}
+                              messageLabel={t('workflowDesigner.timeValidator.retryMessage')}
+                              messageDescription={t('workflowDesigner.timeValidator.retryMessageDescription')}
+                              messagePlaceholder={t('workflowDesigner.timeValidator.retryMessagePlaceholder')}
+                              messageTip={t('workflowDesigner.timeValidator.retryMessageTip')}
+                              expanded={retryMessageExpanded}
+                              onToggleExpanded={setRetryMessageExpanded}
+                            />
+                            <TimeValidatorConfigSection
+                              type="escalation"
+                              selectedNode={selectedNode}
+                              handleNodeDataChange={handleNodeDataChange}
+                              form={form}
+                              processVariables={processVariables}
+                              workflowDefinitionId={workflowId}
+                              onOpenTemplateModal={() => {
+                                setTemplateModalSource('escalation');
+                                setIsTemplateModalVisible(true);
+                              }}
+                              onOpenRecipientModal={() => {
+                                setTemplateModalSource('escalation');
+                                setTimeValidatorRecipientModalVisible(true);
+                              }}
+                              t={t}
+                              config={selectedNode?.data?.validation?.escalationConfig}
+                              title={t('workflowDesigner.timeValidator.configureEscalation')}
+                              recipientsLabel={t('workflowDesigner.timeValidator.escalationRecipients')}
+                              recipientsDescription={t('workflowDesigner.timeValidator.escalationRecipientsDescription')}
+                              messageLabel={t('workflowDesigner.timeValidator.escalationMessage')}
+                              messageDescription={t('workflowDesigner.timeValidator.escalationMessageDescription')}
+                              messagePlaceholder={t('workflowDesigner.timeValidator.escalationMessagePlaceholder')}
+                              messageTip={t('workflowDesigner.timeValidator.escalationMessageTip')}
+                              expanded={escalationConfigExpanded}
+                              onToggleExpanded={setEscalationConfigExpanded}
+                            />
                           </>
                         )}
                       </Tabs.TabPane>
@@ -2449,7 +2552,7 @@ const NodePropertyDrawer = ({
                     processVariables={processVariables}
                     form={form}
                     t={t}
-                    showProcessVariables={false}
+                    showProcessVariables={true}
                     fixedVariables={sendEFormFixedVariables}
                     directMessageContent={(
                       // sendEForm 特殊的直接訊息內容（預設訊息 vs 自定義訊息）
@@ -2822,14 +2925,33 @@ const NodePropertyDrawer = ({
                     
                     {/* Escalation 設置按鈕 */}
                     <Form.Item label={t('workflowDesigner.overdue.escalation')}>
-                      <Button 
-                        type="dashed" 
-                        icon={<ClockCircleOutlined />}
-                        onClick={() => setOverdueEscalationModalVisible(true)}
-                        style={{ width: '100%' }}
-                      >
-                        {t('workflowDesigner.overdue.configureEscalation')}
-                      </Button>
+                      <TimeValidatorConfigSection
+                        type="overdueEscalation"
+                        selectedNode={selectedNode}
+                        handleNodeDataChange={handleNodeDataChange}
+                        form={form}
+                        processVariables={processVariables}
+                        workflowDefinitionId={workflowId}
+                        onOpenTemplateModal={() => {
+                          setTemplateModalSource('overdue');
+                          setIsTemplateModalVisible(true);
+                        }}
+                        onOpenRecipientModal={() => {
+                          setTemplateModalSource('overdue');
+                          setTimeValidatorRecipientModalVisible(true);
+                        }}
+                        t={t}
+                        config={selectedNode?.data?.overdueConfig?.escalationConfig}
+                        title={t('workflowDesigner.overdue.configureEscalation')}
+                        recipientsLabel={t('workflowDesigner.timeValidator.overdueEscalationRecipients')}
+                        recipientsDescription={t('workflowDesigner.timeValidator.overdueEscalationRecipientsDescription')}
+                        messageLabel={t('workflowDesigner.timeValidator.overdueEscalationMessage')}
+                        messageDescription={t('workflowDesigner.timeValidator.overdueEscalationMessageDescription')}
+                        messagePlaceholder={t('workflowDesigner.timeValidator.overdueEscalationMessagePlaceholder')}
+                        messageTip={t('workflowDesigner.timeValidator.overdueEscalationMessageTip')}
+                        expanded={overdueEscalationExpanded}
+                        onToggleExpanded={setOverdueEscalationExpanded}
+                      />
                       
                       {/* 顯示已配置的摘要 */}
                       {selectedNode.data.overdueConfig?.escalationConfig && (
@@ -3227,140 +3349,61 @@ const NodePropertyDrawer = ({
           </div>
         </Modal>
 
-        {/* Retry Message 設置模態框 */}
-        <RetryMessageModal
-          visible={retryMessageModalVisible}
-          onCancel={() => {
-            setRetryMessageModalVisible(false);
-            setTempRetryMessageConfig(null);
-          }}
-          onSave={(config) => {
-            const newValidation = {
-              ...(selectedNode.data.validation || {}),
-              retryMessageConfig: config
-            };
-            handleNodeDataChange({ validation: newValidation });
-            setRetryMessageModalVisible(false);
-            setTempRetryMessageConfig(null);
-            message.success(t('workflowDesigner.timeValidator.retryMessageSaved'));
-          }}
-          initialConfig={tempRetryMessageConfig || selectedNode?.data?.validation?.retryMessageConfig}
-          onOpenTemplateModal={() => {
-            setTemplateModalSource('retryMessage');
-            setIsTemplateModalVisible(true);
-          }}
-          onOpenRecipientModal={() => {
-            setTemplateModalSource('retryMessage');
-            setTimeValidatorRecipientModalVisible(true);
-          }}
-          workflowDefinitionId={workflowId}
-          processVariables={processVariables}
-          t={t}
-        />
-
-        {/* Escalation Config 設置模態框 */}
-        <EscalationConfigModal
-          visible={escalationConfigModalVisible}
-          onCancel={() => {
-            setEscalationConfigModalVisible(false);
-            setTempEscalationConfig(null);
-          }}
-          onSave={(config) => {
-            const newValidation = {
-              ...(selectedNode.data.validation || {}),
-              escalationConfig: config
-            };
-            handleNodeDataChange({ validation: newValidation });
-            setEscalationConfigModalVisible(false);
-            setTempEscalationConfig(null);
-            message.success(t('workflowDesigner.timeValidator.escalationSaved'));
-          }}
-          initialConfig={tempEscalationConfig || selectedNode?.data?.validation?.escalationConfig}
-          onOpenTemplateModal={() => {
-            setTemplateModalSource('escalation');
-            setIsTemplateModalVisible(true);
-          }}
-          onOpenRecipientModal={() => {
-            setTemplateModalSource('escalation');
-            setTimeValidatorRecipientModalVisible(true);
-          }}
-          workflowDefinitionId={workflowId}
-          processVariables={processVariables}
-          t={t}
-        />
-
-        {/* Overdue Escalation 設置模態框 */}
-        <OverdueEscalationModal
-          visible={overdueEscalationModalVisible}
-          onCancel={() => {
-            setOverdueEscalationModalVisible(false);
-            setTempOverdueEscalationConfig(null);
-          }}
-          onSave={(config) => {
-            const newValidation = {
-              ...(selectedNode.data.validation || {}),
-              overdueConfig: {
-                ...(selectedNode.data.validation?.overdueConfig || {}),
-                escalationConfig: config
-              }
-            };
-            handleNodeDataChange({ validation: newValidation });
-            setOverdueEscalationModalVisible(false);
-            setTempOverdueEscalationConfig(null);
-            message.success(t('workflowDesigner.timeValidator.escalationSaved'));
-          }}
-          initialConfig={tempOverdueEscalationConfig || selectedNode?.data?.validation?.overdueConfig?.escalationConfig}
-          onOpenTemplateModal={() => {
-            setTemplateModalSource('overdue');
-            setIsTemplateModalVisible(true);
-          }}
-          onOpenRecipientModal={() => {
-            setTemplateModalSource('overdue');
-            setTimeValidatorRecipientModalVisible(true);
-          }}
-          workflowDefinitionId={workflowId}
-          processVariables={processVariables}
-          t={t}
-        />
-
+        {/* Time Validator Recipient Modal */}
         <RecipientModal
           visible={timeValidatorRecipientModalVisible}
           onCancel={() => setTimeValidatorRecipientModalVisible(false)}
           onSelect={(recipients, recipientDetails) => {
+            // 直接更新節點數據，而不是臨時狀態
             if (templateModalSource === 'retryMessage') {
-              setTempRetryMessageConfig(prev => ({
-                ...(prev || selectedNode?.data?.validation?.retryMessageConfig || {}),
-                recipients,
-                recipientDetails
-              }));
+              const currentConfig = selectedNode?.data?.validation?.retryMessageConfig || {};
+              const newValidation = {
+                ...(selectedNode.data.validation || {}),
+                retryMessageConfig: {
+                  ...currentConfig,
+                  recipients,
+                  recipientDetails
+                }
+              };
+              handleNodeDataChange({ validation: newValidation });
             } else if (templateModalSource === 'escalation') {
-              setTempEscalationConfig(prev => ({
-                ...(prev || selectedNode?.data?.validation?.escalationConfig || {}),
-                recipients,
-                recipientDetails
-              }));
+              const currentConfig = selectedNode?.data?.validation?.escalationConfig || {};
+              const newValidation = {
+                ...(selectedNode.data.validation || {}),
+                escalationConfig: {
+                  ...currentConfig,
+                  recipients,
+                  recipientDetails
+                }
+              };
+              handleNodeDataChange({ validation: newValidation });
             } else if (templateModalSource === 'overdue') {
-              setTempOverdueEscalationConfig(prev => ({
-                ...(prev || selectedNode?.data?.validation?.overdueConfig?.escalationConfig || {}),
-                recipients,
-                recipientDetails
-              }));
+              const currentConfig = selectedNode?.data?.overdueConfig?.escalationConfig || {};
+              const newOverdueConfig = {
+                ...(selectedNode.data.overdueConfig || {}),
+                escalationConfig: {
+                  ...currentConfig,
+                  recipients,
+                  recipientDetails
+                }
+              };
+              handleNodeDataChange({ overdueConfig: newOverdueConfig });
             }
             setTimeValidatorRecipientModalVisible(false);
           }}
           value={
             templateModalSource === 'retryMessage'
-              ? (tempRetryMessageConfig?.recipients || '')
+              ? (selectedNode?.data?.validation?.retryMessageConfig?.recipients || '')
               : templateModalSource === 'overdue'
-              ? (tempOverdueEscalationConfig?.recipients || '')
-              : (tempEscalationConfig?.recipients || '')
+              ? (selectedNode?.data?.overdueConfig?.escalationConfig?.recipients || '')
+              : (selectedNode?.data?.validation?.escalationConfig?.recipients || '')
           }
           recipientDetails={
             templateModalSource === 'retryMessage'
-              ? (tempRetryMessageConfig?.recipientDetails || null)
+              ? (selectedNode?.data?.validation?.retryMessageConfig?.recipientDetails || null)
               : templateModalSource === 'overdue'
-              ? (tempOverdueEscalationConfig?.recipientDetails || null)
-              : (tempEscalationConfig?.recipientDetails || null)
+              ? (selectedNode?.data?.overdueConfig?.escalationConfig?.recipientDetails || null)
+              : (selectedNode?.data?.validation?.escalationConfig?.recipientDetails || null)
           }
           allowMultiple
           workflowDefinitionId={workflowId}

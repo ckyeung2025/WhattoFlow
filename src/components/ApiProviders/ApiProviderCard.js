@@ -15,7 +15,9 @@ const assetMap = {
   deepseek: '/assets/API_Icons/icons8-deepseek-480.png',
   copilot: '/assets/API_Icons/vecteezy_copilot-icon-transparent-background_46861635.png',
   gemini: '/assets/API_Icons/google-gemini-icon.png',
-  'google-docs': '/assets/icon-google-docs.svg'
+  'google-docs': '/assets/icon-google-docs.svg',
+  microsoft: '/assets/API_Icons/Graph-API-logo.png',
+  'microsoft-graph': '/assets/API_Icons/Graph-API-logo.png'
 };
 
 const ApiProviderCard = ({ provider, onConfigure, t }) => {
@@ -30,6 +32,18 @@ const ApiProviderCard = ({ provider, onConfigure, t }) => {
         .toUpperCase()
     : 'AI';
 
+  // 處理圖標加載失敗的情況
+  const [imgError, setImgError] = React.useState(false);
+
+  React.useEffect(() => {
+    setImgError(false);
+  }, [iconSrc]);
+
+  const handleImgError = () => {
+    console.warn('[ApiProviderCard] Failed to load icon:', iconSrc, 'for provider:', provider.providerKey);
+    setImgError(true);
+  };
+
   return (
     <Card
       hoverable
@@ -40,10 +54,11 @@ const ApiProviderCard = ({ provider, onConfigure, t }) => {
         <Avatar
           size={64}
           className="api-provider-card__icon"
-          src={iconSrc || undefined}
+          src={iconSrc && !imgError ? iconSrc : undefined}
           alt={provider.displayName}
+          onError={handleImgError}
         >
-          {iconSrc ? null : fallbackInitials}
+          {(!iconSrc || imgError) ? fallbackInitials : null}
         </Avatar>
         <div className="api-provider-card__title">
           <div className="api-provider-card__name">{provider.displayName}</div>
@@ -52,8 +67,8 @@ const ApiProviderCard = ({ provider, onConfigure, t }) => {
       </div>
 
       <div className="api-provider-card__body">
-        <div className="api-provider-card__description" title={provider.description}>
-          {provider.description || t('apiProviders.noDescription')}
+        <div className="api-provider-card__description" title={t(`apiProviders.description.${provider.providerKey}`, provider.description) || provider.description || t('apiProviders.noDescription')}>
+          {t(`apiProviders.description.${provider.providerKey}`, provider.description) || provider.description || t('apiProviders.noDescription')}
         </div>
 
         <div className="api-provider-card__meta">

@@ -12,7 +12,6 @@ namespace PurpleRice.Models.Dto.ApiProviders
         public string DefaultApiUrl { get; set; }
         public string? DefaultModel { get; set; }
         public string? SupportedModels { get; set; }
-        public string? Description { get; set; }
         public string AuthType { get; set; } = "apiKey";
         public string? DefaultSettingsJson { get; set; }
         public bool EnableStreaming { get; set; }
@@ -38,7 +37,6 @@ namespace PurpleRice.Models.Dto.ApiProviders
         public bool Active { get; set; }
         public bool HasApiKey { get; set; }
         public string MaskedApiKey { get; set; }
-        public string? Description { get; set; }
         public string DefaultApiUrl { get; set; }
         public string? DefaultModel { get; set; }
         public string? SupportedModels { get; set; }

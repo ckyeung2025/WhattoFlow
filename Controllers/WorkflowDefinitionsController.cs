@@ -79,6 +79,26 @@ namespace PurpleRice.Controllers
             return null;
         }
 
+        // 獲取當前用戶的名稱
+        private string GetCurrentUserName()
+        {
+            var userIdClaim = User.FindFirst("user_id");
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                var user = _db.Users.FirstOrDefault(u => u.Id == userId);
+                if (user != null && !string.IsNullOrEmpty(user.Name))
+                {
+                    return user.Name;
+                }
+                // 如果沒有名稱，使用帳號
+                if (user != null && !string.IsNullOrEmpty(user.Account))
+                {
+                    return user.Account;
+                }
+            }
+            return "系統"; // 如果無法獲取用戶信息，返回默認值
+        }
+
         // GET: api/workflowdefinitions
         [HttpGet]
         public async Task<IActionResult> GetAll(int page = 1, int pageSize = 10, string search = null, string sortBy = null, string sortOrder = null)
@@ -176,6 +196,7 @@ namespace PurpleRice.Controllers
 
             def.CompanyId = companyId.Value; // 設置為當前用戶的公司ID
             def.CreatedAt = DateTime.UtcNow; // 使用 UTC 時間
+            def.CreatedBy = GetCurrentUserName(); // 設置為當前用戶的名稱
             _db.WorkflowDefinitions.Add(def);
             await _db.SaveChangesAsync();
             return CreatedAtAction(nameof(Get), new { id = def.Id }, def);
@@ -205,7 +226,7 @@ namespace PurpleRice.Controllers
             item.Json = def.Json;
             item.Status = def.Status;
             item.UpdatedAt = DateTime.UtcNow; // 使用 UTC 時間
-            item.UpdatedBy = def.UpdatedBy;
+            item.UpdatedBy = GetCurrentUserName(); // 設置為當前用戶的名稱
             // 確保 CompanyId 保持不變
             item.CompanyId = companyId.Value;
             await _db.SaveChangesAsync();
@@ -745,8 +766,8 @@ namespace PurpleRice.Controllers
                 Description = workflow.Description,
                 Json = workflow.Json,
                 Status = "Enabled",
-                CreatedBy = workflow.CreatedBy,
-                UpdatedBy = workflow.UpdatedBy,
+                CreatedBy = GetCurrentUserName(), // 設置為當前用戶的名稱
+                UpdatedBy = GetCurrentUserName(), // 設置為當前用戶的名稱
                 CreatedAt = DateTime.UtcNow, // 使用 UTC 時間
                 UpdatedAt = DateTime.UtcNow, // 使用 UTC 時間
                 CompanyId = companyId.Value // 設置為當前用戶的公司ID
@@ -972,10 +993,12 @@ namespace PurpleRice.Controllers
             }
 
             var newStatus = request.IsActive ? "Enabled" : "Disabled";
+            var currentUserName = GetCurrentUserName(); // 獲取當前用戶名稱
             foreach (var workflow in workflowsToUpdate)
             {
                 workflow.Status = newStatus;
                 workflow.UpdatedAt = DateTime.UtcNow; // 使用 UTC 時間
+                workflow.UpdatedBy = currentUserName; // 設置為當前用戶的名稱
             }
 
             await _db.SaveChangesAsync();

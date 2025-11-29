@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Modal, Form, Input, Switch, InputNumber, Typography, Divider, Alert, Space, Checkbox, Select, Button, Spin } from 'antd';
+import { Modal, Form, Input, Switch, InputNumber, Typography, Divider, Alert, Space, Checkbox, Select, Button, Spin, message } from 'antd';
+import { MailOutlined } from '@ant-design/icons';
 
 const { TextArea } = Input;
 const { Paragraph, Text } = Typography;
@@ -81,6 +82,36 @@ const ApiProviderSettingsModal = ({
       const extraHeadersJson = formatJson(provider.extraHeadersJson);
       const authConfigJson = formatJson(provider.authConfigJson);
 
+      // 解析 authConfigJson 為獨立欄位（用於 Email Server）
+      let tenantId = '';
+      let clientId = '';
+      let clientSecret = '';
+      if (authConfigJson) {
+        try {
+          const parsed = JSON.parse(authConfigJson);
+          tenantId = parsed.tenantId || '';
+          clientId = parsed.clientId || '';
+          clientSecret = parsed.clientSecret || '';
+        } catch (e) {
+          // 忽略解析錯誤
+        }
+      }
+
+      // 解析 settingsJson 為獨立欄位（用於 Email Server）
+      let fromEmail = '';
+      let replyTo = '';
+      let saveToSentItems = true;
+      if (settingsJson) {
+        try {
+          const parsed = JSON.parse(settingsJson);
+          fromEmail = parsed.fromEmail || '';
+          replyTo = parsed.replyTo || '';
+          saveToSentItems = parsed.saveToSentItems !== undefined ? parsed.saveToSentItems : true;
+        } catch (e) {
+          // 忽略解析錯誤
+        }
+      }
+
       form.setFieldsValue({
         active: provider.active,
         apiUrl: provider.apiUrl,
@@ -93,7 +124,14 @@ const ApiProviderSettingsModal = ({
         authConfigJson,
         settingsJson,
         clearApiKey: false,
-        apiKey: ''
+        apiKey: '',
+        // Email Server 專用欄位
+        tenantId,
+        clientId,
+        clientSecret,
+        fromEmail,
+        replyTo,
+        saveToSentItems
       });
     } else {
       form.resetFields();
@@ -118,6 +156,25 @@ const ApiProviderSettingsModal = ({
 
   const handleOk = () => {
     form.validateFields().then(values => {
+      // 如果是 Email Server 類型，從獨立欄位構建 JSON
+      if (isEmailServerCategory) {
+        // 構建 authConfigJson
+        const authConfig = {
+          tenantId: values.tenantId || '',
+          clientId: values.clientId || '',
+          clientSecret: values.clientSecret || ''
+        };
+        values.authConfigJson = JSON.stringify(authConfig);
+
+        // 構建 settingsJson
+        const settings = {
+          fromEmail: values.fromEmail || '',
+          replyTo: values.replyTo || '',
+          saveToSentItems: values.saveToSentItems !== undefined ? values.saveToSentItems : true
+        };
+        values.settingsJson = JSON.stringify(settings);
+      }
+
       const targets = [
         ['extraHeadersJson', values.extraHeadersJson],
         ['authConfigJson', values.authConfigJson],
@@ -139,12 +196,28 @@ const ApiProviderSettingsModal = ({
           authConfigJson: normalizeJson(values.authConfigJson),
           settingsJson: normalizeJson(values.settingsJson)
         };
+        // 移除臨時欄位，只保留後端需要的欄位
+        delete normalizedValues.tenantId;
+        delete normalizedValues.clientId;
+        delete normalizedValues.clientSecret;
+        delete normalizedValues.fromEmail;
+        delete normalizedValues.replyTo;
+        delete normalizedValues.saveToSentItems;
       } catch (error) {
         // normalizeJson throws "invalid" when JSON parsing失敗
         return;
       }
 
       onSubmit(normalizedValues);
+    }).catch(error => {
+      // 處理表單驗證錯誤
+      if (error?.errorFields) {
+        // Ant Design 驗證錯誤，已經在表單中顯示錯誤訊息，不需要額外處理
+        // 這裡只是為了避免未捕獲的錯誤導致頁面崩潰
+        return;
+      }
+      // 其他未預期的錯誤
+      console.error('Unexpected error during form validation:', error);
     });
   };
 
@@ -194,12 +267,100 @@ const ApiProviderSettingsModal = ({
   }, [provider, xaiAllModels]);
 
   const isAiCategory = provider?.category === 'AI';
+  const isEmailServerCategory = provider?.category === 'EmailServer';
+  const [testingEmail, setTestingEmail] = React.useState(false);
+  const [testEmailModalOpen, setTestEmailModalOpen] = React.useState(false);
+  const [testEmailForm] = Form.useForm();
 
   const handleResetSettings = () => {
     if (provider?.defaultSettingsJson) {
       form.setFieldsValue({ settingsJson: formatJson(provider.defaultSettingsJson) });
     } else {
       form.setFieldsValue({ settingsJson: '' });
+    }
+  };
+
+  const handleTestEmailClick = async () => {
+    try {
+      // 先驗證基本配置欄位
+      await form.validateFields([
+        'tenantId',
+        'clientId',
+        'clientSecret',
+        'fromEmail'
+      ]);
+
+      // 設置測試郵件表單的預設值
+      const formValues = form.getFieldsValue();
+      testEmailForm.setFieldsValue({
+        toEmail: formValues.fromEmail, // 預設發給自己
+        subject: t('apiProviders.form.testEmailSubject'),
+        body: t('apiProviders.form.testEmailBody')
+      });
+
+      // 打開測試郵件彈窗
+      setTestEmailModalOpen(true);
+    } catch (error) {
+      if (error.errorFields) {
+        message.error(t('apiProviders.form.testEmailValidationError'));
+      }
+    }
+  };
+
+  const handleTestEmailSubmit = async () => {
+    try {
+      const testValues = await testEmailForm.validateFields();
+      const formValues = form.getFieldsValue();
+
+      setTestingEmail(true);
+      setTestEmailModalOpen(false);
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error(t('common.loginRequired'));
+        return;
+      }
+
+      // 構建測試請求
+      const testRequest = {
+        tenantId: formValues.tenantId,
+        clientId: formValues.clientId,
+        clientSecret: formValues.clientSecret,
+        fromEmail: formValues.fromEmail,
+        replyTo: formValues.replyTo || formValues.fromEmail,
+        toEmail: testValues.toEmail,
+        subject: testValues.subject,
+        body: testValues.body
+      };
+
+      const response = await fetch(`/api/apiproviders/test-email/${provider.providerKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(testRequest)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || t('apiProviders.form.testEmailFailed'));
+      }
+
+      message.success(t('apiProviders.form.testEmailSuccess'));
+      testEmailForm.resetFields();
+    } catch (error) {
+      console.error('Test email failed:', error);
+      if (error.errorFields) {
+        // 表單驗證錯誤
+        message.error(t('apiProviders.form.testEmailValidationError'));
+        setTestEmailModalOpen(true); // 保持彈窗打開
+      } else {
+        message.error(error.message || t('apiProviders.form.testEmailFailed'));
+      }
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -223,7 +384,7 @@ const ApiProviderSettingsModal = ({
             message={provider.displayName}
             description={
               <Paragraph style={{ marginBottom: 0 }}>
-                {provider.description || t('apiProviders.noDescription')}
+                {t(`apiProviders.description.${provider.providerKey}`, provider.description) || provider.description || t('apiProviders.noDescription')}
               </Paragraph>
             }
             showIcon
@@ -255,7 +416,12 @@ const ApiProviderSettingsModal = ({
               <Switch checkedChildren={t('apiProviders.status.active')} unCheckedChildren={t('apiProviders.status.inactive')} />
             </Form.Item>
 
-            <Form.Item name="apiUrl" label={t('apiProviders.form.apiUrl')} rules={[{ required: true, message: t('apiProviders.form.apiUrlRequired') }]}> 
+            <Form.Item 
+              name="apiUrl" 
+              label={t('apiProviders.form.apiUrl')} 
+              rules={[{ required: true, message: t('apiProviders.form.apiUrlRequired') }]}
+              tooltip={isEmailServerCategory ? t('apiProviders.form.apiUrlEmailServerTip') : undefined}
+            > 
               <Input placeholder={provider.defaultApiUrl} />
             </Form.Item>
 
@@ -336,31 +502,175 @@ const ApiProviderSettingsModal = ({
               </Form.Item>
             </Form.Item>
 
-            <Form.Item label={t('apiProviders.form.authConfigJson')} tooltip={t('apiProviders.form.authConfigTip')}>
-              <Form.Item name="authConfigJson" noStyle>
-                <TextArea rows={3} placeholder='{ "tenantId": "...", "clientId": "..." }' allowClear />
-              </Form.Item>
-            </Form.Item>
-
-            <Form.Item label={t('apiProviders.form.settingsJson')} tooltip={t('apiProviders.form.settingsJsonTip')}>
-              <Space direction="vertical" style={{ width: '100%' }} size="small">
-                <Form.Item name="settingsJson" noStyle>
-                  <TextArea rows={4} placeholder='{ "temperature": 0.8 }' allowClear />
+            {isEmailServerCategory ? (
+              <>
+                <Divider orientation="left">{t('apiProviders.form.oauthConfig')}</Divider>
+                <Form.Item 
+                  name="tenantId" 
+                  label={t('apiProviders.form.tenantId')}
+                  rules={[{ required: true, message: t('apiProviders.form.tenantIdRequired') }]}
+                  tooltip={t('apiProviders.form.tenantIdTip')}
+                >
+                  <Input placeholder="your-tenant-id" allowClear />
                 </Form.Item>
-                <Space size="small">
-                  <Button size="small" onClick={handleResetSettings} disabled={!provider?.defaultSettingsJson}>
-                    {t('apiProviders.form.resetSettings')}
+
+                <Form.Item 
+                  name="clientId" 
+                  label={t('apiProviders.form.clientId')}
+                  rules={[{ required: true, message: t('apiProviders.form.clientIdRequired') }]}
+                  tooltip={t('apiProviders.form.clientIdTip')}
+                >
+                  <Input placeholder="your-client-id" allowClear />
+                </Form.Item>
+
+                <Form.Item 
+                  name="clientSecret" 
+                  label={t('apiProviders.form.clientSecret')}
+                  rules={[{ required: true, message: t('apiProviders.form.clientSecretRequired') }]}
+                  tooltip={t('apiProviders.form.clientSecretTip')}
+                >
+                  <Input.Password placeholder="your-client-secret" visibilityToggle allowClear />
+                </Form.Item>
+
+                <Divider orientation="left">{t('apiProviders.form.emailSettings')}</Divider>
+                <Form.Item 
+                  name="fromEmail" 
+                  label={t('apiProviders.form.fromEmail')}
+                  rules={[
+                    { required: true, message: t('apiProviders.form.fromEmailRequired') },
+                    { type: 'email', message: t('apiProviders.form.fromEmailInvalid') }
+                  ]}
+                  tooltip={t('apiProviders.form.fromEmailTip')}
+                >
+                  <Input placeholder="sender@example.com" allowClear />
+                </Form.Item>
+
+                <Form.Item 
+                  name="replyTo" 
+                  label={t('apiProviders.form.replyTo')}
+                  rules={[{ type: 'email', message: t('apiProviders.form.replyToInvalid') }]}
+                  tooltip={t('apiProviders.form.replyToTip')}
+                >
+                  <Input placeholder="reply@example.com" allowClear />
+                </Form.Item>
+
+                <Form.Item 
+                  name="saveToSentItems" 
+                  label={t('apiProviders.form.saveToSentItems')} 
+                  valuePropName="checked"
+                  tooltip={t('apiProviders.form.saveToSentItemsTip')}
+                >
+                  <Switch checkedChildren={t('apiProviders.form.enabled')} unCheckedChildren={t('apiProviders.form.disabled')} />
+                </Form.Item>
+
+                <Form.Item>
+                  <Button
+                    type="primary"
+                    icon={<MailOutlined />}
+                    onClick={handleTestEmailClick}
+                    loading={testingEmail}
+                    block
+                  >
+                    {t('apiProviders.form.testEmail')}
                   </Button>
-                  {provider?.defaultSettingsJson && (
-                    <Text type="secondary">{t('apiProviders.form.resetSettingsHint')}</Text>
-                  )}
-                </Space>
-              </Space>
-            </Form.Item>
+                </Form.Item>
+              </>
+            ) : (
+              <>
+                <Form.Item 
+                  label={t('apiProviders.form.authConfigJson')} 
+                  tooltip={t('apiProviders.form.authConfigTip')}
+                >
+                  <Form.Item name="authConfigJson" noStyle>
+                    <TextArea 
+                      rows={3} 
+                      placeholder='{ "tenantId": "...", "clientId": "..." }' 
+                      allowClear 
+                    />
+                  </Form.Item>
+                </Form.Item>
+
+                <Form.Item 
+                  label={t('apiProviders.form.settingsJson')} 
+                  tooltip={t('apiProviders.form.settingsJsonTip')}
+                >
+                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                    <Form.Item name="settingsJson" noStyle>
+                      <TextArea 
+                        rows={4} 
+                        placeholder='{ "temperature": 0.8 }' 
+                        allowClear 
+                      />
+                    </Form.Item>
+                    <Space size="small">
+                      <Button size="small" onClick={handleResetSettings} disabled={!provider?.defaultSettingsJson}>
+                        {t('apiProviders.form.resetSettings')}
+                      </Button>
+                      {provider?.defaultSettingsJson && (
+                        <Text type="secondary">{t('apiProviders.form.resetSettingsHint')}</Text>
+                      )}
+                    </Space>
+                  </Space>
+                </Form.Item>
+              </>
+            )}
           </Form>
           </Space>
         )}
       </Spin>
+
+      {/* 測試郵件彈窗 */}
+      <Modal
+        open={testEmailModalOpen}
+        onCancel={() => {
+          setTestEmailModalOpen(false);
+          testEmailForm.resetFields();
+        }}
+        onOk={handleTestEmailSubmit}
+        confirmLoading={testingEmail}
+        title={t('apiProviders.form.testEmailModalTitle')}
+        okText={t('apiProviders.form.sendTestEmail')}
+        cancelText={t('apiProviders.modal.cancel')}
+        width={600}
+      >
+        <Form
+          form={testEmailForm}
+          layout="vertical"
+          requiredMark={false}
+        >
+          <Form.Item
+            name="toEmail"
+            label={t('apiProviders.form.testEmailTo')}
+            rules={[
+              { required: true, message: t('apiProviders.form.testEmailToRequired') },
+              { type: 'email', message: t('apiProviders.form.testEmailToInvalid') }
+            ]}
+            tooltip={t('apiProviders.form.testEmailToTip')}
+          >
+            <Input placeholder="recipient@example.com" allowClear />
+          </Form.Item>
+
+          <Form.Item
+            name="subject"
+            label={t('apiProviders.form.testEmailSubjectLabel')}
+            rules={[{ required: true, message: t('apiProviders.form.testEmailSubjectRequired') }]}
+          >
+            <Input placeholder={t('apiProviders.form.testEmailSubject')} allowClear />
+          </Form.Item>
+
+          <Form.Item
+            name="body"
+            label={t('apiProviders.form.testEmailBodyLabel')}
+            rules={[{ required: true, message: t('apiProviders.form.testEmailBodyRequired') }]}
+          >
+            <TextArea
+              rows={6}
+              placeholder={t('apiProviders.form.testEmailBody')}
+              allowClear
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Modal>
   );
 };

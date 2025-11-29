@@ -1,7 +1,10 @@
-import React from 'react';
-import { Tabs, Form, Input, Tag, Card, Button } from 'antd';
-import { MessageOutlined, FileTextOutlined, FormOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import TemplateVariableConfig from './TemplateVariableConfig';
+import React, { useEffect } from 'react';
+import { Tabs } from 'antd';
+import { MessageOutlined, FileTextOutlined, MailOutlined } from '@ant-design/icons';
+import DirectMessageTab from './DirectMessageTab';
+import TemplateTab from './TemplateTab';
+import EmailTab from './EmailTab';
+import { useEmailProviders } from '../hooks/useEmailProviders';
 
 /**
  * 統一的訊息模式 Tab 組件
@@ -21,134 +24,99 @@ const MessageModeTabsComponent = ({
   showProcessVariables = true,  // 是否顯示流程變數
   directMessageContent = null,  // 自定義直接訊息內容（用於 sendEForm 的特殊情況）
   fixedVariables = [],  // 新增：固化變量列表（用於 sendEForm 的 formName 和 formUrl）
+  enableEmailMode = true,  // 是否啟用 Email 模式
 }) => {
+  // 使用 Email Providers Hook
+  const { emailProviders, loadingEmailProviders } = useEmailProviders(enableEmailMode);
+
+  // 確保 form 中的 emailConfig 字段與節點數據同步
+  useEffect(() => {
+    if (form && selectedNode?.data?.emailConfig) {
+      const emailConfig = selectedNode.data.emailConfig;
+      const currentFormValues = form.getFieldsValue(['emailConfig.providerKey', 'emailConfig.subject', 'emailConfig.body']);
+      // 只在值不同時才更新，避免不必要的重新渲染
+      if (currentFormValues['emailConfig.providerKey'] !== emailConfig.providerKey ||
+          currentFormValues['emailConfig.subject'] !== emailConfig.subject ||
+          currentFormValues['emailConfig.body'] !== emailConfig.body) {
+        form.setFieldsValue({
+          'emailConfig.providerKey': emailConfig.providerKey || '',
+          'emailConfig.subject': emailConfig.subject || '',
+          'emailConfig.body': emailConfig.body || '',
+        });
+      }
+    }
+  }, [form, selectedNode?.data?.emailConfig?.providerKey, selectedNode?.data?.emailConfig?.subject, selectedNode?.data?.emailConfig?.body]);
+
   // 渲染直接訊息 Tab 內容
   const renderDirectMessageTab = () => {
-    if (directMessageContent) {
-      // 如果提供了自定義內容，直接使用（用於 sendEForm）
-      return directMessageContent;
-    }
-    
-    // 處理 messagePlaceholder：如果包含點（.），則視為語言鍵並翻譯
-    let finalPlaceholder;
-    if (messagePlaceholder && messagePlaceholder.includes('.')) {
-      // 視為語言鍵並翻譯
-      finalPlaceholder = t(messagePlaceholder);
-    } else {
-      // 直接使用提供的字符串或默認值
-      finalPlaceholder = messagePlaceholder || t('workflowDesigner.messageWithVariablesPlaceholder');
-    }
-    
-    // 默認的直接訊息輸入界面
     return (
-      <>
-        <Form.Item 
-          label={messageLabel === null ? null : (messageLabel || t('workflow.message'))} 
-          name="message"
-        >
-          <Input.TextArea 
-            rows={messageRows} 
-            placeholder={finalPlaceholder}
-          />
-        </Form.Item>
-        
-        {showProcessVariables && processVariables && processVariables.length > 0 && (
-          <Form.Item label={t('workflowDesigner.availableVariables')}>
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-              {t('workflowDesigner.variableSyntaxHelp')}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {processVariables.map(pv => (
-                <Tag 
-                  key={pv.id} 
-                  style={{ cursor: 'pointer' }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const currentValue = form.getFieldValue('message') || '';
-                    const newValue = currentValue + `\${${pv.variableName}}`;
-                    form.setFieldValue('message', newValue);
-                    handleNodeDataChange({ message: newValue });
-                  }}
-                >
-                  {pv.variableName} ({pv.dataType})
-                </Tag>
-              ))}
-            </div>
-          </Form.Item>
-        )}
-      </>
+      <DirectMessageTab
+        form={form}
+        t={t}
+        processVariables={processVariables}
+        fieldName="message"
+        label={messageLabel}
+        placeholder={messagePlaceholder}
+        rows={messageRows}
+        showProcessVariables={showProcessVariables}
+        onChange={(value) => handleNodeDataChange({ message: value })}
+        customContent={directMessageContent}
+      />
+    );
+  };
+
+  // 渲染 Email Tab 內容
+  const renderEmailTab = () => {
+    const emailConfig = selectedNode.data.emailConfig || {};
+    
+    return (
+      <EmailTab
+        form={form}
+        t={t}
+        processVariables={processVariables}
+        emailProviders={emailProviders}
+        loadingEmailProviders={loadingEmailProviders}
+        emailConfig={emailConfig}
+        onEmailConfigChange={(newConfig) => handleNodeDataChange({ emailConfig: newConfig })}
+        fieldPrefix="emailConfig"
+        showProcessVariables={showProcessVariables}
+      />
     );
   };
 
   // 渲染模板 Tab 內容
-  const renderTemplateTab = () => (
-    <>
-      <Form.Item label={t('workflowDesigner.dataSet.template')}>
-        <div style={{ position: 'relative' }}>
-          <Input 
-            value={selectedNode.data.templateName || ''}
-            placeholder={t('workflowDesigner.selectTemplate')} 
-            readOnly 
-            onClick={() => setIsTemplateModalVisible(true)}
-            suffix={<FormOutlined />}
-          />
-          {selectedNode.data.templateId && (
-            <div style={{ 
-              position: 'absolute', 
-              right: '30px', 
-              top: '50%', 
-              transform: 'translateY(-50%)',
-              zIndex: 1
-            }}>
-              <Button 
-                type="text" 
-                size="small" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNodeDataChange({ 
-                    templateId: '', 
-                    templateName: '', 
-                    isMetaTemplate: false,
-                    templateLanguage: null,
-                    templateVariables: []
-                  });
-                }}
-                style={{ padding: '0 4px', fontSize: '12px' }}
-              >
-                {t('workflowDesigner.clear')}
-              </Button>
-            </div>
-          )}
-        </div>
-      </Form.Item>
-      
-      {selectedNode.data.templateId && (
-        <Card size="small" title={t('workflowDesigner.templateInfo')} style={{ marginBottom: 16 }}>
-          <p><strong>{t('workflowDesigner.templateId')}</strong>{selectedNode.data.templateId}</p>
-          <p><strong>{t('workflowDesigner.templateName')}</strong>{selectedNode.data.templateName}</p>
-          {selectedNode.data.isMetaTemplate && (
-            <p>
-              <Tag color="blue">{t('workflowDesigner.metaTemplate.title')}</Tag>
-            </p>
-          )}
-        </Card>
-      )}
-      
-      {/* 模板變數編輯 */}
-      {selectedNode.data.templateId && (
-        <TemplateVariableConfig
-          templateId={selectedNode.data.templateId}
-          isMetaTemplate={selectedNode.data.isMetaTemplate}
-          processVariables={processVariables}
-          fixedVariables={fixedVariables}
-          value={selectedNode.data.templateVariables || []}
-          onChange={(templateVariables) => handleNodeDataChange({ templateVariables })}
-          t={t}
-        />
-      )}
-    </>
-  );
+  const renderTemplateTab = () => {
+    return (
+      <TemplateTab
+        form={form}
+        t={t}
+        processVariables={processVariables}
+        templateData={{
+          templateId: selectedNode.data.templateId,
+          templateName: selectedNode.data.templateName,
+          isMetaTemplate: selectedNode.data.isMetaTemplate,
+          templateLanguage: selectedNode.data.templateLanguage,
+          templateVariables: selectedNode.data.templateVariables || [],
+        }}
+        onTemplateSelect={() => setIsTemplateModalVisible(true)}
+        onTemplateClear={() => {
+          handleNodeDataChange({ 
+            templateId: '', 
+            templateName: '', 
+            isMetaTemplate: false,
+            templateLanguage: null,
+            templateVariables: []
+          });
+        }}
+        onTemplateVariablesChange={(templateVariables) => {
+          handleNodeDataChange({ templateVariables });
+        }}
+        mode="input"
+        onOpenTemplateModal={() => setIsTemplateModalVisible(true)}
+        fixedVariables={fixedVariables}
+      />
+    );
+  };
 
   const items = [
     {
@@ -170,6 +138,19 @@ const MessageModeTabsComponent = ({
       children: renderTemplateTab()
     }
   ];
+
+  // 如果啟用 Email 模式，添加 Email tab
+  if (enableEmailMode) {
+    items.push({
+      key: 'email',
+      label: (
+        <span>
+          <MailOutlined /> {t('workflowDesigner.sendEmail')}
+        </span>
+      ),
+      children: renderEmailTab()
+    });
+  }
 
   return (
     <Tabs

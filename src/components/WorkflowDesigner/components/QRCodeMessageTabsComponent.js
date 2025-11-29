@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Tabs, Form, Input, Tag, Card, Button } from 'antd';
-import { MessageOutlined, FileTextOutlined, FormOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import TemplateVariableConfig from './TemplateVariableConfig';
+import { Tabs } from 'antd';
+import { MessageOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined, MailOutlined } from '@ant-design/icons';
+import DirectMessageTab from './DirectMessageTab';
+import TemplateTab from './TemplateTab';
+import EmailTab from './EmailTab';
+import { useEmailProviders } from '../hooks/useEmailProviders';
 
 /**
  * QR Code 訊息配置組件
@@ -16,6 +19,9 @@ const QRCodeMessageTabsComponent = ({
   t,
 }) => {
   const [activeMessageType, setActiveMessageType] = useState('prompt'); // prompt, success, error
+  
+  // 使用 Email Providers Hook
+  const { emailProviders, loadingEmailProviders } = useEmailProviders(true);
 
   // 根據訊息類型獲取對應的數據字段前綴
   const getFieldPrefix = (messageType) => {
@@ -29,6 +35,7 @@ const QRCodeMessageTabsComponent = ({
           isMetaTemplate: 'isMetaTemplate',
           templateLanguage: 'templateLanguage',
           templateVariables: 'templateVariables',
+          emailConfig: 'emailConfig',
         };
       case 'success':
         return {
@@ -39,6 +46,7 @@ const QRCodeMessageTabsComponent = ({
           isMetaTemplate: 'qrCodeSuccessIsMetaTemplate',
           templateLanguage: 'qrCodeSuccessTemplateLanguage',
           templateVariables: 'qrCodeSuccessTemplateVariables',
+          emailConfig: 'qrCodeSuccessEmailConfig',
         };
       case 'error':
         return {
@@ -49,6 +57,7 @@ const QRCodeMessageTabsComponent = ({
           isMetaTemplate: 'qrCodeErrorIsMetaTemplate',
           templateLanguage: 'qrCodeErrorTemplateLanguage',
           templateVariables: 'qrCodeErrorTemplateVariables',
+          emailConfig: 'qrCodeErrorEmailConfig',
         };
       default:
         return {};
@@ -66,6 +75,7 @@ const QRCodeMessageTabsComponent = ({
       isMetaTemplate: selectedNode.data[prefix.isMetaTemplate] || false,
       templateLanguage: selectedNode.data[prefix.templateLanguage] || null,
       templateVariables: selectedNode.data[prefix.templateVariables] || [],
+      emailConfig: selectedNode.data[prefix.emailConfig] || {},
     };
   };
 
@@ -108,7 +118,6 @@ const QRCodeMessageTabsComponent = ({
 
   // 渲染直接訊息 Tab 內容
   const renderDirectMessageTab = (messageType) => {
-    const currentData = getCurrentData(messageType);
     const prefix = getFieldPrefix(messageType);
     
     let placeholder;
@@ -121,124 +130,105 @@ const QRCodeMessageTabsComponent = ({
     }
 
     return (
-      <>
-        <Form.Item 
-          label={null}
-          name={prefix.message}
-        >
-          <Input.TextArea 
-            rows={messageType === 'prompt' ? 3 : 2}
-            placeholder={placeholder}
-          />
-        </Form.Item>
-        
-        {processVariables && processVariables.length > 0 && (
-          <Form.Item label={t('workflowDesigner.availableVariables')}>
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-              {t('workflowDesigner.variableSyntaxHelp')}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {processVariables.map(pv => (
-                <Tag 
-                  key={pv.id} 
-                  style={{ cursor: 'pointer' }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const currentValue = form.getFieldValue(prefix.message) || '';
-                    const newValue = currentValue + `\${${pv.variableName}}`;
-                    form.setFieldValue(prefix.message, newValue);
-                    updateCurrentData(messageType, { message: newValue });
-                  }}
-                >
-                  {pv.variableName} ({pv.dataType})
-                </Tag>
-              ))}
-            </div>
-          </Form.Item>
-        )}
-      </>
+      <DirectMessageTab
+        form={form}
+        t={t}
+        processVariables={processVariables}
+        fieldName={prefix.message}
+        label={null}
+        placeholder={placeholder}
+        rows={messageType === 'prompt' ? 3 : 2}
+        showProcessVariables={true}
+        onChange={(value) => updateCurrentData(messageType, { message: value })}
+        onVariableInsert={(variableName) => {
+          const currentValue = form.getFieldValue(prefix.message) || '';
+          const newValue = currentValue + `\${${variableName}}`;
+          form.setFieldValue(prefix.message, newValue);
+          updateCurrentData(messageType, { message: newValue });
+        }}
+      />
     );
   };
 
   // 渲染模板 Tab 內容
   const renderTemplateTab = (messageType) => {
     const currentData = getCurrentData(messageType);
-    const prefix = getFieldPrefix(messageType);
 
     return (
-      <>
-        <Form.Item label={t('workflowDesigner.dataSet.template')}>
-          <div style={{ position: 'relative' }}>
-            <Input 
-              value={currentData.templateName || ''}
-              placeholder={t('workflowDesigner.selectTemplate')} 
-              readOnly 
-              onClick={() => {
-                // 設置模板選擇的來源，以便在 TemplateModal 中知道是為哪個訊息類型選擇模板
-                // 通過自定義事件傳遞訊息類型
-                window.dispatchEvent(new CustomEvent('qrCodeTemplateSelectRequest', { 
-                  detail: { messageType: messageType } 
-                }));
-                setIsTemplateModalVisible(true);
-              }}
-              suffix={<FormOutlined />}
-            />
-            {currentData.templateId && (
-              <div style={{ 
-                position: 'absolute', 
-                right: '30px', 
-                top: '50%', 
-                transform: 'translateY(-50%)',
-                zIndex: 1
-              }}>
-                <Button 
-                  type="text" 
-                  size="small" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateCurrentData(messageType, {
-                      messageMode: 'direct', // 清除模板時切換回直接訊息模式
-                      templateId: '',
-                      templateName: '',
-                      isMetaTemplate: false,
-                      templateLanguage: null,
-                      templateVariables: []
-                    });
-                  }}
-                  style={{ padding: '0 4px', fontSize: '12px' }}
-                >
-                  {t('workflowDesigner.clear')}
-                </Button>
-              </div>
-            )}
-          </div>
-        </Form.Item>
-        
-        {currentData.templateId && (
-          <Card size="small" title={t('workflowDesigner.templateInfo')} style={{ marginBottom: 16 }}>
-            <p><strong>{t('workflowDesigner.templateId')}</strong>{currentData.templateId}</p>
-            <p><strong>{t('workflowDesigner.templateName')}</strong>{currentData.templateName}</p>
-            {currentData.isMetaTemplate && (
-              <p>
-                <Tag color="blue">{t('workflowDesigner.metaTemplate.title')}</Tag>
-              </p>
-            )}
-          </Card>
-        )}
-        
-        {/* 模板變數編輯 */}
-        {currentData.templateId && (
-          <TemplateVariableConfig
-            templateId={currentData.templateId}
-            isMetaTemplate={currentData.isMetaTemplate}
-            processVariables={processVariables}
-            value={currentData.templateVariables || []}
-            onChange={(templateVariables) => updateCurrentData(messageType, { templateVariables })}
-            t={t}
-          />
-        )}
-      </>
+      <TemplateTab
+        form={form}
+        t={t}
+        processVariables={processVariables}
+        templateData={{
+          templateId: currentData.templateId,
+          templateName: currentData.templateName,
+          isMetaTemplate: currentData.isMetaTemplate,
+          templateLanguage: currentData.templateLanguage,
+          templateVariables: currentData.templateVariables || [],
+        }}
+        onTemplateSelect={() => {
+          window.dispatchEvent(new CustomEvent('qrCodeTemplateSelectRequest', { 
+            detail: { messageType: messageType } 
+          }));
+          setIsTemplateModalVisible(true);
+        }}
+        onTemplateClear={() => {
+          updateCurrentData(messageType, {
+            messageMode: 'direct',
+            templateId: '',
+            templateName: '',
+            isMetaTemplate: false,
+            templateLanguage: null,
+            templateVariables: []
+          });
+        }}
+        onTemplateVariablesChange={(templateVariables) => {
+          updateCurrentData(messageType, { templateVariables });
+        }}
+        mode="input"
+        onOpenTemplateModal={() => {
+          window.dispatchEvent(new CustomEvent('qrCodeTemplateSelectRequest', { 
+            detail: { messageType: messageType } 
+          }));
+          setIsTemplateModalVisible(true);
+        }}
+        onCustomEvent={true}
+        eventName="qrCodeTemplateSelectRequest"
+        eventData={{ messageType }}
+      />
+    );
+  };
+
+  // 渲染 Email Tab 內容
+  const renderEmailTab = (messageType) => {
+    const currentData = getCurrentData(messageType);
+    const prefix = getFieldPrefix(messageType);
+    const emailConfig = currentData.emailConfig || {};
+    
+    return (
+      <EmailTab
+        form={form}
+        t={t}
+        processVariables={processVariables}
+        emailProviders={emailProviders}
+        loadingEmailProviders={loadingEmailProviders}
+        emailConfig={emailConfig}
+        onEmailConfigChange={(newConfig) => {
+          updateCurrentData(messageType, { emailConfig: newConfig });
+        }}
+        fieldPrefix={prefix.emailConfig}
+        showProcessVariables={true}
+        onVariableInsert={(variableName) => {
+          const currentBody = emailConfig.body || '';
+          const newBody = currentBody + `\${${variableName}}`;
+          updateCurrentData(messageType, { 
+            emailConfig: {
+              ...emailConfig,
+              body: newBody
+            }
+          });
+        }}
+      />
     );
   };
 
@@ -265,6 +255,15 @@ const QRCodeMessageTabsComponent = ({
           </span>
         ),
         children: renderTemplateTab(messageType)
+      },
+      {
+        key: 'email',
+        label: (
+          <span>
+            <MailOutlined /> {t('workflowDesigner.sendEmail')}
+          </span>
+        ),
+        children: renderEmailTab(messageType)
       }
     ];
 

@@ -30,14 +30,21 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
   // 載入所有消息發送記錄
   useEffect(() => {
     if (visible && workflowExecutionId) {
-      // 每次打開模態框時，清空當前選中的消息發送記錄
+      // 每次打開模態框時，清空當前選中的消息發送記錄和重置 tab
       setCurrentMessageSend(null);
+      setActiveTab('normal');
       loadAllMessageSends();
     } else if (!visible) {
       // 當模態框關閉時，也清空當前選中的消息發送記錄
       setCurrentMessageSend(null);
     }
   }, [visible, workflowExecutionId]);
+
+  // 處理 tab 切換，切換時清空當前選中的消息發送記錄
+  const handleTabChange = (key) => {
+    setActiveTab(key);
+    setCurrentMessageSend(null); // 切換 tab 時清空 Recipient Details
+  };
 
   const loadAllMessageSends = async () => {
     try {
@@ -288,7 +295,7 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
               rowKey="id"
               pagination={false}
               size="small"
-              scroll={{ x: 1200 }}
+              scroll={{ x: 1500 }}
               columns={[
                 {
                   title: t('workflowMonitor.messageSendId'),
@@ -315,6 +322,22 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
                   key: 'sendReason',
                   width: 120,
                   render: (sendReason) => getSendReasonTag(sendReason)
+                },
+                {
+                  title: t('workflowMonitor.messageContent'),
+                  dataIndex: 'messageContent',
+                  key: 'messageContent',
+                  width: 250,
+                  ellipsis: {
+                    showTitle: false,
+                  },
+                  render: (text) => text ? (
+                    <Tooltip title={text}>
+                      <Text style={{ fontSize: '12px' }}>
+                        {text.length > 50 ? `${text.substring(0, 50)}...` : text}
+                      </Text>
+                    </Tooltip>
+                  ) : '-'
                 },
                 {
                   title: t('workflowMonitor.status'),
@@ -383,6 +406,28 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
             />
           )}
         </Card>
+
+        {/* 消息內容詳情 */}
+        {currentMessageSend && currentMessageSend.messageContent && (
+          <Card 
+            title={t('workflowMonitor.messageContent')}
+            className="message-content-detail"
+            style={{ marginTop: 16 }}
+          >
+            <div style={{ 
+              padding: 12,
+              backgroundColor: '#f5f5f5',
+              borderRadius: 6,
+              border: '1px solid #d9d9d9',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              fontSize: '14px',
+              lineHeight: '1.6'
+            }}>
+              {currentMessageSend.messageContent}
+            </div>
+          </Card>
+        )}
 
         {/* 收件人詳情 */}
         {currentMessageSend && currentMessageSend.recipients && currentMessageSend.recipients.length > 0 && (
@@ -534,7 +579,7 @@ const MessageSendStatusModal = ({ visible, onClose, messageSendId, workflowExecu
           <p style={{ marginTop: 16 }}>{t('workflowMonitor.loadingMessageSendRecords')}</p>
         </div>
       ) : (
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <Tabs activeKey={activeTab} onChange={handleTabChange}>
           <TabPane 
             tab={
               <span>

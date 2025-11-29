@@ -130,6 +130,9 @@ builder.Services.AddScoped<Func<string, LoggingService>>(provider =>
 builder.Services.AddScoped<WorkflowMessageSendService>();
 builder.Services.AddScoped<RecipientResolverService>();
 
+// 註冊 EmailService
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 // 註冊 WhatsAppWorkflowService
 builder.Services.AddScoped<WhatsAppWorkflowService>();
 

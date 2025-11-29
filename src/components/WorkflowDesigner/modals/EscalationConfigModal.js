@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Tabs, Input, Button, Space, Tag, Form, Divider } from 'antd';
-import { BellOutlined, MessageOutlined, FileTextOutlined, FormOutlined, UserAddOutlined } from '@ant-design/icons';
+import { Modal, Tabs, Button, Form, Divider } from 'antd';
+import { BellOutlined, MessageOutlined, FileTextOutlined, UserAddOutlined, MailOutlined } from '@ant-design/icons';
 import RecipientSelector from '../components/RecipientSelector';
-import TemplateVariableConfig from '../components/TemplateVariableConfig';
-
-const { TextArea } = Input;
+import DirectMessageTab from '../components/DirectMessageTab';
+import TemplateTab from '../components/TemplateTab';
+import EmailTab from '../components/EmailTab';
+import { useEmailProviders } from '../hooks/useEmailProviders';
 
 /**
  * Escalation Config 設置模態框
@@ -27,40 +28,91 @@ const EscalationConfigModal = ({
   const [directMessage, setDirectMessage] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateVariables, setTemplateVariables] = useState([]); // 新增：模板變量配置
+  // 移除 emailConfig state，直接使用 initialConfig.emailConfig（與節點屬性頁的做法一致）
+  // 用戶的修改會通過 onEmailConfigChange 回調保存到臨時對象，在保存時使用
+  const [tempEmailConfig, setTempEmailConfig] = useState(null); // 臨時存儲用戶的修改
+  const [form] = Form.useForm();
+
+  // 使用 Email Providers Hook
+  const { emailProviders, loadingEmailProviders } = useEmailProviders(true);
+
+  // 處理模板選擇事件
+  useEffect(() => {
+    const handleTemplateSelected = (event) => {
+      const { template, isMetaTemplate } = event.detail;
+      console.log('🎯 EscalationConfigModal 收到模板選擇事件:', { template: template.name, isMetaTemplate });
+      setSelectedTemplate({
+        id: template.id,
+        name: template.name,
+        isMetaTemplate,
+        language: template.language || null
+      });
+    };
+
+    window.addEventListener('timeValidatorTemplateSelected', handleTemplateSelected);
+    
+    return () => {
+      window.removeEventListener('timeValidatorTemplateSelected', handleTemplateSelected);
+    };
+  }, []);
 
   // 當 modal 打開時，載入初始配置
   useEffect(() => {
-    if (visible && initialConfig) {
-      setRecipients(initialConfig.recipients || '');
-      setRecipientDetails(initialConfig.recipientDetails || null);
+    if (visible) {
+      console.log('🟡 EscalationConfigModal useEffect - visible:', visible, 'initialConfig:', initialConfig);
+      // 重置臨時 emailConfig
+      setTempEmailConfig(null);
       
-      if (initialConfig.useTemplate) {
-        setActiveTab('template');
-        setSelectedTemplate({
-          id: initialConfig.templateId,
-          name: initialConfig.templateName,
-          isMetaTemplate: initialConfig.isMetaTemplate || false
-        });
-        setTemplateVariables(initialConfig.templateVariables || []);
+      if (initialConfig) {
+        setRecipients(initialConfig.recipients || '');
+        setRecipientDetails(initialConfig.recipientDetails || null);
+        
+        // 檢查是否有 emailConfig（優先檢查 messageMode，如果沒有則檢查 emailConfig 是否存在）
+        if ((initialConfig.messageMode === 'email' || initialConfig.emailConfig) && initialConfig.emailConfig) {
+          console.log('🟡 EscalationConfigModal 載入 email 配置:', initialConfig.emailConfig);
+          setActiveTab('email');
+          // 同步到 form（與節點屬性頁的做法一致）
+          const config = initialConfig.emailConfig;
+          form.setFieldsValue({
+            'emailConfig.providerKey': config.providerKey || '',
+            'emailConfig.subject': config.subject || '',
+            'emailConfig.body': config.body || '',
+          });
+        } else if (initialConfig.useTemplate) {
+          setActiveTab('template');
+          setSelectedTemplate({
+            id: initialConfig.templateId,
+            name: initialConfig.templateName,
+            isMetaTemplate: initialConfig.isMetaTemplate || false
+          });
+          setTemplateVariables(initialConfig.templateVariables || []);
+        } else {
+          setActiveTab('direct');
+          setDirectMessage(initialConfig.message || '');
+        }
       } else {
+        // 重置為默認值
         setActiveTab('direct');
-        setDirectMessage(initialConfig.message || '');
+        setRecipients('');
+        setRecipientDetails(null);
+        setDirectMessage('');
+        setSelectedTemplate(null);
+        setTemplateVariables([]);
+        // 重置 form
+        form.setFieldsValue({
+          'emailConfig.providerKey': '',
+          'emailConfig.subject': '',
+          'emailConfig.body': '',
+        });
       }
-    } else if (visible && !initialConfig) {
-      // 重置為默認值
-      setActiveTab('direct');
-      setRecipients('');
-      setRecipientDetails(null);
-      setDirectMessage('');
-      setSelectedTemplate(null);
-      setTemplateVariables([]);
     }
-  }, [visible, initialConfig]);
+  }, [visible, initialConfig, form]);
 
   const handleSave = () => {
     let config = {
       recipients,
-      recipientDetails
+      recipientDetails,
+      messageMode: activeTab // 'direct', 'template', 'email'
     };
     
     if (activeTab === 'direct') {
@@ -69,7 +121,7 @@ const EscalationConfigModal = ({
         useTemplate: false,
         message: directMessage
       };
-    } else {
+    } else if (activeTab === 'template') {
       config = {
         ...config,
         useTemplate: true,
@@ -78,18 +130,36 @@ const EscalationConfigModal = ({
         isMetaTemplate: selectedTemplate?.isMetaTemplate || false,
         templateVariables: templateVariables
       };
+    } else if (activeTab === 'email') {
+      // 優先使用 tempEmailConfig（用戶的修改），然後是 initialConfig.emailConfig，最後是 form 的值
+      // 這與節點屬性頁的做法一致：直接從數據源獲取，而不是依賴內部 state
+      const formValues = form.getFieldsValue(['emailConfig.providerKey', 'emailConfig.subject', 'emailConfig.body']);
+      const sourceConfig = tempEmailConfig || initialConfig?.emailConfig || {};
+      const finalEmailConfig = {
+        providerKey: sourceConfig.providerKey !== undefined && sourceConfig.providerKey !== null 
+          ? sourceConfig.providerKey 
+          : (formValues['emailConfig.providerKey'] || ''),
+        subject: sourceConfig.subject !== undefined && sourceConfig.subject !== null 
+          ? sourceConfig.subject 
+          : (formValues['emailConfig.subject'] || ''),
+        body: sourceConfig.body !== undefined && sourceConfig.body !== null 
+          ? sourceConfig.body 
+          : (formValues['emailConfig.body'] || ''),
+        replyTo: sourceConfig.replyTo !== undefined && sourceConfig.replyTo !== null 
+          ? sourceConfig.replyTo 
+          : '',
+      };
+      console.log('🟡 EscalationConfigModal.handleSave - emailConfig:', finalEmailConfig);
+      config = {
+        ...config,
+        useTemplate: false,
+        emailConfig: finalEmailConfig
+      };
     }
     
     onSave(config);
   };
 
-  const handleTemplateSelect = (template, isMetaTemplate) => {
-    setSelectedTemplate({
-      id: template.id,
-      name: template.name,
-      isMetaTemplate
-    });
-  };
 
   const handleRecipientChange = (value, detailedValue) => {
     if (value === '' && detailedValue === null) {
@@ -126,22 +196,20 @@ const EscalationConfigModal = ({
         </span>
       ),
       children: (
-        <div style={{ padding: '16px 0' }}>
-          <div style={{ marginBottom: 8, fontSize: 14, color: '#666' }}>
-            {t('workflowDesigner.timeValidator.escalationMessageDescription')}
-          </div>
-          <TextArea
-            value={directMessage}
-            onChange={(e) => setDirectMessage(e.target.value)}
-            placeholder={t('workflowDesigner.timeValidator.escalationMessagePlaceholder')}
-            rows={6}
-            maxLength={1000}
-            showCount
-          />
-          <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
-            💡 {t('workflowDesigner.timeValidator.escalationMessageTip')}
-          </div>
-        </div>
+        <DirectMessageTab
+          form={form}
+          t={t}
+          processVariables={processVariables}
+          fieldName="directMessage"
+          mode="modal"
+          description={t('workflowDesigner.timeValidator.escalationMessageDescription')}
+          placeholder={t('workflowDesigner.timeValidator.escalationMessagePlaceholder')}
+          rows={6}
+          tip={t('workflowDesigner.timeValidator.escalationMessageTip')}
+          value={directMessage}
+          onChange={setDirectMessage}
+          extraProps={{ maxLength: 1000, showCount: true }}
+        />
       )
     },
     {
@@ -152,72 +220,62 @@ const EscalationConfigModal = ({
         </span>
       ),
       children: (
+        <TemplateTab
+          form={form}
+          t={t}
+          processVariables={processVariables}
+          templateData={{
+            templateId: selectedTemplate?.id || null,
+            templateName: selectedTemplate?.name || null,
+            isMetaTemplate: selectedTemplate?.isMetaTemplate || false,
+            templateLanguage: selectedTemplate?.language || null,
+            templateVariables: templateVariables || [],
+          }}
+          onTemplateClear={() => {
+            setSelectedTemplate(null);
+            setTemplateVariables([]);
+          }}
+          onTemplateVariablesChange={setTemplateVariables}
+          mode="button"
+          onOpenTemplateModal={onOpenTemplateModal}
+          description={t('workflowDesigner.timeValidator.templateDescription')}
+          noTemplateSelectedText={t('workflowDesigner.timeValidator.noTemplateSelected')}
+        />
+      )
+    },
+    {
+      key: 'email',
+      label: (
+        <span>
+          <MailOutlined /> {t('workflowDesigner.sendEmail')}
+        </span>
+      ),
+      children: (
         <div style={{ padding: '16px 0' }}>
-          <div style={{ marginBottom: 12, fontSize: 14, color: '#666' }}>
-            {t('workflowDesigner.timeValidator.templateDescription')}
+          <div style={{ marginBottom: 8, fontSize: 14, color: '#666' }}>
+            {t('workflowDesigner.timeValidator.escalationMessageDescription')}
           </div>
-          
-          <Button 
-            type="dashed" 
-            icon={<FormOutlined />}
-            onClick={onOpenTemplateModal}
-            style={{ width: '100%', marginBottom: 12 }}
-          >
-            {t('workflowDesigner.selectTemplate')}
-          </Button>
-          
-          {selectedTemplate && (
-            <div style={{ 
-              padding: 12, 
-              backgroundColor: '#f5f5f5', 
-              borderRadius: 6,
-              border: '1px solid #d9d9d9'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
-                    {selectedTemplate.name}
-                  </div>
-                  {selectedTemplate.isMetaTemplate && (
-                    <Tag color="blue">{t('workflowDesigner.metaTemplate.title')}</Tag>
-                  )}
-                </div>
-                <Button 
-                  type="text" 
-                  size="small"
-                  onClick={() => setSelectedTemplate(null)}
-                >
-                  {t('common.clear')}
-                </Button>
-              </div>
-            </div>
-          )}
-          
-          {/* 模板變量配置 */}
-          {selectedTemplate && (
-            <div style={{ marginTop: 16 }}>
-              <TemplateVariableConfig
-                templateId={selectedTemplate.id}
-                isMetaTemplate={selectedTemplate.isMetaTemplate}
-                processVariables={processVariables}
-                value={templateVariables}
-                onChange={setTemplateVariables}
-                t={t}
-              />
-            </div>
-          )}
-          
-          {!selectedTemplate && (
-            <div style={{ 
-              textAlign: 'center', 
-              padding: 20, 
-              color: '#999',
-              border: '1px dashed #d9d9d9',
-              borderRadius: 6
-            }}>
-              {t('workflowDesigner.timeValidator.noTemplateSelected')}
-            </div>
-          )}
+          <EmailTab
+            form={form}
+            t={t}
+            processVariables={processVariables}
+            emailProviders={emailProviders}
+            loadingEmailProviders={loadingEmailProviders}
+            // 直接使用 initialConfig.emailConfig（與節點屬性頁的做法一致）
+            // 用戶的修改通過 onEmailConfigChange 保存到 tempEmailConfig
+            emailConfig={tempEmailConfig || initialConfig?.emailConfig || {}}
+            onEmailConfigChange={(newConfig) => {
+              // 保存用戶的修改到臨時對象（與節點屬性頁的 handleNodeDataChange 類似）
+              setTempEmailConfig(newConfig);
+              // 同步到 form，確保表單狀態正確
+              form.setFieldsValue({
+                'emailConfig.providerKey': newConfig.providerKey || '',
+                'emailConfig.subject': newConfig.subject || '',
+              });
+            }}
+            fieldPrefix="emailConfig"
+            showProcessVariables={true}
+          />
         </div>
       )
     }
@@ -246,7 +304,11 @@ const EscalationConfigModal = ({
           onClick={handleSave}
           disabled={
             !hasRecipients() || 
-            (activeTab === 'direct' ? !directMessage.trim() : !selectedTemplate)
+            (activeTab === 'direct' ? !directMessage.trim() : 
+             activeTab === 'template' ? !selectedTemplate :
+             activeTab === 'email' ? !(tempEmailConfig?.providerKey || initialConfig?.emailConfig?.providerKey) || 
+                                     !(tempEmailConfig?.subject || initialConfig?.emailConfig?.subject) || 
+                                     !(tempEmailConfig?.body || initialConfig?.emailConfig?.body) : true)
           }
         >
           {t('common.save')}
