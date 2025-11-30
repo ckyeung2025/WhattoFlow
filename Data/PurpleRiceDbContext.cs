@@ -14,13 +14,11 @@ namespace PurpleRice.Data
         public DbSet<WorkflowExecution> WorkflowExecutions { get; set; }
         public DbSet<WorkflowStepExecution> WorkflowStepExecutions { get; set; }
         public DbSet<WhatsAppMessage> WhatsAppMessages { get; set; }
-        public DbSet<DeliveryReceipt> DeliveryReceipt { get; set; }
         public DbSet<Company> Companies { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<Role> Roles { get; set; }
         public DbSet<UserRole> UserRoles { get; set; }
         public DbSet<RolesInterface> RolesInterfaces { get; set; }
-        public DbSet<delivery_receipt> delivery_receipt { get; set; }
         public DbSet<PurpleRice.Models.eFormDefinition> eFormDefinitions { get; set; }
         public DbSet<WhatsAppTemplate> WhatsAppTemplates { get; set; }
         public DbSet<WhatsAppTemplateUsage> WhatsAppTemplateUsage { get; set; }
@@ -172,7 +170,6 @@ namespace PurpleRice.Data
                 entity.Property(e => e.ValidationConfig).HasColumnName("ValidationConfig");
             });
             modelBuilder.Entity<WhatsAppMessage>().ToTable("whatsapp_messages", schema: "dbo");
-            modelBuilder.Entity<delivery_receipt>().ToTable("delivery_receipt", schema: "dbo");
             
             // WhatsApp 模板相關配置
             modelBuilder.Entity<WhatsAppTemplate>(entity =>

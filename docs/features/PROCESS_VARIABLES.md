@@ -330,6 +330,105 @@ Content-Type: application/json
 - 避免過多的變量
 - 定期清理歷史數據
 
+## 🔄 **變數替換功能**
+
+### **語法支持**
+
+系統支持 `${變數名}` 語法在所有節點中使用，實現動態變數替換。
+
+#### **支持的節點類型**
+- ✅ 發送 WhatsApp 訊息節點
+- ✅ 發送 WhatsApp 模板節點
+- ✅ Switch 條件節點（條件值中的變數替換）
+- ✅ 所有使用流程變數的節點
+
+#### **變數替換服務**
+- **VariableReplacementService**: 核心變數替換服務
+- **VariableReplacementController**: API 控制器
+- 支持多種數據類型 (string, int, decimal, boolean, datetime, json)
+
+### **前端變數編輯界面**
+
+#### **功能特性**
+- ✅ 變數語法提示和驗證
+- ✅ 可點擊插入變數標籤
+- ✅ 視覺化變數語法驗證（✓ 標記）
+- ✅ 模板變數編輯界面
+
+#### **使用示例**
+
+**發送 WhatsApp 訊息節點**：
+```
+您好 ${userName}，您的訂單 ${orderNumber} 已確認
+```
+
+**WhatsApp 模板節點**：
+- 變數名：`customerName`，值：`張三`
+- 變數名：`orderAmount`，值：`${totalAmount}`
+
+**Switch 條件節點**：
+```
+${userType} equals ${expectedUserType}
+```
+
+### **API 端點**
+
+#### **變數替換預覽**
+```http
+POST /api/variablereplacement/preview
+Content-Type: application/json
+
+{
+  "text": "Hello ${userName}, your order ${orderNumber} is ready"
+}
+```
+
+#### **實際變數替換**
+```http
+POST /api/variablereplacement/replace
+Content-Type: application/json
+
+{
+  "text": "Hello ${userName}",
+  "workflowExecutionId": 123
+}
+```
+
+### **測試指南**
+
+#### **測試步驟**
+
+1. **測試發送 WhatsApp 訊息節點**
+   - 建立工作流程
+   - 添加「發送 WhatsApp 訊息」節點
+   - 在訊息內容中輸入：`您好 ${userName}，您的訂單 ${orderNumber} 已確認`
+   - 觀察變數標籤的點擊插入功能
+   - 執行工作流程，檢查實際發送的訊息是否正確替換變數
+
+2. **測試 WhatsApp 模板節點**
+   - 添加「發送 WhatsApp 模板」節點
+   - 選擇一個模板
+   - 在變數編輯界面添加變數
+   - 觀察變數值輸入框的語法驗證提示（✓ 標記）
+   - 執行工作流程測試
+
+3. **測試 Switch 條件節點**
+   - 添加「Switch」節點
+   - 設定條件：`${userType} equals ${expectedUserType}`
+   - 執行工作流程，檢查條件評估是否正確
+
+#### **預期結果**
+- 所有 `${變數名}` 表達式都能正確替換為對應的 PV 值
+- 前端變數編輯界面提供直觀的語法提示和驗證
+- 工作流程執行時變數替換正常運作
+- 支援巢狀變數替換（變數值中包含其他變數）
+
+#### **注意事項**
+- 變數名稱區分大小寫
+- 未找到的變數會保持原始格式 `${變數名}`
+- 所有節點類型都支援變數替換功能
+- 條件值中的變數也會被替換
+
 ## 🔮 **未來規劃**
 
 ### **1. 短期目標**
@@ -349,8 +448,8 @@ Content-Type: application/json
 
 ---
 
-**文檔版本**: 1.0.0  
-**最後更新**: 2025年8月31日  
+**文檔版本**: 2.0.0  
+**最後更新**: 2025年1月  
 **維護者**: 開發團隊
 
 

@@ -3,14 +3,13 @@
 ## 🎯 核心功能
 
 ### 1. 節點管理系統
-- ✅ **節點類型**：支持 10 種節點類型
+- ✅ **節點類型**：支持 9 種節點類型
   - Start (開始節點)
-  - Send WhatsApp Message (發送 WhatsApp 訊息)
-  - Send WhatsApp Template (發送 WhatsApp 模板)
+  - Send WhatsApp (發送 WhatsApp 訊息/模板，支持直接訊息和模板兩種模式)
   - Wait for User Reply (等待用戶回覆)
   - Wait for QR Code (等待 QR Code 掃描)
   - Switch (條件分支)
-  - Database Query/Update (資料庫查詢/更新)
+  - DataSet Query/Update (資料集查詢/更新)
   - Trigger External API (調用外部 API)
   - Send eForm (發送電子表單)
   - End (結束節點)

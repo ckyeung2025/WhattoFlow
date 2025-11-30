@@ -5,8 +5,6 @@ import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import SideMenu from './components/SideMenu';
 import Dashboard from './pages/Dashboard';
-import UnconfirmedPage from './pages/UnconfirmedPage';
-import CustomerSignedPage from './pages/CustomerSignedPage';
 import WhatsAppWorkflowPage from './pages/WhatsAppWorkflowPage';
 import WorkflowListPage from './pages/WorkflowListPage';
 import WorkflowMonitorPage from './pages/WorkflowMonitorPage';
@@ -41,9 +39,7 @@ const { Content } = Layout;
 
 const pathToMenuKey = {
   '/dashboard': 'dashboard',
-  '/unsigned': 'unsigned',
   '/pending-tasks': 'pendingTasks',
-  '/customer-signed': 'customerSigned',
   '/whatsapp-workflow': 'whatsappWorkflow',
   '/workflow-list': 'whatsappWorkflow',
   '/workflow-monitor': 'workflowMonitor',
@@ -85,14 +81,8 @@ function MainLayout({ userInfo, onLogout }) {
       case 'dashboard':
         navigate('/dashboard');
         break;
-      case 'unsigned':
-        navigate('/unsigned');
-        break;
       case 'pendingTasks':
         navigate('/pending-tasks');
-        break;
-      case 'customerSigned':
-        navigate('/customer-signed');
         break;
       case 'whatsappWorkflow':
         navigate('/workflow-list');
@@ -162,8 +152,6 @@ function MainLayout({ userInfo, onLogout }) {
         <Content className="main-content-panel">
           <Routes>
             <Route path="/dashboard" element={<Dashboard onMenuSelect={handleMenuSelect} />} />
-            <Route path="/unsigned" element={<UnconfirmedPage />} />
-            <Route path="/customer-signed" element={<CustomerSignedPage />} />
             <Route path="/whatsapp-workflow" element={<WhatsAppWorkflowPage />} />
             <Route path="/workflow-list" element={<WorkflowListPage />} />
             <Route path="/workflow-monitor" element={<WorkflowMonitorPage />} />
@@ -220,14 +208,8 @@ function AppContent() {
       case 'dashboard':
         navigate('/dashboard');
         break;
-      case 'unsigned':
-        navigate('/unsigned');
-        break;
       case 'pendingTasks':
         navigate('/pending-tasks');
-        break;
-      case 'customerSigned':
-        navigate('/customer-signed');
         break;
       case 'whatsappWorkflow':
         navigate('/workflow-list');
@@ -477,8 +459,6 @@ function AppContent() {
           <Content className="main-content-panel">
             <Routes>
               <Route path="/dashboard" element={<Dashboard onMenuSelect={handleMenuSelect} />} />
-              <Route path="/unsigned" element={<UnconfirmedPage />} />
-              <Route path="/customer-signed" element={<CustomerSignedPage />} />
               <Route path="/whatsapp-workflow" element={<WhatsAppWorkflowPage />} />
               <Route path="/workflow-list" element={<WorkflowListPage />} />
               <Route path="/workflow-monitor" element={<WorkflowMonitorPage />} />

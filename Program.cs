@@ -115,7 +115,6 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddScoped<PdfService>();
-builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<DocumentConverterService>();
 builder.Services.AddScoped<UserSessionService>();
 builder.Services.AddScoped<IMessageValidator, MessageValidator>();

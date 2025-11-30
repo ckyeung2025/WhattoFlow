@@ -6,7 +6,7 @@
 
 ## ✨ 主要功能
 
-- 🎯 **10種節點類型**：Start, Send WhatsApp, Switch, DB Query, API Call, EForm, End 等
+- 🎯 **9種節點類型**：Start, Send WhatsApp, Wait Reply, Wait for QR Code, Switch, DataSet Query/Update, Call API, Send eForm, End
 - 🔗 **拖拽連接**：直觀的節點連接和編輯
 - ⚙️ **屬性編輯**：右側屬性面板，支持實時預覽
 - 📋 **模態框系統**：模板選擇、用戶選擇、變量管理等

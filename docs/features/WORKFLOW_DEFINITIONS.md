@@ -23,36 +23,41 @@ WhattoFlow 系統的工作流定義模組是一個強大的業務流程設計和
 ## �� **工作流設計器**
 
 ### **1. 節點類型系統**
+
+根據實際實現（`Models/WorkflowNodeTypes.cs`），系統支持以下 9 種節點類型：
+
 ```javascript
-// 基礎節點類型
-const baseNodeTypes = {
-  'start': StartNode,           // 開始節點
-  'end': EndNode,               // 結束節點
-  'task': TaskNode,             // 任務節點
-  'decision': DecisionNode,     // 決策節點
-  'parallel': ParallelNode,     // 並行節點
-  'subprocess': SubprocessNode  // 子流程節點
+// 控制節點 (Control)
+const controlNodes = {
+  'start': StartNode,              // 開始節點
+  'end': EndNode,                  // 結束節點
+  'waitReply': WaitReplyNode,      // 等待用戶回覆
+  'waitForQRCode': WaitForQRCodeNode, // 等待 QR Code 掃描
+  'switch': SwitchNode             // 條件分支
 };
 
-// 業務節點類型
-const businessNodeTypes = {
-  'message': MessageNode,       // 消息發送節點
-  'notification': NotificationNode, // 通知節點
-  'approval': ApprovalNode,     // 審批節點
-  'calculation': CalculationNode, // 計算節點
-  'integration': IntegrationNode, // 集成節點
-  'ai': AINode                  // AI 處理節點
+// 通信節點 (Communication)
+const communicationNodes = {
+  'sendWhatsApp': SendWhatsAppNode  // 發送 WhatsApp（支持直接訊息和模板兩種模式）
 };
 
-// 控制節點類型
-const controlNodeTypes = {
-  'delay': DelayNode,           // 延遲節點
-  'timer': TimerNode,           // 定時器節點
-  'loop': LoopNode,             // 循環節點
-  'error': ErrorHandlerNode,    // 錯誤處理節點
-  'compensation': CompensationNode // 補償節點
+// 數據節點 (Data)
+const dataNodes = {
+  'dataSetQuery': DataSetQueryNode  // DataSet 查詢/更新
+};
+
+// 集成節點 (Integration)
+const integrationNodes = {
+  'callApi': CallApiNode           // 調用外部 API
+};
+
+// 表單節點 (Form)
+const formNodes = {
+  'sendEForm': SendEFormNode       // 發送電子表單
 };
 ```
+
+**注意**: 系統實際支持的是上述 9 種節點類型，不包含文檔中提到的 task, decision, parallel, subprocess, approval, calculation, ai, delay, timer, loop, error, compensation 等節點類型。
 
 ### **2. 邊類型定義**
 ```javascript
