@@ -215,6 +215,29 @@ export class TimezoneUtils {
   static calculateDuration(startDate, endDate = new Date()) {
     return this.calculateDurationInMinutes(startDate, endDate);
   }
+
+  /**
+   * 格式化日期時間（便捷方法，使用瀏覽器時區）
+   * @param {string|Date|moment} date - 原始日期
+   * @param {string} format - 日期格式，默認為 'YYYY-MM-DD HH:mm:ss'
+   * @returns {string} 格式化後的日期字符串
+   */
+  static formatDateTime(date, format = 'YYYY-MM-DD HH:mm:ss') {
+    if (!date) return '-';
+    
+    try {
+      const browserTimezone = this.getBrowserTimezoneOffset();
+      return this.formatDateWithTimezone(date, browserTimezone, format);
+    } catch (error) {
+      console.error('格式化日期時間錯誤:', error);
+      // 如果出錯，使用簡單的 moment 格式化
+      try {
+        return moment(date).format(format);
+      } catch (e) {
+        return date.toString();
+      }
+    }
+  }
 }
 
 /**

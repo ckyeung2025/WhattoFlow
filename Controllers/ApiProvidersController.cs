@@ -8,8 +8,10 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Localization;
 using PurpleRice.Models.Dto.ApiProviders;
 using PurpleRice.Services.ApiProviders;
+using PurpleRice.Resources;
 
 namespace PurpleRice.Controllers
 {
@@ -20,13 +22,16 @@ namespace PurpleRice.Controllers
     {
         private readonly IApiProviderService _apiProviderService;
         private readonly ILogger<ApiProvidersController> _logger;
+        private readonly IStringLocalizer<ApiProvidersResources> _localizer;
 
         public ApiProvidersController(
             IApiProviderService apiProviderService,
-            ILogger<ApiProvidersController> logger)
+            ILogger<ApiProvidersController> logger,
+            IStringLocalizer<ApiProvidersResources> localizer)
         {
             _apiProviderService = apiProviderService;
             _logger = logger;
+            _localizer = localizer;
         }
 
         [HttpGet("definitions")]
@@ -42,7 +47,7 @@ namespace PurpleRice.Controllers
             var companyId = GetCurrentCompanyId();
             if (companyId == Guid.Empty)
             {
-                return Unauthorized(new { error = "無法識別公司資訊" });
+                return Unauthorized(new { error = _localizer["CompanyInfoNotRecognized"] });
             }
 
             var items = await _apiProviderService.GetCompanyProvidersAsync(companyId, category);
@@ -55,7 +60,7 @@ namespace PurpleRice.Controllers
             var companyId = GetCurrentCompanyId();
             if (companyId == Guid.Empty)
             {
-                return Unauthorized(new { error = "無法識別公司資訊" });
+                return Unauthorized(new { error = _localizer["CompanyInfoNotRecognized"] });
             }
 
             try
@@ -75,13 +80,13 @@ namespace PurpleRice.Controllers
         {
             if (request == null)
             {
-                return BadRequest(new { error = "請提供設定資料" });
+                return BadRequest(new { error = _localizer["ProvideSettingData"] });
             }
 
             var companyId = GetCurrentCompanyId();
             if (companyId == Guid.Empty)
             {
-                return Unauthorized(new { error = "無法識別公司資訊" });
+                return Unauthorized(new { error = _localizer["CompanyInfoNotRecognized"] });
             }
 
             try
@@ -109,18 +114,18 @@ namespace PurpleRice.Controllers
         {
             if (request == null)
             {
-                return BadRequest(new { error = "請提供測試郵件資料" });
+                return BadRequest(new { error = _localizer["ProvideTestEmailData"] });
             }
 
             var companyId = GetCurrentCompanyId();
             if (companyId == Guid.Empty)
             {
-                return Unauthorized(new { error = "無法識別公司資訊" });
+                return Unauthorized(new { error = _localizer["CompanyInfoNotRecognized"] });
             }
 
             if (providerKey != "microsoft-graph")
             {
-                return BadRequest(new { error = "目前僅支持 Microsoft Graph API 郵件測試" });
+                return BadRequest(new { error = _localizer["OnlyMicrosoftGraphSupported"] });
             }
 
             try
@@ -131,7 +136,7 @@ namespace PurpleRice.Controllers
                     string.IsNullOrWhiteSpace(request.ClientSecret) ||
                     string.IsNullOrWhiteSpace(request.FromEmail))
                 {
-                    return BadRequest(new { error = "請提供完整的 OAuth 配置和發件人地址" });
+                    return BadRequest(new { error = _localizer["ProvideCompleteOAuthConfig"] });
                 }
 
                 // 獲取 OAuth 2.0 Access Token
@@ -139,7 +144,7 @@ namespace PurpleRice.Controllers
                 var accessToken = await GetMicrosoftGraphAccessTokenAsync(request.TenantId, request.ClientId, request.ClientSecret);
                 if (string.IsNullOrWhiteSpace(accessToken))
                 {
-                    return BadRequest(new { error = "無法獲取 OAuth 2.0 Access Token。請檢查：\n1. Tenant ID、Client ID 和 Client Secret 是否正確\n2. 應用程序是否已配置 Mail.Send 應用程序權限（Application Permission）\n3. 管理員是否已同意該權限" });
+                    return BadRequest(new { error = _localizer["CannotGetAccessToken", Environment.NewLine] });
                 }
                 
                 _logger.LogInformation($"成功獲取 Access Token，開始發送測試郵件 - From: {request.FromEmail}, To: {request.ToEmail ?? request.FromEmail}");
@@ -149,15 +154,15 @@ namespace PurpleRice.Controllers
                     accessToken,
                     request.FromEmail,
                     request.ToEmail ?? request.FromEmail,
-                    request.Subject ?? "WhattoFlow 郵件發送測試",
-                    request.Body ?? "這是一封測試郵件，用於驗證 Microsoft Graph API 郵件發送配置是否正確。",
+                    request.Subject ?? _localizer["DefaultTestEmailSubject"],
+                    request.Body ?? _localizer["DefaultTestEmailBody"],
                     request.ReplyTo
                 );
 
                 return Ok(new
                 {
                     success = true,
-                    message = "測試郵件發送成功",
+                    message = _localizer["TestEmailSentSuccess"],
                     fromEmail = request.FromEmail,
                     toEmail = request.ToEmail ?? request.FromEmail
                 });
@@ -295,7 +300,7 @@ namespace PurpleRice.Controllers
                     _logger.LogError($"Failed to send email: {response.StatusCode} - {responseContent}");
                     
                     // 解析錯誤訊息
-                    string errorMessage = $"發送郵件失敗: {response.StatusCode}";
+                    string errorMessage = _localizer["SendEmailFailed", response.StatusCode.ToString()];
                     string errorCode = null;
                     string errorDetails = null;
                     
@@ -312,26 +317,21 @@ namespace PurpleRice.Controllers
                             if (errorObj.TryGetProperty("message", out var message))
                             {
                                 errorDetails = message.GetString();
-                                errorMessage = $"發送郵件失敗: {errorDetails}";
+                                errorMessage = _localizer["SendEmailFailed", errorDetails ?? ""];
                             }
                             
                             // 根據錯誤代碼提供具體的解決方案
                             if (errorCode == "ErrorAccessDenied" || errorDetails?.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) == true)
                             {
-                                errorMessage = "權限不足。請確認以下配置：\n" +
-                                    "1. 在 Azure Portal 中為應用程序添加 'Mail.Send' 應用程序權限（Application Permission，不是 Delegated Permission）\n" +
-                                    "2. 點擊「為 [組織名稱] 授與管理員同意」按鈕\n" +
-                                    "3. 確認發件人 email 地址與應用程序有權限發送的用戶匹配\n" +
-                                    "4. 如果使用應用程序權限，發件人必須是應用程序有權限的用戶\n" +
-                                    "詳見：https://learn.microsoft.com/en-us/graph/auth-v2-service";
+                                errorMessage = _localizer["AccessDeniedError", Environment.NewLine];
                             }
                             else if (errorCode == "ErrorInvalidUser")
                             {
-                                errorMessage = $"無效的用戶：發件人 email '{fromEmail}' 不存在或應用程序無權限訪問。請確認 email 地址正確，且應用程序有權限代表該用戶發送郵件。";
+                                errorMessage = _localizer["InvalidUserError", fromEmail];
                             }
                             else if (!string.IsNullOrWhiteSpace(errorDetails))
                             {
-                                errorMessage = $"發送郵件失敗: {errorDetails}";
+                                errorMessage = _localizer["SendEmailFailed", errorDetails];
                             }
                         }
                     }
@@ -340,11 +340,11 @@ namespace PurpleRice.Controllers
                         // 如果解析失敗，使用原始錯誤訊息
                         if (responseContent.Contains("Access is denied", StringComparison.OrdinalIgnoreCase))
                         {
-                            errorMessage = "權限不足。請在 Azure Portal 中為應用程序添加 'Mail.Send' 應用程序權限（Application Permission），並由管理員同意。";
+                            errorMessage = _localizer["AccessDeniedSimple"];
                         }
                         else
                         {
-                            errorMessage = $"發送郵件失敗: {response.StatusCode} - {responseContent}";
+                            errorMessage = _localizer["SendEmailFailed", $"{response.StatusCode} - {responseContent}"];
                         }
                     }
                     

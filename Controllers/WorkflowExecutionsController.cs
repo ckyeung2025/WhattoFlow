@@ -305,6 +305,7 @@ namespace PurpleRice.Controllers
                         duration = e.EndedAt.HasValue ? 
                             (int?)(e.EndedAt.Value - e.StartedAt).TotalMinutes : null,
                         e.CreatedBy,
+                        e.InitiatedBy,
                         e.ErrorMessage,
                         e.InputJson  // 添加 InputJson 字段
                     })
@@ -1289,6 +1290,194 @@ namespace PurpleRice.Controllers
                 
                 return StatusCode(500, new { error = "查找消息發送記錄失敗", details = ex.Message, type = ex.GetType().Name });
             }
+        }
+
+        // GET: api/workflowexecutions/steps/monitor
+        [HttpGet("steps/monitor")]
+        public async Task<IActionResult> GetStepExecutionsMonitor(
+            int? workflowDefinitionId = null,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 開始獲取步驟執行記錄（包含已完成和未完成的）===");
+                _loggingService.LogInformation($"WorkflowDefinitionId: {workflowDefinitionId?.ToString() ?? "All"}");
+                _loggingService.LogInformation($"StartDate: {startDate?.ToString() ?? "All"}");
+                _loggingService.LogInformation($"EndDate: {endDate?.ToString() ?? "All"}");
+
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                // 查詢步驟執行記錄（包含已完成和未完成的，但排除已取消的）
+                var query = _db.WorkflowStepExecutions
+                    .Include(se => se.WorkflowExecution)
+                        .ThenInclude(we => we.WorkflowDefinition)
+                    .Where(se => se.WorkflowExecution.WorkflowDefinition.CompanyId == companyId.Value)
+                    .Where(se => se.Status != null && 
+                                 !se.Status.ToLower().Contains("cancelled") &&
+                                 se.Status != "");
+
+                // 如果指定了 workflowDefinitionId，則過濾
+                if (workflowDefinitionId.HasValue)
+                {
+                    query = query.Where(se => se.WorkflowExecution.WorkflowDefinitionId == workflowDefinitionId.Value);
+                }
+
+                // 日期範圍過濾（基於 StartedAt）
+                if (startDate.HasValue)
+                {
+                    var localStartDate = startDate.Value.ToLocalTime().Date;
+                    query = query.Where(se => se.StartedAt.HasValue && se.StartedAt.Value >= localStartDate);
+                }
+                if (endDate.HasValue)
+                {
+                    var localEndDate = endDate.Value.ToLocalTime().Date.AddDays(1).AddTicks(-1);
+                    query = query.Where(se => se.StartedAt.HasValue && se.StartedAt.Value <= localEndDate);
+                }
+
+                var stepExecutionsData = await query
+                    .OrderByDescending(se => se.StartedAt ?? DateTime.UtcNow)
+                    .Select(se => new
+                    {
+                        id = se.Id,
+                        workflowExecutionId = se.WorkflowExecutionId,
+                        workflowName = se.WorkflowExecution.WorkflowDefinition.Name,
+                        workflowDefinitionId = se.WorkflowExecution.WorkflowDefinitionId,
+                        stepIndex = se.StepIndex,
+                        stepType = se.StepType,
+                        taskName = se.TaskName,
+                        status = se.Status,
+                        startedAt = se.StartedAt,
+                        endedAt = se.EndedAt,
+                        isWaiting = se.IsWaiting,
+                        waitingForUser = se.WaitingForUser,
+                        initiatedBy = se.WorkflowExecution.InitiatedBy,
+                        executionStatus = se.WorkflowExecution.Status,
+                        inputJson = se.InputJson,
+                        outputJson = se.OutputJson
+                    })
+                    .ToListAsync();
+
+                // 獲取所有步驟執行的唯一組合（workflowExecutionId + stepIndex），用於精確匹配消息驗證記錄
+                var workflowExecutionIds = stepExecutionsData.Select(se => se.workflowExecutionId).Distinct().ToList();
+                var stepIndices = stepExecutionsData.Select(se => se.stepIndex).Distinct().ToList();
+                
+                // 批量查詢所有相關的消息驗證記錄（必須同時匹配 workflowExecutionId 和 stepIndex）
+                // 先查詢所有相關的 workflowExecutionId，然後在內存中過濾 stepIndex
+                var allMessageValidations = await _db.MessageValidations
+                    .Where(mv => workflowExecutionIds.Contains(mv.WorkflowExecutionId) && stepIndices.Contains(mv.StepIndex))
+                    .OrderBy(mv => mv.CreatedAt)
+                    .Select(mv => new
+                    {
+                        workflowExecutionId = mv.WorkflowExecutionId,
+                        stepIndex = mv.StepIndex,
+                        id = mv.Id,
+                        userMessage = mv.UserMessage,
+                        messageType = mv.MessageType,
+                        mediaUrl = mv.MediaUrl,
+                        isValid = mv.IsValid,
+                        processedData = mv.ProcessedData,
+                        createdAt = mv.CreatedAt
+                    })
+                    .ToListAsync();
+                
+                // 進一步過濾：只保留與步驟執行記錄完全匹配的消息驗證記錄
+                var stepExecutionKeys = stepExecutionsData
+                    .Select(se => $"{se.workflowExecutionId}_{se.stepIndex}")
+                    .ToHashSet();
+                allMessageValidations = allMessageValidations
+                    .Where(mv => stepExecutionKeys.Contains($"{mv.workflowExecutionId}_{mv.stepIndex}"))
+                    .ToList();
+
+                // 將消息驗證記錄按步驟分組（使用字符串鍵以便於查找）
+                var messageValidationsByStep = allMessageValidations
+                    .GroupBy(mv => $"{mv.workflowExecutionId}_{mv.stepIndex}")
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Select(mv => new
+                        {
+                            id = mv.id,
+                            userMessage = mv.userMessage,
+                            messageType = mv.messageType,
+                            mediaUrl = mv.mediaUrl,
+                            isValid = mv.isValid,
+                            processedData = mv.processedData,
+                            createdAt = mv.createdAt
+                        }).ToList()
+                    );
+
+                // 合併步驟執行數據和消息驗證記錄（精確匹配 workflowExecutionId 和 stepIndex）
+                var stepExecutions = stepExecutionsData.Select(se =>
+                {
+                    var key = $"{se.workflowExecutionId}_{se.stepIndex}";
+                    object validations;
+                    if (messageValidationsByStep.ContainsKey(key))
+                    {
+                        // 使用 JSON 序列化/反序列化來確保類型一致
+                        var validationsJson = JsonSerializer.Serialize(messageValidationsByStep[key]);
+                        validations = JsonSerializer.Deserialize<List<object>>(validationsJson) ?? new List<object>();
+                    }
+                    else
+                    {
+                        validations = new List<object>();
+                    }
+                    
+                    return new
+                    {
+                        se.id,
+                        se.workflowExecutionId,
+                        se.workflowName,
+                        se.workflowDefinitionId,
+                        se.stepIndex,
+                        se.stepType,
+                        se.taskName,
+                        se.status,
+                        se.startedAt,
+                        se.endedAt,
+                        se.isWaiting,
+                        se.waitingForUser,
+                        se.initiatedBy,
+                        se.executionStatus,
+                        se.inputJson,
+                        se.outputJson,
+                        messageValidations = validations
+                    };
+                }).ToList();
+
+                _loggingService.LogInformation($"✅ 成功獲取 {stepExecutions.Count} 個步驟執行記錄");
+
+                return Ok(new { data = stepExecutions, total = stepExecutions.Count });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 獲取活躍步驟執行記錄失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = "獲取活躍步驟執行記錄失敗", details = ex.Message });
+            }
+        }
+
+        private Guid? GetCurrentUserCompanyId()
+        {
+            var companyIdClaim = User.FindFirst("company_id");
+            if (companyIdClaim != null && Guid.TryParse(companyIdClaim.Value, out Guid companyId))
+            {
+                return companyId;
+            }
+
+            var userIdClaim = User.FindFirst("user_id");
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                var user = _db.Users.FirstOrDefault(u => u.Id == userId);
+                if (user != null)
+                {
+                    return user.CompanyId;
+                }
+            }
+
+            return null;
         }
     }
 

@@ -13,9 +13,22 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
 using PurpleRice.Services.ApiProviders;
 using PurpleRice.Services.Security;
+using Microsoft.Extensions.Localization;
+using Microsoft.AspNetCore.Localization;
+using System.Globalization;
 
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 配置本地化服務
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    var supportedCultures = new[] { "zh-TC", "zh-SC", "en" };
+    options.SetDefaultCulture("zh-TC")
+           .AddSupportedCultures(supportedCultures)
+           .AddSupportedUICultures(supportedCultures);
+});
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -366,6 +379,15 @@ if (Directory.Exists(appBasePath))
 }
 
 app.UseCors("AllowAll");
+
+// 配置本地化中間件
+var supportedCultures = new[] { "zh-TC", "zh-SC", "en" };
+var localizationOptions = new RequestLocalizationOptions()
+    .SetDefaultCulture("zh-TC")
+    .AddSupportedCultures(supportedCultures)
+    .AddSupportedUICultures(supportedCultures);
+app.UseRequestLocalization(localizationOptions);
+
 app.UseAuthentication();
 app.UseAuthorization();
 

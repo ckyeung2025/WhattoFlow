@@ -84,6 +84,7 @@ namespace PurpleRice.Controllers
                     .Select(e => new
                     {
                         e.Id,
+                        e.EFormDefinitionId,
                         formName = e.EFormDefinition != null ? e.EFormDefinition.Name : "未命名表單",
                         e.InstanceName,
                         e.Status,
@@ -95,6 +96,7 @@ namespace PurpleRice.Controllers
                         dueDate = e.CreatedAt.AddDays(7), // 假設 7 天後到期
                         priority = "High", // 暫時設為高優先級
                         fieldDisplaySettings = e.EFormDefinition != null ? e.EFormDefinition.FieldDisplaySettings : null, // 新增：字段顯示設定
+                        filledHtmlCode = e.FilledHtmlCode, // 新增：已填寫的 HTML 代碼
                         htmlCode = e.FilledHtmlCode ?? e.OriginalHtmlCode // 新增：HTML 代碼用於解析字段值
                     })
                     .ToListAsync();

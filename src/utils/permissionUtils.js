@@ -9,27 +9,34 @@ export const INTERFACE_HIERARCHY = {
   'application': ['publishedApps', 'pendingTasks', 'workflowMonitor'],
   'studio': ['eformList', 'whatsappTemplates', 'whatsappWorkflow', 'dataSets'],
   'adminTools': ['contactList', 'broadcastGroups', 'hashtags', 'companyUserAdmin', 'permissionManagement', 'apiProviders'],
-  'workflowMonitor': ['workflowMonitor.whatsappChat', 'workflowMonitor.pause', 'workflowMonitor.resume', 'workflowMonitor.retry', 'workflowMonitor.cancel', 'workflowMonitor.delete']
+  'workflowMonitor': ['workflowMonitor.whatsappChat', 'workflowMonitor.pause', 'workflowMonitor.resume', 'workflowMonitor.retry', 'workflowMonitor.cancel', 'workflowMonitor.delete'],
+  'reports': ['reports.daily', 'reports.monthly', 'reports.realtime'],
+  'reports.daily': ['reports.daily.pendingOverview', 'reports.daily.workflowExecution', 'reports.daily.formEfficiency', 'reports.daily.workflowHealth', 'reports.daily.whatsappInteraction'],
+  'reports.monthly': ['reports.monthly.workflowPerformance', 'reports.monthly.formApproval', 'reports.monthly.businessInsights', 'reports.monthly.systemUsage', 'reports.monthly.operationalOverview', 'reports.monthly.processStepExecution'],
+  'reports.realtime': ['reports.realtime.workflowActivity']
   // phoneVerificationAdmin 需要明確授予，不會從 adminTools 自動展開
 };
 
-const AUTO_EXPAND_PARENTS = new Set(['application', 'studio', 'adminTools']);
+const AUTO_EXPAND_PARENTS = new Set(['application', 'studio', 'adminTools', 'reports']);
 
 /**
- * 展開介面權限（有父級權限自動包含子級）
+ * 展開介面權限（有父級權限自動包含子級，有子級權限自動包含父級）
  * @param {string[]} interfaces - 用戶擁有的介面權限列表
  * @returns {string[]} 展開後的介面權限列表
  */
 export const expandInterfacesWithChildren = (interfaces) => {
   if (!interfaces || !Array.isArray(interfaces)) {
+    console.log('[PermissionUtils] expandInterfacesWithChildren: 無效的輸入參數');
     return [];
   }
 
+  console.log('[PermissionUtils] expandInterfacesWithChildren: 開始展開權限，原始權限:', interfaces);
   const expanded = new Set(interfaces);
 
-  // 檢查每個父級介面
+  // 1. 檢查每個父級介面 - 如果有父級權限，自動添加所有子級
   Object.keys(INTERFACE_HIERARCHY).forEach(parent => {
     if (AUTO_EXPAND_PARENTS.has(parent) && interfaces.includes(parent)) {
+      console.log(`[PermissionUtils] 發現父級權限 ${parent}，自動添加子級:`, INTERFACE_HIERARCHY[parent]);
       // 如果有父級權限，自動添加所有子級
       INTERFACE_HIERARCHY[parent].forEach(child => {
         expanded.add(child);
@@ -37,7 +44,43 @@ export const expandInterfacesWithChildren = (interfaces) => {
     }
   });
 
-  return Array.from(expanded);
+  // 2. 反向展開 - 如果有子級權限，自動添加父級
+  // 例如：如果有 reports.daily.workflowExecution，自動添加 reports.daily 和 reports
+  interfaces.forEach(iface => {
+    if (typeof iface !== 'string') return;
+    
+    // 檢查是否匹配任何父級的子級
+    Object.keys(INTERFACE_HIERARCHY).forEach(parent => {
+      const children = INTERFACE_HIERARCHY[parent];
+      if (children.includes(iface)) {
+        // 如果這個權限是某個父級的子級，添加父級
+        console.log(`[PermissionUtils] 發現子級權限 ${iface}，自動添加父級 ${parent}`);
+        expanded.add(parent);
+      }
+    });
+    
+    // 特殊處理：reports.daily.*、reports.monthly.* 和 reports.realtime.* 的子權限
+    if (iface.startsWith('reports.daily.')) {
+      console.log(`[PermissionUtils] 發現 reports.daily.* 權限 ${iface}，自動添加 reports.daily 和 reports`);
+      expanded.add('reports.daily');
+      expanded.add('reports');
+    } else if (iface.startsWith('reports.monthly.')) {
+      console.log(`[PermissionUtils] 發現 reports.monthly.* 權限 ${iface}，自動添加 reports.monthly 和 reports`);
+      expanded.add('reports.monthly');
+      expanded.add('reports');
+    } else if (iface.startsWith('reports.realtime.')) {
+      console.log(`[PermissionUtils] 發現 reports.realtime.* 權限 ${iface}，自動添加 reports.realtime 和 reports`);
+      expanded.add('reports.realtime');
+      expanded.add('reports');
+    } else if (iface === 'reports.daily' || iface === 'reports.monthly' || iface === 'reports.realtime') {
+      console.log(`[PermissionUtils] 發現 ${iface} 權限，自動添加 reports`);
+      expanded.add('reports');
+    }
+  });
+
+  const result = Array.from(expanded);
+  console.log('[PermissionUtils] expandInterfacesWithChildren: 展開後的權限:', result);
+  return result;
 };
 
 /**
@@ -66,11 +109,19 @@ export const hasInterfacePermission = (userInterfaces, interfaceKey) => {
  */
 export const filterMenuItemsByPermission = (menuItems, userInterfaces, userInfo = null) => {
   if (!menuItems || !Array.isArray(menuItems) || !userInterfaces || !Array.isArray(userInterfaces)) {
+    console.log('[PermissionUtils] filterMenuItemsByPermission: 無效的輸入參數');
     return [];
   }
 
   // 展開權限（包含父子級關係）
   const expandedInterfaces = expandInterfacesWithChildren(userInterfaces);
+  
+  console.log('[PermissionUtils] filterMenuItemsByPermission:');
+  console.log('  - userInterfaces:', userInterfaces);
+  console.log('  - expandedInterfaces:', expandedInterfaces);
+  console.log('  - 是否有 reports 權限:', expandedInterfaces.includes('reports'));
+  console.log('  - 是否有 reports.daily 權限:', expandedInterfaces.includes('reports.daily'));
+  console.log('  - 是否有 reports.monthly 權限:', expandedInterfaces.includes('reports.monthly'));
 
   return menuItems
     .map(item => {
@@ -91,9 +142,26 @@ export const filterMenuItemsByPermission = (menuItems, userInterfaces, userInfo 
         }
       }
 
+      // 特殊檢查：Reports 主選單 - 如果用戶有任何 reports.* 權限，就顯示
+      if (item.key === 'reports') {
+        const hasAnyReportsPermission = userInterfaces.some(iface => 
+          iface.startsWith('reports.')
+        );
+        const hasReportsInExpanded = expandedInterfaces.includes('reports');
+        console.log('[PermissionUtils] 檢查 Reports 主選單:');
+        console.log('  - hasAnyReportsPermission:', hasAnyReportsPermission);
+        console.log('  - hasReportsInExpanded:', hasReportsInExpanded);
+        console.log('  - 是否顯示:', hasAnyReportsPermission || hasReportsInExpanded);
+        
+        if (!hasAnyReportsPermission && !hasReportsInExpanded) {
+          console.log('[PermissionUtils] 過濾掉 Reports 主選單（沒有權限）');
+          return null; // 沒有任何 Reports 權限，過濾掉
+        }
+      } else {
       // 檢查當前項是否有權限
       if (!expandedInterfaces.includes(item.key)) {
         return null; // 沒有權限，過濾掉
+        }
       }
 
       // 如果有子項，遞歸過濾子項
@@ -106,10 +174,62 @@ export const filterMenuItemsByPermission = (menuItems, userInterfaces, userInfo 
                 return null; // 不是 Tenant_Admin，過濾掉
               }
             }
+            
+            // 特殊檢查：Reports 子選單 - 檢查對應的權限
+            if (child.key === 'reports.daily') {
+              const hasDailyPermission = userInterfaces.some(iface => 
+                iface.startsWith('reports.daily')
+              );
+              const hasDailyInExpanded = expandedInterfaces.includes('reports.daily');
+              console.log('[PermissionUtils] 檢查 reports.daily 子選單:');
+              console.log('  - hasDailyPermission:', hasDailyPermission);
+              console.log('  - hasDailyInExpanded:', hasDailyInExpanded);
+              console.log('  - 是否顯示:', hasDailyPermission || hasDailyInExpanded);
+              
+              if (!hasDailyPermission && !hasDailyInExpanded) {
+                console.log('[PermissionUtils] 過濾掉 reports.daily 子選單（沒有權限）');
+                return null; // 沒有 Daily Reports 權限，過濾掉
+              }
+            } else if (child.key === 'reports.monthly') {
+              const hasMonthlyPermission = userInterfaces.some(iface => 
+                iface.startsWith('reports.monthly')
+              );
+              const hasMonthlyInExpanded = expandedInterfaces.includes('reports.monthly');
+              console.log('[PermissionUtils] 檢查 reports.monthly 子選單:');
+              console.log('  - hasMonthlyPermission:', hasMonthlyPermission);
+              console.log('  - hasMonthlyInExpanded:', hasMonthlyInExpanded);
+              console.log('  - 是否顯示:', hasMonthlyPermission || hasMonthlyInExpanded);
+              
+              if (!hasMonthlyPermission && !hasMonthlyInExpanded) {
+                console.log('[PermissionUtils] 過濾掉 reports.monthly 子選單（沒有權限）');
+                return null; // 沒有 Monthly Reports 權限，過濾掉
+              }
+            } else if (child.key === 'reports.realtime') {
+              const hasRealtimePermission = userInterfaces.some(iface => 
+                iface.startsWith('reports.realtime')
+              );
+              const hasRealtimeInExpanded = expandedInterfaces.includes('reports.realtime');
+              console.log('[PermissionUtils] 檢查 reports.realtime 子選單:');
+              console.log('  - hasRealtimePermission:', hasRealtimePermission);
+              console.log('  - hasRealtimeInExpanded:', hasRealtimeInExpanded);
+              console.log('  - 是否顯示:', hasRealtimePermission || hasRealtimeInExpanded);
+              
+              if (!hasRealtimePermission && !hasRealtimeInExpanded) {
+                console.log('[PermissionUtils] 過濾掉 reports.realtime 子選單（沒有權限）');
+                return null; // 沒有 Realtime Reports 權限，過濾掉
+              }
+            }
+            
             return child;
           })
           .filter(child => {
             if (child === null) return false;
+            
+            // 特殊處理：Reports 子選單已經在上面檢查過了
+            if (child.key === 'reports.daily' || child.key === 'reports.monthly' || child.key === 'reports.realtime') {
+              return true; // 已經通過上面的檢查
+            }
+            
             // 檢查子項是否有權限
             // 注意：如果父項有權限，子項會自動包含在 expandedInterfaces 中
             return expandedInterfaces.includes(child.key);

@@ -400,7 +400,7 @@ namespace PurpleRice.Controllers
         }
 
         /// <summary>
-        /// 處理父子級權限關係（有父級權限自動包含子級）
+        /// 處理父子級權限關係（有父級權限自動包含子級，有子級權限自動包含父級）
         /// </summary>
         private List<string> ExpandInterfacesWithChildren(List<string> interfaces)
         {
@@ -408,20 +408,59 @@ namespace PurpleRice.Controllers
             {
                 { "application", new List<string> { "publishedApps", "pendingTasks", "workflowMonitor" } },
                 { "studio", new List<string> { "eformList", "whatsappTemplates", "whatsappWorkflow", "dataSets" } },
-                { "adminTools", new List<string> { "contactList", "broadcastGroups", "hashtags", "companyUserAdmin", "phoneVerificationAdmin", "permissionManagement", "apiProviders" } }
+                { "adminTools", new List<string> { "contactList", "broadcastGroups", "hashtags", "companyUserAdmin", "phoneVerificationAdmin", "permissionManagement", "apiProviders" } },
+                { "reports", new List<string> { "reports.daily", "reports.monthly" } },
+                { "reports.daily", new List<string> { "reports.daily.pendingOverview", "reports.daily.workflowExecution", "reports.daily.formEfficiency", "reports.daily.workflowHealth", "reports.daily.whatsappInteraction" } },
+                { "reports.monthly", new List<string> { "reports.monthly.workflowPerformance", "reports.monthly.formApproval", "reports.monthly.businessInsights", "reports.monthly.systemUsage", "reports.monthly.operationalOverview" } }
             };
 
+            var autoExpandParents = new HashSet<string> { "application", "studio", "adminTools", "reports" };
             var expanded = new HashSet<string>(interfaces);
 
+            // 1. 正向展開：如果有父級權限，自動添加所有子級
             foreach (var parent in interfaceHierarchy.Keys)
             {
-                if (interfaces.Contains(parent))
+                if (autoExpandParents.Contains(parent) && interfaces.Contains(parent))
                 {
                     // 如果有父級權限，自動添加所有子級
                     foreach (var child in interfaceHierarchy[parent])
                     {
                         expanded.Add(child);
                     }
+                }
+            }
+
+            // 2. 反向展開：如果有子級權限，自動添加父級
+            // 例如：如果有 reports.daily.workflowExecution，自動添加 reports.daily 和 reports
+            foreach (var iface in interfaces)
+            {
+                if (string.IsNullOrEmpty(iface)) continue;
+
+                // 檢查是否匹配任何父級的子級
+                foreach (var parent in interfaceHierarchy.Keys)
+                {
+                    var children = interfaceHierarchy[parent];
+                    if (children.Contains(iface))
+                    {
+                        // 如果這個權限是某個父級的子級，添加父級
+                        expanded.Add(parent);
+                    }
+                }
+
+                // 特殊處理：reports.daily.* 和 reports.monthly.* 的子權限
+                if (iface.StartsWith("reports.daily."))
+                {
+                    expanded.Add("reports.daily");
+                    expanded.Add("reports");
+                }
+                else if (iface.StartsWith("reports.monthly."))
+                {
+                    expanded.Add("reports.monthly");
+                    expanded.Add("reports");
+                }
+                else if (iface == "reports.daily" || iface == "reports.monthly")
+                {
+                    expanded.Add("reports");
                 }
             }
 

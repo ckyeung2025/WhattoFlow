@@ -270,6 +270,22 @@ const PermissionManagementPage = () => {
       case 'workflowmonitor.retry': return fallbackTranslate('workflowMonitor.retry', 'Retry');
       case 'workflowmonitor.cancel': return fallbackTranslate('workflowMonitor.cancel', 'Cancel');
       case 'workflowmonitor.delete': return fallbackTranslate('workflowMonitor.delete', 'Delete');
+      case 'reports': return fallbackTranslate('menu.reports', 'Reports');
+      case 'reports.daily': return fallbackTranslate('menu.dailyReports', 'Daily Reports');
+      case 'reports.daily.pendingoverview': return fallbackTranslate('reports.daily.pendingOverview', 'Pending Tasks Overview');
+      case 'reports.daily.workflowexecution': return fallbackTranslate('reports.daily.workflowExecution', 'Workflow Execution Daily');
+      case 'reports.daily.formefficiency': return fallbackTranslate('reports.daily.formEfficiency', 'Form Processing Efficiency');
+      case 'reports.daily.workflowhealth': return fallbackTranslate('reports.daily.workflowHealth', 'Workflow Health Monitor');
+      case 'reports.daily.whatsappinteraction': return fallbackTranslate('reports.daily.whatsappInteraction', 'WhatsApp Interaction Analysis');
+      case 'reports.monthly': return fallbackTranslate('menu.monthlyReports', 'Monthly Reports');
+      case 'reports.monthly.workflowperformance': return fallbackTranslate('reports.monthly.workflowPerformance', 'Workflow Performance Monthly');
+      case 'reports.monthly.formapproval': return fallbackTranslate('reports.monthly.formApproval', 'Form Approval Analysis Monthly');
+      case 'reports.monthly.businessinsights': return fallbackTranslate('reports.monthly.businessInsights', 'Business Process Insights');
+      case 'reports.monthly.systemusage': return fallbackTranslate('reports.monthly.systemUsage', 'System Usage Statistics');
+      case 'reports.monthly.operationaloverview': return fallbackTranslate('reports.monthly.operationalOverview', 'Operational Performance Overview');
+      case 'reports.monthly.processstepexecution': return fallbackTranslate('reports.monthly.processStepExecution', 'Process Step Execution Analysis');
+      case 'reports.realtime': return fallbackTranslate('menu.realtimeReports', 'Realtime Reports');
+      case 'reports.realtime.workflowactivity': return fallbackTranslate('reports.realtime.workflowActivity', 'Workflow Activity Kanban');
       case 'admintools': return fallbackTranslate('menu.adminTools', 'Admin Tools');
       case 'contactlist': return fallbackTranslate('menu.contactList', 'Contact Management');
       case 'broadcastgroups': return fallbackTranslate('menu.broadcastGroups', 'Broadcast Group Management');
@@ -334,6 +350,22 @@ const PermissionManagementPage = () => {
         'whatsappTemplates',
         'whatsappWorkflow',
         'dataSets',
+        'reports',
+        'reports.daily',
+        'reports.daily.pendingOverview',
+        'reports.daily.workflowExecution',
+        'reports.daily.formEfficiency',
+        'reports.daily.workflowHealth',
+        'reports.daily.whatsappInteraction',
+        'reports.monthly',
+        'reports.monthly.workflowPerformance',
+        'reports.monthly.formApproval',
+        'reports.monthly.businessInsights',
+        'reports.monthly.systemUsage',
+        'reports.monthly.operationalOverview',
+        'reports.monthly.processStepExecution',
+        'reports.realtime',
+        'reports.realtime.workflowActivity',
         'adminTools',
         'contactList',
         'broadcastGroups',
@@ -527,7 +559,7 @@ const PermissionManagementPage = () => {
       childArr.forEach(key => allChildKeys.add(key));
     });
 
-    const preferredOrder = ['dashboard', 'application', 'studio', 'adminTools'];
+    const preferredOrder = ['dashboard', 'application', 'studio', 'reports', 'adminTools'];
     const rootKeysSet = new Set();
     availableInterfaces.forEach(iface => {
       if (!allChildKeys.has(iface.key)) {

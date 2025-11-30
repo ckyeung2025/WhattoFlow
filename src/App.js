@@ -35,6 +35,7 @@ import PhoneVerificationPage from './pages/PhoneVerificationPage';
 import CompanyPhoneVerificationAdminPage from './pages/CompanyPhoneVerificationAdminPage';
 import PermissionManagementPage from './pages/PermissionManagementPage';
 import ApiProviderManagementPage from './pages/ApiProviderManagementPage';
+import ReportsPage from './pages/Reports/ReportsPage';
 
 const { Content } = Layout;
 
@@ -63,6 +64,9 @@ const pathToMenuKey = {
   '/phone-verification-admin': 'phoneVerificationAdmin',
   '/permission-management': 'permissionManagement',
   '/api-providers': 'apiProviders',
+  '/reports/daily': 'reports.daily',
+  '/reports/monthly': 'reports.monthly',
+  '/reports/realtime': 'reports.realtime',
 };
 
 function MainLayout({ userInfo, onLogout }) {
@@ -132,6 +136,15 @@ function MainLayout({ userInfo, onLogout }) {
       case 'apiProviders':
         navigate('/api-providers');
         break;
+      case 'reports.daily':
+        navigate('/reports/daily');
+        break;
+      case 'reports.monthly':
+        navigate('/reports/monthly');
+        break;
+      case 'reports.realtime':
+        navigate('/reports/realtime');
+        break;
       default:
         navigate('/dashboard');
     }
@@ -171,9 +184,12 @@ function MainLayout({ userInfo, onLogout }) {
             <Route path="/broadcast-groups" element={<BroadcastGroupsPage />} />
             <Route path="/hashtags" element={<HashtagsPage />} />
             <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
-            <Route path="/permission-management" element={<PermissionManagementPage />} />
-            <Route path="/api-providers" element={<ApiProviderManagementPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" />} />
+              <Route path="/permission-management" element={<PermissionManagementPage />} />
+              <Route path="/api-providers" element={<ApiProviderManagementPage />} />
+              <Route path="/reports/daily" element={<ReportsPage />} />
+              <Route path="/reports/monthly" element={<ReportsPage />} />
+              <Route path="/reports/realtime" element={<ReportsPage />} />
+              <Route path="*" element={<Navigate to="/dashboard" />} />
           </Routes>
         </Content>
       </Layout>
@@ -257,6 +273,15 @@ function AppContent() {
         break;
       case 'apiProviders':
         navigate('/api-providers');
+        break;
+      case 'reports.daily':
+        navigate('/reports/daily');
+        break;
+      case 'reports.monthly':
+        navigate('/reports/monthly');
+        break;
+      case 'reports.realtime':
+        navigate('/reports/realtime');
         break;
       case 'onboarding':
         navigate('/onboarding');
@@ -476,6 +501,9 @@ function AppContent() {
               <Route path="/phone-verification-admin" element={<CompanyPhoneVerificationAdminPage />} />
               <Route path="/permission-management" element={<PermissionManagementPage />} />
               <Route path="/api-providers" element={<ApiProviderManagementPage />} />
+              <Route path="/reports/daily" element={<ReportsPage />} />
+              <Route path="/reports/monthly" element={<ReportsPage />} />
+              <Route path="/reports/realtime" element={<ReportsPage />} />
               <Route path="/onboarding" element={<OnboardingManagementPage />} />
               <Route path="/onboarding-test" element={<OnboardingTest />} />
               <Route path="*" element={<Navigate to="/dashboard" />} />

@@ -22,7 +22,8 @@ import {
   TagsOutlined,  // 添加標籤圖標
   SendOutlined,  // 添加發送圖標
   SafetyOutlined,  // 添加安全圖標用於權限管理
-  ApiOutlined
+  ApiOutlined,
+  LineChartOutlined  // 添加圖表圖標用於報表
 } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import UserAvatar from './UserAvatar';
@@ -62,7 +63,7 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
 
   // 處理選單展開/收合 - 手風琴效果
   const handleOpenChange = (keys) => {
-    const mainMenus = ['application', 'adminTools', 'studio'];
+    const mainMenus = ['application', 'studio', 'reports', 'adminTools'];
     
     // 找出最新展開的選單
     const latestOpenKey = keys.find(key => openKeys.indexOf(key) === -1);
@@ -214,6 +215,35 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
       {
         type: 'divider',
       },
+      // Reports 報表區域
+      {
+        key: 'reports',
+        icon: <LineChartOutlined />,
+        label: t('menu.reports'),
+        children: [
+          {
+            key: 'reports.realtime',
+            icon: <RocketOutlined />,
+            label: t('menu.realtimeReports'),
+            url: '/reports/realtime',
+          },
+          {
+            key: 'reports.daily',
+            icon: <LineChartOutlined />,
+            label: t('menu.dailyReports'),
+            url: '/reports/daily',
+          },
+          {
+            key: 'reports.monthly',
+            icon: <BarChartOutlined />,
+            label: t('menu.monthlyReports'),
+            url: '/reports/monthly',
+          }
+        ]
+      },
+      {
+        type: 'divider',
+      },
       // Administrator Tools 管理工具區域
       {
         key: 'adminTools',
@@ -334,7 +364,7 @@ const SideMenu = ({ userInfo, onLogout, onMenuSelect, selectedKey, onAvatarClick
             
             if (key === 'logout') {
               onLogout();
-            } else if (key === 'application' || key === 'studio' || key === 'adminTools') {
+            } else if (key === 'application' || key === 'studio' || key === 'reports' || key === 'adminTools') {
               // 在收合狀態下，點擊父級菜單時展開子菜單
               if (collapsed) {
                 console.log('Setting openKeys to:', [key]);

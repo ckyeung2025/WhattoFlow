@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CompanyInfoNotRecognized" xml:space="preserve">
+    <value>Unable to identify company information</value>
+  </data>
+  <data name="ProvideSettingData" xml:space="preserve">
+    <value>Please provide setting data</value>
+  </data>
+  <data name="ProvideTestEmailData" xml:space="preserve">
+    <value>Please provide test email data</value>
+  </data>
+  <data name="OnlyMicrosoftGraphSupported" xml:space="preserve">
+    <value>Currently only Microsoft Graph API email testing is supported</value>
+  </data>
+  <data name="ProvideCompleteOAuthConfig" xml:space="preserve">
+    <value>Please provide complete OAuth configuration and sender address</value>
+  </data>
+  <data name="CannotGetAccessToken" xml:space="preserve">
+    <value>Unable to obtain OAuth 2.0 Access Token. Please check:{0}1. Whether Tenant ID, Client ID, and Client Secret are correct{0}2. Whether the application has configured Mail.Send application permission (Application Permission){0}3. Whether the administrator has consented to this permission</value>
+  </data>
+  <data name="TestEmailSentSuccess" xml:space="preserve">
+    <value>Test email sent successfully</value>
+  </data>
+  <data name="AccessDeniedError" xml:space="preserve">
+    <value>Insufficient permissions. Please confirm the following configuration:{0}1. Add 'Mail.Send' application permission (Application Permission, not Delegated Permission) to the application in Azure Portal{0}2. Click the "Grant admin consent for [Organization Name]" button{0}3. Confirm that the sender email address matches a user that the application has permission to send on behalf of{0}4. If using application permissions, the sender must be a user that the application has permission for{0}See: https://learn.microsoft.com/en-us/graph/auth-v2-service</value>
+  </data>
+  <data name="InvalidUserError" xml:space="preserve">
+    <value>Invalid user: Sender email '{0}' does not exist or the application does not have permission to access. Please confirm the email address is correct and the application has permission to send emails on behalf of this user.</value>
+  </data>
+  <data name="SendEmailFailed" xml:space="preserve">
+    <value>Failed to send email: {0}</value>
+  </data>
+  <data name="AccessDeniedSimple" xml:space="preserve">
+    <value>Insufficient permissions. Please add 'Mail.Send' application permission (Application Permission) to the application in Azure Portal and have the administrator consent.</value>
+  </data>
+  <data name="DefaultTestEmailSubject" xml:space="preserve">
+    <value>WhattoFlow Email Sending Test</value>
+  </data>
+  <data name="DefaultTestEmailBody" xml:space="preserve">
+    <value>This is a test email to verify that the Microsoft Graph API email sending configuration is correct.</value>
+  </data>
+</root>
+

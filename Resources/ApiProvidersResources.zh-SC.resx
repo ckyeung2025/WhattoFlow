@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CompanyInfoNotRecognized" xml:space="preserve">
+    <value>无法识别公司信息</value>
+  </data>
+  <data name="ProvideSettingData" xml:space="preserve">
+    <value>请提供设定资料</value>
+  </data>
+  <data name="ProvideTestEmailData" xml:space="preserve">
+    <value>请提供测试邮件资料</value>
+  </data>
+  <data name="OnlyMicrosoftGraphSupported" xml:space="preserve">
+    <value>目前仅支持 Microsoft Graph API 邮件测试</value>
+  </data>
+  <data name="ProvideCompleteOAuthConfig" xml:space="preserve">
+    <value>请提供完整的 OAuth 配置和发件人地址</value>
+  </data>
+  <data name="CannotGetAccessToken" xml:space="preserve">
+    <value>无法获取 OAuth 2.0 Access Token。请检查：{0}1. Tenant ID、Client ID 和 Client Secret 是否正确{0}2. 应用程序是否已配置 Mail.Send 应用程序权限（Application Permission）{0}3. 管理员是否已同意该权限</value>
+  </data>
+  <data name="TestEmailSentSuccess" xml:space="preserve">
+    <value>测试邮件发送成功</value>
+  </data>
+  <data name="AccessDeniedError" xml:space="preserve">
+    <value>权限不足。请确认以下配置：{0}1. 在 Azure Portal 中为应用程序添加 'Mail.Send' 应用程序权限（Application Permission，不是 Delegated Permission）{0}2. 点击「为 [组织名称] 授予管理员同意」按钮{0}3. 确认发件人 email 地址与应用程序有权限发送的用户匹配{0}4. 如果使用应用程序权限，发件人必须是应用程序有权限的用户{0}详见：https://learn.microsoft.com/en-us/graph/auth-v2-service</value>
+  </data>
+  <data name="InvalidUserError" xml:space="preserve">
+    <value>无效的用户：发件人 email '{0}' 不存在或应用程序无权限访问。请确认 email 地址正确，且应用程序有权限代表该用户发送邮件。</value>
+  </data>
+  <data name="SendEmailFailed" xml:space="preserve">
+    <value>发送邮件失败: {0}</value>
+  </data>
+  <data name="AccessDeniedSimple" xml:space="preserve">
+    <value>权限不足。请在 Azure Portal 中为应用程序添加 'Mail.Send' 应用程序权限（Application Permission），并由管理员同意。</value>
+  </data>
+  <data name="DefaultTestEmailSubject" xml:space="preserve">
+    <value>WhattoFlow 邮件发送测试</value>
+  </data>
+  <data name="DefaultTestEmailBody" xml:space="preserve">
+    <value>这是一封测试邮件，用于验证 Microsoft Graph API 邮件发送配置是否正确。</value>
+  </data>
+</root>
+

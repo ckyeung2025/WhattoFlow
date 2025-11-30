@@ -38,7 +38,10 @@ const zhSC = {
     runningApps: '运行中的应用',
     phoneVerificationAdmin: '电话号码验证',
     permissionManagement: '权限管理',
-    apiProviders: 'API 管理'
+    apiProviders: 'API 管理',
+    reports: '报表',
+    dailyReports: '每日报表',
+    monthlyReports: '每月报表'
   },
 
   // Dashboard 仪表板
@@ -382,7 +385,8 @@ const zhSC = {
     activate: '启用',
     deactivate: '停用',
     systemDefault: '系统默认',
-    editingCompany: '编辑公司'
+    editingCompany: '编辑公司',
+    unauthorized: '未授权'
   },
 
   // 收件人选择器
@@ -3847,6 +3851,70 @@ const zhSC = {
     saveFailed: '保存权限失败',
     loadFailed: '加载权限失败',
     editingCompany: '编辑公司'
+  },
+  reports: {
+    noPermission: '您沒有權限訪問報表功能',
+    loadPermissionFailed: '載入權限失敗',
+    unauthorized: '未授權',
+    noDailyReportsPermission: '您沒有權限訪問任何每日報表',
+    noMonthlyReportsPermission: '您沒有權限訪問任何每月報表',
+    loadStatisticsFailed: '載入統計數據失敗',
+    loadDataFailed: '載入報表數據失敗',
+    exportComingSoon: '匯出功能即將推出',
+    totalPending: '待處理總數',
+    overdue: '逾期事項',
+    urgent: '緊急事項',
+    todayNew: '今日新增',
+    totalRecords: '共 {total} 條記錄',
+    daily: {
+      pendingOverview: '待批事项总览',
+      workflowExecution: '工作流执行日报',
+      formEfficiency: '表单处理效率',
+      workflowHealth: '工作流健康度监控',
+      whatsappInteraction: 'WhatsApp 互动分析'
+    },
+    monthly: {
+      workflowPerformance: '工作流效能月报',
+      formApproval: '表单审批分析月报',
+      businessInsights: '业务流程洞察',
+      systemUsage: '系统使用统计',
+      operationalOverview: '营运效能总览'
+    },
+    realtime: {
+      workflowActivity: '工作流活动看板',
+      description: '实时监控所有正在运行的步骤执行（每 3 秒自动更新）',
+      totalActive: '活跃步骤',
+      running: '运行中',
+      waiting: '等待中',
+      completed: '已完成',
+      failed: '失败',
+      noActiveWorkflows: '目前没有活跃的流程',
+      noActiveSteps: '目前没有活跃的步骤执行',
+      noItems: '无项目',
+      selectWorkflow: '选择流程定义',
+      allWorkflows: '全部流程',
+      dateRange: '时间范围:',
+      workflowDefinition: '流程定义:',
+      createdAt: '创建时间:',
+      executionTime: '执行时间:',
+      stepIndex: '步骤索引:',
+      initiatedBy: '启动者:',
+      waitingFor: '等待:',
+      executionFailed: '执行失败',
+      failedAlert: '有 {count} 个流程执行失败，请及时处理',
+      userReplies: '用户回复:'
+    },
+    actionType: {
+      startWorkflow: '启动流程',
+      replyQrcode: '回复QR码',
+      replyMsg: '回复消息',
+      receiveNotification: '接收通知',
+      receiveEform: '接收表单',
+      fillEform: '填写表单',
+      unknown: '未知操作'
+    },
+    actionTypes: '种操作类型',
+    groups: '个分组'
   }
 };
 
