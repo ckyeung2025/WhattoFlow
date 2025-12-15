@@ -138,6 +138,162 @@ const ResizableTitle = (props) => {
   );
 };
 
+/**
+ * 將 JSON 數據轉換為 HTML 表格
+ */
+const convertJsonToHtmlTable = (data) => {
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+
+  let html = '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+  
+  // 優先處理 processed 數據（如果存在）
+  let processedData = null;
+  if (data.processed && typeof data.processed === 'object') {
+    processedData = data.processed;
+  } else if (data.raw && typeof data.raw === 'string') {
+    // 嘗試解析 raw 字段中的 JSON 字符串（可能是嵌套的）
+    try {
+      let rawParsed = JSON.parse(data.raw);
+      // 如果 rawParsed 本身是字符串，再次解析
+      if (typeof rawParsed === 'string') {
+        rawParsed = JSON.parse(rawParsed);
+      }
+      if (rawParsed.processed && typeof rawParsed.processed === 'object') {
+        processedData = rawParsed.processed;
+      } else if (rawParsed && typeof rawParsed === 'object' && !rawParsed.raw) {
+        // 如果 rawParsed 本身就是 processed 數據（沒有 raw 字段）
+        processedData = rawParsed;
+      }
+    } catch (e) {
+      // 解析失敗，忽略
+    }
+  }
+
+  // 如果有 processed 數據，優先顯示
+  if (processedData) {
+    // 顯示 items 數組為表格
+    if (processedData.items && Array.isArray(processedData.items) && processedData.items.length > 0) {
+      html += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #d9d9d9;">';
+      html += '<th style="padding: 8px 12px; text-align: left; font-weight: 600;">項目名稱</th>';
+      html += '<th style="padding: 8px 12px; text-align: right; font-weight: 600;">價格</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      processedData.items.forEach((item, index) => {
+        const bgColor = index % 2 === 0 ? '#ffffff' : '#fafafa';
+        html += `<tr style="background-color: ${bgColor}; border-bottom: 1px solid #f0f0f0;">`;
+        html += `<td style="padding: 8px 12px;">${item.name || '-'}</td>`;
+        html += `<td style="padding: 8px 12px; text-align: right; font-weight: 500;">${item.price || 0}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody>';
+      
+      // 顯示總計
+      if (processedData.total !== undefined) {
+        html += '<tfoot><tr style="background-color: #f0f8ff; border-top: 2px solid #1890ff; font-weight: 600;">';
+        html += '<td style="padding: 10px 12px; text-align: right;">總計</td>';
+        html += `<td style="padding: 10px 12px; text-align: right; color: #1890ff;">${processedData.total}</td>`;
+        html += '</tr></tfoot>';
+      }
+      
+      // 顯示類型（如果有）
+      if (processedData.type) {
+        html += '<tfoot><tr style="background-color: #fafafa;">';
+        html += '<td colspan="2" style="padding: 8px 12px; text-align: center; color: #666; font-style: italic;">';
+        html += processedData.type;
+        html += '</td></tr></tfoot>';
+      }
+    } else {
+      // 沒有 items，顯示其他 processed 字段
+      Object.keys(processedData).forEach(key => {
+        if (key !== 'items') {
+          html += '<tr style="border-bottom: 1px solid #f0f0f0;">';
+          html += `<td style="padding: 8px 12px; font-weight: 500; width: 30%;">${key}</td>`;
+          html += `<td style="padding: 8px 12px;">${processedData[key] || '-'}</td>`;
+          html += '</tr>';
+        }
+      });
+    }
+  } else {
+    // 沒有 processed 數據，顯示其他字段（排除 raw）
+    Object.keys(data).forEach(key => {
+      if (key !== 'raw') {
+        const value = data[key];
+        // 跳過空字符串和 null
+        if (value !== '' && value !== null && value !== undefined) {
+          html += '<tr style="border-bottom: 1px solid #f0f0f0;">';
+          html += `<td style="padding: 8px 12px; font-weight: 500; width: 30%;">${key}</td>`;
+          html += `<td style="padding: 8px 12px;">${typeof value === 'object' ? JSON.stringify(value) : value}</td>`;
+          html += '</tr>';
+        }
+      }
+    });
+  }
+  
+  html += '</table>';
+  return html;
+};
+
+/**
+ * 提取 AI 分析結果，排除 base64 數據，轉換為 HTML 表格
+ * 只處理 JSON 格式且包含 base64 的情況，純文字消息不受影響
+ */
+const extractAiAnalysisResult = (userMessage) => {
+  // 如果為空或不是字符串，直接返回
+  if (!userMessage || typeof userMessage !== 'string') {
+    return userMessage;
+  }
+
+  // 檢查是否可能是 JSON 格式（以 { 或 [ 開頭）
+  const trimmed = userMessage.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    // 不是 JSON 格式，直接返回原始文字（純文字消息）
+    return userMessage;
+  }
+
+  try {
+    // 嘗試解析為 JSON
+    const parsed = JSON.parse(userMessage);
+    
+    // 檢查是否包含 base64 相關的字段
+    const hasRawField = parsed && typeof parsed === 'object' && 'raw' in parsed;
+    const rawValue = hasRawField ? parsed.raw : null;
+    const hasBase64 = rawValue && typeof rawValue === 'string' && 
+                      (rawValue.length > 1000 || rawValue.includes('base64') || 
+                       /^[A-Za-z0-9+/=]+$/.test(rawValue.substring(0, 100)));
+    
+    // 如果包含 base64 數據，移除 raw 字段
+    if (hasBase64) {
+      const cleaned = { ...parsed };
+      delete cleaned.raw;
+      
+      // 如果清理後還有其他字段，轉換為 HTML 表格
+      if (Object.keys(cleaned).length > 0) {
+        return convertJsonToHtmlTable(cleaned);
+      } else {
+        // 如果只剩下 raw 字段，返回提示信息
+        return '[圖片消息 - AI 分析結果已用於填充表單]';
+      }
+    }
+    
+    // 如果不包含 base64，也轉換為 HTML 表格
+    return convertJsonToHtmlTable(parsed);
+  } catch (e) {
+    // 解析失敗，可能是格式錯誤的 JSON 或包含特殊字符的文字
+    // 檢查是否包含 base64 特徵（很長的字符串）
+    if (userMessage.length > 10000 && /^[A-Za-z0-9+/=\s]+$/.test(userMessage.substring(0, 100))) {
+      // 可能是 base64 字符串，返回提示信息
+      return '[圖片消息 - AI 分析結果已用於填充表單]';
+    }
+    
+    // 否則返回原始內容（可能是格式錯誤的 JSON 或特殊文字）
+    return userMessage;
+  }
+};
+
 const PendingTasksPage = () => {
   console.log('🔄 PendingTasksPage component loaded');
   const { t } = useLanguage();
@@ -2142,11 +2298,14 @@ const PendingTasksPage = () => {
       dataIndex: 'userMessage',
       key: 'userMessage',
       width: 200,
-      render: (text) => (
-        <div style={{ fontSize: '12px', color: '#333' }}>
-          {text || '-'}
-        </div>
-      )
+      render: (text) => {
+        const result = extractAiAnalysisResult(text);
+        // 如果結果包含 HTML 標籤，使用 dangerouslySetInnerHTML
+        if (typeof result === 'string' && result.includes('<table')) {
+          return <div style={{ fontSize: '12px', color: '#333' }} dangerouslySetInnerHTML={{ __html: result }} />;
+        }
+        return <div style={{ fontSize: '12px', color: '#333' }}>{result || '-'}</div>;
+      }
     },
     {
       title: 'Recipient Name',
@@ -3812,7 +3971,14 @@ const PendingTasksPage = () => {
                         color: 'rgb(38, 38, 38)',
                         minHeight: '20px'
                       }}>
-                        {embeddedFormInstance?.userMessage || '-'}
+                        {(() => {
+                          const result = extractAiAnalysisResult(embeddedFormInstance?.userMessage);
+                          // 如果結果包含 HTML 標籤，使用 dangerouslySetInnerHTML
+                          if (typeof result === 'string' && result.includes('<table')) {
+                            return <div dangerouslySetInnerHTML={{ __html: result }} />;
+                          }
+                          return result || '-';
+                        })()}
                       </div>
                     </div>
                     <div style={{ flex: 1 }}>

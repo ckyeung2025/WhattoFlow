@@ -701,7 +701,9 @@ namespace PurpleRice.Services.WebhookServices
                             object? valueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? messageData.MessageText;
                             if (valueToStore == null || (valueToStore is string s && string.IsNullOrWhiteSpace(s)))
                             {
-                                valueToStore = validationResult.AdditionalData ?? BuildFallbackProcessVariablePayload(messageData);
+                                // ✅ 修改：當使用 AdditionalData 時，只提取 ai 部分，排除 original（包含 base64）
+                                valueToStore = ExtractAiResultFromAdditionalData(validationResult.AdditionalData) 
+                                    ?? BuildFallbackProcessVariablePayload(messageData);
                             }
 
                             if (valueToStore != null && valueToStore is not string)
@@ -1804,7 +1806,9 @@ namespace PurpleRice.Services.WebhookServices
                                 object? valueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? qrCodeValue;
                                 if (valueToStore == null || (valueToStore is string s && string.IsNullOrWhiteSpace(s)))
                                 {
-                                    valueToStore = validationResult.AdditionalData ?? qrCodeValue;
+                                    // ✅ 修改：當使用 AdditionalData 時，只提取 ai 部分，排除 original（包含 base64）
+                                    valueToStore = ExtractAiResultFromAdditionalData(validationResult.AdditionalData) 
+                                        ?? qrCodeValue;
                                 }
                                 
                                 if (valueToStore != null && valueToStore is not string)
@@ -2653,6 +2657,78 @@ namespace PurpleRice.Services.WebhookServices
             }
 
             return cleaned;
+        }
+
+        /// <summary>
+        /// 從 AdditionalData 中提取 AI 分析結果（只提取 ai 部分，排除 original 部分以避免包含 base64）
+        /// </summary>
+        private object? ExtractAiResultFromAdditionalData(object? additionalData)
+        {
+            if (additionalData == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                // 如果已經是 JsonElement，直接處理
+                if (additionalData is JsonElement jsonElement)
+                {
+                    if (jsonElement.TryGetProperty("ai", out var aiElement))
+                    {
+                        // 優先使用 ai.processed，如果沒有則使用整個 ai 對象
+                        if (aiElement.TryGetProperty("processed", out var processedElement) && 
+                            processedElement.ValueKind != JsonValueKind.Null &&
+                            !string.IsNullOrWhiteSpace(processedElement.GetString()))
+                        {
+                            return processedElement.GetString();
+                        }
+                        else
+                        {
+                            // 使用整個 ai 對象（不包含 original）
+                            return aiElement.GetRawText();
+                        }
+                    }
+                    else
+                    {
+                        // 如果沒有 ai 屬性，返回 null（不使用包含 base64 的 original）
+                        _loggingService.LogWarning("AdditionalData 中沒有找到 ai 屬性，跳過以避免包含 base64");
+                        return null;
+                    }
+                }
+                else
+                {
+                    // 如果不是 JsonElement，嘗試序列化後解析
+                    var serialized = JsonSerializer.Serialize(additionalData, PayloadJsonOptions);
+                    using var doc = JsonDocument.Parse(serialized);
+                    var root = doc.RootElement;
+                    
+                    if (root.TryGetProperty("ai", out var aiElement))
+                    {
+                        if (aiElement.TryGetProperty("processed", out var processedElement) && 
+                            processedElement.ValueKind != JsonValueKind.Null &&
+                            !string.IsNullOrWhiteSpace(processedElement.GetString()))
+                        {
+                            return processedElement.GetString();
+                        }
+                        else
+                        {
+                            return aiElement.GetRawText();
+                        }
+                    }
+                    else
+                    {
+                        // 如果沒有 ai 屬性，返回 null（不使用包含 base64 的 original）
+                        _loggingService.LogWarning("AdditionalData 中沒有找到 ai 屬性，跳過以避免包含 base64");
+                        return null;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"從 AdditionalData 提取 ai 部分失敗: {ex.Message}，返回 null 以避免包含 base64");
+                return null;
+            }
         }
 
         private string? GetFileExtensionFromMimeType(string? mimeType)

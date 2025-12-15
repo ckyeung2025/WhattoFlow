@@ -2445,11 +2445,108 @@ namespace PurpleRice.Services
                                 {
                                     var latestMessage = userMessages.Last();
                                     userMessage = latestMessage.UserMessage;
+                                    
+                                    // ✅ 處理圖片消息的情況
+                                    // 如果 UserMessage 為空或只包含 "[圖片消息]"，嘗試從 ProcessedData 或 Process Variable 獲取 AI 分析結果
+                                    if (string.IsNullOrWhiteSpace(userMessage) || 
+                                        userMessage == "[圖片消息]" || 
+                                        userMessage.Contains("[圖片消息]") ||
+                                        string.Equals(latestMessage.MessageType, "image", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        WriteLog($"🔍 [DEBUG] 檢測到圖片消息，UserMessage: '{userMessage}', MessageType: '{latestMessage.MessageType}'");
+                                        
+                                        // 優先使用 ProcessedData（AI 驗證結果）
+                                        if (!string.IsNullOrWhiteSpace(latestMessage.ProcessedData))
+                                        {
+                                            try
+                                            {
+                                                // 嘗試解析 ProcessedData（可能是 JSON 字符串）
+                                                var processedData = latestMessage.ProcessedData;
+                                                WriteLog($"🔍 [DEBUG] 使用 ProcessedData，長度: {processedData.Length}");
+                                                
+                                                // 如果 ProcessedData 是 JSON，嘗試提取有用的信息
+                                                if (processedData.TrimStart().StartsWith("{") || processedData.TrimStart().StartsWith("["))
+                                                {
+                                                    try
+                                                    {
+                                                        using var doc = JsonDocument.Parse(processedData);
+                                                        // 如果是 JSON，直接使用原始 JSON 字符串
+                                                        userMessage = processedData;
+                                                        WriteLog($"🔍 [DEBUG] ProcessedData 是 JSON 格式，使用原始 JSON");
+                                                    }
+                                                    catch
+                                                    {
+                                                        // 如果不是有效的 JSON，直接使用字符串
+                                                        userMessage = processedData;
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    userMessage = processedData;
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                WriteLog($"⚠️ [WARNING] 解析 ProcessedData 失敗: {ex.Message}");
+                                            }
+                                        }
+                                        
+                                        // 如果 ProcessedData 也為空，嘗試從 Process Variable 獲取
+                                        if (string.IsNullOrWhiteSpace(userMessage) || userMessage == "[圖片消息]")
+                                        {
+                                            WriteLog($"🔍 [DEBUG] ProcessedData 為空，嘗試從 Process Variable 獲取");
+                                            
+                                            // 獲取所有 Process Variables
+                                            var processVariables = await GetCurrentProcessVariables(execution.Id);
+                                            
+                                            // 查找可能包含 AI 分析結果的變量（例如 ReimburseResult）
+                                            // 優先查找包含 "Result" 的變量，或使用最新的變量
+                                            var aiResultVariable = processVariables
+                                                .Where(kv => kv.Key.Contains("Result", StringComparison.OrdinalIgnoreCase) || 
+                                                             kv.Key.Contains("AI", StringComparison.OrdinalIgnoreCase))
+                                                .OrderByDescending(kv => kv.Key)
+                                                .FirstOrDefault();
+                                            
+                                            if (aiResultVariable.Key != null && aiResultVariable.Value != null)
+                                            {
+                                                WriteLog($"🔍 [DEBUG] 找到 Process Variable: {aiResultVariable.Key}");
+                                                
+                                                // 如果是 JSON 對象，轉換為字符串
+                                                if (aiResultVariable.Value is JsonElement jsonElement)
+                                                {
+                                                    userMessage = jsonElement.GetRawText();
+                                                }
+                                                else if (aiResultVariable.Value is string strValue)
+                                                {
+                                                    userMessage = strValue;
+                                                }
+                                                else
+                                                {
+                                                    userMessage = JsonSerializer.Serialize(aiResultVariable.Value, new JsonSerializerOptions 
+                                                    { 
+                                                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
+                                                    });
+                                                }
+                                                
+                                                WriteLog($"🔍 [DEBUG] 從 Process Variable 獲取的值，長度: {userMessage?.Length ?? 0}");
+                                            }
+                                        }
+                                        
+                                        // 如果仍然沒有有效的 userMessage，使用默認值
+                                        if (string.IsNullOrWhiteSpace(userMessage) || userMessage == "[圖片消息]")
+                                        {
+                                            WriteLog($"⚠️ [WARNING] 無法獲取有效的用戶消息，使用默認值");
+                                            userMessage = "請根據圖片內容填充表單";
+                                        }
+                                    }
+                                    
+                                    WriteLog($"🔍 [DEBUG] 最終使用的 userMessage 長度: {userMessage?.Length ?? 0}");
+                                    
                                     filledHtmlCode = await _eFormService.FillFormWithAIAsync(
                                         execution.WorkflowDefinition.CompanyId,
                                         nodeData.AiProviderKey,
                                         eFormDefinition.HtmlCode,
-                                        latestMessage.UserMessage);
+                                        userMessage);
                                 }
                                 WriteLog($"🔍 [DEBUG] 整合等待用戶回覆模式，用戶回覆數量: {userMessages.Count}");
                                 break;

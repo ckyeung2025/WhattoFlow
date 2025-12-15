@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Form, Input, Avatar, Button, message, Upload, Tooltip, Card, Row, Col, Typography, Modal, Divider, Tag, Space, Tabs, Alert } from 'antd';
-import { SaveOutlined, ArrowLeftOutlined, SafetyOutlined } from '@ant-design/icons';
+import { SaveOutlined, ArrowLeftOutlined, SafetyOutlined, MenuOutlined, ArrowLeftOutlined as ArrowLeftIcon } from '@ant-design/icons';
 import axios from 'axios';
 import { useLanguage } from '../contexts/LanguageContext';
 import zhTC from '../locales/zh-TC';
@@ -109,8 +109,143 @@ const CompanyEditPage = () => {
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('token') },
         body: JSON.stringify(values)
       });
-      message.success(t('companyEdit.saveSuccess'));
-      navigate('/company-user-admin');
+      
+      // 顯示帶動畫指引的成功提示 Modal
+      Modal.success({
+        title: (
+          <div style={{ textAlign: 'center', padding: '8px 0' }}>
+            <div style={{ fontSize: '28px', fontWeight: '700', color: '#1890ff', marginBottom: '8px', letterSpacing: '2px' }}>
+              ANW OEB v2
+            </div>
+            <div style={{ fontSize: '16px', color: '#52c41a', fontWeight: '500' }}>
+              設定已保存
+            </div>
+          </div>
+        ),
+        width: 600,
+        centered: true,
+        content: (
+          <div style={{ textAlign: 'center', padding: '40px 20px', position: 'relative', minHeight: '200px' }}>
+            {/* 左側菜單指示 - 在 Modal 內部左側顯示 */}
+            <div style={{
+              position: 'absolute',
+              left: '20px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              zIndex: 10
+            }}>
+              <div style={{
+                padding: '20px',
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)',
+                boxShadow: '0 4px 16px rgba(24, 144, 255, 0.4)',
+                animation: 'pulseGlow 2s infinite ease-in-out'
+              }}>
+                <MenuOutlined style={{ 
+                  fontSize: '48px', 
+                  color: '#1890ff',
+                  animation: 'bounceLeft 1.5s infinite ease-in-out'
+                }} />
+              </div>
+              <div style={{ 
+                fontSize: '14px', 
+                color: '#1890ff',
+                marginTop: '12px',
+                fontWeight: '600',
+                whiteSpace: 'nowrap',
+                textShadow: '0 1px 2px rgba(24, 144, 255, 0.2)'
+              }}>
+                左側菜單
+              </div>
+            </div>
+            
+            {/* 箭頭動畫指向左側 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '20px',
+              marginTop: '40px',
+              marginLeft: '80px'
+            }}>
+              <ArrowLeftIcon 
+                style={{ 
+                  fontSize: '36px', 
+                  color: '#1890ff',
+                  animation: 'pointLeft 2s infinite ease-in-out',
+                  filter: 'drop-shadow(0 2px 4px rgba(24, 144, 255, 0.3))'
+                }} 
+              />
+              <div style={{ 
+                fontSize: '18px', 
+                color: '#333',
+                lineHeight: '1.8',
+                fontWeight: '500',
+                textAlign: 'left'
+              }}>
+                可從<span style={{ color: '#1890ff', fontWeight: '700' }}>左側菜單</span><br/>
+                繼續操作
+              </div>
+            </div>
+            
+            <style>{`
+              @keyframes pulseGlow {
+                0%, 100% {
+                  opacity: 1;
+                  transform: translateY(-50%) scale(1);
+                  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.4);
+                }
+                50% {
+                  opacity: 0.95;
+                  transform: translateY(-50%) scale(1.2);
+                  box-shadow: 0 8px 24px rgba(24, 144, 255, 0.6);
+                }
+              }
+              
+              @keyframes bounceLeft {
+                0%, 100% {
+                  transform: translateX(0);
+                }
+                25% {
+                  transform: translateX(-8px);
+                }
+                75% {
+                  transform: translateX(-12px);
+                }
+              }
+              
+              @keyframes pointLeft {
+                0%, 100% {
+                  transform: translateX(0);
+                }
+                50% {
+                  transform: translateX(-20px);
+                }
+              }
+            `}</style>
+          </div>
+        ),
+        okText: '知道了',
+        okButtonProps: {
+          style: {
+            backgroundColor: '#1890ff',
+            borderColor: '#1890ff',
+            borderRadius: '6px',
+            height: '40px',
+            padding: '0 24px',
+            fontWeight: '500'
+          }
+        },
+        onOk: () => {
+          navigate('/company-user-admin');
+        },
+        afterClose: () => {
+          navigate('/company-user-admin');
+        }
+      });
     } catch {
       message.error(t('companyEdit.saveFailed'));
     }
