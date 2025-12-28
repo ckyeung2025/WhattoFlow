@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace PurpleRice.Controllers
 {
@@ -17,11 +18,16 @@ namespace PurpleRice.Controllers
     {
         private readonly PurpleRiceDbContext _context;
         private readonly LoggingService _loggingService;
+        private readonly IWhatsAppMetaFlowsService _metaFlowsService;
         
-        public EFormDefinitionsController(PurpleRiceDbContext context, Func<string, LoggingService> loggingServiceFactory) 
+        public EFormDefinitionsController(
+            PurpleRiceDbContext context, 
+            Func<string, LoggingService> loggingServiceFactory,
+            IWhatsAppMetaFlowsService metaFlowsService) 
         { 
             _context = context; 
             _loggingService = loggingServiceFactory("EFormDefinitionsController");
+            _metaFlowsService = metaFlowsService;
         }
 
         // 獲取當前用戶的 CompanyId
@@ -110,7 +116,7 @@ namespace PurpleRice.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> Get(Guid id)
+        public async Task<IActionResult> Get(Guid id, [FromQuery] bool fromApi = false)
         {
             try
             {
@@ -128,6 +134,73 @@ namespace PurpleRice.Controllers
                 {
                     _loggingService.LogWarning($"找不到表單定義，ID: {id}");
                     return NotFound();
+                }
+
+                // 如果是 MetaFlows 類型且請求從 API 獲取最新版本
+                if (form.FormType == "MetaFlows" && fromApi && !string.IsNullOrEmpty(form.MetaFlowId))
+                {
+                    try
+                    {
+                        _loggingService.LogInformation($"從 Meta API 獲取最新 Flow 版本: {form.MetaFlowId}");
+                        var metaFlow = await _metaFlowsService.GetFlowAsync(companyId.Value, form.MetaFlowId);
+                        
+                        // 注意：GetFlowAsync 只返回基本信息（id, name, status, categories），不包含 screens
+                        // 因此不應該覆蓋 MetaFlowJson，只更新版本和狀態信息
+                        // 保留數據庫中已有的完整 JSON（包含 screens 和 data 模型）
+                        if (!string.IsNullOrEmpty(form.MetaFlowJson))
+                        {
+                            _loggingService.LogInformation($"保留數據庫中的完整 MetaFlowJson（包含 screens），只更新版本和狀態");
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning($"數據庫中沒有 MetaFlowJson，但 GetFlowAsync 不返回 screens，無法完整恢復");
+                        }
+                        
+                        // 只更新版本和狀態，不覆蓋 MetaFlowJson
+                        form.MetaFlowVersion = metaFlow.Version;
+                        form.MetaFlowStatus = metaFlow.Status;
+                        form.MetaFlowMetadata = JsonSerializer.Serialize(metaFlow);
+                        
+                        await _context.SaveChangesAsync();
+                        _loggingService.LogInformation($"已更新 Meta Flow 版本和狀態: {form.Name}, Version: {metaFlow.Version}, Status: {metaFlow.Status}");
+                    }
+                    catch (Exception apiEx)
+                    {
+                        _loggingService.LogWarning($"從 Meta API 獲取 Flow 失敗，使用本地數據: {apiEx.Message}");
+                        // 繼續使用本地數據
+                    }
+                }
+
+                // 記錄返回給前端的 MetaFlowJson 內容
+                if (!string.IsNullOrEmpty(form.MetaFlowJson))
+                {
+                    _loggingService.LogInformation($"📤 [GET] 返回給前端的 MetaFlowJson 長度: {form.MetaFlowJson.Length} 字符");
+                    if (form.MetaFlowJson.Contains("screens"))
+                    {
+                        _loggingService.LogInformation($"✅ [GET] 返回的 JSON 包含 'screens' 字段");
+                        // 檢查是否包含數據模型
+                        if (form.MetaFlowJson.Contains("dropdown_select") || form.MetaFlowJson.Contains("__example__"))
+                        {
+                            _loggingService.LogInformation($"✅ [GET] 返回的 JSON 包含數據模型定義");
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning($"⚠️ [GET] 返回的 JSON 不包含數據模型定義！");
+                        }
+                        // 檢查是否包含默認的 WELCOME_SCREEN
+                        if (form.MetaFlowJson.Contains("WELCOME_SCREEN") || form.MetaFlowJson.Contains("Hello World"))
+                        {
+                            _loggingService.LogWarning($"⚠️ [GET] 返回的 JSON 包含默認的 WELCOME_SCREEN 或 'Hello World'！");
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogError($"❌ [GET] 返回的 JSON 不包含 'screens' 字段！");
+                    }
+                }
+                else
+                {
+                    _loggingService.LogWarning($"⚠️ [GET] 表單定義中沒有 MetaFlowJson");
                 }
 
                 _loggingService.LogInformation($"成功獲取表單定義: {form.Name}");
@@ -160,10 +233,22 @@ namespace PurpleRice.Controllers
                     return BadRequest(new { error = "表單名稱不能為空" });
                 }
                 
-                if (string.IsNullOrWhiteSpace(form.HtmlCode))
+                // 根據表單類型驗證
+                if (string.IsNullOrWhiteSpace(form.FormType))
                 {
-                    _loggingService.LogWarning("表單 HTML 代碼為空");
-                    return BadRequest(new { error = "表單 HTML 代碼不能為空" });
+                    form.FormType = "HTML"; // 默認值
+                }
+
+                if (form.FormType == "HTML" && string.IsNullOrWhiteSpace(form.HtmlCode))
+                {
+                    _loggingService.LogWarning("HTML 表單的 HTML 代碼為空");
+                    return BadRequest(new { error = "HTML 表單的 HTML 代碼不能為空" });
+                }
+
+                if (form.FormType == "MetaFlows" && string.IsNullOrWhiteSpace(form.MetaFlowJson))
+                {
+                    _loggingService.LogWarning("MetaFlows 表單的 JSON 為空");
+                    return BadRequest(new { error = "MetaFlows 表單的 JSON 不能為空" });
                 }
 
                 var companyId = GetCurrentUserCompanyId();
@@ -196,6 +281,317 @@ namespace PurpleRice.Controllers
                 if (!string.IsNullOrEmpty(form.FieldDisplaySettings))
                 {
                     _loggingService.LogInformation($"保存字段顯示設定: {form.FieldDisplaySettings}");
+                }
+
+                // 如果是 MetaFlows 類型，先提交到 Meta API
+                if (form.FormType == "MetaFlows")
+                {
+                    // 檢查是否已經有 MetaFlowId，如果有則更新，否則創建
+                    if (!string.IsNullOrEmpty(form.MetaFlowId))
+                    {
+                        // 已有 MetaFlowId，執行更新操作
+                        try
+                        {
+                            _loggingService.LogInformation($"開始更新 Meta Flow: {form.MetaFlowId}");
+                            
+                            // 驗證 JSON 格式（但不解析為對象，保持原始格式）
+                            if (string.IsNullOrWhiteSpace(form.MetaFlowJson))
+                            {
+                                _loggingService.LogError("❌ [UPDATE] Meta Flow JSON 為空");
+                                return BadRequest(new { error = "Meta Flow JSON 不能為空" });
+                            }
+                            
+                            // 驗證 JSON 格式是否有效
+                            try
+                            {
+                                var jsonDoc = JsonDocument.Parse(form.MetaFlowJson);
+                                _loggingService.LogInformation($"✅ [UPDATE] JSON 格式驗證通過");
+                            }
+                            catch (JsonException jsonEx)
+                            {
+                                _loggingService.LogError($"❌ [UPDATE] JSON 格式無效: {jsonEx.Message}");
+                                return BadRequest(new { error = $"Meta Flow JSON 格式無效: {jsonEx.Message}" });
+                            }
+                            
+                            // 直接使用前端生成的 JSON 字符串調用 Meta API
+                            var metaFlowResponse = await _metaFlowsService.UpdateFlowAsync(
+                                companyId.Value, 
+                                form.MetaFlowId, 
+                                form.MetaFlowJson
+                            );
+                            
+                            _loggingService.LogInformation($"📨 [UPDATE] Meta API 響應:");
+                            _loggingService.LogInformation($"   - ID: {metaFlowResponse.Id}");
+                            _loggingService.LogInformation($"   - Status: {metaFlowResponse.Status}");
+                            
+                            // 更新 Meta API 返回的元數據
+                            form.MetaFlowVersion = metaFlowResponse.Version;
+                            form.MetaFlowStatus = metaFlowResponse.Status;
+                            
+                            // 從 Meta API 獲取基本信息並更新 JSON
+                            try
+                            {
+                                var fullFlowData = await _metaFlowsService.GetFlowAsync(companyId.Value, form.MetaFlowId);
+                                
+                                // 解析原始 JSON 以便構建完整的響應
+                                var originalJson = JsonDocument.Parse(form.MetaFlowJson);
+                                var originalScreens = originalJson.RootElement.GetProperty("screens");
+                                
+                                // 構建完整的響應 JSON（包含 Meta API 返回的信息 + 原始 screens）
+                                var completeResponseJson = $"{{\"id\":\"{fullFlowData.Id}\",\"name\":{JsonSerializer.Serialize(fullFlowData.Name ?? originalJson.RootElement.GetProperty("name").GetString() ?? form.Name)},\"categories\":{JsonSerializer.Serialize(fullFlowData.Categories ?? originalJson.RootElement.GetProperty("categories").EnumerateArray().Select(e => e.GetString()).ToList())},\"screens\":{originalScreens.GetRawText()},\"version\":{JsonSerializer.Serialize(fullFlowData.Version ?? originalJson.RootElement.GetProperty("version").GetString())},\"status\":{JsonSerializer.Serialize(fullFlowData.Status ?? metaFlowResponse.Status)},\"created_time\":{(fullFlowData.CreatedTime.HasValue ? JsonSerializer.Serialize(fullFlowData.CreatedTime.Value) : "null")},\"updated_time\":{(fullFlowData.UpdatedTime.HasValue ? JsonSerializer.Serialize(fullFlowData.UpdatedTime.Value) : "null")}}}";
+                                
+                                // 清理 success: null
+                                if (completeResponseJson.Contains("\"success\":null"))
+                                {
+                                    completeResponseJson = System.Text.RegularExpressions.Regex.Replace(
+                                        completeResponseJson, 
+                                        @",?\s*""success""\s*:\s*null\s*,?", 
+                                        "", 
+                                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                    );
+                                }
+                                
+                                form.MetaFlowJson = completeResponseJson;
+                                form.MetaFlowMetadata = JsonSerializer.Serialize(fullFlowData);
+                                
+                                _loggingService.LogInformation($"💾 [UPDATE] 保存到數據庫的 MetaFlowJson 長度: {completeResponseJson.Length} 字符");
+                                _loggingService.LogInformation($"✅ [UPDATE] Meta Flow 更新成功: ID={fullFlowData.Id}");
+                            }
+                            catch (Exception getEx)
+                            {
+                                _loggingService.LogWarning($"⚠️ [UPDATE] 更新後獲取 Flow 基本信息失敗，使用原始 JSON: {getEx.Message}");
+                                
+                                // 如果獲取失敗，直接使用原始 JSON（只清理 success: null 並更新 id、version、status）
+                                var cleanedJson = form.MetaFlowJson;
+                                if (cleanedJson.Contains("\"success\":null"))
+                                {
+                                    cleanedJson = System.Text.RegularExpressions.Regex.Replace(
+                                        cleanedJson, 
+                                        @",?\s*""success""\s*:\s*null\s*,?", 
+                                        "", 
+                                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                    );
+                                }
+                                
+                                // 更新 JSON 中的 id、version、status
+                                try
+                                {
+                                    var jsonDoc = JsonDocument.Parse(cleanedJson);
+                                    var root = jsonDoc.RootElement;
+                                    var updatedJson = new System.Text.StringBuilder();
+                                    updatedJson.Append("{");
+                                    
+                                    updatedJson.Append($"\"id\":\"{metaFlowResponse.Id}\",");
+                                    if (root.TryGetProperty("name", out var name)) updatedJson.Append($"\"name\":{name.GetRawText()},");
+                                    if (root.TryGetProperty("categories", out var categories)) updatedJson.Append($"\"categories\":{categories.GetRawText()},");
+                                    if (root.TryGetProperty("version", out var version)) updatedJson.Append($"\"version\":{version.GetRawText()},");
+                                    if (root.TryGetProperty("screens", out var screens)) updatedJson.Append($"\"screens\":{screens.GetRawText()},");
+                                    updatedJson.Append($"\"status\":\"{metaFlowResponse.Status ?? "DRAFT"}\"");
+                                    
+                                    updatedJson.Append("}");
+                                    cleanedJson = updatedJson.ToString();
+                                }
+                                catch
+                                {
+                                    // 如果更新失敗，使用原始 JSON
+                                }
+                                
+                                form.MetaFlowJson = cleanedJson;
+                                form.MetaFlowMetadata = JsonSerializer.Serialize(metaFlowResponse);
+                                
+                                _loggingService.LogInformation($"💾 [UPDATE] 保存到數據庫的 MetaFlowJson (fallback) 長度: {cleanedJson.Length} 字符");
+                            }
+                        }
+                        catch (Exception metaEx)
+                        {
+                            // 詳細記錄錯誤信息
+                            _loggingService.LogError($"❌ [UPDATE] 更新 Meta Flow 失敗: {metaEx.Message}", metaEx);
+                            _loggingService.LogError($"❌ [UPDATE] 異常類型: {metaEx.GetType().Name}");
+                            _loggingService.LogError($"❌ [UPDATE] 堆疊追蹤: {metaEx.StackTrace}");
+                            
+                            if (metaEx.InnerException != null)
+                            {
+                                _loggingService.LogError($"❌ [UPDATE] 內部異常: {metaEx.InnerException.Message}");
+                            }
+                            
+                            // 記錄請求的 JSON 以便調試
+                            _loggingService.LogError($"❌ [UPDATE] 失敗的請求 JSON: {form.MetaFlowJson}");
+                            
+                            // Meta API 失敗時，返回詳細錯誤信息給前端
+                            return BadRequest(new { 
+                                error = "Meta API 更新失敗",
+                                message = metaEx.Message,
+                                details = metaEx.ToString(),
+                                requestJson = form.MetaFlowJson
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // 沒有 MetaFlowId，執行創建操作
+                        try
+                        {
+                            _loggingService.LogInformation($"開始創建 Meta Flow: {form.Name}");
+                            
+                            // 記錄前端發送的原始 JSON
+                            _loggingService.LogInformation($"📥 [CREATE] 前端發送的原始 MetaFlowJson: {form.MetaFlowJson}");
+                            
+                            // 驗證 JSON 格式（但不解析為對象，保持原始格式）
+                            if (string.IsNullOrWhiteSpace(form.MetaFlowJson))
+                            {
+                                _loggingService.LogError("❌ [CREATE] Meta Flow JSON 為空");
+                                return BadRequest(new { error = "Meta Flow JSON 不能為空" });
+                            }
+                            
+                            // 驗證 JSON 格式是否有效
+                            try
+                            {
+                                var jsonDoc = JsonDocument.Parse(form.MetaFlowJson);
+                                _loggingService.LogInformation($"✅ [CREATE] JSON 格式驗證通過");
+                                
+                                // 檢查必要字段
+                                if (jsonDoc.RootElement.TryGetProperty("name", out var nameElement))
+                                {
+                                    var name = nameElement.GetString();
+                                    _loggingService.LogInformation($"   - Name: {name}");
+                                }
+                                if (jsonDoc.RootElement.TryGetProperty("screens", out var screensElement))
+                                {
+                                    if (screensElement.ValueKind == JsonValueKind.Array)
+                                    {
+                                        _loggingService.LogInformation($"   - Screens Count: {screensElement.GetArrayLength()}");
+                                    }
+                                }
+                            }
+                            catch (JsonException jsonEx)
+                            {
+                                _loggingService.LogError($"❌ [CREATE] JSON 格式無效: {jsonEx.Message}");
+                                return BadRequest(new { error = $"Meta Flow JSON 格式無效: {jsonEx.Message}" });
+                            }
+                            
+                            // 直接使用前端生成的 JSON 字符串調用 Meta API
+                            var metaFlowResponse = await _metaFlowsService.CreateFlowAsync(companyId.Value, form.MetaFlowJson);
+                        
+                        _loggingService.LogInformation($"📨 [CREATE] Meta API 響應:");
+                        _loggingService.LogInformation($"   - ID: {metaFlowResponse.Id}");
+                        _loggingService.LogInformation($"   - Status: {metaFlowResponse.Status}");
+                        
+                        // 保存 Meta API 返回的元數據
+                        form.MetaFlowId = metaFlowResponse.Id;
+                        form.MetaFlowVersion = metaFlowResponse.Version;
+                        form.MetaFlowStatus = metaFlowResponse.Status;
+                        
+                        // 從 Meta API 獲取基本信息（id, name, status, categories, version）
+                        try
+                        {
+                            var fullFlowData = await _metaFlowsService.GetFlowAsync(companyId.Value, metaFlowResponse.Id);
+                            
+                            // 解析原始 JSON 以便構建完整的響應
+                            var originalJson = JsonDocument.Parse(form.MetaFlowJson);
+                            var originalScreens = originalJson.RootElement.GetProperty("screens");
+                            
+                            // 構建完整的響應 JSON（包含 Meta API 返回的信息 + 原始 screens）
+                            var completeResponse = new
+                            {
+                                id = fullFlowData.Id,
+                                name = fullFlowData.Name ?? originalJson.RootElement.GetProperty("name").GetString() ?? form.Name,
+                                categories = fullFlowData.Categories ?? originalJson.RootElement.GetProperty("categories").EnumerateArray().Select(e => e.GetString()).ToList(),
+                                screens = originalScreens.GetRawText(), // 直接使用原始 JSON 中的 screens
+                                version = fullFlowData.Version ?? originalJson.RootElement.GetProperty("version").GetString(),
+                                status = fullFlowData.Status ?? metaFlowResponse.Status,
+                                created_time = fullFlowData.CreatedTime,
+                                updated_time = fullFlowData.UpdatedTime
+                            };
+                            
+                            // 手動構建 JSON 字符串，確保 screens 保持原始格式
+                            var completeResponseJson = $"{{\"id\":\"{completeResponse.id}\",\"name\":{JsonSerializer.Serialize(completeResponse.name)},\"categories\":{JsonSerializer.Serialize(completeResponse.categories)},\"screens\":{completeResponse.screens},\"version\":{JsonSerializer.Serialize(completeResponse.version)},\"status\":{JsonSerializer.Serialize(completeResponse.status)},\"created_time\":{(completeResponse.created_time.HasValue ? JsonSerializer.Serialize(completeResponse.created_time.Value) : "null")},\"updated_time\":{(completeResponse.updated_time.HasValue ? JsonSerializer.Serialize(completeResponse.updated_time.Value) : "null")}}}";
+                            
+                            // 清理 success: null
+                            if (completeResponseJson.Contains("\"success\":null"))
+                            {
+                                completeResponseJson = System.Text.RegularExpressions.Regex.Replace(
+                                    completeResponseJson, 
+                                    @",?\s*""success""\s*:\s*null\s*,?", 
+                                    "", 
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                );
+                            }
+                            
+                            form.MetaFlowJson = completeResponseJson;
+                            form.MetaFlowMetadata = JsonSerializer.Serialize(fullFlowData);
+                            
+                            _loggingService.LogInformation($"💾 [CREATE] 保存到數據庫的 MetaFlowJson 長度: {completeResponseJson.Length} 字符");
+                            _loggingService.LogInformation($"✅ [CREATE] Meta Flow 創建成功: ID={fullFlowData.Id}");
+                        }
+                        catch (Exception getEx)
+                        {
+                            _loggingService.LogWarning($"⚠️ [CREATE] 創建後獲取 Flow 基本信息失敗，使用原始 JSON: {getEx.Message}");
+                            
+                            // 如果獲取失敗，直接使用原始 JSON（只清理 success: null）
+                            var cleanedJson = form.MetaFlowJson;
+                            if (cleanedJson.Contains("\"success\":null"))
+                            {
+                                cleanedJson = System.Text.RegularExpressions.Regex.Replace(
+                                    cleanedJson, 
+                                    @",?\s*""success""\s*:\s*null\s*,?", 
+                                    "", 
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                );
+                            }
+                            
+                            // 更新 JSON 中的 id、version、status
+                            try
+                            {
+                                var jsonDoc = JsonDocument.Parse(cleanedJson);
+                                var root = jsonDoc.RootElement;
+                                var updatedJson = new System.Text.StringBuilder();
+                                updatedJson.Append("{");
+                                
+                                updatedJson.Append($"\"id\":\"{metaFlowResponse.Id}\",");
+                                if (root.TryGetProperty("name", out var name)) updatedJson.Append($"\"name\":{name.GetRawText()},");
+                                if (root.TryGetProperty("categories", out var categories)) updatedJson.Append($"\"categories\":{categories.GetRawText()},");
+                                if (root.TryGetProperty("version", out var version)) updatedJson.Append($"\"version\":{version.GetRawText()},");
+                                if (root.TryGetProperty("screens", out var screens)) updatedJson.Append($"\"screens\":{screens.GetRawText()},");
+                                updatedJson.Append($"\"status\":\"{metaFlowResponse.Status ?? "DRAFT"}\"");
+                                
+                                updatedJson.Append("}");
+                                cleanedJson = updatedJson.ToString();
+                            }
+                            catch
+                            {
+                                // 如果更新失敗，使用原始 JSON
+                            }
+                            
+                            form.MetaFlowJson = cleanedJson;
+                            form.MetaFlowMetadata = JsonSerializer.Serialize(metaFlowResponse);
+                            
+                            _loggingService.LogInformation($"💾 [CREATE] 保存到數據庫的 MetaFlowJson (fallback) 長度: {cleanedJson.Length} 字符");
+                        }
+                    }
+                    catch (Exception metaEx)
+                    {
+                        // 詳細記錄錯誤信息
+                        _loggingService.LogError($"❌ [CREATE] 創建 Meta Flow 失敗: {metaEx.Message}", metaEx);
+                        _loggingService.LogError($"❌ [CREATE] 異常類型: {metaEx.GetType().Name}");
+                        _loggingService.LogError($"❌ [CREATE] 堆疊追蹤: {metaEx.StackTrace}");
+                        
+                        if (metaEx.InnerException != null)
+                        {
+                            _loggingService.LogError($"❌ [CREATE] 內部異常: {metaEx.InnerException.Message}");
+                        }
+                        
+                        // 記錄請求的 JSON 以便調試
+                        _loggingService.LogError($"❌ [CREATE] 失敗的請求 JSON: {form.MetaFlowJson}");
+                        
+                        // Meta API 失敗時，返回詳細錯誤信息給前端
+                        return BadRequest(new { 
+                            error = "Meta API 調用失敗",
+                            message = metaEx.Message,
+                            details = metaEx.ToString(),
+                            requestJson = form.MetaFlowJson
+                        });
+                    }
+                    }
                 }
 
                 _loggingService.LogInformation($"準備保存表單定義: ID={form.Id}, CompanyId={form.CompanyId}, CreatedUserId={form.CreatedUserId}, Name={form.Name}");
@@ -255,11 +651,156 @@ namespace PurpleRice.Controllers
 
                 existingForm.Name = form.Name;
                 existingForm.Description = form.Description;
-                existingForm.HtmlCode = form.HtmlCode;
                 existingForm.Status = form.Status;
-                existingForm.FieldDisplaySettings = form.FieldDisplaySettings; // 新增：更新字段顯示設定
+                existingForm.FieldDisplaySettings = form.FieldDisplaySettings;
                 existingForm.UpdatedAt = DateTime.UtcNow;
-                existingForm.UpdatedUserId = userId;    // 新增：設置更新用戶ID
+                existingForm.UpdatedUserId = userId;
+                
+                // 根據表單類型更新對應的字段
+                if (existingForm.FormType == "HTML")
+                {
+                    existingForm.HtmlCode = form.HtmlCode;
+                }
+                else if (existingForm.FormType == "MetaFlows")
+                {
+                    // 如果是 MetaFlows 類型，先更新到 Meta API（如果有 MetaFlowId）
+                    if (!string.IsNullOrEmpty(existingForm.MetaFlowId) && !string.IsNullOrEmpty(form.MetaFlowJson))
+                    {
+                        try
+                        {
+                            _loggingService.LogInformation($"開始更新 Meta Flow: {existingForm.MetaFlowId}");
+                            
+                            // 驗證 JSON 格式（但不解析為對象，保持原始格式）
+                            try
+                            {
+                                var jsonDoc = JsonDocument.Parse(form.MetaFlowJson);
+                                _loggingService.LogInformation($"✅ [UPDATE] JSON 格式驗證通過");
+                            }
+                            catch (JsonException jsonEx)
+                            {
+                                _loggingService.LogError($"❌ [UPDATE] JSON 格式無效: {jsonEx.Message}");
+                                return BadRequest(new { error = $"Meta Flow JSON 格式無效: {jsonEx.Message}" });
+                            }
+                            
+                            // 直接使用前端生成的 JSON 字符串調用 Meta API
+                            var metaFlowResponse = await _metaFlowsService.UpdateFlowAsync(
+                                companyId.Value, 
+                                existingForm.MetaFlowId, 
+                                form.MetaFlowJson
+                            );
+                            
+                            _loggingService.LogInformation($"📨 [UPDATE] Meta API 響應:");
+                            _loggingService.LogInformation($"   - ID: {metaFlowResponse.Id}");
+                            _loggingService.LogInformation($"   - Status: {metaFlowResponse.Status}");
+                            
+                            // 更新 Meta API 返回的元數據
+                            existingForm.MetaFlowVersion = metaFlowResponse.Version;
+                            existingForm.MetaFlowStatus = metaFlowResponse.Status;
+                            
+                            // 從 Meta API 獲取基本信息並更新 JSON
+                            try
+                            {
+                                var fullFlowData = await _metaFlowsService.GetFlowAsync(companyId.Value, existingForm.MetaFlowId);
+                                
+                                // 解析原始 JSON 以便構建完整的響應
+                                var originalJson = JsonDocument.Parse(form.MetaFlowJson);
+                                var originalScreens = originalJson.RootElement.GetProperty("screens");
+                                
+                                // 構建完整的響應 JSON（包含 Meta API 返回的信息 + 原始 screens）
+                                var completeResponseJson = $"{{\"id\":\"{fullFlowData.Id}\",\"name\":{JsonSerializer.Serialize(fullFlowData.Name ?? originalJson.RootElement.GetProperty("name").GetString() ?? form.Name)},\"categories\":{JsonSerializer.Serialize(fullFlowData.Categories ?? originalJson.RootElement.GetProperty("categories").EnumerateArray().Select(e => e.GetString()).ToList())},\"screens\":{originalScreens.GetRawText()},\"version\":{JsonSerializer.Serialize(fullFlowData.Version ?? originalJson.RootElement.GetProperty("version").GetString())},\"status\":{JsonSerializer.Serialize(fullFlowData.Status ?? metaFlowResponse.Status)},\"created_time\":{(fullFlowData.CreatedTime.HasValue ? JsonSerializer.Serialize(fullFlowData.CreatedTime.Value) : "null")},\"updated_time\":{(fullFlowData.UpdatedTime.HasValue ? JsonSerializer.Serialize(fullFlowData.UpdatedTime.Value) : "null")}}}";
+                                
+                                // 清理 success: null
+                                if (completeResponseJson.Contains("\"success\":null"))
+                                {
+                                    completeResponseJson = System.Text.RegularExpressions.Regex.Replace(
+                                        completeResponseJson, 
+                                        @",?\s*""success""\s*:\s*null\s*,?", 
+                                        "", 
+                                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                    );
+                                }
+                                
+                                existingForm.MetaFlowJson = completeResponseJson;
+                                existingForm.MetaFlowMetadata = JsonSerializer.Serialize(fullFlowData);
+                                
+                                _loggingService.LogInformation($"💾 [UPDATE] 保存到數據庫的 MetaFlowJson 長度: {completeResponseJson.Length} 字符");
+                                _loggingService.LogInformation($"✅ [UPDATE] Meta Flow 更新成功: ID={fullFlowData.Id}");
+                            }
+                            catch (Exception getEx)
+                            {
+                                _loggingService.LogWarning($"⚠️ [UPDATE] 更新後獲取 Flow 基本信息失敗，使用原始 JSON: {getEx.Message}");
+                                
+                                // 如果獲取失敗，直接使用原始 JSON（只清理 success: null 並更新 id、version、status）
+                                var cleanedJson = form.MetaFlowJson;
+                                if (cleanedJson.Contains("\"success\":null"))
+                                {
+                                    cleanedJson = System.Text.RegularExpressions.Regex.Replace(
+                                        cleanedJson, 
+                                        @",?\s*""success""\s*:\s*null\s*,?", 
+                                        "", 
+                                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                                    );
+                                }
+                                
+                                // 更新 JSON 中的 id、version、status
+                                try
+                                {
+                                    var jsonDoc = JsonDocument.Parse(cleanedJson);
+                                    var root = jsonDoc.RootElement;
+                                    var updatedJson = new System.Text.StringBuilder();
+                                    updatedJson.Append("{");
+                                    
+                                    updatedJson.Append($"\"id\":\"{metaFlowResponse.Id}\",");
+                                    if (root.TryGetProperty("name", out var name)) updatedJson.Append($"\"name\":{name.GetRawText()},");
+                                    if (root.TryGetProperty("categories", out var categories)) updatedJson.Append($"\"categories\":{categories.GetRawText()},");
+                                    if (root.TryGetProperty("version", out var version)) updatedJson.Append($"\"version\":{version.GetRawText()},");
+                                    if (root.TryGetProperty("screens", out var screens)) updatedJson.Append($"\"screens\":{screens.GetRawText()},");
+                                    updatedJson.Append($"\"status\":\"{metaFlowResponse.Status ?? "DRAFT"}\"");
+                                    
+                                    updatedJson.Append("}");
+                                    cleanedJson = updatedJson.ToString();
+                                }
+                                catch
+                                {
+                                    // 如果更新失敗，使用原始 JSON
+                                }
+                                
+                                existingForm.MetaFlowJson = cleanedJson;
+                                existingForm.MetaFlowMetadata = JsonSerializer.Serialize(metaFlowResponse);
+                                
+                                _loggingService.LogInformation($"💾 [UPDATE] 保存到數據庫的 MetaFlowJson (fallback) 長度: {cleanedJson.Length} 字符");
+                            }
+                        }
+                        catch (Exception metaEx)
+                        {
+                            // 詳細記錄錯誤信息
+                            _loggingService.LogError($"❌ [UPDATE] 更新 Meta Flow 失敗: {metaEx.Message}", metaEx);
+                            _loggingService.LogError($"❌ [UPDATE] 異常類型: {metaEx.GetType().Name}");
+                            _loggingService.LogError($"❌ [UPDATE] 堆疊追蹤: {metaEx.StackTrace}");
+                            
+                            if (metaEx.InnerException != null)
+                            {
+                                _loggingService.LogError($"❌ [UPDATE] 內部異常: {metaEx.InnerException.Message}");
+                            }
+                            
+                            // 記錄請求的 JSON 以便調試
+                            _loggingService.LogError($"❌ [UPDATE] 失敗的請求 JSON: {form.MetaFlowJson}");
+                            
+                            // Meta API 失敗時，返回詳細錯誤信息給前端
+                            return BadRequest(new { 
+                                error = "Meta API 更新失敗",
+                                message = metaEx.Message,
+                                details = metaEx.ToString(),
+                                requestJson = form.MetaFlowJson
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // 如果沒有 MetaFlowId，可能是新創建的，直接保存 JSON
+                        existingForm.MetaFlowJson = form.MetaFlowJson;
+                    }
+                }
                 
                 // 記錄字段顯示設定更新
                 if (!string.IsNullOrEmpty(form.FieldDisplaySettings))
@@ -455,6 +996,101 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogError($"❌ [BatchStatus] 批量狀態更新失敗: {ex.Message}", ex);
                 return StatusCode(500, new { success = false, error = $"批量狀態更新失敗: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// 從 Meta API 獲取最新版本的 Flow
+        /// </summary>
+        [HttpGet("{id}/meta-flow")]
+        public async Task<IActionResult> GetMetaFlowFromApi(Guid id)
+        {
+            try
+            {
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+
+                var form = await _context.eFormDefinitions
+                    .FirstOrDefaultAsync(x => x.Id == id && x.CompanyId == companyId.Value);
+
+                if (form == null)
+                {
+                    _loggingService.LogWarning($"找不到表單定義，ID: {id}");
+                    return NotFound();
+                }
+
+                if (form.FormType != "MetaFlows")
+                {
+                    return BadRequest(new { error = "此表單不是 MetaFlows 類型" });
+                }
+
+                if (string.IsNullOrEmpty(form.MetaFlowId))
+                {
+                    return BadRequest(new { error = "此表單沒有 Meta Flow ID" });
+                }
+
+                _loggingService.LogInformation($"從 Meta API 獲取 Flow: {form.MetaFlowId}");
+                var metaFlow = await _metaFlowsService.GetFlowAsync(companyId.Value, form.MetaFlowId);
+                
+                // 注意：GetFlowAsync 只返回基本信息（id, name, status, categories），不包含 screens
+                // 因此不應該覆蓋 MetaFlowJson，只更新版本和狀態信息
+                // 保留數據庫中已有的完整 JSON（包含 screens 和 data 模型）
+                if (!string.IsNullOrEmpty(form.MetaFlowJson))
+                {
+                    _loggingService.LogInformation($"保留數據庫中的完整 MetaFlowJson（包含 screens），只更新版本和狀態");
+                }
+                else
+                {
+                    _loggingService.LogWarning($"數據庫中沒有 MetaFlowJson，但 GetFlowAsync 不返回 screens，無法完整恢復");
+                }
+                
+                // 只更新版本和狀態，不覆蓋 MetaFlowJson
+                form.MetaFlowVersion = metaFlow.Version;
+                form.MetaFlowStatus = metaFlow.Status;
+                form.MetaFlowMetadata = JsonSerializer.Serialize(metaFlow);
+                
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功從 Meta API 獲取並更新 Flow 版本和狀態: {form.Name}, Version: {metaFlow.Version}, Status: {metaFlow.Status}");
+                
+                // 返回數據庫中的完整 JSON，而不是只有基本信息的 metaFlow
+                if (!string.IsNullOrEmpty(form.MetaFlowJson))
+                {
+                    try
+                    {
+                        var fullFlowData = JsonSerializer.Deserialize<MetaFlowResponse>(form.MetaFlowJson, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+                        if (fullFlowData != null)
+                        {
+                            // 更新基本信息（從 Meta API 獲取的）
+                            fullFlowData.Id = metaFlow.Id;
+                            fullFlowData.Name = metaFlow.Name;
+                            fullFlowData.Status = metaFlow.Status;
+                            fullFlowData.Categories = metaFlow.Categories;
+                            fullFlowData.Version = metaFlow.Version;
+                            
+                            return Ok(fullFlowData);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogWarning($"解析數據庫中的 MetaFlowJson 失敗，返回基本信息: {ex.Message}");
+                    }
+                }
+                
+                // 如果無法解析數據庫中的 JSON，返回基本信息
+                return Ok(metaFlow);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"從 Meta API 獲取 Flow 失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = $"從 Meta API 獲取 Flow 失敗: {ex.Message}" });
             }
         }
     }

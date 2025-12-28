@@ -1,0 +1,956 @@
+using System;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using PurpleRice.Data;
+using PurpleRice.Models;
+
+namespace PurpleRice.Services
+{
+    public interface IWhatsAppMetaFlowsService
+    {
+        Task<MetaFlowResponse> CreateFlowAsync(Guid companyId, string flowJsonString);
+        Task<MetaFlowResponse> UpdateFlowAsync(Guid companyId, string flowId, string flowJsonString);
+        Task<MetaFlowResponse> GetFlowAsync(Guid companyId, string flowId);
+        Task<bool> DeleteFlowAsync(Guid companyId, string flowId);
+        Task<MetaFlowResponse> PublishFlowAsync(Guid companyId, string flowId);
+    }
+
+    public class WhatsAppMetaFlowsService : IWhatsAppMetaFlowsService
+    {
+        private readonly HttpClient _httpClient;
+        private readonly PurpleRiceDbContext _context;
+        private readonly LoggingService _loggingService;
+        private static string GetMetaApiVersion() => WhatsAppApiConfig.GetApiVersion();
+
+        public WhatsAppMetaFlowsService(
+            IHttpClientFactory httpClientFactory,
+            PurpleRiceDbContext context,
+            Func<string, LoggingService> loggingServiceFactory)
+        {
+            _httpClient = httpClientFactory.CreateClient();
+            _context = context;
+            _loggingService = loggingServiceFactory("WhatsAppMetaFlowsService");
+        }
+
+        /// <summary>
+        /// 創建 Flow 並提交到 Meta API
+        /// 正確流程：
+        /// 1. POST /{WABA-ID}/flows (只傳 name, categories) - 創建 Flow 殼
+        /// 2. POST /{FLOW-ID}/assets (multipart/form-data 上傳 flow.json)
+        /// 3. POST /{FLOW-ID}/publish
+        /// 4. GET /{FLOW-ID}/assets 驗證上傳是否成功
+        /// </summary>
+        public async Task<MetaFlowResponse> CreateFlowAsync(Guid companyId, string flowJsonString)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📝 開始創建 Meta Flow");
+                _loggingService.LogInformation($"📥 [CREATE] 接收到的原始 JSON 長度: {flowJsonString?.Length ?? 0} 字符");
+                
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/flows";
+                
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                _loggingService.LogInformation($"📡 請求 URL: {url}");
+                
+                // 直接使用前端生成的 JSON，只做必要清理
+                var cleanedJson = flowJsonString;
+                
+                // 清理 success: null 字段（使用正則表達式確保完整移除）
+                if (cleanedJson.Contains("\"success\":null"))
+                {
+                    _loggingService.LogInformation($"🧹 [CREATE] 清理 'success':null 字段");
+                    // 使用正則表達式移除 success: null（包括前後的逗號）
+                    cleanedJson = System.Text.RegularExpressions.Regex.Replace(
+                        cleanedJson, 
+                        @",?\s*""success""\s*:\s*null\s*,?", 
+                        "", 
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                    );
+                }
+                
+                // 解析 JSON 以獲取 name 和 categories（用於 Step 1 創建 Flow 殼）
+                string flowName = "New Flow";
+                List<string> categories = new List<string> { "LEAD_GENERATION" };
+                
+                try
+                {
+                    var jsonDocForParsing = JsonDocument.Parse(cleanedJson);
+                    var rootForParsing = jsonDocForParsing.RootElement;
+                    
+                    // 獲取 name
+                    if (rootForParsing.TryGetProperty("name", out var nameElementForParsing))
+                    {
+                        flowName = nameElementForParsing.GetString() ?? "New Flow";
+                    }
+                    
+                    // 獲取 categories
+                    if (rootForParsing.TryGetProperty("categories", out var categoriesElementForParsing))
+                    {
+                        categories = categoriesElementForParsing.EnumerateArray()
+                            .Select(e => e.GetString())
+                            .Where(s => !string.IsNullOrEmpty(s))
+                            .ToList();
+                        if (categories.Count == 0)
+                        {
+                            categories = new List<string> { "LEAD_GENERATION" };
+                        }
+                    }
+                    
+                    _loggingService.LogInformation($"📋 [CREATE] 解析 JSON - Flow 名稱: {flowName}");
+                    _loggingService.LogInformation($"📋 [CREATE] 解析 JSON - Categories: {string.Join(", ", categories)}");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"⚠️ [CREATE] 無法解析 JSON 以獲取 name/categories: {ex.Message}，使用默認值");
+                }
+                
+                // 驗證 JSON 格式
+                try
+                {
+                    var jsonDocForValidation = JsonDocument.Parse(cleanedJson);
+                    _loggingService.LogInformation($"✅ [CREATE] JSON 格式驗證通過");
+                    
+                    // 檢查必要字段
+                    var rootForValidation = jsonDocForValidation.RootElement;
+                    bool hasVersion = rootForValidation.TryGetProperty("version", out var version);
+                    bool hasScreens = rootForValidation.TryGetProperty("screens", out var screens);
+                    bool hasName = rootForValidation.TryGetProperty("name", out var name);
+                    bool hasCategories = rootForValidation.TryGetProperty("categories", out var categoriesElementForValidation);
+                    
+                    if (hasVersion)
+                        _loggingService.LogInformation($"✅ [CREATE] 包含 'version' 字段: {version.GetString()}");
+                    else
+                        _loggingService.LogError($"❌ [CREATE] 缺少 'version' 字段！");
+                    
+                    if (hasScreens)
+                    {
+                        _loggingService.LogInformation($"✅ [CREATE] 包含 'screens' 字段");
+                        if (screens.ValueKind == JsonValueKind.Array)
+                        {
+                            var screensCount = screens.GetArrayLength();
+                            _loggingService.LogInformation($"✅ [CREATE] screens 數組包含 {screensCount} 個 screen");
+                            
+                            // 檢查第一個 screen 的詳細信息
+                            if (screensCount > 0)
+                            {
+                                var firstScreen = screens[0];
+                                if (firstScreen.TryGetProperty("id", out var screenId))
+                                    _loggingService.LogInformation($"   - Screen[0].id: {screenId.GetString()}");
+                                if (firstScreen.TryGetProperty("title", out var screenTitle))
+                                    _loggingService.LogInformation($"   - Screen[0].title: {screenTitle.GetString()}");
+                                if (firstScreen.TryGetProperty("data", out var screenData))
+                                {
+                                    _loggingService.LogInformation($"   - Screen[0].data: {screenData.GetRawText().Length} 字符");
+                                    // 檢查 data 中是否包含數據模型
+                                    if (screenData.GetRawText().Contains("__example__") || screenData.GetRawText().Contains("checkbox_") || screenData.GetRawText().Contains("dropdown_"))
+                                    {
+                                        _loggingService.LogInformation($"   - Screen[0].data 包含數據模型定義");
+                                    }
+                                }
+                                if (firstScreen.TryGetProperty("layout", out var screenLayout))
+                                {
+                                    _loggingService.LogInformation($"   - Screen[0].layout: {screenLayout.GetRawText().Length} 字符");
+                                    if (screenLayout.TryGetProperty("children", out var children))
+                                    {
+                                        _loggingService.LogInformation($"   - Screen[0].layout.children: {children.GetArrayLength()} 個組件");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogError($"❌ [CREATE] 缺少 'screens' 字段！");
+                    }
+                    
+                    if (hasName)
+                        _loggingService.LogInformation($"✅ [CREATE] 包含 'name' 字段: {name.GetString()}");
+                    else
+                        _loggingService.LogWarning($"⚠️ [CREATE] 缺少 'name' 字段！Meta API 可能需要此字段");
+                    
+                    if (hasCategories)
+                    {
+                        _loggingService.LogInformation($"✅ [CREATE] 包含 'categories' 字段");
+                        if (categoriesElementForValidation.ValueKind == JsonValueKind.Array)
+                        {
+                            var categoriesList = categoriesElementForValidation.EnumerateArray().Select(e => e.GetString()).ToList();
+                            _loggingService.LogInformation($"   - Categories: {string.Join(", ", categoriesList)}");
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"⚠️ [CREATE] 缺少 'categories' 字段！Meta API 可能需要此字段");
+                    }
+                    
+                    // 如果缺少 name 或 categories，這可能是問題所在
+                    if (!hasName || !hasCategories)
+                    {
+                        _loggingService.LogWarning($"⚠️ [CREATE] JSON 缺少必要的字段！這可能導致 Meta API 使用默認值");
+                    }
+                }
+                catch (JsonException jsonEx)
+                {
+                    _loggingService.LogError($"❌ [CREATE] JSON 格式驗證失敗: {jsonEx.Message}");
+                    throw new Exception($"無效的 JSON 格式: {jsonEx.Message}");
+                }
+                
+                // ========== Step 1: 創建 Flow 殼（只傳 name, categories）==========
+                _loggingService.LogInformation($"🔷 [CREATE] Step 1: 創建 Flow 殼（只傳 name, categories）");
+                
+                _loggingService.LogInformation($"📋 [CREATE] Step 1 - Flow 名稱: {flowName}");
+                _loggingService.LogInformation($"📋 [CREATE] Step 1 - Categories: {string.Join(", ", categories)}");
+                
+                var createFlowPayload = new
+                {
+                    name = flowName,
+                    categories = categories
+                };
+                
+                var createFlowJson = JsonSerializer.Serialize(createFlowPayload);
+                _loggingService.LogInformation($"📤 [CREATE] Step 1 請求: {createFlowJson}");
+                
+                var createFlowContent = new StringContent(createFlowJson, System.Text.Encoding.UTF8, "application/json");
+                var createFlowResponse = await _httpClient.PostAsync(url, createFlowContent);
+                var createFlowResponseContent = await createFlowResponse.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"📨 [CREATE] Step 1 響應: {createFlowResponse.StatusCode}");
+                _loggingService.LogInformation($"📨 [CREATE] Step 1 響應內容: {createFlowResponseContent}");
+                
+                if (!createFlowResponse.IsSuccessStatusCode)
+                {
+                    throw new Exception($"創建 Flow 殼失敗: {createFlowResponse.StatusCode} - {createFlowResponseContent}");
+                }
+                
+                var createFlowResult = JsonSerializer.Deserialize<MetaFlowResponse>(createFlowResponseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                
+                if (createFlowResult == null || string.IsNullOrEmpty(createFlowResult.Id))
+                {
+                    throw new Exception("Meta API 返回的 Flow ID 為空");
+                }
+                
+                var flowId = createFlowResult.Id;
+                _loggingService.LogInformation($"✅ [CREATE] Step 1 成功 - Flow ID: {flowId}");
+                
+                // ========== Step 2: 上傳 Flow JSON 文件 ==========
+                _loggingService.LogInformation($"🔷 [CREATE] Step 2: 上傳 Flow JSON 文件");
+                var uploadAssetsUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}/assets";
+                
+                // 從 JSON 中移除 name 和 categories（這些只在 Step 1 中使用）
+                // 上傳的 JSON 應該只包含 version 和 screens
+                string jsonForUpload = cleanedJson;
+                try
+                {
+                    var jsonDocForUpload = JsonDocument.Parse(cleanedJson);
+                    var rootForUpload = jsonDocForUpload.RootElement;
+                    
+                    var jsonForUploadBuilder = new System.Text.StringBuilder();
+                    jsonForUploadBuilder.Append("{");
+                    
+                    bool hasComma = false;
+                    
+                    // 1. version
+                    if (rootForUpload.TryGetProperty("version", out var versionForUpload))
+                    {
+                        jsonForUploadBuilder.Append($"\"version\":{versionForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    // 2. data_api_version (如果存在，必須保留)
+                    if (rootForUpload.TryGetProperty("data_api_version", out var dataApiVersionForUpload))
+                    {
+                        if (hasComma) jsonForUploadBuilder.Append(",");
+                        jsonForUploadBuilder.Append($"\"data_api_version\":{dataApiVersionForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    // 3. routing_model (如果存在，必須保留)
+                    if (rootForUpload.TryGetProperty("routing_model", out var routingModelForUpload))
+                    {
+                        if (hasComma) jsonForUploadBuilder.Append(",");
+                        jsonForUploadBuilder.Append($"\"routing_model\":{routingModelForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    // 4. screens
+                    if (rootForUpload.TryGetProperty("screens", out var screensForUpload))
+                    {
+                        if (hasComma) jsonForUploadBuilder.Append(",");
+                        jsonForUploadBuilder.Append($"\"screens\":{screensForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    jsonForUploadBuilder.Append("}");
+                    jsonForUpload = jsonForUploadBuilder.ToString();
+                    
+                    _loggingService.LogInformation($"📋 [CREATE] Step 2 - 已移除 name 和 categories，保留 data_api_version 和 routing_model（如果存在），準備上傳的 JSON 長度: {jsonForUpload.Length} 字符");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"⚠️ [CREATE] Step 2 - 無法移除 name/categories: {ex.Message}，使用原始 JSON");
+                }
+                
+                // 將 JSON 轉換為字節數組
+                var jsonBytes = System.Text.Encoding.UTF8.GetBytes(jsonForUpload);
+                
+                // 使用 multipart/form-data 上傳
+                var formData = new MultipartFormDataContent();
+                
+                // 添加文件內容
+                var fileContent = new ByteArrayContent(jsonBytes);
+                fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                formData.Add(fileContent, "file", "flow.json");
+                
+                // 添加其他必需字段
+                formData.Add(new StringContent("flow.json"), "name");
+                formData.Add(new StringContent("FLOW_JSON"), "asset_type");
+                
+                _loggingService.LogInformation($"📤 [CREATE] Step 2 上傳 JSON 文件 - URL: {uploadAssetsUrl}");
+                _loggingService.LogInformation($"📤 [CREATE] Step 2 JSON 文件大小: {jsonBytes.Length} 字節");
+                
+                var uploadResponse = await _httpClient.PostAsync(uploadAssetsUrl, formData);
+                var uploadResponseContent = await uploadResponse.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"📨 [CREATE] Step 2 響應: {uploadResponse.StatusCode}");
+                _loggingService.LogInformation($"📨 [CREATE] Step 2 響應內容: {uploadResponseContent}");
+                
+                if (!uploadResponse.IsSuccessStatusCode)
+                {
+                    throw new Exception($"上傳 Flow JSON 文件失敗: {uploadResponse.StatusCode} - {uploadResponseContent}");
+                }
+                
+                _loggingService.LogInformation($"✅ [CREATE] Step 2 成功 - Flow JSON 文件已上傳");
+                
+                // ========== Step 3: 發布 Flow ==========
+                _loggingService.LogInformation($"🔷 [CREATE] Step 3: 發布 Flow");
+                
+                var publishResult = await PublishFlowAsync(companyId, flowId);
+                _loggingService.LogInformation($"✅ [CREATE] Step 3 成功 - Flow 已發布");
+                
+                // ========== Step 4: 驗證上傳是否成功 ==========
+                _loggingService.LogInformation($"🔷 [CREATE] Step 4: 驗證 Flow JSON 上傳是否成功");
+                
+                try
+                {
+                    var assetsUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}/assets";
+                    var assetsResponse = await _httpClient.GetAsync(assetsUrl);
+                    var assetsContent = await assetsResponse.Content.ReadAsStringAsync();
+                    
+                    _loggingService.LogInformation($"📨 [CREATE] Step 4 響應: {assetsResponse.StatusCode}");
+                    _loggingService.LogInformation($"📨 [CREATE] Step 4 響應內容: {assetsContent}");
+                    
+                    if (assetsResponse.IsSuccessStatusCode)
+                    {
+                        var assetsJson = JsonSerializer.Deserialize<JsonElement>(assetsContent);
+                        if (assetsJson.TryGetProperty("data", out var assetsData))
+                        {
+                            var hasFlowJson = false;
+                            foreach (var asset in assetsData.EnumerateArray())
+                            {
+                                if (asset.TryGetProperty("asset_type", out var assetType) && 
+                                    assetType.GetString() == "FLOW_JSON")
+                                {
+                                    hasFlowJson = true;
+                                    _loggingService.LogInformation($"✅ [CREATE] Step 4 驗證成功 - 找到 FLOW_JSON asset");
+                                    if (asset.TryGetProperty("download_url", out var downloadUrl))
+                                    {
+                                        _loggingService.LogInformation($"   - Download URL: {downloadUrl.GetString()}");
+                                    }
+                                    break;
+                                }
+                            }
+                            
+                            if (!hasFlowJson)
+                            {
+                                _loggingService.LogWarning($"⚠️ [CREATE] Step 4 警告 - 未找到 FLOW_JSON asset");
+                            }
+                        }
+                    }
+                }
+                catch (Exception verifyEx)
+                {
+                    _loggingService.LogWarning($"⚠️ [CREATE] Step 4 驗證失敗: {verifyEx.Message}");
+                }
+                
+                // 獲取最終的 Flow 信息
+                var finalResult = await GetFlowAsync(companyId, flowId);
+                finalResult.Status = publishResult.Status;
+                finalResult.Version = publishResult.Version;
+                
+                _loggingService.LogInformation($"✅ [CREATE] Meta Flow 創建完成 - ID: {finalResult.Id}, Name: {finalResult.Name}, Status: {finalResult.Status}");
+                
+                return finalResult;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 創建 Meta Flow 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 更新 Flow
+        /// 正確流程：
+        /// 1. POST /{FLOW-ID}/assets (multipart/form-data 上傳 flow.json) - 覆蓋現有的 JSON
+        /// 2. POST /{FLOW-ID}/publish
+        /// 3. GET /{FLOW-ID}/assets 驗證上傳是否成功
+        /// </summary>
+        public async Task<MetaFlowResponse> UpdateFlowAsync(Guid companyId, string flowId, string flowJsonString)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📝 開始更新 Meta Flow - ID: {flowId}");
+                _loggingService.LogInformation($"📥 [UPDATE] 接收到的原始 JSON 長度: {flowJsonString?.Length ?? 0} 字符");
+
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                // 清理 JSON（移除 success: null）
+                var cleanedJson = flowJsonString;
+                if (cleanedJson.Contains("\"success\":null"))
+                {
+                    _loggingService.LogInformation($"🧹 [UPDATE] 清理 'success':null 字段");
+                    cleanedJson = System.Text.RegularExpressions.Regex.Replace(
+                        cleanedJson, 
+                        @",?\s*""success""\s*:\s*null\s*,?", 
+                        "", 
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                    );
+                }
+                
+                // 驗證 JSON 格式
+                try
+                {
+                    var jsonDoc = JsonDocument.Parse(cleanedJson);
+                    _loggingService.LogInformation($"✅ [UPDATE] JSON 格式驗證通過");
+                }
+                catch (JsonException jsonEx)
+                {
+                    _loggingService.LogError($"❌ [UPDATE] JSON 格式驗證失敗: {jsonEx.Message}");
+                    throw new Exception($"無效的 JSON 格式: {jsonEx.Message}");
+                }
+                
+                // ========== Step 0: 先刪除現有的 FLOW_JSON asset（如果存在）==========
+                _loggingService.LogInformation($"🔷 [UPDATE] Step 0: 檢查並刪除現有的 FLOW_JSON asset（如果存在）");
+                try
+                {
+                    var assetsUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}/assets";
+                    var assetsResponse = await _httpClient.GetAsync(assetsUrl);
+                    var assetsContent = await assetsResponse.Content.ReadAsStringAsync();
+                    
+                    if (assetsResponse.IsSuccessStatusCode)
+                    {
+                        var assetsJson = JsonSerializer.Deserialize<JsonElement>(assetsContent);
+                        if (assetsJson.TryGetProperty("data", out var assetsData) && assetsData.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var asset in assetsData.EnumerateArray())
+                            {
+                                if (asset.TryGetProperty("asset_type", out var assetType) && 
+                                    assetType.GetString() == "FLOW_JSON" &&
+                                    asset.TryGetProperty("id", out var assetId))
+                                {
+                                    var deleteAssetUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{assetId.GetString()}";
+                                    _loggingService.LogInformation($"🗑️ [UPDATE] Step 0 - 刪除現有的 FLOW_JSON asset: {assetId.GetString()}");
+                                    
+                                    var deleteResponse = await _httpClient.DeleteAsync(deleteAssetUrl);
+                                    var deleteContent = await deleteResponse.Content.ReadAsStringAsync();
+                                    
+                                    if (deleteResponse.IsSuccessStatusCode)
+                                    {
+                                        _loggingService.LogInformation($"✅ [UPDATE] Step 0 - 成功刪除舊的 FLOW_JSON asset");
+                                    }
+                                    else
+                                    {
+                                        _loggingService.LogWarning($"⚠️ [UPDATE] Step 0 - 刪除舊 asset 失敗（繼續上傳新文件）: {deleteResponse.StatusCode} - {deleteContent}");
+                                    }
+                                    break; // 只刪除第一個找到的 FLOW_JSON asset
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception deleteEx)
+                {
+                    _loggingService.LogWarning($"⚠️ [UPDATE] Step 0 - 刪除舊 asset 時發生錯誤（繼續上傳新文件）: {deleteEx.Message}");
+                }
+                
+                // ========== Step 1: 上傳 Flow JSON 文件（覆蓋現有的）==========
+                _loggingService.LogInformation($"🔷 [UPDATE] Step 1: 上傳 Flow JSON 文件（覆蓋現有的）");
+                var uploadAssetsUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}/assets";
+                
+                // 從 JSON 中移除 name 和 categories（這些不應該在上傳的 JSON 中）
+                // 上傳的 JSON 應該只包含 version 和 screens
+                string jsonForUpload = cleanedJson;
+                try
+                {
+                    var jsonDocForUpload = JsonDocument.Parse(cleanedJson);
+                    var rootForUpload = jsonDocForUpload.RootElement;
+                    
+                    var jsonForUploadBuilder = new System.Text.StringBuilder();
+                    jsonForUploadBuilder.Append("{");
+                    
+                    bool hasComma = false;
+                    
+                    // 1. version
+                    if (rootForUpload.TryGetProperty("version", out var versionForUpload))
+                    {
+                        jsonForUploadBuilder.Append($"\"version\":{versionForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    // 2. data_api_version (如果存在，必須保留)
+                    if (rootForUpload.TryGetProperty("data_api_version", out var dataApiVersionForUpload))
+                    {
+                        if (hasComma) jsonForUploadBuilder.Append(",");
+                        jsonForUploadBuilder.Append($"\"data_api_version\":{dataApiVersionForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    // 3. routing_model (如果存在，必須保留)
+                    if (rootForUpload.TryGetProperty("routing_model", out var routingModelForUpload))
+                    {
+                        if (hasComma) jsonForUploadBuilder.Append(",");
+                        jsonForUploadBuilder.Append($"\"routing_model\":{routingModelForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    // 4. screens
+                    if (rootForUpload.TryGetProperty("screens", out var screensForUpload))
+                    {
+                        if (hasComma) jsonForUploadBuilder.Append(",");
+                        jsonForUploadBuilder.Append($"\"screens\":{screensForUpload.GetRawText()}");
+                        hasComma = true;
+                    }
+                    
+                    jsonForUploadBuilder.Append("}");
+                    jsonForUpload = jsonForUploadBuilder.ToString();
+                    
+                    _loggingService.LogInformation($"📋 [UPDATE] Step 1 - 已移除 name 和 categories，保留 data_api_version 和 routing_model（如果存在），準備上傳的 JSON 長度: {jsonForUpload.Length} 字符");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"⚠️ [UPDATE] Step 1 - 無法移除 name/categories: {ex.Message}，使用原始 JSON");
+                }
+                
+                // 將 JSON 轉換為字節數組
+                var jsonBytes = System.Text.Encoding.UTF8.GetBytes(jsonForUpload);
+                
+                // 使用 multipart/form-data 上傳
+                var formData = new MultipartFormDataContent();
+                
+                // 添加文件內容
+                var fileContent = new ByteArrayContent(jsonBytes);
+                fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                formData.Add(fileContent, "file", "flow.json");
+                
+                // 添加其他必需字段
+                formData.Add(new StringContent("flow.json"), "name");
+                formData.Add(new StringContent("FLOW_JSON"), "asset_type");
+                
+                _loggingService.LogInformation($"📤 [UPDATE] Step 1 上傳 JSON 文件 - URL: {uploadAssetsUrl}");
+                _loggingService.LogInformation($"📤 [UPDATE] Step 1 JSON 文件大小: {jsonBytes.Length} 字節");
+                _loggingService.LogInformation($"📤 [UPDATE] Step 1 準備上傳的 JSON 內容（前 500 字符）: {jsonForUpload.Substring(0, Math.Min(500, jsonForUpload.Length))}");
+                if (jsonForUpload.Contains("data_api_version"))
+                {
+                    _loggingService.LogInformation($"✅ [UPDATE] Step 1 JSON 包含 data_api_version");
+                }
+                if (jsonForUpload.Contains("routing_model"))
+                {
+                    _loggingService.LogInformation($"✅ [UPDATE] Step 1 JSON 包含 routing_model");
+                }
+                
+                var uploadResponse = await _httpClient.PostAsync(uploadAssetsUrl, formData);
+                var uploadResponseContent = await uploadResponse.Content.ReadAsStringAsync();
+                
+                _loggingService.LogInformation($"📨 [UPDATE] Step 1 響應狀態碼: {uploadResponse.StatusCode}");
+                _loggingService.LogInformation($"📨 [UPDATE] Step 1 響應內容: {uploadResponseContent}");
+                
+                if (!uploadResponse.IsSuccessStatusCode)
+                {
+                    _loggingService.LogError($"❌ [UPDATE] Step 1 上傳失敗 - 狀態碼: {uploadResponse.StatusCode}");
+                    _loggingService.LogError($"❌ [UPDATE] Step 1 上傳失敗 - 響應內容: {uploadResponseContent}");
+                    _loggingService.LogError($"❌ [UPDATE] Step 1 上傳失敗 - Flow ID: {flowId}");
+                    _loggingService.LogError($"❌ [UPDATE] Step 1 上傳失敗 - 上傳的 JSON 長度: {jsonForUpload.Length} 字符");
+                    throw new Exception($"上傳 Flow JSON 文件失敗: {uploadResponse.StatusCode} - {uploadResponseContent}");
+                }
+                
+                // 解析上傳響應，確認是否成功
+                try
+                {
+                    var uploadResponseJson = JsonSerializer.Deserialize<JsonElement>(uploadResponseContent);
+                    if (uploadResponseJson.TryGetProperty("success", out var successElement) && successElement.GetBoolean())
+                    {
+                        _loggingService.LogInformation($"✅ [UPDATE] Step 1 成功 - Flow JSON 文件已上傳到 Meta 平台");
+                        _loggingService.LogInformation($"   - Flow ID: {flowId}");
+                        _loggingService.LogInformation($"   - 上傳的 JSON 長度: {jsonForUpload.Length} 字符");
+                        _loggingService.LogInformation($"   - Meta API 返回 success: true");
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"⚠️ [UPDATE] Step 1 - Meta API 響應中 success 不是 true");
+                        _loggingService.LogWarning($"   - 響應內容: {uploadResponseContent}");
+                    }
+                }
+                catch (Exception parseEx)
+                {
+                    _loggingService.LogWarning($"⚠️ [UPDATE] Step 1 - 無法解析上傳響應（但狀態碼是成功的）: {parseEx.Message}");
+                    _loggingService.LogInformation($"✅ [UPDATE] Step 1 成功 - Flow JSON 文件已上傳到 Meta 平台（狀態碼: {uploadResponse.StatusCode}）");
+                    _loggingService.LogInformation($"   - Flow ID: {flowId}");
+                    _loggingService.LogInformation($"   - 上傳的 JSON 長度: {jsonForUpload.Length} 字符");
+                }
+                
+                // ========== Step 2: 發布 Flow ==========
+                _loggingService.LogInformation($"🔷 [UPDATE] Step 2: 發布 Flow - Flow ID: {flowId}");
+                
+                var publishResult = await PublishFlowAsync(companyId, flowId);
+                _loggingService.LogInformation($"✅ [UPDATE] Step 2 成功 - Flow 已發布");
+                _loggingService.LogInformation($"   - 發布後狀態: {publishResult.Status ?? "未知"}");
+                _loggingService.LogInformation($"   - 發布後版本: {publishResult.Version ?? "未知"}");
+                
+                // ========== Step 3: 驗證上傳是否成功 ==========
+                _loggingService.LogInformation($"🔷 [UPDATE] Step 3: 驗證 Flow JSON 上傳是否成功");
+                
+                try
+                {
+                    var assetsUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}/assets";
+                    var assetsResponse = await _httpClient.GetAsync(assetsUrl);
+                    var assetsContent = await assetsResponse.Content.ReadAsStringAsync();
+                    
+                    _loggingService.LogInformation($"📨 [UPDATE] Step 3 響應: {assetsResponse.StatusCode}");
+                    _loggingService.LogInformation($"📨 [UPDATE] Step 3 響應內容: {assetsContent}");
+                    
+                    if (assetsResponse.IsSuccessStatusCode)
+                    {
+                        var assetsJson = JsonSerializer.Deserialize<JsonElement>(assetsContent);
+                        if (assetsJson.TryGetProperty("data", out var assetsData))
+                        {
+                            var hasFlowJson = false;
+                            foreach (var asset in assetsData.EnumerateArray())
+                            {
+                                if (asset.TryGetProperty("asset_type", out var assetType) && 
+                                    assetType.GetString() == "FLOW_JSON")
+                                {
+                                    hasFlowJson = true;
+                                    _loggingService.LogInformation($"✅ [UPDATE] Step 3 驗證成功 - 找到 FLOW_JSON asset");
+                                    if (asset.TryGetProperty("download_url", out var downloadUrl))
+                                    {
+                                        _loggingService.LogInformation($"   - Download URL: {downloadUrl.GetString()}");
+                                    }
+                                    break;
+                                }
+                            }
+                            
+                            if (!hasFlowJson)
+                            {
+                                _loggingService.LogWarning($"⚠️ [UPDATE] Step 3 警告 - 未找到 FLOW_JSON asset");
+                                _loggingService.LogWarning($"   - 這可能意味著上傳失敗，或者需要等待 Meta API 處理");
+                                _loggingService.LogWarning($"   - 請檢查 Meta 後台確認 Flow 內容是否已更新");
+                            }
+                            else
+                            {
+                                _loggingService.LogInformation($"✅ [UPDATE] Step 3 驗證成功 - 確認 FLOW_JSON asset 已存在於 Meta 平台");
+                            }
+                        }
+                    }
+                }
+                catch (Exception verifyEx)
+                {
+                    _loggingService.LogWarning($"⚠️ [UPDATE] Step 3 驗證失敗: {verifyEx.Message}");
+                }
+                
+                // 獲取最終的 Flow 信息
+                var finalResult = await GetFlowAsync(companyId, flowId);
+                finalResult.Status = publishResult.Status;
+                finalResult.Version = publishResult.Version;
+                
+                _loggingService.LogInformation($"✅ [UPDATE] Meta Flow 更新完成");
+                _loggingService.LogInformation($"   - Flow ID: {finalResult.Id}");
+                _loggingService.LogInformation($"   - Flow Name: {finalResult.Name}");
+                _loggingService.LogInformation($"   - Flow Status: {finalResult.Status}");
+                _loggingService.LogInformation($"   - Flow Version: {finalResult.Version}");
+                _loggingService.LogInformation($"   - 所有步驟已完成，Flow 已成功更新到 Meta 平台");
+                
+                return finalResult;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 更新 Meta Flow 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 從 Meta API 獲取 Flow
+        /// </summary>
+        public async Task<MetaFlowResponse> GetFlowAsync(Guid companyId, string flowId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📋 開始獲取 Meta Flow - ID: {flowId}");
+
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                // 注意：Meta API 不支持通過 GET 請求獲取 screens、version、created_time、updated_time 字段
+                // 只能獲取基本信息：id, name, status, categories
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}?fields=id,name,status,categories";
+                
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                _loggingService.LogInformation($"📡 請求 URL: {url}");
+
+                var response = await _httpClient.GetAsync(url);
+                var content = await response.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 Response Status: {response.StatusCode}");
+                _loggingService.LogDebug($"📨 Response Content: {content}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<MetaFlowErrorResponse>(content, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (errorResponse?.Error != null)
+                        {
+                            var error = errorResponse.Error;
+                            _loggingService.LogError($"❌ Meta API 錯誤 - Code: {error.Code}, Type: {error.Type}, Message: {error.Message}");
+                            throw new Exception($"獲取 Meta Flow 失敗: {error.Message} (Code: {error.Code})");
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // 如果無法解析為錯誤響應，使用原始內容
+                    }
+
+                    throw new Exception($"獲取 Meta Flow 失敗: {response.StatusCode} - {content}");
+                }
+
+                var result = JsonSerializer.Deserialize<MetaFlowResponse>(content, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (result == null)
+                {
+                    throw new Exception("Meta API 返回空響應");
+                }
+
+                _loggingService.LogInformation($"✅ 成功獲取 Meta Flow - ID: {result.Id}, Name: {result.Name}");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 獲取 Meta Flow 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 刪除 Flow
+        /// </summary>
+        public async Task<bool> DeleteFlowAsync(Guid companyId, string flowId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"🗑️ 開始刪除 Meta Flow - ID: {flowId}");
+
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}";
+                
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                _loggingService.LogInformation($"📡 請求 URL: {url}");
+
+                var response = await _httpClient.DeleteAsync(url);
+                var content = await response.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 Response Status: {response.StatusCode}");
+                _loggingService.LogDebug($"📨 Response Content: {content}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<MetaFlowErrorResponse>(content, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (errorResponse?.Error != null)
+                        {
+                            var error = errorResponse.Error;
+                            _loggingService.LogError($"❌ Meta API 錯誤 - Code: {error.Code}, Type: {error.Type}, Message: {error.Message}");
+                            throw new Exception($"刪除 Meta Flow 失敗: {error.Message} (Code: {error.Code})");
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // 如果無法解析為錯誤響應，使用原始內容
+                    }
+
+                    throw new Exception($"刪除 Meta Flow 失敗: {response.StatusCode} - {content}");
+                }
+
+                _loggingService.LogInformation($"✅ Meta Flow 刪除成功 - ID: {flowId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 刪除 Meta Flow 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 發布 Flow
+        /// </summary>
+        public async Task<MetaFlowResponse> PublishFlowAsync(Guid companyId, string flowId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📢 開始發布 Meta Flow - ID: {flowId}");
+
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{flowId}/publish";
+                
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                _loggingService.LogInformation($"📡 請求 URL: {url}");
+                _loggingService.LogInformation($"📡 發布方法: POST (無請求體)");
+                _loggingService.LogInformation($"📡 注意：Meta API 的發布端點通常不需要請求體，只需要 POST 到 /{flowId}/publish");
+                _loggingService.LogInformation($"📡 但根據用戶反饋，發布可能只是改變狀態，不會保存 screens 內容");
+                _loggingService.LogInformation($"📡 如果發布後內容未更新，可能需要手動在 Meta 後台執行 → 儲存 → 發布");
+
+                // 注意：Meta API 的發布端點通常不需要請求體，只需要 POST 到 /{flow-id}/publish
+                // 但根據用戶反饋，發布可能只是改變狀態，不會保存 screens 內容
+                // 這裡先嘗試標準的發布方式
+                var response = await _httpClient.PostAsync(url, null);
+                var content = await response.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 Response Status: {response.StatusCode}");
+                _loggingService.LogDebug($"📨 Response Content: {content}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<MetaFlowErrorResponse>(content, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (errorResponse?.Error != null)
+                        {
+                            var error = errorResponse.Error;
+                            _loggingService.LogError($"❌ Meta API 錯誤 - Code: {error.Code}, Type: {error.Type}, Message: {error.Message}");
+                            throw new Exception($"發布 Meta Flow 失敗: {error.Message} (Code: {error.Code})");
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // 如果無法解析為錯誤響應，使用原始內容
+                    }
+
+                    throw new Exception($"發布 Meta Flow 失敗: {response.StatusCode} - {content}");
+                }
+
+                // 解析發布響應
+                MetaFlowResponse? result = null;
+                try
+                {
+                    result = JsonSerializer.Deserialize<MetaFlowResponse>(content, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+                catch (JsonException jsonEx)
+                {
+                    _loggingService.LogWarning($"⚠️ 無法解析發布響應為 MetaFlowResponse: {jsonEx.Message}");
+                    _loggingService.LogInformation($"📨 發布響應內容: {content}");
+                    
+                    // 如果響應是 {"success":true} 格式，也視為成功
+                    if (content.Contains("\"success\":true") || content.Contains("\"success\": true"))
+                    {
+                        _loggingService.LogInformation($"✅ 發布響應包含 success:true，視為發布成功");
+                        // 創建一個基本的響應對象
+                        result = new MetaFlowResponse
+                        {
+                            Id = flowId,
+                            Success = true,
+                            Status = "PUBLISHED"
+                        };
+                    }
+                    else
+                    {
+                        throw new Exception($"無法解析發布響應: {jsonEx.Message}");
+                    }
+                }
+
+                if (result == null)
+                {
+                    throw new Exception("Meta API 返回空響應");
+                }
+
+                _loggingService.LogInformation($"✅ Meta Flow 發布成功 - ID: {result.Id}, Status: {result.Status ?? "PUBLISHED"}");
+                if (result.ValidationErrors != null && result.ValidationErrors.Count > 0)
+                {
+                    _loggingService.LogWarning($"⚠️ 發布後驗證錯誤: {JsonSerializer.Serialize(result.ValidationErrors)}");
+                }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 發布 Meta Flow 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+    }
+}
+

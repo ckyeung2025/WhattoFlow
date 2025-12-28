@@ -180,11 +180,19 @@ export const useNodeHandlers = (nodeTypes, setNodes, setEdges, setSelectedNode, 
   // 處理 EForm 選擇
   const handleSelectEForm = useCallback((eform) => {
     if (selectedNode) {
-      handleNodeDataChange({
+      const updates = {
         formId: eform.id,
         formName: eform.name,
-        formDescription: eform.description
-      });
+        formDescription: eform.description,
+        formType: eform.formType || 'HTML' // 保存表單類型
+      };
+      
+      // 如果選擇的是 MetaFlows 類型，自動設置為 manualFill 模式
+      if (eform.formType === 'MetaFlows') {
+        updates.sendEFormMode = 'manualFill';
+      }
+      
+      handleNodeDataChange(updates);
     }
   }, [selectedNode, handleNodeDataChange]);
 

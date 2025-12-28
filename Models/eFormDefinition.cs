@@ -50,6 +50,28 @@ namespace PurpleRice.Models
         [Column("field_display_settings")]
         public string? FieldDisplaySettings { get; set; }
 
+        [Column("form_type")]
+        [StringLength(20)]
+        public string FormType { get; set; } = "HTML";
+
+        [Column("meta_flow_id")]
+        [StringLength(255)]
+        public string? MetaFlowId { get; set; }
+
+        [Column("meta_flow_version")]
+        [StringLength(50)]
+        public string? MetaFlowVersion { get; set; }
+
+        [Column("meta_flow_status")]
+        [StringLength(50)]
+        public string? MetaFlowStatus { get; set; }
+
+        [Column("meta_flow_json")]
+        public string? MetaFlowJson { get; set; }
+
+        [Column("meta_flow_metadata")]
+        public string? MetaFlowMetadata { get; set; }
+
         // 添加屬性來處理 JSON
         [NotMapped]
         public List<FieldDisplaySetting>? FieldDisplaySettingsList

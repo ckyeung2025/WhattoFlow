@@ -34,6 +34,11 @@ const EFormModal = ({
                 )}
                 <Space>
                   <Tag color="blue">e-Form</Tag>
+                  {form.formType && (
+                    <Tag color={form.formType === 'MetaFlows' ? 'purple' : 'cyan'}>
+                      {form.formType === 'MetaFlows' ? 'Meta Flows' : 'HTML'}
+                    </Tag>
+                  )}
                   <Tag color="green">{t('workflowDesigner.statusEnabled')}</Tag>
                   {form.created_at && (
                     <Tag color="orange">

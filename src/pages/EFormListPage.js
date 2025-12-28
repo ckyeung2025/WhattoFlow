@@ -8,6 +8,8 @@ import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 // 新增 EFormDesigner 引入
 import EFormDesigner from './EFormDesigner';
+// 新增 MetaFlowBuilder 引入
+import MetaFlowBuilder from './MetaFlowBuilder';
 // 移除: import SideMenu from '../components/SideMenu';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -143,7 +145,9 @@ const EFormListPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [designerOpen, setDesignerOpen] = useState(false);
+  const [metaFlowBuilderOpen, setMetaFlowBuilderOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [formTypeModalVisible, setFormTypeModalVisible] = useState(false);
   
   // 批量操作和排序相關狀態
   const [selectedForms, setSelectedForms] = useState([]);
@@ -161,6 +165,10 @@ const EFormListPage = () => {
   const baseColumns = React.useMemo(() => [
     { title: t('eform.name'), dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: true },
     { title: t('eform.description'), dataIndex: 'description', key: 'description', width: 200, ellipsis: true },
+    { title: t('eform.formType'), dataIndex: 'formType', key: 'formType', width: 120, sorter: true, render: v => {
+      if (v === 'MetaFlows') return <Tag color="blue">Meta Flows</Tag>;
+      return <Tag color="default">HTML</Tag>;
+    } },
     { title: t('eform.status'), dataIndex: 'status', key: 'status', width: 100, sorter: true, render: v => {
       if (v === 'A') return <Tag color="green">{t('eform.enabled')}</Tag>;
       if (v === 'I') return <Tag color="orange">{t('eform.disabled')}</Tag>;
@@ -397,7 +405,12 @@ const EFormListPage = () => {
 
   const handleEdit = (record) => {
     setEditingId(record.id);
-    setDesignerOpen(true);
+    const formType = record.formType || 'HTML';
+    if (formType === 'MetaFlows') {
+      setMetaFlowBuilderOpen(true);
+    } else {
+      setDesignerOpen(true);
+    }
   };
 
   const handleDelete = (record) => {
@@ -432,8 +445,17 @@ const EFormListPage = () => {
   };
 
   const handleAdd = () => {
+    setFormTypeModalVisible(true);
+  };
+
+  const handleFormTypeSelect = (formType) => {
+    setFormTypeModalVisible(false);
     setEditingId(null);
-    setDesignerOpen(true);
+    if (formType === 'HTML') {
+      setDesignerOpen(true);
+    } else if (formType === 'MetaFlows') {
+      setMetaFlowBuilderOpen(true);
+    }
   };
 
   const handleCopy = (record) => {
@@ -617,6 +639,30 @@ const EFormListPage = () => {
               fetchData(pagination.current, pagination.pageSize, searchText); 
             }}
             onBack={() => { setDesignerOpen(false); }}
+          />
+        </div>
+      ) : metaFlowBuilderOpen ? (
+        <div 
+          className="meta-flow-builder-container"
+          style={{ 
+            height: '100vh', 
+            background: '#fff', 
+            position: 'absolute', 
+            left: 0, 
+            top: 0, 
+            zIndex: 10,
+            marginLeft: '280px', // 為 SideMenu 留出空間
+            width: 'calc(100vw - 280px)', // 調整寬度
+            transition: 'margin-left 0.3s ease, width 0.3s ease' // 添加過渡效果
+          }}
+        >
+          <MetaFlowBuilder
+            initialSchema={editingId ? data.find(d => d.id === editingId) : null}
+            onSave={() => { 
+              setMetaFlowBuilderOpen(false); 
+              fetchData(pagination.current, pagination.pageSize, searchText); 
+            }}
+            onBack={() => { setMetaFlowBuilderOpen(false); }}
           />
         </div>
       ) : (
@@ -876,6 +922,38 @@ const EFormListPage = () => {
           t={t}
         />
       </Modal>
+
+      {/* 表單類型選擇 Modal */}
+      <Modal
+        title="選擇表單類型"
+        open={formTypeModalVisible}
+        onCancel={() => setFormTypeModalVisible(false)}
+        footer={null}
+        width={500}
+      >
+        <div style={{ padding: '20px 0' }}>
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <Card 
+              hoverable 
+              onClick={() => handleFormTypeSelect('HTML')}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
+            >
+              <FormOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
+              <h3>HTML 表單設計器</h3>
+              <p style={{ color: '#666' }}>使用現有的 HTML 表單設計器創建表單</p>
+            </Card>
+            <Card 
+              hoverable 
+              onClick={() => handleFormTypeSelect('MetaFlows')}
+              style={{ cursor: 'pointer', textAlign: 'center' }}
+            >
+              <FormOutlined style={{ fontSize: '48px', color: '#722ed1', marginBottom: '16px' }} />
+              <h3>Meta Flow Builder</h3>
+              <p style={{ color: '#666' }}>創建 WhatsApp Flows 表單（JSON 格式）</p>
+            </Card>
+          </Space>
+        </div>
+      </Modal>
       
       {/* 自定義 CSS 來響應 SideMenu 折疊狀態 */}
       <style jsx>{`
@@ -885,10 +963,20 @@ const EFormListPage = () => {
           width: calc(100vw - 80px) !important;
         }
         
+        /* MetaFlowBuilder 容器響應側邊欄收合 */
+        .ant-layout-sider-collapsed ~ * .meta-flow-builder-container {
+          margin-left: 80px !important;
+          width: calc(100vw - 80px) !important;
+        }
+        
         /* 確保在移動設備上正確顯示 */
         @media (max-width: 768px) {
           .eform-designer-container {
             margin-left: 0 !important;
+            width: 100vw !important;
+          }
+          .meta-flow-builder-container {
+            left: 0 !important;
             width: 100vw !important;
           }
         }

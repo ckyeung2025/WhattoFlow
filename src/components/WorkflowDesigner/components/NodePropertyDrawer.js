@@ -719,6 +719,18 @@ const NodePropertyDrawer = ({
     handleNodeDataChange
   ]);
 
+  // 當選擇 MetaFlows 表單時，自動設置為 manualFill 模式
+  useEffect(() => {
+    if (selectedNode?.data?.type === 'sendEForm' && 
+        selectedNode?.data?.formType === 'MetaFlows' && 
+        selectedNode?.data?.sendEFormMode !== 'manualFill') {
+      handleNodeDataChange({ 
+        sendEFormMode: 'manualFill',
+        integratedDataSetQueryNodeId: '' // 清除 DataSet Query 節點 ID
+      });
+    }
+  }, [selectedNode?.data?.formType, selectedNode?.data?.type, selectedNode?.data?.sendEFormMode, handleNodeDataChange]);
+
   // 載入 DataSet 列表和流程變量
   useEffect(() => {
     if (selectedNode?.data?.type === 'dataSetQuery') {
@@ -2400,25 +2412,49 @@ const NodePropertyDrawer = ({
 
                 {/* 表單填充模式配置 */}
                 <Form.Item label={t('workflowDesigner.sendEForm.fillMode')}>
+                  {selectedNode.data.formType === 'MetaFlows' && (
+                    <div style={{ 
+                      marginBottom: 8, 
+                      padding: '8px 12px', 
+                      backgroundColor: '#fff7e6', 
+                      border: '1px solid #ffd591',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      color: '#d46b08'
+                    }}>
+                      ⚠️ Meta Flows 表單僅支持手動填表模式
+                    </div>
+                  )}
                   <div style={{ marginBottom: 8 }}>
                     <Radio.Group
                       value={selectedNode.data.sendEFormMode || 'integrateWaitReply'}
                       onChange={(e) => {
+                        // 如果是 MetaFlows 類型，不允許更改
+                        if (selectedNode.data.formType === 'MetaFlows') {
+                          return;
+                        }
                         const mode = e.target.value;
                         handleNodeDataChange({ 
                           sendEFormMode: mode,
                           integratedDataSetQueryNodeId: mode === 'integrateDataSetQuery' ? (selectedNode.data.integratedDataSetQueryNodeId || '') : ''
                         });
                       }}
+                      disabled={selectedNode.data.formType === 'MetaFlows'}
                     >
                       <div style={{ marginBottom: 8 }}>
-                        <Radio value="integrateWaitReply">{t('workflowDesigner.sendEForm.integrateWaitReply')}</Radio>
+                        <Radio value="integrateWaitReply" disabled={selectedNode.data.formType === 'MetaFlows'}>
+                          {t('workflowDesigner.sendEForm.integrateWaitReply')}
+                        </Radio>
                       </div>
                       <div style={{ marginBottom: 8 }}>
-                        <Radio value="integrateDataSetQuery">{t('workflowDesigner.sendEForm.integrateDataSetQuery')}</Radio>
+                        <Radio value="integrateDataSetQuery" disabled={selectedNode.data.formType === 'MetaFlows'}>
+                          {t('workflowDesigner.sendEForm.integrateDataSetQuery')}
+                        </Radio>
                       </div>
                       <div>
-                        <Radio value="manualFill">{t('workflowDesigner.sendEForm.manualFill')}</Radio>
+                        <Radio value="manualFill" disabled={selectedNode.data.formType === 'MetaFlows'}>
+                          {t('workflowDesigner.sendEForm.manualFill')}
+                        </Radio>
                       </div>
                     </Radio.Group>
                   </div>

@@ -345,6 +345,12 @@ namespace PurpleRice.Data
                 entity.Property(e => e.CreatedUserId).HasColumnName("created_user_id");
                 entity.Property(e => e.UpdatedUserId).HasColumnName("updated_user_id");
                 entity.Property(e => e.SourceFilePath).HasColumnName("source_file_path").HasMaxLength(500);
+                entity.Property(e => e.FormType).HasColumnName("form_type").HasMaxLength(20).HasDefaultValue("HTML");
+                entity.Property(e => e.MetaFlowId).HasColumnName("meta_flow_id").HasMaxLength(255);
+                entity.Property(e => e.MetaFlowVersion).HasColumnName("meta_flow_version").HasMaxLength(50);
+                entity.Property(e => e.MetaFlowStatus).HasColumnName("meta_flow_status").HasMaxLength(50);
+                entity.Property(e => e.MetaFlowJson).HasColumnName("meta_flow_json");
+                entity.Property(e => e.MetaFlowMetadata).HasColumnName("meta_flow_metadata");
             });
 
             modelBuilder.Entity<WhatsAppMonitorChatMsg>(entity =>
