@@ -127,6 +127,52 @@ const convertJsonToHtmlTable = (data) => {
 
   let html = '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
   
+  // ✅ 優先處理：如果數據本身就是數組，直接顯示為表格
+  if (Array.isArray(data) && data.length > 0) {
+    // 檢查數組中的元素是否都是對象
+    const isObjectArray = data.every(item => item && typeof item === 'object' && !Array.isArray(item));
+    
+    if (isObjectArray) {
+      // 收集所有唯一的鍵（從所有對象中）
+      const allKeys = new Set();
+      data.forEach(item => {
+        if (item && typeof item === 'object') {
+          Object.keys(item).forEach(key => allKeys.add(key));
+        }
+      });
+      
+      const columns = Array.from(allKeys);
+      
+      if (columns.length > 0) {
+        // 生成表頭
+        html += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #d9d9d9;">';
+        columns.forEach(col => {
+          html += `<th style="padding: 8px 12px; text-align: left; font-weight: 600;">${escapeHtml(col)}</th>`;
+        });
+        html += '</tr></thead>';
+        
+        // 生成表格行
+        html += '<tbody>';
+        data.forEach((item, index) => {
+          const bgColor = index % 2 === 0 ? '#ffffff' : '#fafafa';
+          html += `<tr style="background-color: ${bgColor}; border-bottom: 1px solid #f0f0f0;">`;
+          columns.forEach(col => {
+            const value = item[col];
+            const displayValue = value === null || value === undefined ? '-' : 
+                                 typeof value === 'object' ? escapeHtml(JSON.stringify(value)) : 
+                                 escapeHtml(String(value));
+            html += `<td style="padding: 8px 12px;">${displayValue}</td>`;
+          });
+          html += '</tr>';
+        });
+        html += '</tbody>';
+        
+        html += '</table>';
+        return html;
+      }
+    }
+  }
+  
   // 優先處理 processed 數據（如果存在）
   let processedData = null;
   if (data.processed && typeof data.processed === 'object') {
@@ -150,62 +196,111 @@ const convertJsonToHtmlTable = (data) => {
     }
   }
 
-  // 如果有 processed 數據，優先顯示
-  if (processedData) {
-    // 顯示 items 數組為表格
-    if (processedData.items && Array.isArray(processedData.items) && processedData.items.length > 0) {
+  // 確定要顯示的數據源（優先使用 processedData，否則使用原始 data）
+  const displayData = processedData || data;
+  
+  // 檢查是否有 items 數組需要顯示為表格
+  if (displayData.items && Array.isArray(displayData.items) && displayData.items.length > 0) {
+    // 檢查 items 數組中的元素結構
+    const firstItem = displayData.items[0];
+    const isStandardItemFormat = firstItem && typeof firstItem === 'object' && 
+                                  ('name' in firstItem || '項目名稱' in firstItem);
+    
+    if (isStandardItemFormat) {
+      // 標準格式：有 name/項目名稱、quantity/數量、price/價格 字段
+      const hasName = 'name' in firstItem || '項目名稱' in firstItem;
+      const hasQuantity = 'quantity' in firstItem || '數量' in firstItem;
+      const hasPrice = 'price' in firstItem || '價格' in firstItem || '總價錢' in firstItem;
+      
       html += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #d9d9d9;">';
-      html += '<th style="padding: 8px 12px; text-align: left; font-weight: 600;">項目名稱</th>';
-      html += '<th style="padding: 8px 12px; text-align: right; font-weight: 600;">價格</th>';
+      if (hasName) {
+        html += '<th style="padding: 8px 12px; text-align: left; font-weight: 600;">項目名稱</th>';
+      }
+      if (hasQuantity) {
+        html += '<th style="padding: 8px 12px; text-align: right; font-weight: 600;">數量</th>';
+      }
+      if (hasPrice) {
+        html += '<th style="padding: 8px 12px; text-align: right; font-weight: 600;">價格</th>';
+      }
       html += '</tr></thead>';
       html += '<tbody>';
       
-      processedData.items.forEach((item, index) => {
+      displayData.items.forEach((item, index) => {
         const bgColor = index % 2 === 0 ? '#ffffff' : '#fafafa';
         html += `<tr style="background-color: ${bgColor}; border-bottom: 1px solid #f0f0f0;">`;
-        html += `<td style="padding: 8px 12px;">${item.name || '-'}</td>`;
-        html += `<td style="padding: 8px 12px; text-align: right; font-weight: 500;">${item.price || 0}</td>`;
+        if (hasName) {
+          html += `<td style="padding: 8px 12px;">${escapeHtml(item.name || item['項目名稱'] || '-')}</td>`;
+        }
+        if (hasQuantity) {
+          html += `<td style="padding: 8px 12px; text-align: right;">${item.quantity || item['數量'] || 0}</td>`;
+        }
+        if (hasPrice) {
+          html += `<td style="padding: 8px 12px; text-align: right; font-weight: 500;">${item.price || item['價格'] || item['總價錢'] || 0}</td>`;
+        }
         html += '</tr>';
       });
       
       html += '</tbody>';
       
       // 顯示總計
-      if (processedData.total !== undefined) {
+      if (displayData.total !== undefined) {
         html += '<tfoot><tr style="background-color: #f0f8ff; border-top: 2px solid #1890ff; font-weight: 600;">';
-        html += '<td style="padding: 10px 12px; text-align: right;">總計</td>';
-        html += `<td style="padding: 10px 12px; text-align: right; color: #1890ff;">${processedData.total}</td>`;
+        html += `<td colspan="${(hasName ? 1 : 0) + (hasQuantity ? 1 : 0)}" style="padding: 10px 12px; text-align: right;">總計</td>`;
+        html += `<td style="padding: 10px 12px; text-align: right; color: #1890ff;">${displayData.total}</td>`;
         html += '</tr></tfoot>';
       }
       
       // 顯示類型（如果有）
-      if (processedData.type) {
+      if (displayData.type) {
         html += '<tfoot><tr style="background-color: #fafafa;">';
-        html += '<td colspan="2" style="padding: 8px 12px; text-align: center; color: #666; font-style: italic;">';
-        html += processedData.type;
+        html += `<td colspan="${(hasName ? 1 : 0) + (hasQuantity ? 1 : 0) + (hasPrice ? 1 : 0)}" style="padding: 8px 12px; text-align: center; color: #666; font-style: italic;">`;
+        html += escapeHtml(displayData.type);
         html += '</td></tr></tfoot>';
       }
     } else {
-      // 沒有 items，顯示其他 processed 字段
-      Object.keys(processedData).forEach(key => {
-        if (key !== 'items') {
-          html += '<tr style="border-bottom: 1px solid #f0f0f0;">';
-          html += `<td style="padding: 8px 12px; font-weight: 500; width: 30%;">${key}</td>`;
-          html += `<td style="padding: 8px 12px;">${processedData[key] || '-'}</td>`;
-          html += '</tr>';
+      // 非標準格式：動態生成表格列
+      const allKeys = new Set();
+      displayData.items.forEach(item => {
+        if (item && typeof item === 'object') {
+          Object.keys(item).forEach(key => allKeys.add(key));
         }
       });
+      
+      const columns = Array.from(allKeys);
+      
+      if (columns.length > 0) {
+        html += '<thead><tr style="background-color: #f5f5f5; border-bottom: 2px solid #d9d9d9;">';
+        columns.forEach(col => {
+          html += `<th style="padding: 8px 12px; text-align: left; font-weight: 600;">${escapeHtml(col)}</th>`;
+        });
+        html += '</tr></thead>';
+        
+        html += '<tbody>';
+        displayData.items.forEach((item, index) => {
+          const bgColor = index % 2 === 0 ? '#ffffff' : '#fafafa';
+          html += `<tr style="background-color: ${bgColor}; border-bottom: 1px solid #f0f0f0;">`;
+          columns.forEach(col => {
+            const value = item[col];
+            const displayValue = value === null || value === undefined ? '-' : 
+                                 typeof value === 'object' ? escapeHtml(JSON.stringify(value)) : 
+                                 escapeHtml(String(value));
+            html += `<td style="padding: 8px 12px;">${displayValue}</td>`;
+          });
+          html += '</tr>';
+        });
+        html += '</tbody>';
+      }
     }
   } else {
-    // 沒有 processed 數據，顯示其他字段（排除 raw）
-    Object.keys(data).forEach(key => {
-      if (key !== 'raw') {
-        const value = data[key];
+    // 沒有 items，顯示其他字段（排除 raw 和 items）
+    Object.keys(displayData).forEach(key => {
+      if (key !== 'raw' && key !== 'items') {
+        const value = displayData[key];
         // 跳過空字符串和 null
         if (value !== '' && value !== null && value !== undefined) {
           html += '<tr style="border-bottom: 1px solid #f0f0f0;">';
-          html += `<td style="padding: 8px 12px; font-weight: 500; width: 30%;">${key}</td>`;
-          html += `<td style="padding: 8px 12px;">${typeof value === 'object' ? JSON.stringify(value) : value}</td>`;
+          html += `<td style="padding: 8px 12px; font-weight: 500; width: 30%;">${escapeHtml(key)}</td>`;
+          html += `<td style="padding: 8px 12px;" colspan="2">${typeof value === 'object' ? escapeHtml(JSON.stringify(value)) : escapeHtml(String(value))}</td>`;
           html += '</tr>';
         }
       }
@@ -271,6 +366,662 @@ const extractAiAnalysisResult = (userMessage) => {
     // 否則返回原始內容（可能是格式錯誤的 JSON 或特殊文字）
     return userMessage;
   }
+};
+
+/**
+ * 格式化文件大小（用於 HTML 生成）
+ */
+const formatFileSizeForHtml = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+/**
+ * 生成媒體文件卡片的 HTML（與 Received Media 相同的樣式）
+ */
+const generateMediaFileCardHtml = (file, index, allFiles = [], t) => {
+  const fileName = file.fileName || file.file_name || `image_${index + 1}.jpg`;
+  const filePath = file.filePath || file.dataUrl || '';
+  const fileSize = file.fileSize || 0;
+  const mimeType = file.mimeType || file.mime_type || 'image/jpeg';
+  const isImage = mimeType.startsWith('image/');
+  const isVideo = mimeType.startsWith('video/');
+  
+  // 生成唯一 ID
+  const cardId = `media-card-${Date.now()}-${index}`;
+  const imageId = `media-image-${Date.now()}-${index}`;
+  
+  // 將文件信息存儲為 JSON 字符串（用於 lightbox）
+  const fileData = JSON.stringify({
+    fileName: fileName,
+    filePath: filePath,
+    fileSize: fileSize,
+    mimeType: mimeType
+  });
+  const allFilesData = JSON.stringify(allFiles.map(f => ({
+    fileName: f.fileName || f.file_name || `image_${allFiles.indexOf(f) + 1}.jpg`,
+    filePath: f.filePath || f.dataUrl || '',
+    fileSize: f.fileSize || 0,
+    mimeType: f.mimeType || f.mime_type || 'image/jpeg'
+  })));
+  
+  // 語言包文字
+  const viewText = t ? t('workflowMonitor.view') : '查看';
+  const downloadText = t ? t('workflowMonitor.download') : '下載';
+  const imageText = t ? t('workflowMonitor.image') : '圖片';
+  const videoText = t ? t('workflowMonitor.video') : '視頻';
+  const documentText = t ? t('workflowMonitor.document') : '文檔';
+  
+  let html = `<div id="${cardId}" style="border: 1px solid #e8e8e8; border-radius: 8px; overflow: hidden; margin-bottom: 16px; background: white;">`;
+  html += `<div style="padding: 8px;">`;
+  html += `<div style="display: flex; flex-direction: column; align-items: center; text-align: center;">`;
+  
+  // 文件預覽（點擊打開 lightbox）
+  html += `<div class="flow-media-preview" data-file='${escapeHtml(fileData)}' data-all-files='${escapeHtml(allFilesData)}' style="width: 100%; height: 120px; background-color: #f5f5f5; border-radius: 6px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; cursor: ${isImage || isVideo ? 'pointer' : 'default'};" ${isImage || isVideo ? 'onclick="if(window.openFlowLightbox) { const fileData = JSON.parse(this.getAttribute(\'data-file\')); const allFilesData = JSON.parse(this.getAttribute(\'data-all-files\')); window.openFlowLightbox(fileData, allFilesData); }"' : ''}>`;
+  
+  if (isImage && filePath) {
+    html += `<img id="${imageId}" src="${escapeHtml(filePath)}" alt="${escapeHtml(fileName)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />`;
+    html += `<div style="display: none; align-items: center; justify-content: center; width: 100%; height: 100%; background-color: #f0f0f0;"><span style="color: #999;">圖片載入失敗</span></div>`;
+  } else if (isVideo && filePath) {
+    html += `<video src="${escapeHtml(filePath)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" controls="false" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"></video>`;
+    html += `<div style="display: none; align-items: center; justify-content: center; width: 100%; height: 100%; background-color: #f0f0f0;"><span style="color: #999;">視頻載入失敗</span></div>`;
+  } else {
+    html += `<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background-color: #f0f0f0;"><span style="color: #999; font-size: 24px;">📄</span></div>`;
+  }
+  
+  html += `</div>`;
+  
+  // 文件信息
+  html += `<div style="width: 100%;">`;
+  html += `<div style="font-weight: bold; font-size: 12px; display: block; margin-bottom: 4px; word-break: break-all; line-height: 1.2;" title="${escapeHtml(fileName)}">`;
+  html += escapeHtml(fileName.length > 20 ? fileName.substring(0, 20) + '...' : fileName);
+  html += `</div>`;
+  
+  html += `<div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #666;">`;
+  html += `<span>${formatFileSizeForHtml(fileSize)}</span>`;
+  const tagColor = isImage ? 'green' : isVideo ? 'blue' : 'orange';
+  const tagText = isImage ? imageText : isVideo ? videoText : documentText;
+  html += `<span style="background: ${tagColor === 'green' ? '#f6ffed' : tagColor === 'blue' ? '#e6f7ff' : '#fff7e6'}; color: ${tagColor === 'green' ? '#52c41a' : tagColor === 'blue' ? '#1890ff' : '#fa8c16'}; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${tagText}</span>`;
+  html += `</div>`;
+  
+  // 操作按鈕
+  html += `<div style="margin-top: 8px; display: flex; gap: 4px; justify-content: center;">`;
+  
+  // View 按鈕（使用 lightbox）
+  html += `<button class="flow-media-view-btn" data-file='${escapeHtml(fileData)}' data-all-files='${escapeHtml(allFilesData)}' onclick="if(window.openFlowLightbox) { const fileData = JSON.parse(this.getAttribute('data-file')); const allFilesData = JSON.parse(this.getAttribute('data-all-files')); window.openFlowLightbox(fileData, allFilesData); } return false;" style="font-size: 10px; padding: 2px 6px; border: 1px solid #d9d9d9; background: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;">`;
+  html += `<span>👁</span><span>${escapeHtml(viewText)}</span>`;
+  html += `</button>`;
+  
+  // Download 按鈕
+  html += `<button onclick="(function() { const filePath = '${escapeHtml(filePath)}'; const fileName = '${escapeHtml(fileName)}'; if (filePath.startsWith('data:')) { const link = document.createElement('a'); link.href = filePath; link.download = fileName; link.click(); } else { const link = document.createElement('a'); link.href = filePath; link.download = fileName; link.click(); } })(); return false;" style="font-size: 10px; padding: 2px 6px; border: 1px solid #d9d9d9; background: white; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;">`;
+  html += `<span>⬇</span><span>${escapeHtml(downloadText)}</span>`;
+  html += `</button>`;
+  
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+  
+  return html;
+};
+
+/**
+ * 將 Meta Flows 回覆 JSON 轉換為 HTML
+ * Flow 回覆數據格式：{ "field1": "value1", "field2": "value2", "photo_picker": "data:image/...;base64,..." }
+ */
+const convertFlowResponseToHtml = (flowResponseJson, t) => {
+  if (!flowResponseJson || typeof flowResponseJson !== 'string') {
+    return flowResponseJson || '';
+  }
+
+  // 檢查是否可能是 JSON 格式
+  const trimmed = flowResponseJson.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    // 不是 JSON 格式，可能是已經轉換好的 HTML，直接返回
+    return flowResponseJson;
+  }
+
+  try {
+    // 嘗試解析為 JSON
+    const parsed = JSON.parse(flowResponseJson);
+    
+    // 如果解析成功，生成專門的 Flow 回覆 HTML
+    if (typeof parsed === 'object' && parsed !== null) {
+      let html = '<div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">';
+      html += '<div style="max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+      html += `<h2 style="margin-top: 0; color: #333; border-bottom: 2px solid #1890ff; padding-bottom: 10px;">${t ? t('workflowMonitor.formReplyContent') : '表單回覆內容'}</h2>`;
+      
+      // 遍歷所有字段
+      Object.keys(parsed).forEach((key) => {
+        // 跳過 flow_token（不需要顯示）
+        if (key === 'flow_token') {
+          return;
+        }
+        
+        const value = parsed[key];
+        html += '<div style="margin-bottom: 20px; border-bottom: 1px solid #f0f0f0; padding-bottom: 15px;">';
+        html += `<div style="font-weight: bold; color: #333; margin-bottom: 8px; font-size: 14px;">${escapeHtml(key)}:</div>`;
+        
+        // 檢查是否是 PhotoPicker 字段（對象或數組，包含 filePath 或 dataUrl）
+        const isPhotoPickerField = (val) => {
+          if (!val) return false;
+          
+          if (Array.isArray(val)) {
+            // 如果是數組，檢查第一個元素是否包含圖片相關字段
+            if (val.length === 0) return false;
+            const firstElement = val[0];
+            if (!firstElement || typeof firstElement !== 'object') return false;
+            
+            // 檢查是否包含圖片相關字段（dataUrl、filePath、或 id + mime_type）
+            return !!(firstElement.dataUrl || firstElement.filePath || 
+                     (firstElement.id && (firstElement.mime_type || firstElement.mimeType)));
+          } else if (typeof val === 'object' && val !== null) {
+            // 如果是對象，檢查是否包含圖片相關字段
+            return !!(val.dataUrl || val.filePath || (val.id && (val.mime_type || val.mimeType)));
+          }
+          return false;
+        };
+        
+        // 檢查是否是字符串格式的 base64 圖片
+        const isImageField = typeof value === 'string' && (
+          value.startsWith('data:image/') || 
+          value.includes('base64') ||
+          (value.length > 100 && /^[A-Za-z0-9+/=\s]+$/.test(value.substring(0, 100)) && !value.includes(' '))
+        );
+        
+        if (isPhotoPickerField(value)) {
+          // 處理 PhotoPicker 字段（對象或數組）
+          const images = Array.isArray(value) ? value : [value];
+          
+          html += '<div style="margin-top: 8px;">';
+          html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;">';
+          
+          images.forEach((img, index) => {
+            if (!img || typeof img !== 'object') {
+              console.warn(`[WorkflowMonitor] PhotoPicker 元素 ${index} 不是有效對象:`, img);
+              return;
+            }
+            
+            // 優先使用 filePath（相對 URL），如果沒有則使用 dataUrl（base64）
+            let filePath = img.filePath || img.dataUrl;
+            
+            // 調試日誌
+            console.log(`[WorkflowMonitor] PhotoPicker 圖片 ${index}:`, {
+              filePath: img.filePath,
+              dataUrl: img.dataUrl ? `${img.dataUrl.substring(0, 50)}...` : null,
+              id: img.id,
+              mime_type: img.mime_type || img.mimeType,
+              filePath: filePath ? `${filePath.substring(0, 50)}...` : null
+            });
+            
+            if (filePath) {
+              // 確保 filePath 是完整的 URL（如果是相對路徑，可能需要添加前綴）
+              if (!filePath.startsWith('http') && !filePath.startsWith('data:') && !filePath.startsWith('/')) {
+                // 可能是相對路徑但沒有前導斜線
+                filePath = '/' + filePath;
+              }
+              
+              // 構建文件對象，使用與 Received Media 相同的格式
+              const fileObj = {
+                fileName: img.fileName || img.file_name || `image_${index + 1}.jpg`,
+                filePath: filePath,
+                fileSize: img.fileSize || 0,
+                mimeType: img.mimeType || img.mime_type || 'image/jpeg',
+                mime_type: img.mimeType || img.mime_type || 'image/jpeg'
+              };
+              
+              // 使用與 Received Media 相同的卡片樣式
+              html += generateMediaFileCardHtml(fileObj, index, images, t);
+            } else {
+              // 沒有圖片源，顯示信息
+              console.warn(`[WorkflowMonitor] PhotoPicker 圖片 ${index} 沒有可用的圖片源:`, img);
+              html += `<div style="padding: 8px 12px; background-color: #fff7e6; border: 1px solid #ffd591; border-radius: 4px; color: #d46b08; max-width: 200px;">圖片 ${index + 1}: 無可用圖片源</div>`;
+            }
+          });
+          
+          html += '</div>';
+          html += '</div>';
+        } else if (isImageField) {
+          // 如果是 base64 圖片字符串，顯示圖片
+          let imageSrc = value;
+          if (value.startsWith('data:image/')) {
+            // 已經是完整的 data URL
+            imageSrc = value;
+          } else if (value.includes('base64,')) {
+            // 包含 base64, 但可能不完整
+            imageSrc = value;
+          } else {
+            // 可能是純 base64 字符串，嘗試構建 data URL
+            // 先嘗試 PNG，如果失敗可以嘗試其他格式
+            imageSrc = `data:image/png;base64,${value}`;
+          }
+          
+          html += `<div style="margin-top: 8px;">`;
+          html += `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(key)}" style="max-width: 100%; height: auto; border-radius: 4px; border: 1px solid #ddd; display: block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />`;
+          html += `<div style="display: none; padding: 8px 12px; background-color: #fff7e6; border: 1px solid #ffd591; border-radius: 4px; color: #d46b08;">圖片載入失敗（Base64 數據可能已損壞）</div>`;
+          html += `</div>`;
+        } else if (value === null || value === undefined) {
+          html += '<div style="color: #999; font-style: italic;">（無）</div>';
+        } else if (typeof value === 'boolean') {
+          html += `<div style="padding: 8px 12px; background-color: #f9f9f9; border-radius: 4px; display: inline-block;">${value ? '是' : '否'}</div>`;
+        } else if (typeof value === 'object') {
+          // 如果是對象，轉換為 JSON 字符串顯示
+          html += `<div style="padding: 8px 12px; background-color: #f9f9f9; border-radius: 4px; font-family: monospace; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(value, null, 2))}</div>`;
+        } else {
+          // 其他類型（字符串、數字等）
+          html += `<div style="padding: 8px 12px; background-color: #f9f9f9; border-radius: 4px; word-break: break-word;">${escapeHtml(String(value))}</div>`;
+        }
+        
+        html += '</div>';
+      });
+      
+      html += '</div>';
+      html += '</div>';
+      return html;
+    }
+    
+    // 如果不是對象，使用通用的 JSON 表格轉換
+    return convertJsonToHtmlTable(parsed);
+  } catch (e) {
+    console.error('[WorkflowMonitor] Failed to parse Flow response JSON:', e);
+    // 解析失敗，可能是已經轉換好的 HTML 或其他格式，直接返回
+    return flowResponseJson;
+  }
+};
+
+/**
+ * 轉義 HTML 特殊字符
+ */
+const escapeHtml = (text) => {
+  if (text === null || text === undefined) {
+    return '';
+  }
+  const div = document.createElement('div');
+  div.textContent = String(text);
+  return div.innerHTML;
+};
+
+// Flow 回覆內容組件（支持 lightbox 和語言包）
+const FlowResponseContent = ({ html, onOpenLightbox }) => {
+  const { t } = useLanguage();
+  const flowHtmlRef = useRef(null);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
+  const [lightboxFile, setLightboxFile] = useState(null);
+  const [lightboxFiles, setLightboxFiles] = useState([]);
+  const [lightboxCurrentIndex, setLightboxCurrentIndex] = useState(0);
+  const [lightboxTransform, setLightboxTransform] = useState({
+    rotate: 0,
+    scale: 1,
+    flipH: false,
+    flipV: false
+  });
+  
+  useEffect(() => {
+    // 設置全局函數以支持 lightbox
+    const handleOpenLightbox = (file, allFiles = []) => {
+      const imageVideoFiles = allFiles.filter(f => {
+        const mimeType = f.mimeType || f.mime_type || 'image/jpeg';
+        return mimeType.startsWith('image/') || mimeType.startsWith('video/');
+      });
+      
+      const currentIndex = imageVideoFiles.findIndex(f => 
+        (f.filePath || f.dataUrl) === (file.filePath || file.dataUrl)
+      );
+      
+      setLightboxFiles(imageVideoFiles);
+      setLightboxFile(file);
+      setLightboxCurrentIndex(currentIndex >= 0 ? currentIndex : 0);
+      setLightboxTransform({
+        rotate: 0,
+        scale: 1,
+        flipH: false,
+        flipV: false
+      });
+      setLightboxVisible(true);
+    };
+    
+    window.openFlowLightbox = handleOpenLightbox;
+    
+    return () => {
+      if (window.openFlowLightbox) {
+        delete window.openFlowLightbox;
+      }
+    };
+  }, []);
+  
+  const closeLightbox = () => {
+    setLightboxVisible(false);
+    setLightboxFile(null);
+    setLightboxFiles([]);
+    setLightboxCurrentIndex(0);
+    setLightboxTransform({
+      rotate: 0,
+      scale: 1,
+      flipH: false,
+      flipV: false
+    });
+  };
+  
+  const goToPrevious = () => {
+    if (lightboxFiles.length > 0) {
+      const newIndex = lightboxCurrentIndex > 0 ? lightboxCurrentIndex - 1 : lightboxFiles.length - 1;
+      setLightboxCurrentIndex(newIndex);
+      setLightboxFile(lightboxFiles[newIndex]);
+      setLightboxTransform({
+        rotate: 0,
+        scale: 1,
+        flipH: false,
+        flipV: false
+      });
+    }
+  };
+  
+  const goToNext = () => {
+    if (lightboxFiles.length > 0) {
+      const newIndex = lightboxCurrentIndex < lightboxFiles.length - 1 ? lightboxCurrentIndex + 1 : 0;
+      setLightboxCurrentIndex(newIndex);
+      setLightboxFile(lightboxFiles[newIndex]);
+      setLightboxTransform({
+        rotate: 0,
+        scale: 1,
+        flipH: false,
+        flipV: false
+      });
+    }
+  };
+  
+  const rotateImage = (direction) => {
+    setLightboxTransform(prev => ({
+      ...prev,
+      rotate: prev.rotate + (direction === 'left' ? -90 : 90)
+    }));
+  };
+  
+  const flipImage = (direction) => {
+    setLightboxTransform(prev => ({
+      ...prev,
+      flipH: direction === 'horizontal' ? !prev.flipH : prev.flipH,
+      flipV: direction === 'vertical' ? !prev.flipV : prev.flipV
+    }));
+  };
+  
+  const zoomImage = (direction) => {
+    setLightboxTransform(prev => ({
+      ...prev,
+      scale: direction === 'in' 
+        ? Math.min(prev.scale * 1.2, 5) 
+        : Math.max(prev.scale / 1.2, 0.1)
+    }));
+  };
+  
+  const resetTransform = () => {
+    setLightboxTransform({
+      rotate: 0,
+      scale: 1,
+      flipH: false,
+      flipV: false
+    });
+  };
+  
+  const getFileType = (fileName) => {
+    if (!fileName) return 'document';
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension)) return 'image';
+    if (['mp4', 'avi', 'mov', 'wmv'].includes(extension)) return 'video';
+    return 'document';
+  };
+  
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+  
+  return (
+    <>
+      <div 
+        ref={flowHtmlRef}
+        style={{
+          border: '1px solid #e8e8e8',
+          borderRadius: '8px',
+          padding: '20px',
+          backgroundColor: '#fafafa',
+          minHeight: '300px',
+          overflow: 'auto',
+          fontSize: '14px',
+          lineHeight: '1.6'
+        }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      
+      {/* Lightbox Modal */}
+      <Modal
+        title={lightboxFile ? lightboxFile.fileName : ''}
+        open={lightboxVisible}
+        onCancel={closeLightbox}
+        footer={null}
+        width="95%"
+        style={{ top: 10 }}
+        bodyStyle={{ 
+          padding: 0, 
+          display: 'flex', 
+          flexDirection: 'column',
+          justifyContent: 'center', 
+          alignItems: 'center',
+          minHeight: '85vh',
+          backgroundColor: '#000',
+          position: 'relative'
+        }}
+        closable={false}
+      >
+        {lightboxFile && (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center', 
+            alignItems: 'center',
+            width: '100%',
+            height: '100%',
+            position: 'relative'
+          }}>
+            {/* 關閉按鈕 */}
+            <Button
+              type="text"
+              icon={<CloseOutlined />}
+              onClick={closeLightbox}
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                zIndex: 1000,
+                color: '#fff',
+                fontSize: '20px',
+                width: '40px',
+                height: '40px',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                border: 'none'
+              }}
+            />
+            
+            {/* 導航按鈕 */}
+            {lightboxFiles.length > 1 && (
+              <>
+                <Button
+                  type="text"
+                  icon={<LeftOutlined />}
+                  onClick={goToPrevious}
+                  style={{
+                    position: 'absolute',
+                    left: 20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 1000,
+                    color: '#fff',
+                    fontSize: '24px',
+                    width: '50px',
+                    height: '50px',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    border: 'none'
+                  }}
+                />
+                <Button
+                  type="text"
+                  icon={<RightOutlined />}
+                  onClick={goToNext}
+                  style={{
+                    position: 'absolute',
+                    right: 20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 1000,
+                    color: '#fff',
+                    fontSize: '24px',
+                    width: '50px',
+                    height: '50px',
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    border: 'none'
+                  }}
+                />
+              </>
+            )}
+            
+            {/* 媒體內容 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              width: '100%',
+              height: '100%',
+              transform: `
+                rotate(${lightboxTransform.rotate}deg) 
+                scale(${lightboxTransform.scale}) 
+                scaleX(${lightboxTransform.flipH ? -1 : 1}) 
+                scaleY(${lightboxTransform.flipV ? -1 : 1})
+              `,
+              transition: 'transform 0.3s ease'
+            }}>
+              {getFileType(lightboxFile.fileName) === 'image' ? (
+                <img
+                  src={lightboxFile.filePath || lightboxFile.dataUrl}
+                  alt={lightboxFile.fileName}
+                  style={{
+                    maxWidth: '90%',
+                    maxHeight: '80vh',
+                    objectFit: 'contain'
+                  }}
+                />
+              ) : getFileType(lightboxFile.fileName) === 'video' ? (
+                <video
+                  src={lightboxFile.filePath || lightboxFile.dataUrl}
+                  controls
+                  style={{
+                    maxWidth: '90%',
+                    maxHeight: '80vh'
+                  }}
+                />
+              ) : null}
+            </div>
+            
+            {/* 工具欄 */}
+            {getFileType(lightboxFile.fileName) === 'image' && (
+              <div style={{
+                position: 'absolute',
+                bottom: 20,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                gap: '8px',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                zIndex: 1000
+              }}>
+                <Button
+                  type="text"
+                  icon={<RotateLeftOutlined />}
+                  onClick={() => rotateImage('left')}
+                  style={{ color: '#fff' }}
+                  title={t('workflowMonitor.rotateLeft')}
+                />
+                <Button
+                  type="text"
+                  icon={<RotateRightOutlined />}
+                  onClick={() => rotateImage('right')}
+                  style={{ color: '#fff' }}
+                  title={t('workflowMonitor.rotateRight')}
+                />
+                <Button
+                  type="text"
+                  icon={<SwapOutlined />}
+                  onClick={() => flipImage('horizontal')}
+                  style={{ 
+                    color: '#fff',
+                    transform: lightboxTransform.flipH ? 'scaleX(-1)' : 'none'
+                  }}
+                  title={t('workflowMonitor.flipHorizontal')}
+                />
+                <Button
+                  type="text"
+                  icon={<SwapOutlined />}
+                  onClick={() => flipImage('vertical')}
+                  style={{ 
+                    color: '#fff',
+                    transform: lightboxTransform.flipV ? 'scaleY(-1)' : 'none'
+                  }}
+                  title={t('workflowMonitor.flipVertical')}
+                />
+                <Button
+                  type="text"
+                  icon={<ZoomInOutlined />}
+                  onClick={() => zoomImage('in')}
+                  style={{ color: '#fff' }}
+                  title={t('workflowMonitor.zoomIn')}
+                />
+                <Button
+                  type="text"
+                  icon={<ZoomOutOutlined />}
+                  onClick={() => zoomImage('out')}
+                  style={{ color: '#fff' }}
+                  title={t('workflowMonitor.zoomOut')}
+                />
+                <Button
+                  type="text"
+                  icon={<ResetOutlined />}
+                  onClick={resetTransform}
+                  style={{ color: '#fff' }}
+                  title={t('workflowMonitor.reset')}
+                />
+              </div>
+            )}
+            
+            {/* 文件信息 */}
+            <div style={{
+              position: 'absolute',
+              bottom: 20,
+              left: 20,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              color: '#fff',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              zIndex: 1000
+            }}>
+              {lightboxFiles.length > 1 && (
+                <div>{lightboxCurrentIndex + 1} / {lightboxFiles.length}</div>
+              )}
+              <div>{formatFileSize(lightboxFile.fileSize || 0)}</div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
+  );
 };
 
 const WorkflowMonitorPage = () => {
@@ -1733,7 +2484,12 @@ const WorkflowMonitorPage = () => {
                       <strong style={{ color: '#666', fontSize: '14px' }}>{t('workflowMonitor.fillType')}</strong>
                       <div style={{ marginTop: '4px' }}>
                         {embeddedFormInstance.fillType && (
-                          <Tag color={embeddedFormInstance.fillType === 'Manual' ? 'blue' : embeddedFormInstance.fillType === 'AI' ? 'green' : 'orange'} style={{ 
+                          <Tag color={
+                            embeddedFormInstance.fillType === 'Manual' ? 'blue' : 
+                            embeddedFormInstance.fillType === 'AI' ? 'green' : 
+                            embeddedFormInstance.fillType === 'MetaFlows' ? 'purple' : 
+                            'orange'
+                          } style={{ 
                             fontSize: '12px',
                             padding: '2px 8px'
                           }}>
@@ -1819,19 +2575,68 @@ const WorkflowMonitorPage = () => {
                     padding: '20px'
                   }}
                 >
-                  <div 
-                    style={{
-                      border: '1px solid #e8e8e8',
-                      borderRadius: '8px',
-                      padding: '20px',
-                      backgroundColor: '#fafafa',
-                      minHeight: '300px',
-                      overflow: 'auto',
-                      fontSize: '14px',
-                      lineHeight: '1.6'
-                    }}
-                    dangerouslySetInnerHTML={{ __html: embeddedFormInstance.htmlCode }}
-                  />
+                  {(() => {
+                    // 檢查是否是 Meta Flows 類型
+                    const isMetaFlows = embeddedFormInstance.fillType === 'MetaFlows';
+                    // 優先使用 filledHtmlCode（後端保存 Flow 回覆的字段），如果沒有則使用 htmlCode
+                    const htmlCode = embeddedFormInstance.filledHtmlCode || embeddedFormInstance.htmlCode || '';
+                    
+                    console.log('[WorkflowMonitor] 表單內容:', {
+                      fillType: embeddedFormInstance.fillType,
+                      isMetaFlows,
+                      htmlCodeLength: htmlCode?.length,
+                      htmlCodePreview: htmlCode?.substring(0, 200),
+                      hasFilledHtmlCode: !!embeddedFormInstance.filledHtmlCode,
+                      hasHtmlCode: !!embeddedFormInstance.htmlCode
+                    });
+                    
+                    // 如果是 Meta Flows 且 htmlCode 是 JSON 格式，需要轉換
+                    if (isMetaFlows && htmlCode && htmlCode.trim().startsWith('{')) {
+                      try {
+                        const flowHtml = convertFlowResponseToHtml(htmlCode, t);
+                        console.log('[WorkflowMonitor] 轉換後的 HTML 長度:', flowHtml?.length);
+                        console.log('[WorkflowMonitor] 轉換後的 HTML 預覽:', flowHtml?.substring(0, 500));
+                        // 使用 FlowResponseContent 組件以支持 lightbox
+                        return <FlowResponseContent html={flowHtml} />;
+                      } catch (e) {
+                        console.error('[WorkflowMonitor] Failed to convert Flow response:', e);
+                        // 轉換失敗，顯示原始內容
+                        return (
+                          <div 
+                            style={{
+                              border: '1px solid #e8e8e8',
+                              borderRadius: '8px',
+                              padding: '20px',
+                              backgroundColor: '#fafafa',
+                              minHeight: '300px',
+                              overflow: 'auto',
+                              fontSize: '14px',
+                              lineHeight: '1.6'
+                            }}
+                          >
+                            {htmlCode}
+                          </div>
+                        );
+                      }
+                    } else {
+                      // 非 Meta Flows 或已經是 HTML 格式，直接顯示
+                      return (
+                        <div 
+                          style={{
+                            border: '1px solid #e8e8e8',
+                            borderRadius: '8px',
+                            padding: '20px',
+                            backgroundColor: '#fafafa',
+                            minHeight: '300px',
+                            overflow: 'auto',
+                            fontSize: '14px',
+                            lineHeight: '1.6'
+                          }}
+                          dangerouslySetInnerHTML={{ __html: htmlCode || '' }}
+                        />
+                      );
+                    }
+                  })()}
                 </Card>
               </div>
             </div>
@@ -2310,10 +3115,35 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
         return value ? t('workflowMonitor.yes') : t('workflowMonitor.no');
       case 'json':
         try {
-          return JSON.stringify(JSON.parse(value), null, 2);
+          const parsed = JSON.parse(value);
+          // ✅ 如果是對象，使用 convertJsonToHtmlTable 轉換為 HTML 表格
+          if (parsed && typeof parsed === 'object') {
+            return <div dangerouslySetInnerHTML={{ __html: convertJsonToHtmlTable(parsed) }} />;
+          }
+          return JSON.stringify(parsed, null, 2);
         } catch {
           return value.toString();
         }
+      case 'text':
+        // ✅ 檢測 text 類型是否為 JSON 字符串
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && trimmed.length > 0) {
+            try {
+              const parsed = JSON.parse(value);
+              // ✅ 如果是對象，使用 convertJsonToHtmlTable 轉換為 HTML 表格
+              if (parsed && typeof parsed === 'object') {
+                return <div dangerouslySetInnerHTML={{ __html: convertJsonToHtmlTable(parsed) }} />;
+              }
+              // 如果是數組或其他類型，格式化顯示
+              return JSON.stringify(parsed, null, 2);
+            } catch (e) {
+              // 解析失敗，返回原始字符串
+              return value.toString();
+            }
+          }
+        }
+        return value.toString();
       default:
         return value.toString();
     }
@@ -3796,7 +4626,12 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                           {getEformStatusText(eform.status)}
                         </Tag>
                         {eform.fillType && (
-                          <Tag color={eform.fillType === 'Manual' ? 'blue' : eform.fillType === 'AI' ? 'green' : 'orange'}>
+                          <Tag color={
+                            eform.fillType === 'Manual' ? 'blue' : 
+                            eform.fillType === 'AI' ? 'green' : 
+                            eform.fillType === 'MetaFlows' ? 'purple' : 
+                            'orange'
+                          }>
                             {eform.fillType}
                           </Tag>
                         )}
@@ -4049,7 +4884,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
             }}>
               {getFileType(lightboxFile.fileName) === 'image' ? (
                 <img
-                  src={lightboxFile.filePath}
+                  src={lightboxFile.filePath || lightboxFile.dataUrl}
                   alt={lightboxFile.fileName}
                   style={{
                     maxWidth: '90%',
@@ -4059,7 +4894,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
                 />
               ) : getFileType(lightboxFile.fileName) === 'video' ? (
                 <video
-                  src={lightboxFile.filePath}
+                  src={lightboxFile.filePath || lightboxFile.dataUrl}
                   controls
                   style={{
                     maxWidth: '90%',

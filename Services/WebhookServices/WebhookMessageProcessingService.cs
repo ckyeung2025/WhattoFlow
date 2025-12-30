@@ -222,6 +222,23 @@ namespace PurpleRice.Services.WebhookServices
                     return null; // 返回 null 表示這是狀態更新，已處理完成
                 }
 
+                // 檢查是否是 Flow 狀態變更等非訊息事件
+                if (value.TryGetProperty("event", out var eventProperty))
+                {
+                    var eventType = eventProperty.GetString();
+                    _loggingService.LogInformation($"檢測到非訊息事件: {eventType}");
+                    
+                    // 如果是 FLOW_STATUS_CHANGE 或其他非訊息事件，直接返回 null
+                    if (eventType == "FLOW_STATUS_CHANGE" || 
+                        eventType == "FLOW_PUBLISHED" || 
+                        eventType == "FLOW_UNPUBLISHED" ||
+                        eventType == "FLOW_DELETED")
+                    {
+                        _loggingService.LogInformation($"跳過處理非訊息事件: {eventType}");
+                        return null; // 返回 null 表示這是非訊息事件，不需要處理
+                    }
+                }
+
                 // 提取聯絡人資訊
                 string waId = null;
                 string contactName = null;
@@ -251,6 +268,8 @@ namespace PurpleRice.Services.WebhookServices
                 string mediaMimeType = null;
                 string mediaFileName = null;
                 string caption = null;
+                string contextFrom = null;
+                string contextId = null;
                 
                 if (value.TryGetProperty("messages", out var messages))
                 {
@@ -258,6 +277,21 @@ namespace PurpleRice.Services.WebhookServices
                     var message = messages[0];
                     messageId = message.GetProperty("id").GetString();
                     _loggingService.LogInformation($"提取到訊息ID: {messageId}");
+                    
+                    // 提取 context（用於 Flow 回覆關聯）
+                    if (message.TryGetProperty("context", out var context))
+                    {
+                        if (context.TryGetProperty("from", out var contextFromProp))
+                        {
+                            contextFrom = contextFromProp.GetString();
+                            _loggingService.LogInformation($"提取到 context.from: {contextFrom}");
+                        }
+                        if (context.TryGetProperty("id", out var contextIdProp))
+                        {
+                            contextId = contextIdProp.GetString();
+                            _loggingService.LogInformation($"提取到 context.id: {contextId}");
+                        }
+                    }
                     
                     // 檢查訊息類型
                     messageType = message.GetProperty("type").GetString();
@@ -296,6 +330,32 @@ namespace PurpleRice.Services.WebhookServices
                                 {
                                     messageText = listReply.GetProperty("id").GetString();
                                     _loggingService.LogInformation($"提取到列表回覆: '{messageText}'");
+                                }
+                            }
+                            else if (interactiveType == "nfm_reply")
+                            {
+                                // Flow 回覆檢測
+                                if (interactive.TryGetProperty("nfm_reply", out var nfmReply))
+                                {
+                                    var nfmName = nfmReply.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                                    if (nfmName == "flow")
+                                    {
+                                        _loggingService.LogInformation($"✅ 檢測到 Flow 回覆 (nfm_reply)");
+                                        
+                                        // 提取 response_json（JSON 字符串）
+                                        if (nfmReply.TryGetProperty("response_json", out var responseJsonProp))
+                                        {
+                                            var responseJsonString = responseJsonProp.GetString();
+                                            _loggingService.LogInformation($"提取到 response_json: {responseJsonString?.Substring(0, Math.Min(200, responseJsonString?.Length ?? 0))}...");
+                                            
+                                            // 將 response_json 保存到 messageText（臨時，後續會解析）
+                                            messageText = responseJsonString;
+                                            messageType = "flow_response"; // 設置特殊類型標識
+                                        }
+                                        
+                                        // 提取 context（如果存在）
+                                        // 注意：context 在 messages 層級，不在 interactive 層級
+                                    }
                                 }
                             }
                         }
@@ -393,7 +453,9 @@ namespace PurpleRice.Services.WebhookServices
                     MediaId = mediaId,
                     Caption = caption,
                     MediaMimeType = mediaMimeType,
-                    MediaFileName = mediaFileName
+                    MediaFileName = mediaFileName,
+                    ContextFrom = contextFrom,
+                    ContextId = contextId
                 };
 
                 _loggingService.LogInformation("訊息數據提取完成");
@@ -415,6 +477,13 @@ namespace PurpleRice.Services.WebhookServices
         /// <returns>處理結果</returns>
         private async Task<object> ProcessUserMessage(Company company, WhatsAppMessageData messageData)
         {
+            // 檢查是否是 Flow 回覆
+            if (messageData.MessageType == "flow_response")
+            {
+                _loggingService.LogInformation($"✅ 檢測到 Flow 回覆消息");
+                return await HandleFlowResponseAsync(company, messageData);
+            }
+
             // 臨時調試：檢查特定用戶的等待流程
             _loggingService.LogInformation($"=== 調試：檢查用戶 {messageData.WaId} 的等待流程 ===");
             var userWaitingWorkflows = await _context.WorkflowExecutions
@@ -668,90 +737,50 @@ namespace PurpleRice.Services.WebhookServices
                 validation.ErrorMessage = validationResult.ErrorMessage;
                 validation.ValidatorType = validationResult.ValidatorType ?? "default";
 
-                if (stepExecution != null && validationResult.AdditionalData != null)
+                // 保存驗證記錄
+                if (validationResult.ProcessedData is string processedText)
                 {
-                    try
-                    {
-                        stepExecution.AiResultJson = JsonSerializer.Serialize(validationResult.AdditionalData, PayloadJsonOptions);
-                    }
-                    catch (Exception serializeEx)
-                    {
-                        _loggingService.LogError($"序列化 AI 結果失敗: {serializeEx.Message}");
-                    }
+                    validation.ProcessedData = processedText;
                 }
-
-                if (validationResult.IsValid)
+                else if (validationResult.ProcessedData != null)
                 {
-                    if (validationResult.ProcessedData is string processedText)
-                    {
-                        validation.ProcessedData = processedText;
-                    }
-                    else if (validationResult.ProcessedData != null)
-                    {
-                        validation.ProcessedData = JsonSerializer.Serialize(validationResult.ProcessedData);
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(validationResult.TargetProcessVariable))
-                    {
-                        try
-                        {
-                            using var scope = _serviceProvider.CreateScope();
-                            var processVariableService = scope.ServiceProvider.GetRequiredService<IProcessVariableService>();
-
-                            object? valueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? messageData.MessageText;
-                            if (valueToStore == null || (valueToStore is string s && string.IsNullOrWhiteSpace(s)))
-                            {
-                                // ✅ 修改：當使用 AdditionalData 時，只提取 ai 部分，排除 original（包含 base64）
-                                valueToStore = ExtractAiResultFromAdditionalData(validationResult.AdditionalData) 
-                                    ?? BuildFallbackProcessVariablePayload(messageData);
-                            }
-
-                            if (valueToStore != null && valueToStore is not string)
-                            {
-                                valueToStore = JsonSerializer.Serialize(valueToStore, PayloadJsonOptions);
-                            }
-
-                            await processVariableService.SetVariableValueAsync(
-                                execution.Id,
-                                validationResult.TargetProcessVariable,
-                                valueToStore ?? string.Empty,
-                                setBy: "AIValidator",
-                                sourceType: "AIValidation",
-                                sourceReference: execution.Id.ToString()
-                            );
-
-                            _loggingService.LogInformation($"AI 驗證結果寫入流程變量: {validationResult.TargetProcessVariable}");
-                        }
-                        catch (Exception pvEx)
-                        {
-                            _loggingService.LogError($"AI 驗證結果寫入流程變量失敗: {pvEx.Message}", pvEx);
-                        }
-                    }
+                    validation.ProcessedData = JsonSerializer.Serialize(validationResult.ProcessedData);
                 }
-
                 _context.MessageValidations.Add(validation);
                 await _context.SaveChangesAsync();
 
                 // 獲取節點信息以發送正確的訊息
                 var nodeInfo = await GetWaitReplyNodeInfo(execution, stepExecution);
                 
-                if (!validationResult.IsValid)
+                // 使用公共方法處理 AI 驗證結果
+                var shouldAbort = await ProcessAiValidationResultAsync(
+                    validationResult,
+                    execution,
+                    stepExecution,
+                    messageData,
+                    fallbackText: messageData.MessageText,
+                    onValidationFailed: async (result) =>
+                    {
+                        // 驗證失敗，發送錯誤訊息並保持等待狀態
+                        if (nodeInfo != null)
+                        {
+                            // 使用節點配置的錯誤訊息
+                            await SendWaitReplyMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
+                        }
+                        else
+                        {
+                            // 回退到默認錯誤訊息
+                            var menuSettings = WhatsAppMenuSettings.FromCompany(company);
+                            var errorMessage = result.ErrorMessage ?? menuSettings.InputErrorMessage;
+                            await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
+                        }
+                        _loggingService.LogInformation($"驗證失敗，保持等待狀態");
+                        return true; // 中斷處理
+                    });
+
+                if (shouldAbort)
                 {
-                    // 驗證失敗，發送錯誤訊息並保持等待狀態
-                    if (nodeInfo != null)
-                    {
-                        // 使用節點配置的錯誤訊息
-                        await SendWaitReplyMessageAsync(company, execution, messageData.WaId, nodeInfo, false);
-                    }
-                    else
-                    {
-                        // 回退到默認錯誤訊息
-                        var menuSettings = WhatsAppMenuSettings.FromCompany(company);
-                        var errorMessage = validationResult.ErrorMessage ?? menuSettings.InputErrorMessage;
-                        await SendWhatsAppMessage(company, messageData.WaId, errorMessage);
-                    }
-                    _loggingService.LogInformation($"驗證失敗，保持等待狀態");
-                    return;
+                    return; // 驗證失敗，已發送 retry 訊息，保持等待狀態
                 }
 
                 // 驗證通過，發送成功訊息並繼續執行流程
@@ -1974,6 +2003,172 @@ namespace PurpleRice.Services.WebhookServices
         }
 
         /// <summary>
+        /// 獲取 sendEForm 節點信息
+        /// </summary>
+        private async Task<SendEFormNodeInfo> GetSendEFormNodeInfo(WorkflowExecution execution, int? stepExecutionId)
+        {
+            try
+            {
+                if (execution.WorkflowDefinition == null || string.IsNullOrEmpty(execution.WorkflowDefinition.Json))
+                {
+                    return null;
+                }
+                
+                // 先處理 maxRetries 字段（可能為字符串），轉換為整數
+                string processedJson = execution.WorkflowDefinition.Json;
+                try
+                {
+                    using var doc = JsonDocument.Parse(execution.WorkflowDefinition.Json);
+                    var root = doc.RootElement;
+                    
+                    if (root.TryGetProperty("nodes", out var nodesElement))
+                    {
+                        var nodesList = new List<System.Text.Json.Nodes.JsonNode>();
+                        foreach (var node in nodesElement.EnumerateArray())
+                        {
+                            var nodeJson = node.GetRawText();
+                            var nodeObj = System.Text.Json.Nodes.JsonNode.Parse(nodeJson);
+                            
+                            // 遞歸處理 maxRetries 字段
+                            ProcessMaxRetriesField(nodeObj);
+                            
+                            nodesList.Add(nodeObj);
+                        }
+                        
+                        var newRoot = new System.Text.Json.Nodes.JsonObject();
+                        newRoot["nodes"] = new System.Text.Json.Nodes.JsonArray(nodesList.ToArray());
+                        
+                        if (root.TryGetProperty("edges", out var edgesElement))
+                        {
+                            newRoot["edges"] = System.Text.Json.Nodes.JsonNode.Parse(edgesElement.GetRawText());
+                        }
+                        
+                        processedJson = newRoot.ToJsonString();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"處理 maxRetries 字段時發生錯誤，使用原始 JSON: {ex.Message}");
+                    // 如果處理失敗，使用原始 JSON
+                }
+                
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(processedJson, options);
+                
+                if (flowData?.Nodes != null)
+                {
+                    WorkflowNode sendEFormNode = null;
+                    
+                    // 如果提供了 stepExecutionId，嘗試通過它查找對應的節點
+                    if (stepExecutionId.HasValue)
+                    {
+                        var stepExecution = await _context.WorkflowStepExecutions
+                            .FirstOrDefaultAsync(s => s.Id == stepExecutionId.Value);
+                        
+                        if (stepExecution != null && !string.IsNullOrEmpty(stepExecution.TaskName))
+                        {
+                            // 通過 TaskName 匹配
+                            sendEFormNode = flowData.Nodes.FirstOrDefault(n => 
+                                n.Data?.Type == "sendEForm" &&
+                                n.Data?.TaskName == stepExecution.TaskName);
+                        }
+                    }
+                    
+                    // 如果還是找不到，使用第一個 sendEForm 節點
+                    if (sendEFormNode == null)
+                    {
+                        sendEFormNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "sendEForm");
+                    }
+                    
+                    if (sendEFormNode != null)
+                    {
+                        // 動態讀取 FormType（因為它可能是動態屬性）
+                        // 直接從原始 JSON 中讀取，而不是從反序列化後的對象中讀取
+                        string formType = null;
+                        string sendEFormMode = sendEFormNode.Data?.SendEFormMode;
+                        
+                        // 嘗試從原始 JSON 中讀取 FormType
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(processedJson);
+                            var root = doc.RootElement;
+                            
+                            if (root.TryGetProperty("nodes", out var nodesElement))
+                            {
+                                foreach (var node in nodesElement.EnumerateArray())
+                                {
+                                    if (node.TryGetProperty("id", out var idElement) && idElement.GetString() == sendEFormNode.Id)
+                                    {
+                                        // 找到對應的節點，讀取 data 屬性
+                                        if (node.TryGetProperty("data", out var dataElement))
+                                        {
+                                            // 嘗試讀取 FormType（支持 camelCase 和 PascalCase）
+                                            if (dataElement.TryGetProperty("formType", out var formTypeProp))
+                                            {
+                                                formType = formTypeProp.GetString();
+                                            }
+                                            else if (dataElement.TryGetProperty("FormType", out formTypeProp))
+                                            {
+                                                formType = formTypeProp.GetString();
+                                            }
+                                            else
+                                            {
+                                                // 嘗試大小寫不敏感匹配
+                                                foreach (var prop in dataElement.EnumerateObject())
+                                                {
+                                                    if (string.Equals(prop.Name, "formType", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        formType = prop.Value.GetString();
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // 如果 sendEFormMode 為空，也從原始 JSON 中讀取
+                                            if (string.IsNullOrEmpty(sendEFormMode))
+                                            {
+                                                if (dataElement.TryGetProperty("sendEFormMode", out var sendEFormModeProp))
+                                                {
+                                                    sendEFormMode = sendEFormModeProp.GetString();
+                                                }
+                                                else if (dataElement.TryGetProperty("SendEFormMode", out sendEFormModeProp))
+                                                {
+                                                    sendEFormMode = sendEFormModeProp.GetString();
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _loggingService.LogWarning($"讀取 FormType 時發生錯誤: {ex.Message}");
+                        }
+                        
+                        _loggingService.LogInformation($"🔍 [DEBUG] GetSendEFormNodeInfo - NodeId: {sendEFormNode.Id}, SendEFormMode: {sendEFormMode}, FormType: {formType}");
+                        
+                        return new SendEFormNodeInfo
+                        {
+                            NodeId = sendEFormNode.Id,
+                            SendEFormMode = sendEFormMode,
+                            FormType = formType,
+                            Validation = sendEFormNode.Data?.Validation
+                        };
+                    }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取 sendEForm 節點信息時發生錯誤: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// 發送 Wait Reply 訊息（支持模板和直接訊息）
         /// </summary>
         private async Task SendWaitReplyMessageAsync(
@@ -2185,6 +2380,14 @@ namespace PurpleRice.Services.WebhookServices
             public bool WaitReplyErrorIsMetaTemplate { get; set; }
             public string WaitReplyErrorTemplateLanguage { get; set; }
             public List<object> WaitReplyErrorTemplateVariables { get; set; }
+            public WorkflowValidation Validation { get; set; }
+        }
+
+        private class SendEFormNodeInfo
+        {
+            public string NodeId { get; set; }
+            public string SendEFormMode { get; set; }
+            public string FormType { get; set; }
             public WorkflowValidation Validation { get; set; }
         }
 
@@ -2660,73 +2863,297 @@ namespace PurpleRice.Services.WebhookServices
         }
 
         /// <summary>
+        /// 處理 AI 驗證結果的通用方法（保存結果、寫入流程變量、處理驗證失敗）
+        /// </summary>
+        /// <param name="validationResult">AI 驗證結果</param>
+        /// <param name="execution">工作流程執行記錄</param>
+        /// <param name="stepExecution">步驟執行記錄</param>
+        /// <param name="messageData">消息數據（用於構建流程變量值）</param>
+        /// <param name="fallbackText">當 ProcessedData 為空時使用的後備文本</param>
+        /// <param name="onValidationFailed">驗證失敗時的回調函數（返回是否應該中斷處理）</param>
+        /// <returns>如果驗證失敗且應該中斷處理，返回 true；否則返回 false</returns>
+        private async Task<bool> ProcessAiValidationResultAsync(
+            ValidationResult validationResult,
+            WorkflowExecution execution,
+            WorkflowStepExecution? stepExecution,
+            WhatsAppMessageData messageData,
+            string? fallbackText = null,
+            Func<ValidationResult, Task<bool>>? onValidationFailed = null)
+        {
+            // 1. 保存 AI 結果到 stepExecution
+            if (stepExecution != null && validationResult.AdditionalData != null)
+            {
+                try
+                {
+                    var aiResultJson = JsonSerializer.Serialize(validationResult.AdditionalData, PayloadJsonOptions);
+                    stepExecution.AiResultJson = aiResultJson;
+                    await _context.SaveChangesAsync();
+                    
+                    // ✅ 記錄 AdditionalData 的完整內容（用於調試）
+                    var aiResultPreview = aiResultJson.Length > 3000 
+                        ? aiResultJson.Substring(0, 3000) + "... (截斷，完整長度: " + aiResultJson.Length + ")" 
+                        : aiResultJson;
+                    _loggingService.LogInformation($"📄 保存到 stepExecution.AiResultJson 的完整內容: {aiResultPreview}");
+                }
+                catch (Exception serializeEx)
+                {
+                    _loggingService.LogError($"序列化 AI 結果失敗: {serializeEx.Message}");
+                }
+            }
+
+            // 2. 處理驗證失敗
+            if (!validationResult.IsValid)
+            {
+                if (onValidationFailed != null)
+                {
+                    var shouldAbort = await onValidationFailed(validationResult);
+                    if (shouldAbort)
+                    {
+                        return true; // 中斷處理
+                    }
+                }
+                return false; // 不中斷，繼續處理
+            }
+
+            // 3. 驗證通過，寫入流程變量
+            if (!string.IsNullOrWhiteSpace(validationResult.TargetProcessVariable))
+            {
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var processVariableService = scope.ServiceProvider.GetRequiredService<IProcessVariableService>();
+
+                    // ✅ 優先從 AdditionalData 提取 AI 分析結果（即使 ProcessedData 有值，也優先使用 AI 結果）
+                    _loggingService.LogInformation($"🔍 開始從 AdditionalData 提取 AI 分析結果...");
+                    if (validationResult.AdditionalData != null)
+                    {
+                        try
+                        {
+                            var additionalDataPreview = JsonSerializer.Serialize(validationResult.AdditionalData, PayloadJsonOptions);
+                            var preview = additionalDataPreview.Length > 2000 
+                                ? additionalDataPreview.Substring(0, 2000) + "... (截斷，完整長度: " + additionalDataPreview.Length + ")" 
+                                : additionalDataPreview;
+                            _loggingService.LogInformation($"📄 AdditionalData 完整內容: {preview}");
+                        }
+                        catch (Exception ex)
+                        {
+                            _loggingService.LogWarning($"無法序列化 AdditionalData 用於日誌: {ex.Message}");
+                        }
+                    }
+                    
+                    object? valueToStore = ExtractAiResultFromAdditionalData(validationResult.AdditionalData);
+                    
+                    // 如果 AdditionalData 中沒有 AI 結果，再使用 ProcessedData、SuggestionMessage 等
+                    if (valueToStore == null || (valueToStore is string valueStr && string.IsNullOrWhiteSpace(valueStr)))
+                    {
+                        valueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? fallbackText ?? messageData.MessageText;
+                        
+                        // 如果還是 null 或空，使用 BuildFallbackProcessVariablePayload
+                        if (valueToStore == null || (valueToStore is string fallbackStr && string.IsNullOrWhiteSpace(fallbackStr)))
+                        {
+                            valueToStore = BuildFallbackProcessVariablePayload(messageData);
+                        }
+                    }
+
+                    // ✅ 檢查流程變量的數據類型，並進行適當的轉換
+                    var variableDefinition = await _context.ProcessVariableDefinitions
+                        .FirstOrDefaultAsync(p => p.WorkflowDefinitionId == execution.WorkflowDefinitionId
+                            && p.VariableName == validationResult.TargetProcessVariable);
+                    
+                    var dataType = variableDefinition?.DataType?.ToLower() ?? "text";
+                    _loggingService.LogInformation($"📋 流程變量 '{validationResult.TargetProcessVariable}' 的數據類型: {dataType}");
+                    
+                    // 如果數據類型是 json，確保值是有效的 JSON
+                    if (dataType == "json")
+                    {
+                        if (valueToStore is string strValue)
+                        {
+                            // 檢查是否已經是有效的 JSON
+                            try
+                            {
+                                JsonSerializer.Deserialize<object>(strValue);
+                                // 已經是有效的 JSON，直接使用
+                                _loggingService.LogInformation($"✅ 值已經是有效的 JSON 格式");
+                            }
+                            catch
+                            {
+                                // 不是有效的 JSON，包裝成 JSON 字符串
+                                valueToStore = JsonSerializer.Serialize(strValue, PayloadJsonOptions);
+                                _loggingService.LogInformation($"✅ 將純文本字符串包裝為 JSON 字符串");
+                            }
+                        }
+                        else if (valueToStore != null)
+                        {
+                            // 如果不是字符串，序列化為 JSON
+                            valueToStore = JsonSerializer.Serialize(valueToStore, PayloadJsonOptions);
+                            _loggingService.LogInformation($"✅ 將對象序列化為 JSON 字符串");
+                        }
+                    }
+                    else if (valueToStore != null && valueToStore is not string)
+                    {
+                        // 其他數據類型，如果不是字符串，轉換為字符串
+                        valueToStore = valueToStore.ToString();
+                    }
+
+                    var valueLength = valueToStore is string finalStr ? finalStr.Length : valueToStore?.ToString()?.Length ?? 0;
+                    _loggingService.LogInformation($"📝 準備寫入流程變量 '{validationResult.TargetProcessVariable}'，數據類型: {dataType}，值類型: {valueToStore?.GetType().Name ?? "null"}，值長度: {valueLength}");
+
+                    await processVariableService.SetVariableValueAsync(
+                        execution.Id,
+                        validationResult.TargetProcessVariable,
+                        valueToStore ?? string.Empty,
+                        setBy: "AIValidator",
+                        sourceType: "AIValidation",
+                        sourceReference: execution.Id.ToString()
+                    );
+
+                    _loggingService.LogInformation($"✅ AI 驗證通過，結果寫入流程變量: {validationResult.TargetProcessVariable}");
+                }
+                catch (Exception pvEx)
+                {
+                    // 重新計算 valueToStore 用於錯誤日誌
+                    object? errorValueToStore = validationResult.ProcessedData ?? validationResult.SuggestionMessage ?? fallbackText ?? messageData.MessageText;
+                    if (errorValueToStore == null || (errorValueToStore is string s && string.IsNullOrWhiteSpace(s)))
+                    {
+                        errorValueToStore = ExtractAiResultFromAdditionalData(validationResult.AdditionalData) 
+                            ?? BuildFallbackProcessVariablePayload(messageData);
+                    }
+                    if (errorValueToStore != null && errorValueToStore is not string)
+                    {
+                        errorValueToStore = JsonSerializer.Serialize(errorValueToStore, PayloadJsonOptions);
+                    }
+
+                    var errorValuePreview = errorValueToStore is string errorStr 
+                        ? errorStr.Substring(0, Math.Min(200, errorStr.Length)) 
+                        : errorValueToStore?.ToString()?.Substring(0, Math.Min(200, errorValueToStore.ToString()?.Length ?? 0)) ?? "null";
+                    
+                    _loggingService.LogError($"❌ AI 驗證結果寫入流程變量失敗: {pvEx.Message}", pvEx);
+                    _loggingService.LogError($"   流程變量名稱: {validationResult.TargetProcessVariable}");
+                    _loggingService.LogError($"   值類型: {errorValueToStore?.GetType().Name ?? "null"}");
+                    _loggingService.LogError($"   值預覽: {errorValuePreview}");
+                }
+            }
+
+            return false; // 不中斷，繼續處理
+        }
+
+        /// <summary>
         /// 從 AdditionalData 中提取 AI 分析結果（只提取 ai 部分，排除 original 部分以避免包含 base64）
         /// </summary>
         private object? ExtractAiResultFromAdditionalData(object? additionalData)
         {
             if (additionalData == null)
             {
+                _loggingService.LogWarning("AdditionalData 為 null，無法提取 AI 結果");
                 return null;
             }
 
             try
             {
-                // 如果已經是 JsonElement，直接處理
+                // ✅ 統一處理：先序列化為字符串，然後解析（避免 JsonDocument 被過早釋放）
+                string serialized;
                 if (additionalData is JsonElement jsonElement)
                 {
-                    if (jsonElement.TryGetProperty("ai", out var aiElement))
-                    {
-                        // 優先使用 ai.processed，如果沒有則使用整個 ai 對象
-                        if (aiElement.TryGetProperty("processed", out var processedElement) && 
-                            processedElement.ValueKind != JsonValueKind.Null &&
-                            !string.IsNullOrWhiteSpace(processedElement.GetString()))
-                        {
-                            return processedElement.GetString();
-                        }
-                        else
-                        {
-                            // 使用整個 ai 對象（不包含 original）
-                            return aiElement.GetRawText();
-                        }
-                    }
-                    else
-                    {
-                        // 如果沒有 ai 屬性，返回 null（不使用包含 base64 的 original）
-                        _loggingService.LogWarning("AdditionalData 中沒有找到 ai 屬性，跳過以避免包含 base64");
-                        return null;
-                    }
+                    serialized = jsonElement.GetRawText();
+                    _loggingService.LogInformation($"✅ AdditionalData 是 JsonElement，序列化後長度: {serialized.Length}");
                 }
                 else
                 {
-                    // 如果不是 JsonElement，嘗試序列化後解析
-                    var serialized = JsonSerializer.Serialize(additionalData, PayloadJsonOptions);
-                    using var doc = JsonDocument.Parse(serialized);
-                    var root = doc.RootElement;
+                    serialized = JsonSerializer.Serialize(additionalData, PayloadJsonOptions);
+                    _loggingService.LogInformation($"✅ AdditionalData 序列化後長度: {serialized.Length}");
+                }
+                
+                // 使用 JsonDocument 解析，但在 using 塊內完成所有操作
+                using var doc = JsonDocument.Parse(serialized);
+                var root = doc.RootElement;
+                
+                // ✅ 記錄 ai 元素的完整內容（用於調試）
+                if (root.TryGetProperty("ai", out var aiElement))
+                {
+                    // 在 using 塊內提取所有需要的值
+                    string? processedValue = null;
+                    string? rawValue = null;
+                    string? fullAiJson = null;
                     
-                    if (root.TryGetProperty("ai", out var aiElement))
+                    var aiJson = aiElement.GetRawText();
+                    var aiPreview = aiJson.Length > 2000 
+                        ? aiJson.Substring(0, 2000) + "... (截斷，完整長度: " + aiJson.Length + ")" 
+                        : aiJson;
+                    _loggingService.LogInformation($"📄 AdditionalData.ai 完整內容: {aiPreview}");
+                    
+                    // 優先使用 ai.processed（如果存在且非空）
+                    if (aiElement.TryGetProperty("processed", out var processedElement) && 
+                        processedElement.ValueKind != JsonValueKind.Null)
                     {
-                        if (aiElement.TryGetProperty("processed", out var processedElement) && 
-                            processedElement.ValueKind != JsonValueKind.Null &&
-                            !string.IsNullOrWhiteSpace(processedElement.GetString()))
+                        // ✅ 處理 processed 可能是字符串或對象的情況
+                        if (processedElement.ValueKind == JsonValueKind.String)
                         {
-                            return processedElement.GetString();
+                            processedValue = processedElement.GetString();
                         }
                         else
                         {
-                            return aiElement.GetRawText();
+                            // 如果是對象，序列化為 JSON 字符串
+                            processedValue = processedElement.GetRawText();
+                        }
+                        
+                        if (!string.IsNullOrWhiteSpace(processedValue))
+                        {
+                            var processedPreview = processedValue.Length > 1000 
+                                ? processedValue.Substring(0, 1000) + "... (截斷，完整長度: " + processedValue.Length + ")" 
+                                : processedValue;
+                            _loggingService.LogInformation($"✅ 從 AdditionalData.ai.processed 提取到結果，長度: {processedValue?.Length ?? 0}");
+                            _loggingService.LogInformation($"📄 ai.processed 內容: {processedPreview}");
+                            return processedValue; // 在 using 塊內返回
                         }
                     }
                     else
                     {
-                        // 如果沒有 ai 屬性，返回 null（不使用包含 base64 的 original）
-                        _loggingService.LogWarning("AdditionalData 中沒有找到 ai 屬性，跳過以避免包含 base64");
-                        return null;
+                        _loggingService.LogInformation($"ℹ️ ai.processed 不存在或為空，嘗試使用 ai.raw");
                     }
+                    
+                    // 如果 processed 為空，嘗試使用 ai.raw（AI 的原始響應）
+                    if (aiElement.TryGetProperty("raw", out var rawElement) && 
+                        rawElement.ValueKind != JsonValueKind.Null &&
+                        !string.IsNullOrWhiteSpace(rawElement.GetString()))
+                    {
+                        rawValue = rawElement.GetString();
+                        var rawPreview = rawValue.Length > 2000 
+                            ? rawValue.Substring(0, 2000) + "... (截斷，完整長度: " + rawValue.Length + ")" 
+                            : rawValue;
+                        _loggingService.LogInformation($"✅ 從 AdditionalData.ai.raw 提取到結果，長度: {rawValue?.Length ?? 0}");
+                        _loggingService.LogInformation($"📄 ai.raw 內容: {rawPreview}");
+                        return rawValue; // 在 using 塊內返回
+                    }
+                    else
+                    {
+                        _loggingService.LogInformation($"ℹ️ ai.raw 不存在或為空，使用整個 ai 對象");
+                    }
+                    
+                    // 如果都沒有，使用整個 ai 對象（不包含 original）
+                    fullAiJson = aiElement.GetRawText();
+                    var fullAiPreview = fullAiJson.Length > 2000 
+                        ? fullAiJson.Substring(0, 2000) + "... (截斷，完整長度: " + fullAiJson.Length + ")" 
+                        : fullAiJson;
+                    _loggingService.LogInformation($"✅ 從 AdditionalData.ai 提取到完整對象，長度: {fullAiJson?.Length ?? 0}");
+                    _loggingService.LogInformation($"📄 ai 完整對象內容: {fullAiPreview}");
+                    return fullAiJson; // 在 using 塊內返回
+                }
+                else
+                {
+                    // 如果沒有 ai 屬性，記錄完整的 root 結構以便調試
+                    var rootJson = root.GetRawText();
+                    var rootPreview = rootJson.Length > 1000 
+                        ? rootJson.Substring(0, 1000) + "... (截斷)" 
+                        : rootJson;
+                    _loggingService.LogWarning($"AdditionalData 中沒有找到 ai 屬性，跳過以避免包含 base64");
+                    _loggingService.LogWarning($"📄 AdditionalData 根結構: {rootPreview}");
+                    return null;
                 }
             }
             catch (Exception ex)
             {
                 _loggingService.LogWarning($"從 AdditionalData 提取 ai 部分失敗: {ex.Message}，返回 null 以避免包含 base64");
+                _loggingService.LogError($"提取失敗的詳細錯誤: {ex}", ex);
                 return null;
             }
         }
@@ -2757,6 +3184,1058 @@ namespace PurpleRice.Services.WebhookServices
                 "application/octet-stream" => ".bin",
                 _ => null
             };
+        }
+
+        /// <summary>
+        /// 處理 Flow 回覆
+        /// </summary>
+        /// <param name="company">公司信息</param>
+        /// <param name="messageData">消息數據（包含 Flow 回覆）</param>
+        /// <returns>處理結果</returns>
+        private async Task<object> HandleFlowResponseAsync(Company company, WhatsAppMessageData messageData)
+        {
+            try
+            {
+                _loggingService.LogInformation($"=== 處理 Flow 回覆開始 ===");
+                _loggingService.LogInformation($"用戶 WhatsApp 號碼: {messageData.WaId}");
+                _loggingService.LogInformation($"消息 ID: {messageData.MessageId}");
+                _loggingService.LogInformation($"Context ID: {messageData.ContextId}");
+                _loggingService.LogInformation($"Context From: {messageData.ContextFrom}");
+
+                // 解析 response_json（JSON 字符串）
+                if (string.IsNullOrEmpty(messageData.MessageText))
+                {
+                    _loggingService.LogWarning("Flow 回覆缺少 response_json");
+                    return new { success = false, message = "Flow response missing response_json" };
+                }
+
+                Dictionary<string, object> flowResponseData;
+                string flowToken = null;
+                try
+                {
+                    flowResponseData = JsonSerializer.Deserialize<Dictionary<string, object>>(messageData.MessageText);
+                    if (flowResponseData == null)
+                    {
+                        _loggingService.LogWarning("無法解析 response_json");
+                        return new { success = false, message = "Failed to parse response_json" };
+                    }
+
+                    // 提取 flow_token
+                    if (flowResponseData.TryGetValue("flow_token", out var tokenObj))
+                    {
+                        flowToken = tokenObj?.ToString();
+                        _loggingService.LogInformation($"提取到 flow_token: {flowToken}");
+                    }
+
+                    _loggingService.LogInformation($"Flow 回覆數據包含 {flowResponseData.Count} 個字段");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError($"解析 response_json 失敗: {ex.Message}");
+                    return new { success = false, message = $"Failed to parse response_json: {ex.Message}" };
+                }
+
+                // 查找對應的 EFormInstance
+                EFormInstance eFormInstance = null;
+
+                // 方法 1：通過 context.id 查找（原始消息 ID）
+                if (!string.IsNullOrEmpty(messageData.ContextId))
+                {
+                    _loggingService.LogInformation($"嘗試通過 context.id 查找 EFormInstance: {messageData.ContextId}");
+                    
+                    // 查找保存了該消息 ID 的 EFormInstance
+                    // 注意：我們在發送 Flow 時將消息 ID 保存到 UserMessage 字段
+                    eFormInstance = await _context.EFormInstances
+                        .FirstOrDefaultAsync(e => 
+                            e.UserMessage == messageData.ContextId && 
+                            e.FillType == "MetaFlows" &&
+                            e.Status == "Pending" &&
+                            e.RecipientWhatsAppNo == messageData.WaId);
+                    
+                    if (eFormInstance != null)
+                    {
+                        _loggingService.LogInformation($"✅ 通過 context.id 找到 EFormInstance: {eFormInstance.Id}");
+                    }
+                }
+
+                // 方法 2：通過 WhatsApp 號碼和最近的 WorkflowExecution 查找（備用）
+                if (eFormInstance == null)
+                {
+                    _loggingService.LogInformation($"嘗試通過 WhatsApp 號碼查找最近的 EFormInstance");
+                    
+                    // 查找最近的 MetaFlows 類型的 EFormInstance
+                    eFormInstance = await _context.EFormInstances
+                        .Where(e => 
+                            e.RecipientWhatsAppNo == messageData.WaId &&
+                            e.FillType == "MetaFlows" &&
+                            e.Status == "Pending")
+                        .OrderByDescending(e => e.CreatedAt)
+                        .FirstOrDefaultAsync();
+                    
+                    if (eFormInstance != null)
+                    {
+                        _loggingService.LogInformation($"✅ 通過 WhatsApp 號碼找到最近的 EFormInstance: {eFormInstance.Id}");
+                        
+                        // 驗證時間窗口（例如：最近 1 小時內創建的）
+                        var timeWindow = DateTime.UtcNow.AddHours(-1);
+                        if (eFormInstance.CreatedAt < timeWindow)
+                        {
+                            _loggingService.LogWarning($"EFormInstance 創建時間過早，可能不是對應的實例");
+                            eFormInstance = null;
+                        }
+                    }
+                }
+
+                if (eFormInstance == null)
+                {
+                    _loggingService.LogWarning($"❌ 找不到對應的 EFormInstance");
+                    return new { success = false, message = "EFormInstance not found" };
+                }
+
+                _loggingService.LogInformation($"找到 EFormInstance: {eFormInstance.Id}");
+
+                // 先保存完整的原始 JSON 到 FilledHtmlCode（作為 JSON 字符串）
+                // 但需要處理 MEDIA_ID：下載媒體並轉換為 base64
+                var originalResponseJson = messageData.MessageText; // 這是完整的 response_json 字符串
+                
+                _loggingService.LogInformation($"保存原始 Flow 回覆 JSON 到 FilledHtmlCode，長度: {originalResponseJson?.Length ?? 0}");
+                _loggingService.LogInformation($"原始 JSON 內容: {originalResponseJson?.Substring(0, Math.Min(500, originalResponseJson?.Length ?? 0))}...");
+
+                // 處理 MEDIA_ID：下載媒體並轉換為 base64
+                string processedResponseJson = originalResponseJson;
+                try
+                {
+                    if (!string.IsNullOrEmpty(originalResponseJson))
+                    {
+                        // 解析 JSON
+                        var responseJsonElement = JsonSerializer.Deserialize<JsonElement>(originalResponseJson);
+                        var responseDict = new Dictionary<string, object>();
+                        var hasMediaId = false;
+
+                        // 遍歷所有字段，檢查是否有 MEDIA_ID
+                        foreach (var property in responseJsonElement.EnumerateObject())
+                        {
+                            var fieldName = property.Name;
+                            var fieldValue = property.Value;
+
+                            // 跳過 flow_token
+                            if (fieldName == "flow_token")
+                            {
+                                responseDict[fieldName] = fieldValue.GetString();
+                                continue;
+                            }
+
+                            // 檢查值是否是 MEDIA_ID（可能是字符串，且看起來像 media ID）
+                            if (fieldValue.ValueKind == JsonValueKind.String)
+                            {
+                                var valueString = fieldValue.GetString();
+                                
+                                // 檢查是否是 MEDIA_ID
+                                // 根據 Meta API，MEDIA_ID 通常是純數字（長整數），不應該包含空格、字母或特殊字符
+                                // 只有當字符串是純數字且長度合理時，才可能是 MEDIA_ID
+                                bool isPossibleMediaId = false;
+                                if (!string.IsNullOrEmpty(valueString))
+                                {
+                                    // MEDIA_ID 應該是純數字（長整數），長度通常在 10-20 位之間
+                                    // 不應該包含空格、字母或特殊字符（如 "-"）
+                                    if (valueString.All(char.IsDigit) && valueString.Length >= 10 && valueString.Length <= 20)
+                                    {
+                                        isPossibleMediaId = true;
+                                    }
+                                }
+                                
+                                if (isPossibleMediaId)
+                                {
+                                    // 嘗試下載媒體
+                                    _loggingService.LogInformation($"檢測到可能的 MEDIA_ID 字段 '{fieldName}': {valueString}");
+                                    
+                                    try
+                                    {
+                                        var downloadedMedia = await DownloadWhatsAppMediaAsync(company, valueString);
+                                        if (downloadedMedia != null && downloadedMedia.Content != null && downloadedMedia.Content.Length > 0)
+                                        {
+                                            // 轉換為 base64
+                                            var base64String = Convert.ToBase64String(downloadedMedia.Content);
+                                            var mimeType = downloadedMedia.MimeType ?? "image/png";
+                                            var dataUrl = $"data:{mimeType};base64,{base64String}";
+                                            
+                                            // 保存文件到執行目錄（參考現有的 webhook 功能）
+                                            try
+                                            {
+                                                var executionId = eFormInstance.WorkflowExecutionId;
+                                                if (executionId > 0)
+                                                {
+                                                    string savedFilePath = null;
+                                                    
+                                                    // 根據 MIME 類型判斷是圖片還是文檔
+                                                    if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        // 保存圖片
+                                                        savedFilePath = await SaveWaitReplyImageAsync(
+                                                            executionId, 
+                                                            downloadedMedia.Content, 
+                                                            downloadedMedia.FileName, 
+                                                            mimeType);
+                                                        _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
+                                                    }
+                                                    else
+                                                    {
+                                                        // 保存文檔
+                                                        savedFilePath = await SaveWaitReplyDocumentAsync(
+                                                            executionId, 
+                                                            downloadedMedia.Content, 
+                                                            downloadedMedia.FileName, 
+                                                            mimeType);
+                                                        _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                    }
+                                                    
+                                                    // 在 JSON 中同時保存文件路徑（可選，用於前端顯示）
+                                                    // 這裡我們保存一個包含 base64 和文件路徑的對象
+                                                    responseDict[fieldName] = new Dictionary<string, object>
+                                                    {
+                                                        ["dataUrl"] = dataUrl,
+                                                        ["filePath"] = savedFilePath ?? "",
+                                                        ["mimeType"] = mimeType,
+                                                        ["fileName"] = downloadedMedia.FileName ?? fieldName,
+                                                        ["fileSize"] = downloadedMedia.Content.Length
+                                                    };
+                                                }
+                                                else
+                                                {
+                                                    // 如果沒有 executionId，只保存 base64
+                                                    responseDict[fieldName] = dataUrl;
+                                                }
+                                            }
+                                            catch (Exception saveEx)
+                                            {
+                                                // 保存文件失敗，但繼續保存 base64
+                                                _loggingService.LogWarning($"⚠️ 保存媒體文件到目錄時發生錯誤: {saveEx.Message}，將只保存 base64");
+                                                responseDict[fieldName] = dataUrl;
+                                            }
+                                            
+                                            hasMediaId = true;
+                                            
+                                            _loggingService.LogInformation($"✅ 成功下載並轉換媒體 '{fieldName}'，大小: {downloadedMedia.Content.Length} bytes, MIME: {mimeType}");
+                                        }
+                                        else
+                                        {
+                                            // 下載失敗，保留原始值
+                                            responseDict[fieldName] = valueString;
+                                            _loggingService.LogWarning($"⚠️ 無法下載媒體 '{fieldName}': {valueString}，保留原始值");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        // 下載失敗，保留原始值
+                                        responseDict[fieldName] = valueString;
+                                        _loggingService.LogWarning($"⚠️ 下載媒體 '{fieldName}' 時發生錯誤: {ex.Message}，保留原始值");
+                                    }
+                                }
+                                else
+                                {
+                                    // 不是 MEDIA_ID，直接保存
+                                    responseDict[fieldName] = valueString;
+                                }
+                            }
+                            else if (fieldValue.ValueKind == JsonValueKind.Object)
+                            {
+                                // 如果是對象（如 {"id": "MEDIA_ID"}），嘗試提取 id
+                                if (fieldValue.TryGetProperty("id", out var idProperty))
+                                {
+                                    var mediaId = idProperty.GetString();
+                                    if (!string.IsNullOrEmpty(mediaId))
+                                    {
+                                        _loggingService.LogInformation($"檢測到對象格式的 MEDIA_ID 字段 '{fieldName}': {mediaId}");
+                                        
+                                        try
+                                        {
+                                            var downloadedMedia = await DownloadWhatsAppMediaAsync(company, mediaId);
+                                            if (downloadedMedia != null && downloadedMedia.Content != null && downloadedMedia.Content.Length > 0)
+                                            {
+                                                var base64String = Convert.ToBase64String(downloadedMedia.Content);
+                                                var mimeType = downloadedMedia.MimeType ?? "image/png";
+                                                var dataUrl = $"data:{mimeType};base64,{base64String}";
+                                                
+                                                // 保存文件到執行目錄（參考現有的 webhook 功能）
+                                                try
+                                                {
+                                                    var executionId = eFormInstance.WorkflowExecutionId;
+                                                    if (executionId > 0)
+                                                    {
+                                                        string savedFilePath = null;
+                                                        
+                                                        // 根據 MIME 類型判斷是圖片還是文檔
+                                                        if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                        {
+                                                            // 保存圖片
+                                                            savedFilePath = await SaveWaitReplyImageAsync(
+                                                                executionId, 
+                                                                downloadedMedia.Content, 
+                                                                downloadedMedia.FileName, 
+                                                                mimeType);
+                                                            _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
+                                                        }
+                                                        else
+                                                        {
+                                                            // 保存文檔
+                                                            savedFilePath = await SaveWaitReplyDocumentAsync(
+                                                                executionId, 
+                                                                downloadedMedia.Content, 
+                                                                downloadedMedia.FileName, 
+                                                                mimeType);
+                                                            _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                        }
+                                                        
+                                                        // 在 JSON 中同時保存文件路徑（可選，用於前端顯示）
+                                                        responseDict[fieldName] = new Dictionary<string, object>
+                                                        {
+                                                            ["dataUrl"] = dataUrl,
+                                                            ["filePath"] = savedFilePath ?? "",
+                                                            ["mimeType"] = mimeType,
+                                                            ["fileName"] = downloadedMedia.FileName ?? fieldName,
+                                                            ["fileSize"] = downloadedMedia.Content.Length
+                                                        };
+                                                    }
+                                                    else
+                                                    {
+                                                        // 如果沒有 executionId，只保存 base64
+                                                        responseDict[fieldName] = dataUrl;
+                                                    }
+                                                }
+                                                catch (Exception saveEx)
+                                                {
+                                                    // 保存文件失敗，但繼續保存 base64
+                                                    _loggingService.LogWarning($"⚠️ 保存媒體文件到目錄時發生錯誤: {saveEx.Message}，將只保存 base64");
+                                                    responseDict[fieldName] = dataUrl;
+                                                }
+                                                
+                                                hasMediaId = true;
+                                                
+                                                _loggingService.LogInformation($"✅ 成功下載並轉換媒體 '{fieldName}'，大小: {downloadedMedia.Content.Length} bytes");
+                                            }
+                                            else
+                                            {
+                                                // 下載失敗，保留原始對象
+                                                responseDict[fieldName] = JsonSerializer.Deserialize<object>(fieldValue.GetRawText());
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            responseDict[fieldName] = JsonSerializer.Deserialize<object>(fieldValue.GetRawText());
+                                            _loggingService.LogWarning($"⚠️ 下載媒體 '{fieldName}' 時發生錯誤: {ex.Message}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        responseDict[fieldName] = JsonSerializer.Deserialize<object>(fieldValue.GetRawText());
+                                    }
+                                }
+                                else
+                                {
+                                    // 其他對象，直接序列化
+                                    responseDict[fieldName] = JsonSerializer.Deserialize<object>(fieldValue.GetRawText());
+                                }
+                            }
+                            else if (fieldValue.ValueKind == JsonValueKind.Array)
+                            {
+                                // 如果是數組（如 PhotoPicker），檢查數組元素是否包含 MEDIA_ID
+                                var arrayList = new List<object>();
+                                var arrayHasMedia = false;
+                                
+                                foreach (var arrayElement in fieldValue.EnumerateArray())
+                                {
+                                    if (arrayElement.ValueKind == JsonValueKind.Object)
+                                    {
+                                        // 檢查數組元素是否包含 id 字段（MEDIA_ID）
+                                        if (arrayElement.TryGetProperty("id", out var idProperty))
+                                        {
+                                            var mediaId = idProperty.ValueKind == JsonValueKind.Number 
+                                                ? idProperty.GetInt64().ToString() 
+                                                : idProperty.GetString();
+                                            
+                                            if (!string.IsNullOrEmpty(mediaId))
+                                            {
+                                                _loggingService.LogInformation($"檢測到數組元素中的 MEDIA_ID 字段 '{fieldName}': {mediaId}");
+                                                
+                                                try
+                                                {
+                                                    var downloadedMedia = await DownloadWhatsAppMediaAsync(company, mediaId);
+                                                    if (downloadedMedia != null && downloadedMedia.Content != null && downloadedMedia.Content.Length > 0)
+                                                    {
+                                                        var base64String = Convert.ToBase64String(downloadedMedia.Content);
+                                                        var mimeType = downloadedMedia.MimeType ?? "image/png";
+                                                        var dataUrl = $"data:{mimeType};base64,{base64String}";
+                                                        
+                                                        // 保存文件到執行目錄
+                                                        try
+                                                        {
+                                                            var executionId = eFormInstance.WorkflowExecutionId;
+                                                            if (executionId > 0)
+                                                            {
+                                                                string savedFilePath = null;
+                                                                
+                                                                // 根據 MIME 類型判斷是圖片還是文檔
+                                                                if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                                {
+                                                                    // 保存圖片
+                                                                    savedFilePath = await SaveWaitReplyImageAsync(
+                                                                        executionId, 
+                                                                        downloadedMedia.Content, 
+                                                                        downloadedMedia.FileName, 
+                                                                        mimeType);
+                                                                    _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
+                                                                }
+                                                                else
+                                                                {
+                                                                    // 保存文檔
+                                                                    savedFilePath = await SaveWaitReplyDocumentAsync(
+                                                                        executionId, 
+                                                                        downloadedMedia.Content, 
+                                                                        downloadedMedia.FileName, 
+                                                                        mimeType);
+                                                                    _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                                }
+                                                                
+                                                                // 構建包含下載信息的對象，保留原始字段
+                                                                var processedElement = new Dictionary<string, object>();
+                                                                
+                                                                // 保留原始字段
+                                                                foreach (var prop in arrayElement.EnumerateObject())
+                                                                {
+                                                                    if (prop.Name == "id")
+                                                                    {
+                                                                        // 保留原始 id
+                                                                        processedElement["id"] = mediaId;
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        processedElement[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
+                                                                    }
+                                                                }
+                                                                
+                                                                // 添加下載後的數據
+                                                                processedElement["dataUrl"] = dataUrl;
+                                                                processedElement["filePath"] = savedFilePath ?? "";
+                                                                processedElement["mimeType"] = mimeType;
+                                                                processedElement["fileName"] = downloadedMedia.FileName ?? "";
+                                                                processedElement["fileSize"] = downloadedMedia.Content.Length;
+                                                                
+                                                                arrayList.Add(processedElement);
+                                                                arrayHasMedia = true;
+                                                                
+                                                                _loggingService.LogInformation($"✅ 成功下載並轉換數組元素媒體 '{fieldName}'，大小: {downloadedMedia.Content.Length} bytes, MIME: {mimeType}");
+                                                            }
+                                                            else
+                                                            {
+                                                                // 如果沒有 executionId，只保存 base64，但保留原始結構
+                                                                var processedElement = new Dictionary<string, object>();
+                                                                foreach (var prop in arrayElement.EnumerateObject())
+                                                                {
+                                                                    processedElement[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
+                                                                }
+                                                                processedElement["dataUrl"] = dataUrl;
+                                                                arrayList.Add(processedElement);
+                                                                arrayHasMedia = true;
+                                                            }
+                                                        }
+                                                        catch (Exception saveEx)
+                                                        {
+                                                            // 保存文件失敗，但繼續保存 base64
+                                                            _loggingService.LogWarning($"⚠️ 保存媒體文件到目錄時發生錯誤: {saveEx.Message}，將只保存 base64");
+                                                            
+                                                            var processedElement = new Dictionary<string, object>();
+                                                            foreach (var prop in arrayElement.EnumerateObject())
+                                                            {
+                                                                processedElement[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
+                                                            }
+                                                            processedElement["dataUrl"] = dataUrl;
+                                                            arrayList.Add(processedElement);
+                                                            arrayHasMedia = true;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        // 下載失敗，保留原始元素
+                                                        arrayList.Add(JsonSerializer.Deserialize<object>(arrayElement.GetRawText()));
+                                                        _loggingService.LogWarning($"⚠️ 無法下載媒體 '{fieldName}': {mediaId}，保留原始值");
+                                                    }
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    // 下載失敗，保留原始元素
+                                                    arrayList.Add(JsonSerializer.Deserialize<object>(arrayElement.GetRawText()));
+                                                    _loggingService.LogWarning($"⚠️ 下載媒體 '{fieldName}' 時發生錯誤: {ex.Message}，保留原始值");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // id 為空，保留原始元素
+                                                arrayList.Add(JsonSerializer.Deserialize<object>(arrayElement.GetRawText()));
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // 數組元素不包含 id 字段，保留原始元素
+                                            arrayList.Add(JsonSerializer.Deserialize<object>(arrayElement.GetRawText()));
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // 數組元素不是對象，保留原始值
+                                        arrayList.Add(JsonSerializer.Deserialize<object>(arrayElement.GetRawText()));
+                                    }
+                                }
+                                
+                                if (arrayHasMedia)
+                                {
+                                    responseDict[fieldName] = arrayList;
+                                    hasMediaId = true;
+                                }
+                                else
+                                {
+                                    // 沒有媒體 ID，直接保存數組
+                                    responseDict[fieldName] = arrayList;
+                                }
+                            }
+                            else
+                            {
+                                // 其他類型（數字、布爾值等），直接保存
+                                responseDict[fieldName] = JsonSerializer.Deserialize<object>(fieldValue.GetRawText());
+                            }
+                        }
+
+                        // 將處理後的字典轉換回 JSON 字符串
+                        if (hasMediaId)
+                        {
+                            processedResponseJson = JsonSerializer.Serialize(responseDict, new JsonSerializerOptions 
+                            { 
+                                WriteIndented = false 
+                            });
+                            _loggingService.LogInformation($"✅ 已處理 MEDIA_ID，更新後的 JSON 長度: {processedResponseJson.Length}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError($"處理 MEDIA_ID 時發生錯誤: {ex.Message}，將使用原始 JSON", ex);
+                    // 如果處理失敗，使用原始 JSON
+                    processedResponseJson = originalResponseJson;
+                }
+
+                // 更新 EFormInstance - 保存處理後的 JSON（MEDIA_ID 已轉換為 base64）
+                eFormInstance.FilledHtmlCode = processedResponseJson;
+                eFormInstance.Status = "Submitted";
+                eFormInstance.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                _loggingService.LogInformation($"✅ Flow 回覆處理完成，EFormInstance {eFormInstance.Id} 已更新");
+
+                // 獲取工作流程執行記錄
+                var execution = await _context.WorkflowExecutions
+                    .Include(e => e.WorkflowDefinition)
+                    .FirstOrDefaultAsync(e => e.Id == eFormInstance.WorkflowExecutionId);
+
+                if (execution == null)
+                {
+                    _loggingService.LogWarning($"找不到對應的 WorkflowExecution: {eFormInstance.WorkflowExecutionId}");
+                    return new { success = false, message = "WorkflowExecution not found" };
+                }
+
+                // ✅ 處理 AI Validator（僅 manual fill + MetaFlow）
+                // 1. 檢查是否為 manual fill 模式
+                // 2. 檢查是否為 MetaFlow
+                // 3. 檢查 AI Validator 是否啟用
+                // 4. 檢查是否有圖像
+                var sendEFormNodeInfo = await GetSendEFormNodeInfo(execution, eFormInstance.WorkflowStepExecutionId);
+                if (sendEFormNodeInfo != null)
+                {
+                    _loggingService.LogInformation($"🔍 檢查 sendEForm 節點配置 - SendEFormMode: {sendEFormNodeInfo.SendEFormMode}, FormType: {sendEFormNodeInfo.FormType}");
+                    
+                    // 檢查條件：manual fill + MetaFlow + AI Validator 啟用
+                    var isManualFill = string.Equals(sendEFormNodeInfo.SendEFormMode, "manualFill", StringComparison.OrdinalIgnoreCase);
+                    var isMetaFlow = string.Equals(sendEFormNodeInfo.FormType, "MetaFlows", StringComparison.OrdinalIgnoreCase);
+                    var hasAiValidation = sendEFormNodeInfo.Validation != null && 
+                                         (sendEFormNodeInfo.Validation.AiIsActive == true || 
+                                          (sendEFormNodeInfo.Validation.AiIsActive == null && 
+                                           sendEFormNodeInfo.Validation.Enabled == true && 
+                                           !string.IsNullOrWhiteSpace(sendEFormNodeInfo.Validation.ValidatorType) &&
+                                           string.Equals(sendEFormNodeInfo.Validation.ValidatorType, "ai", StringComparison.OrdinalIgnoreCase)));
+                    
+                    if (isManualFill && isMetaFlow && hasAiValidation)
+                    {
+                        _loggingService.LogInformation($"✅ 符合 AI Validator 處理條件，開始處理 Flow 回覆");
+                        
+                        // 查找對應的 stepExecution
+                        var stepExecution = await _context.WorkflowStepExecutions
+                            .FirstOrDefaultAsync(s => s.Id == eFormInstance.WorkflowStepExecutionId);
+                        
+                        if (stepExecution != null)
+                        {
+                            // 從 Flow 回覆 JSON 中檢測圖像（支持多張圖片）
+                            var imageList = new List<(string MediaId, string MimeType, string DataUrl)>();
+                            
+                            try
+                            {
+                                var responseJsonElement = JsonSerializer.Deserialize<JsonElement>(processedResponseJson);
+                                
+                                // 遍歷所有字段，查找所有圖像
+                                foreach (var property in responseJsonElement.EnumerateObject())
+                                {
+                                    var fieldName = property.Name;
+                                    var fieldValue = property.Value;
+                                    
+                                    // 跳過 flow_token
+                                    if (fieldName == "flow_token")
+                                        continue;
+                                    
+                                    // 檢查是否是圖像（可能是對象包含 dataUrl 或 filePath，且 mimeType 是 image/）
+                                    if (fieldValue.ValueKind == JsonValueKind.Object)
+                                    {
+                                        if (fieldValue.TryGetProperty("mimeType", out var mimeTypeProp) || 
+                                            fieldValue.TryGetProperty("mime_type", out mimeTypeProp))
+                                        {
+                                            var mimeType = mimeTypeProp.GetString();
+                                            if (!string.IsNullOrEmpty(mimeType) && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                string imageMediaId = null;
+                                                string imageDataUrl = null;
+                                                
+                                                // 嘗試獲取 dataUrl
+                                                if (fieldValue.TryGetProperty("dataUrl", out var dataUrlProp))
+                                                {
+                                                    imageDataUrl = dataUrlProp.GetString();
+                                                }
+                                                
+                                                // 嘗試獲取 id（原始 MEDIA_ID）
+                                                if (fieldValue.TryGetProperty("id", out var idProp))
+                                                {
+                                                    imageMediaId = idProp.GetString();
+                                                }
+                                                
+                                                imageList.Add((imageMediaId, mimeType, imageDataUrl));
+                                                _loggingService.LogInformation($"✅ 檢測到圖像字段 '{fieldName}': MIME={mimeType}, MediaId={imageMediaId}");
+                                            }
+                                        }
+                                        // 如果沒有 mimeType，但包含 dataUrl（base64 圖像）
+                                        else if (fieldValue.TryGetProperty("dataUrl", out var dataUrlProp))
+                                        {
+                                            var dataUrl = dataUrlProp.GetString();
+                                            if (!string.IsNullOrEmpty(dataUrl) && dataUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                string imageMimeType = null;
+                                                // 從 dataUrl 提取 MIME 類型
+                                                var mimeMatch = System.Text.RegularExpressions.Regex.Match(dataUrl, @"data:([^;]+);");
+                                                if (mimeMatch.Success)
+                                                {
+                                                    imageMimeType = mimeMatch.Groups[1].Value;
+                                                }
+                                                
+                                                imageList.Add((null, imageMimeType ?? "image/jpeg", dataUrl));
+                                                _loggingService.LogInformation($"✅ 檢測到 base64 圖像字段 '{fieldName}': MIME={imageMimeType}");
+                                            }
+                                        }
+                                    }
+                                    // 檢查是否是數組（PhotoPicker 可能返回數組，包含多張圖片）
+                                    else if (fieldValue.ValueKind == JsonValueKind.Array)
+                                    {
+                                        foreach (var arrayElement in fieldValue.EnumerateArray())
+                                        {
+                                            if (arrayElement.ValueKind == JsonValueKind.Object)
+                                            {
+                                                if (arrayElement.TryGetProperty("mimeType", out var mimeTypeProp) || 
+                                                    arrayElement.TryGetProperty("mime_type", out mimeTypeProp))
+                                                {
+                                                    var mimeType = mimeTypeProp.GetString();
+                                                    if (!string.IsNullOrEmpty(mimeType) && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        string imageMediaId = null;
+                                                        string imageDataUrl = null;
+                                                        
+                                                        if (arrayElement.TryGetProperty("dataUrl", out var dataUrlProp))
+                                                        {
+                                                            imageDataUrl = dataUrlProp.GetString();
+                                                        }
+                                                        if (arrayElement.TryGetProperty("id", out var idProp))
+                                                        {
+                                                            imageMediaId = idProp.GetString();
+                                                        }
+                                                        
+                                                        imageList.Add((imageMediaId, mimeType, imageDataUrl));
+                                                        _loggingService.LogInformation($"✅ 檢測到數組中的圖像字段 '{fieldName}': MIME={mimeType}, MediaId={imageMediaId}");
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                _loggingService.LogInformation($"📸 共檢測到 {imageList.Count} 張圖片");
+                            }
+                            catch (Exception ex)
+                            {
+                                _loggingService.LogError($"檢測圖像時發生錯誤: {ex.Message}");
+                            }
+                            
+                            // 如果有圖像，調用 AI Validator（處理所有圖片）
+                            if (imageList.Count > 0)
+                            {
+                                _loggingService.LogInformation($"🔍 檢測到 {imageList.Count} 張圖片，開始 AI 驗證");
+                                
+                                // 收集所有圖片的 base64 數據
+                                var allImageBase64List = new List<string>();
+                                string combinedMimeType = null;
+                                
+                                for (int i = 0; i < imageList.Count; i++)
+                                {
+                                    var (imageMediaId, imageMimeType, imageDataUrl) = imageList[i];
+                                    string mediaContentBase64 = null;
+                                    
+                                    _loggingService.LogInformation($"📸 處理第 {i + 1}/{imageList.Count} 張圖片: MediaId={imageMediaId}, MIME={imageMimeType}");
+                                    
+                                    // 優先使用 MediaId 重新下載媒體並生成 base64（與 wait for user reply 節點保持一致）
+                                    if (!string.IsNullOrEmpty(imageMediaId))
+                                    {
+                                        try
+                                        {
+                                            // 重新下載媒體（確保獲取最新的媒體內容）
+                                            var downloadedMedia = await DownloadWhatsAppMediaAsync(company, imageMediaId);
+                                            if (downloadedMedia != null && downloadedMedia.Content != null && downloadedMedia.Content.Length > 0)
+                                            {
+                                                // 直接從字節數組生成 base64（與 wait for user reply 節點保持一致）
+                                                mediaContentBase64 = Convert.ToBase64String(downloadedMedia.Content);
+                                                combinedMimeType = downloadedMedia.MimeType ?? imageMimeType ?? "image/jpeg";
+                                                _loggingService.LogInformation($"✅ 從 MediaId 下載並生成 base64，長度: {mediaContentBase64.Length}, MIME: {combinedMimeType}");
+                                            }
+                                            else
+                                            {
+                                                _loggingService.LogWarning($"⚠️ 無法下載媒體 {imageMediaId}，嘗試從 dataUrl 提取");
+                                            }
+                                        }
+                                        catch (Exception downloadEx)
+                                        {
+                                            _loggingService.LogWarning($"⚠️ 下載媒體 {imageMediaId} 時發生錯誤: {downloadEx.Message}，嘗試從 dataUrl 提取");
+                                        }
+                                    }
+                                    
+                                    // 如果下載失敗，嘗試從 dataUrl 提取 base64（後備方案）
+                                    if (string.IsNullOrEmpty(mediaContentBase64) && !string.IsNullOrEmpty(imageDataUrl))
+                                    {
+                                        if (imageDataUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            // 提取 base64 部分（移除 "data:image/...;base64," 前綴）
+                                            var base64Index = imageDataUrl.IndexOf("base64,", StringComparison.OrdinalIgnoreCase);
+                                            if (base64Index >= 0)
+                                            {
+                                                mediaContentBase64 = imageDataUrl.Substring(base64Index + 7); // 7 = "base64," 的長度
+                                                // 清理 base64 字符串：移除所有換行符、回車符和空白字符（確保符合 API 要求）
+                                                mediaContentBase64 = mediaContentBase64.Replace("\r", "").Replace("\n", "").Replace(" ", "").Replace("\t", "");
+                                                combinedMimeType = imageMimeType ?? "image/jpeg";
+                                                _loggingService.LogInformation($"✅ 從 dataUrl 提取 base64，清理後長度: {mediaContentBase64.Length}");
+                                            }
+                                            else
+                                            {
+                                                _loggingService.LogWarning($"⚠️ dataUrl 格式不正確，無法提取 base64: {imageDataUrl.Substring(0, Math.Min(100, imageDataUrl.Length))}");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // 如果已經是純 base64 字符串，也需要清理
+                                            mediaContentBase64 = imageDataUrl.Replace("\r", "").Replace("\n", "").Replace(" ", "").Replace("\t", "");
+                                            combinedMimeType = imageMimeType ?? "image/jpeg";
+                                        }
+                                    }
+                                    
+                                    if (!string.IsNullOrEmpty(mediaContentBase64))
+                                    {
+                                        allImageBase64List.Add(mediaContentBase64);
+                                    }
+                                    else
+                                    {
+                                        _loggingService.LogWarning($"⚠️ 無法獲取第 {i + 1} 張圖片的 base64 內容，跳過");
+                                    }
+                                }
+                                
+                                if (allImageBase64List.Count == 0)
+                                {
+                                    _loggingService.LogError($"❌ 無法獲取任何圖像的 base64 內容，跳過 AI 驗證");
+                                }
+                                else
+                                {
+                                    _loggingService.LogInformation($"✅ 成功收集 {allImageBase64List.Count} 張圖片的 base64 數據，開始 AI 驗證（單一 API 調用）");
+                                    
+                                    // ✅ 構建包含所有圖片的 mediaArray JSON
+                                    var mediaArray = new List<Dictionary<string, object>>();
+                                    for (int i = 0; i < allImageBase64List.Count; i++)
+                                    {
+                                        var (_, imageMimeType, _) = imageList[i];
+                                        mediaArray.Add(new Dictionary<string, object>
+                                        {
+                                            ["base64"] = allImageBase64List[i],
+                                            ["mimeType"] = imageMimeType ?? "image/jpeg"
+                                        });
+                                    }
+                                    
+                                    // ✅ 構建包含所有圖片的 MessageText JSON（用於 AI Validator）
+                                    // 如果有多張圖片，在 prompt 中添加提示要求整合結果
+                                    var userPrompt = sendEFormNodeInfo.Validation?.Prompt ?? "";
+                                    var combinedPrompt = userPrompt;
+                                    
+                                    if (allImageBase64List.Count > 1)
+                                    {
+                                        // 在 prompt 開頭添加多圖整合提示
+                                        var integrationHint = $"[重要提示：用戶上傳了 {allImageBase64List.Count} 張圖片，請您仔細分析所有圖片並整合結果。]\n\n";
+                                        combinedPrompt = integrationHint + userPrompt;
+                                        _loggingService.LogInformation($"📸 多張圖片模式：已在 prompt 中添加整合提示");
+                                    }
+                                    
+                                    // 構建包含所有圖片的 JSON 消息
+                                    var messageContentJson = new Dictionary<string, object>
+                                    {
+                                        ["mediaArray"] = mediaArray,
+                                        ["prompt"] = combinedPrompt
+                                    };
+                                    
+                                    // ✅ 添加所有回覆字段和值（排除圖片字段和 flow_token）
+                                    try
+                                    {
+                                        var responseJsonElement = JsonSerializer.Deserialize<JsonElement>(processedResponseJson);
+                                        var addedFields = new List<string>();
+                                        
+                                        foreach (var property in responseJsonElement.EnumerateObject())
+                                        {
+                                            var fieldName = property.Name;
+                                            var fieldValue = property.Value;
+                                            
+                                            // 跳過 flow_token
+                                            if (fieldName == "flow_token")
+                                                continue;
+                                            
+                                            // 檢查是否是圖片字段（PhotoPicker 等）
+                                            bool isImageField = false;
+                                            if (fieldValue.ValueKind == JsonValueKind.Array)
+                                            {
+                                                foreach (var arrayElement in fieldValue.EnumerateArray())
+                                                {
+                                                    if (arrayElement.ValueKind == JsonValueKind.Object)
+                                                    {
+                                                        if (arrayElement.TryGetProperty("mimeType", out var mimeTypeProp) || 
+                                                            arrayElement.TryGetProperty("mime_type", out mimeTypeProp))
+                                                        {
+                                                            var mimeType = mimeTypeProp.GetString();
+                                                            if (!string.IsNullOrEmpty(mimeType) && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                            {
+                                                                isImageField = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            else if (fieldValue.ValueKind == JsonValueKind.Object)
+                                            {
+                                                if (fieldValue.TryGetProperty("mimeType", out var mimeTypeProp) || 
+                                                    fieldValue.TryGetProperty("mime_type", out mimeTypeProp))
+                                                {
+                                                    var mimeType = mimeTypeProp.GetString();
+                                                    if (!string.IsNullOrEmpty(mimeType) && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        isImageField = true;
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // 如果不是圖片字段，添加到 messageContentJson
+                                            if (!isImageField)
+                                            {
+                                                messageContentJson[fieldName] = JsonSerializer.Deserialize<object>(fieldValue.GetRawText());
+                                                addedFields.Add(fieldName);
+                                            }
+                                        }
+                                        
+                                        if (addedFields.Count > 0)
+                                        {
+                                            _loggingService.LogInformation($"✅ 已將以下回覆字段添加到 AI 驗證消息中: {string.Join(", ", addedFields)}");
+                                        }
+                                        else
+                                        {
+                                            _loggingService.LogInformation($"✅ 已處理回覆字段，但沒有非圖片字段需要添加（只有圖片字段）");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _loggingService.LogWarning($"⚠️ 解析 processedResponseJson 時發生錯誤: {ex.Message}，將只發送圖片和 prompt");
+                                    }
+                                    
+                                    // 添加描述性文字（如果沒有其他字段，作為後備）
+                                    if (messageContentJson.Count == 2) // 只有 mediaArray 和 prompt
+                                    {
+                                        messageContentJson["text"] = allImageBase64List.Count > 1 
+                                            ? $"Flow response with {allImageBase64List.Count} images" 
+                                            : "Flow response with image";
+                                    }
+                                    
+                                    var messageContentJsonString = JsonSerializer.Serialize(messageContentJson, PayloadJsonOptions);
+                                    
+                                    // ✅ 記錄非圖片字段的內容（用於調試，排除 base64 圖片數據）
+                                    try
+                                    {
+                                        var nonMediaFields = new Dictionary<string, object>();
+                                        foreach (var kvp in messageContentJson)
+                                        {
+                                            if (kvp.Key != "mediaArray")
+                                            {
+                                                nonMediaFields[kvp.Key] = kvp.Value;
+                                            }
+                                        }
+                                        var nonMediaFieldsJson = JsonSerializer.Serialize(nonMediaFields, new JsonSerializerOptions 
+                                        { 
+                                            WriteIndented = true  // 格式化以便閱讀
+                                        });
+                                        _loggingService.LogInformation($"📋 發送給 AI 的非圖片字段內容:\n{nonMediaFieldsJson}");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _loggingService.LogWarning($"無法記錄非圖片字段內容: {ex.Message}");
+                                    }
+                                    
+                                    // ✅ 添加日誌記錄實際發送給 AI 的內容（用於調試）
+                                    var messageContentPreview = messageContentJsonString.Length > 2000 
+                                        ? messageContentJsonString.Substring(0, 2000) + "... (截斷，完整長度: " + messageContentJsonString.Length + ")" 
+                                        : messageContentJsonString;
+                                    _loggingService.LogInformation($"📤 準備發送給 AI 的完整消息內容: {messageContentPreview}");
+                                    
+                                    // 創建 WhatsAppMessageData 對象（用於 AI Validator）
+                                    // 使用第一張圖片的 MediaId 和 MimeType（用於向後兼容）
+                                    var flowMessageData = new WhatsAppMessageData
+                                    {
+                                        WaId = messageData.WaId,
+                                        ContactName = messageData.ContactName,
+                                        MessageId = messageData.MessageId,
+                                        MessageText = messageContentJsonString, // ✅ 包含所有圖片的 JSON
+                                        Timestamp = DateTime.UtcNow,
+                                        Source = "MetaFlowResponse",
+                                        MessageType = "image", // 標記為圖像類型
+                                        MediaId = imageList[0].MediaId,
+                                        MediaMimeType = combinedMimeType ?? "image/jpeg",
+                                        MediaContentBase64 = allImageBase64List[0] // 保留第一張圖片用於向後兼容
+                                    };
+                                
+                                    // ✅ 執行單一 AI 驗證（包含所有圖片）
+                                    _loggingService.LogInformation($"🤖 開始 AI 驗證（包含 {allImageBase64List.Count} 張圖片）");
+                                    var validationResult = await _messageValidator.ValidateMessageAsync(
+                                        flowMessageData,
+                                        execution,
+                                        stepExecution);
+                                    
+                                    // 使用公共方法處理 AI 驗證結果
+                                    var retryMessage = sendEFormNodeInfo.Validation?.RetryMessage 
+                                        ?? validationResult.ErrorMessage 
+                                        ?? "Input is incorrect, please re-enter";
+                                    
+                                    var shouldAbort = await ProcessAiValidationResultAsync(
+                                        validationResult,
+                                        execution,
+                                        stepExecution,
+                                        flowMessageData,
+                                        fallbackText: processedResponseJson,
+                                        onValidationFailed: async (result) =>
+                                        {
+                                            // AI 驗證失敗，發送錯誤訊息並保持等待狀態
+                                            try
+                                            {
+                                                await SendWhatsAppMessage(company, messageData.WaId, retryMessage);
+                                                _loggingService.LogInformation($"❌ AI 驗證失敗，已發送 retry 訊息: {retryMessage}");
+                                            }
+                                            catch (Exception sendEx)
+                                            {
+                                                _loggingService.LogError($"發送 retry 訊息失敗: {sendEx.Message}", sendEx);
+                                            }
+                                            
+                                            _loggingService.LogWarning($"⚠️ AI 驗證失敗，保持等待狀態: {result.ErrorMessage}");
+                                            return true; // 中斷處理
+                                        });
+
+                                    if (shouldAbort)
+                                    {
+                                        return new
+                                        {
+                                            success = false,
+                                            message = "AI validation failed, waiting for retry",
+                                            instanceId = eFormInstance.Id
+                                        };
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                _loggingService.LogInformation($"ℹ️ Flow 回覆中沒有檢測到圖像，跳過 AI Validator 處理");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogInformation($"ℹ️ 不符合 AI Validator 處理條件 - ManualFill: {isManualFill}, MetaFlow: {isMetaFlow}, HasAIValidation: {hasAiValidation}");
+                    }
+                }
+            
+                // 繼續執行工作流程（如果需要的話）
+                if (execution != null && execution.Status == "WaitingForFormApproval")
+                {
+                    _loggingService.LogInformation($"繼續執行工作流程 {execution.Id}");
+                    // 使用現有的 ContinueWorkflowAfterFormApprovalAsync 方法
+                    await ContinueWorkflowAfterFormApprovalAsync(eFormInstance.Id, "Submitted");
+                }
+                
+                return new
+                {
+                    success = true,
+                    message = "Flow response processed successfully",
+                    instanceId = eFormInstance.Id
+                };
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"處理 Flow 回覆時發生錯誤: {ex.Message}", ex);
+                return new { success = false, message = $"Error processing flow response: {ex.Message}" };
+            }
+        }
+        
+        // 輔助方法：處理 maxRetries 字段（將字符串轉換為整數）
+        private static void ProcessMaxRetriesField(System.Text.Json.Nodes.JsonNode node)
+        {
+            if (node == null) return;
+            
+            if (node is System.Text.Json.Nodes.JsonObject obj)
+            {
+                if (obj.TryGetPropertyValue("maxRetries", out var maxRetriesNode))
+                {
+                    if (maxRetriesNode != null && maxRetriesNode.GetValueKind() == JsonValueKind.String)
+                    {
+                        var strValue = maxRetriesNode.GetValue<string>();
+                        if (int.TryParse(strValue, out var intValue))
+                        {
+                            obj["maxRetries"] = intValue;
+                        }
+                    }
+                }
+                
+                // 遞歸處理所有子對象
+                foreach (var property in obj)
+                {
+                    if (property.Value != null)
+                    {
+                        ProcessMaxRetriesField(property.Value);
+                    }
+                }
+            }
+            else if (node is System.Text.Json.Nodes.JsonArray array)
+            {
+                foreach (var item in array)
+                {
+                    ProcessMaxRetriesField(item);
+                }
+            }
         }
 
         private class DownloadedMedia

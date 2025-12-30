@@ -170,6 +170,7 @@ namespace PurpleRice.Services
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
 
+            _logger.LogInformation($"📤 開始調用 AI provider '{providerKey}' 進行驗證");
             var aiResult = await _aiCompletionClient.SendChatAsync(
                 companyId,
                 providerKey,
@@ -178,6 +179,24 @@ namespace PurpleRice.Services
                 {
                     new AiMessage("user", serializedPayload)
                 });
+
+            _logger.LogInformation($"📥 AI provider '{providerKey}' 響應完成，Success: {aiResult.Success}, Content 長度: {aiResult.Content?.Length ?? 0}");
+            
+            // ✅ 記錄完整的 AI 響應內容（用於調試）
+            if (!string.IsNullOrEmpty(aiResult.Content))
+            {
+                var contentPreview = aiResult.Content.Length > 2000 
+                    ? aiResult.Content.Substring(0, 2000) + "... (截斷，完整長度: " + aiResult.Content.Length + ")" 
+                    : aiResult.Content;
+                _logger.LogInformation($"📄 AI 完整響應內容: {contentPreview}");
+            }
+            if (!string.IsNullOrEmpty(aiResult.RawResponse) && aiResult.RawResponse != aiResult.Content)
+            {
+                var rawPreview = aiResult.RawResponse.Length > 2000 
+                    ? aiResult.RawResponse.Substring(0, 2000) + "... (截斷，完整長度: " + aiResult.RawResponse.Length + ")" 
+                    : aiResult.RawResponse;
+                _logger.LogInformation($"📄 AI 原始響應內容: {rawPreview}");
+            }
 
             if (!aiResult.Success || string.IsNullOrWhiteSpace(aiResult.Content))
             {
@@ -275,14 +294,16 @@ namespace PurpleRice.Services
                     ValidatorType = "ai",
                     ProcessedData = messageData.MessageText,
                     AdditionalData = messageContext,
-                    ProviderKey = aiResult.ProviderKey ?? providerKey
+                    ProviderKey = aiResult.ProviderKey ?? providerKey,
+                    TargetProcessVariable = validationConfig.AiResultVariable // 即使失敗也設置，以便寫入流程變量
                 };
             }
 
+            _logger.LogDebug($"🔍 開始解析 AI 響應內容，長度: {aiResult.Content?.Length ?? 0}");
             var parsedOutcome = ParseAiValidationResponse(aiResult.Content);
             if (parsedOutcome == null)
             {
-                _logger.LogWarning($"AI response could not be parsed into expected JSON structure. Response content: {aiResult.Content?.Substring(0, Math.Min(500, aiResult.Content?.Length ?? 0))}");
+                _logger.LogWarning($"⚠️ AI 響應無法解析為預期的 JSON 結構。響應內容: {aiResult.Content?.Substring(0, Math.Min(500, aiResult.Content?.Length ?? 0))}");
                 
                 // 如果無法解析，但流程定義說圖片應該通過，則直接通過
                 if (string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase) &&
@@ -308,11 +329,13 @@ namespace PurpleRice.Services
                     ValidatorType = "ai",
                     ProcessedData = messageData.MessageText,
                     AdditionalData = messageContext,
-                    ProviderKey = aiResult.ProviderKey ?? providerKey
+                    ProviderKey = aiResult.ProviderKey ?? providerKey,
+                    TargetProcessVariable = validationConfig.AiResultVariable // 即使失敗也設置，以便寫入流程變量
                 };
             }
 
             var isValid = parsedOutcome.IsValid ?? false;
+            _logger.LogInformation($"✅ AI 響應解析成功 - IsValid: {isValid}, Processed: {parsedOutcome.Processed?.Substring(0, Math.Min(100, parsedOutcome.Processed?.Length ?? 0)) ?? "null"}");
             
             // 根據流程定義的特殊規則處理
             // 如果 prompt 中說"只要收到圖片就是 IsValid = true"，則圖片消息直接通過
@@ -338,9 +361,28 @@ namespace PurpleRice.Services
                     parsedOutcome.Processed,
                     parsedOutcome.Reason,
                     parsedOutcome.Suggestion,
-                    raw = aiResult.Content
+                    raw = aiResult.Content,
+                    rawResponse = aiResult.RawResponse ?? aiResult.Content // 保存完整的原始響應
                 }
             };
+            
+            // ✅ 記錄 AdditionalData 的完整內容（用於調試）
+            try
+            {
+                var additionalDataJson = JsonSerializer.Serialize(combinedPayload, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                });
+                var additionalDataPreview = additionalDataJson.Length > 3000 
+                    ? additionalDataJson.Substring(0, 3000) + "... (截斷，完整長度: " + additionalDataJson.Length + ")" 
+                    : additionalDataJson;
+                _logger.LogInformation($"📄 AdditionalData 完整內容: {additionalDataPreview}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"無法序列化 AdditionalData 用於日誌: {ex.Message}");
+            }
 
             return new ValidationResult
             {
@@ -413,6 +455,82 @@ namespace PurpleRice.Services
                 documentText += $"\n\n[注意：文檔內容已截斷，原始長度為 {messageData.DocumentPlainText!.Length} 字符]";
             }
 
+            // ✅ 檢查 MessageText 是否已經是 JSON 格式（包含 mediaArray 或 prompt，表示是 MetaFlow 回覆）
+            // 如果是，直接解析並合併到消息上下文中
+            Dictionary<string, object>? parsedMessageText = null;
+            if (!string.IsNullOrWhiteSpace(messageData.MessageText))
+            {
+                try
+                {
+                    var trimmed = messageData.MessageText.Trim();
+                    if (trimmed.StartsWith("{") && trimmed.EndsWith("}"))
+                    {
+                        using var doc = JsonDocument.Parse(messageData.MessageText);
+                        var root = doc.RootElement;
+                        
+                        // 檢查是否包含 mediaArray（多張圖片）或 prompt（MetaFlow 回覆結構）
+                        // 或者包含多個字段（表示是結構化的回覆數據，而非簡單文本）
+                        bool isStructuredJson = root.TryGetProperty("mediaArray", out var mediaArrayProp) && mediaArrayProp.ValueKind == JsonValueKind.Array;
+                        isStructuredJson = isStructuredJson || root.TryGetProperty("prompt", out _);
+                        isStructuredJson = isStructuredJson || root.EnumerateObject().Count() > 2; // 包含多個字段，可能是回覆數據
+                        
+                        if (isStructuredJson)
+                        {
+                            // 解析為字典以便合併
+                            parsedMessageText = JsonSerializer.Deserialize<Dictionary<string, object>>(messageData.MessageText);
+                            _logger.LogInformation($"✅ 檢測到 MessageText 是結構化 JSON（包含 mediaArray/prompt 或多個字段），將直接使用此 JSON 結構");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 解析失敗，當作普通文本處理
+                    _logger.LogDebug($"MessageText 不是有效的 JSON，將作為普通文本處理: {ex.Message}");
+                }
+            }
+            
+            // 如果 MessageText 是結構化 JSON（包含 mediaArray 或回覆字段），直接使用它
+            if (parsedMessageText != null)
+            {
+                // 合併 prompt 和其他字段
+                var result = new Dictionary<string, object>(parsedMessageText);
+                
+                // 如果 parsedMessageText 中沒有 prompt，添加用戶設置的 prompt
+                if (!result.ContainsKey("prompt") && !string.IsNullOrWhiteSpace(prompt))
+                {
+                    result["prompt"] = prompt;
+                }
+                
+                // 添加其他字段（如果不存在）
+                if (!result.ContainsKey("messageType"))
+                {
+                    result["messageType"] = messageData.MessageType ?? "text";
+                }
+                if (!result.ContainsKey("caption") && !string.IsNullOrWhiteSpace(messageData.Caption))
+                {
+                    result["caption"] = messageData.Caption;
+                }
+                if (documentElement != null || documentFallback != null)
+                {
+                    result["document"] = documentElement ?? documentFallback;
+                }
+                if (!string.IsNullOrWhiteSpace(documentText))
+                {
+                    result["documentText"] = documentText;
+                }
+                if (nodeData != null)
+                {
+                    result["node"] = new
+                    {
+                        nodeData.Type,
+                        nodeData.TaskName,
+                        nodeData.AiProviderKey
+                    };
+                }
+                
+                return result;
+            }
+            
             // 對於圖片消息，即使沒有文本也要確保有 messageType 標識
             var textValue = string.IsNullOrWhiteSpace(messageData.MessageText) 
                 ? (string.Equals(messageData.MessageType, "image", StringComparison.OrdinalIgnoreCase) ? "[圖片消息]" : null)
@@ -511,6 +629,8 @@ namespace PurpleRice.Services
                 JsonValueKind.Number => element.GetRawText(),
                 JsonValueKind.True => "true",
                 JsonValueKind.False => "false",
+                JsonValueKind.Object => element.GetRawText(), // ✅ 如果是對象，序列化為 JSON 字符串
+                JsonValueKind.Array => element.GetRawText(),  // ✅ 如果是數組，序列化為 JSON 字符串
                 _ => null
             };
         }

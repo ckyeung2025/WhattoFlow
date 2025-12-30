@@ -1973,6 +1973,9 @@ const en = {
       noQueryConditions: 'No query conditions',
       fieldMappingDescription: 'Select DataSet fields and corresponding variables from existing process variables, query results will be automatically mapped to process variables',
       operationDataDescription: 'Select DataSet fields and corresponding values from process variables, INSERT/UPDATE operations will write process variable values to DataSet fields',
+      jsonPvMapping: 'JSON Process Variable Mapping',
+      jsonKeyPlaceholder: 'Enter JSON key name (e.g., amount, status, date)',
+      jsonKeyDescription: 'When the process variable is JSON type, enter the JSON key name to extract. The system will extract the value of that key from the JSON object and write it to the DataSet field.',
       fieldMappingSummary: 'Set {count} field mappings',
       operationDataSummary: 'Set {count} field mappings',
       clickToSetFieldMapping: 'Click the button above to set DataSet field to process variable mapping relationship',
@@ -2184,6 +2187,15 @@ const en = {
     // sendEForm node related translations
     sendEForm: {
       promptMessagePlaceholder: 'Enter prompt message to remind user of information needed before filling in the form',
+      
+      // MetaFlows specific configuration
+      flowHeader: 'Header',
+      flowHeaderPlaceholder: 'Enter the Flow message header (e.g., Please fill in the form)',
+      flowBody: 'Body',
+      flowBodyPlaceholder: 'Enter the Flow message body content (e.g., Please click the button below to start filling in the form)',
+      flowCta: 'Call to Action',
+      flowCtaPlaceholder: 'Enter the button text (e.g., Fill in form)',
+      metaFlowsManualFillOnly: 'Meta Flows forms only support manual fill mode',
       fillMode: 'Form Filling Mode',
       integrateWaitReply: 'Integrate Wait Reply Node (AI Fill)',
       integrateDataSetQuery: 'Integrate DataSet Query Node (Data Fill)',
@@ -2743,6 +2755,7 @@ const en = {
     formInstance: 'Form Instance',
     formBasicInfo: 'Form Basic Information',
     formContent: 'Form Content',
+    formReplyContent: 'Form Reply Content',
     formName: 'Form Name',
     instanceName: 'Instance Name',
     fillType: 'Fill Type',

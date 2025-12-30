@@ -2429,6 +2429,9 @@ const zhTC = {
       noQueryConditions: '無查詢條件',
       fieldMappingDescription: '選擇 DataSet 欄位並從現有流程變量中選擇對應的變量，查詢結果會自動映射到流程變量中',
       operationDataDescription: '選擇 DataSet 欄位並從流程變量中選擇對應的值，INSERT/UPDATE 操作會將流程變量的值寫入到 DataSet 欄位中',
+      jsonPvMapping: 'JSON 流程變量映射',
+      jsonKeyPlaceholder: '請輸入 JSON 鍵名（例如：amount、status、date）',
+      jsonKeyDescription: '當流程變量為 JSON 類型時，請輸入要提取的 JSON 鍵名。系統會從 JSON 對象中提取該鍵對應的值並寫入到 DataSet 欄位中。',
       fieldMappingSummary: '已設置 {count} 個欄位映射',
       operationDataSummary: '已設置 {count} 個欄位映射',
       clickToSetFieldMapping: '點擊上方按鈕設置 DataSet 欄位到流程變量的映射關係',
@@ -2842,6 +2845,15 @@ const zhTC = {
       // DataSet Query 選擇
       selectDataSetQueryNode: '選擇 DataSet Query 節點',
       selectDataSetQueryNodePlaceholder: '選擇要整合的 DataSet Query 節點',
+      
+      // MetaFlows 專用配置
+      flowHeader: '標題',
+      flowHeaderPlaceholder: '請輸入 Flow 消息的標題（例如：請填寫表單）',
+      flowBody: '內容',
+      flowBodyPlaceholder: '請輸入 Flow 消息的主體內容（例如：請點擊下方按鈕開始填寫表單）',
+      flowCta: '按鈕文字',
+      flowCtaPlaceholder: '請輸入按鈕文字（例如：填寫表單）',
+      metaFlowsManualFillOnly: 'Meta Flows 表單僅支持手動填表模式',
       noDataSetQueryNodes: '暫無可用的 DataSet Query 節點',
       dataSetQueryNodeHelp: '只有操作類型為 SELECT 的 DataSet Query 節點才會顯示在此列表中',
       aiProvider: 'AI 提供商',
@@ -3355,6 +3367,7 @@ const zhTC = {
     formInstance: '表單實例',
     formBasicInfo: '表單基本信息',
     formContent: '表單內容',
+    formReplyContent: '表單回覆內容',
     formName: '表單名稱',
     instanceName: '實例名稱',
     fillType: '填充類型',

@@ -83,7 +83,46 @@ namespace PurpleRice.Services
                 
                 // 解析流程 JSON
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
+                
+                // 先手動處理 maxRetries 字段（可能為字符串），轉換為整數
+                string processedJson = execution.WorkflowDefinition.Json;
+                try
+                {
+                    using var doc = JsonDocument.Parse(execution.WorkflowDefinition.Json);
+                    var root = doc.RootElement;
+                    
+                    if (root.TryGetProperty("nodes", out var nodesElement))
+                    {
+                        var nodesList = new List<System.Text.Json.Nodes.JsonNode>();
+                        foreach (var node in nodesElement.EnumerateArray())
+                        {
+                            var nodeJson = node.GetRawText();
+                            var nodeObj = System.Text.Json.Nodes.JsonNode.Parse(nodeJson);
+                            
+                            // 遞歸處理 maxRetries 字段
+                            ProcessMaxRetriesField(nodeObj);
+                            
+                            nodesList.Add(nodeObj);
+                        }
+                        
+                        var newRoot = new System.Text.Json.Nodes.JsonObject();
+                        newRoot["nodes"] = new System.Text.Json.Nodes.JsonArray(nodesList.ToArray());
+                        
+                        if (root.TryGetProperty("edges", out var edgesElement))
+                        {
+                            newRoot["edges"] = System.Text.Json.Nodes.JsonNode.Parse(edgesElement.GetRawText());
+                        }
+                        
+                        processedJson = newRoot.ToJsonString();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"處理 maxRetries 字段時發生錯誤，使用原始 JSON: {ex.Message}");
+                    // 如果處理失敗，使用原始 JSON
+                }
+                
+                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(processedJson, options);
                 if (flowData?.Nodes == null || flowData?.Edges == null) return;
 
                 // 構建鄰接表（有向圖）
@@ -119,7 +158,46 @@ namespace PurpleRice.Services
             {
                 // 解析流程 JSON
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(execution.WorkflowDefinition.Json, options);
+                
+                // 先手動處理 maxRetries 字段（可能為字符串），轉換為整數
+                string processedJson = execution.WorkflowDefinition.Json;
+                try
+                {
+                    using var doc = JsonDocument.Parse(execution.WorkflowDefinition.Json);
+                    var root = doc.RootElement;
+                    
+                    if (root.TryGetProperty("nodes", out var nodesElement))
+                    {
+                        var nodesList = new List<System.Text.Json.Nodes.JsonNode>();
+                        foreach (var node in nodesElement.EnumerateArray())
+                        {
+                            var nodeJson = node.GetRawText();
+                            var nodeObj = System.Text.Json.Nodes.JsonNode.Parse(nodeJson);
+                            
+                            // 遞歸處理 maxRetries 字段
+                            ProcessMaxRetriesField(nodeObj);
+                            
+                            nodesList.Add(nodeObj);
+                        }
+                        
+                        var newRoot = new System.Text.Json.Nodes.JsonObject();
+                        newRoot["nodes"] = new System.Text.Json.Nodes.JsonArray(nodesList.ToArray());
+                        
+                        if (root.TryGetProperty("edges", out var edgesElement))
+                        {
+                            newRoot["edges"] = System.Text.Json.Nodes.JsonNode.Parse(edgesElement.GetRawText());
+                        }
+                        
+                        processedJson = newRoot.ToJsonString();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"處理 maxRetries 字段時發生錯誤，使用原始 JSON: {ex.Message}");
+                    // 如果處理失敗，使用原始 JSON
+                }
+                
+                var flowData = JsonSerializer.Deserialize<WorkflowGraph>(processedJson, options);
                 if (flowData?.Nodes == null || flowData?.Edges == null) return;
 
                 // 驗證邊緣
@@ -356,7 +434,7 @@ namespace PurpleRice.Services
                     if (currentWaitingStep == null)
                     {
                         WriteLog($"警告: 找不到當前等待的步驟執行記錄，使用舊邏輯查找第一個等待節點");
-                        var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply" || n.Data?.Type == "waitForQRCode" || n.Data?.Type == "waitforqrcode");
+                        var waitNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "waitReply" || n.Data?.Type == "waitForUserReply" || n.Data?.Type == "waitForQRCode" || n.Data?.Type == "waitforqrcode" || n.Data?.Type == "sendEForm");
                         if (waitNode == null)
                         {
                             WriteLog($"錯誤: 找不到等待節點");
@@ -696,7 +774,7 @@ namespace PurpleRice.Services
                     EscalationConfig = escalationConfig,
                     Prompt = validation.Prompt,
                     RetryMessage = validation.RetryMessage,
-                    MaxRetries = validation.MaxRetries,
+                    MaxRetries = validation.MaxRetries ?? 3, // 預設 3 次重試（如果為 null）
                     AiProviderKey = aiProviderKey,
                     AiResultVariable = validation.AiResultVariable
                 };
@@ -787,14 +865,15 @@ namespace PurpleRice.Services
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
             
-            // ✅ 修復：查找所有等待類型的步驟（waitReply, waitForQRCode, waitForUserReply）
+            // ✅ 修復：查找所有等待類型的步驟（waitReply, waitForQRCode, waitForUserReply, sendEForm）
             var waitStepExecution = await db.WorkflowStepExecutions
                 .Where(s => s.WorkflowExecutionId == executionId && 
                            s.IsWaiting == true &&
                            (s.StepType == "waitReply" || 
                             s.StepType == "waitForQRCode" || 
                             s.StepType == "waitforqrcode" || 
-                            s.StepType == "waitForUserReply"))
+                            s.StepType == "waitForUserReply" ||
+                            s.StepType == "sendEForm"))
                 .OrderByDescending(s => s.StartedAt)
                 .FirstOrDefaultAsync();
             
@@ -2335,6 +2414,7 @@ namespace PurpleRice.Services
                                 }
                                 
                                 WriteLog($"✅ [SUCCESS] 找到表單定義: {eFormDefinition.Id}, 狀態: {eFormDefinition.Status}");
+                                WriteLog($"🔍 [DEBUG] 表單類型: {eFormDefinition.FormType}");
 
                     // 先解析收件人（所有模式都需要）
                     WriteLog($"🔍 [DEBUG] 開始解析收件人");
@@ -2346,6 +2426,63 @@ namespace PurpleRice.Services
                     );
                     
                     WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+
+                    // 檢查是否為 MetaFlows 類型
+                    if (eFormDefinition.FormType == "MetaFlows")
+                    {
+                        WriteLog($"🔍 [DEBUG] 檢測到 MetaFlows 類型，使用 Flow 發送模式");
+                        
+                        // 獲取 Flow ID
+                        var flowId = eFormDefinition.MetaFlowId;
+                        if (string.IsNullOrEmpty(flowId))
+                        {
+                            WriteLog($"❌ [ERROR] MetaFlows 表單缺少 MetaFlowId");
+                            stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                                error = "MetaFlows form missing MetaFlowId", 
+                                formId = eFormDefinition.Id
+                            });
+                            return false;
+                        }
+                        
+                        WriteLog($"🔍 [DEBUG] Flow ID: {flowId}");
+                        
+                        // flow_message_version 是消息格式版本，不是 Flow JSON 的版本號
+                        // 根據官方文檔和測試，應該使用 "3" 作為默認值（消息格式版本）
+                        string flowMessageVersion = "3"; // 消息格式版本，固定為 3
+                        WriteLog($"🔍 [DEBUG] 使用消息格式版本: {flowMessageVersion}");
+                        
+                        // 為每個收件人發送 Flow
+                        // 從 stepExec.InputJson 中提取 nodeId
+                        string nodeId = null;
+                        try
+                        {
+                            var inputData = JsonSerializer.Deserialize<JsonElement>(stepExec.InputJson ?? "{}");
+                            if (inputData.TryGetProperty("Id", out var idElement))
+                                nodeId = idElement.GetString();
+                            else if (inputData.TryGetProperty("NodeId", out var nodeIdElement))
+                                nodeId = nodeIdElement.GetString();
+                        }
+                        catch { }
+                        
+                        await SendFlowToRecipients(resolvedRecipients, flowId, flowMessageVersion, eFormDefinition, nodeData, execution, stepExec, db, nodeId);
+                        
+                        // 設置為等待 Flow 回覆狀態
+                        execution.Status = "WaitingForFormApproval";
+                        stepExec.Status = "Waiting";
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                            success = true, 
+                            message = "MetaFlows sent successfully, waiting for responses",
+                            flowId = flowId,
+                            recipientCount = resolvedRecipients.Count,
+                            waitingSince = DateTime.UtcNow 
+                        });
+                        
+                        await SaveExecution(execution);
+                        await SaveStepExecution(stepExec);
+                        
+                        WriteLog($"MetaFlows 節點設置為等待 Flow 回覆狀態");
+                        return false; // 返回 false 表示暫停執行
+                    }
                     
                     var sendEFormMode = nodeData.SendEFormMode ?? "integrateWaitReply"; // 默認為整合等待用戶回覆模式
                     
@@ -3512,6 +3649,7 @@ namespace PurpleRice.Services
             var operationType = nodeData?.OperationType ?? "SELECT";
             var queryConditionGroups = nodeData?.QueryConditionGroups ?? new List<object>();
             var operationData = nodeData?.OperationData ?? new Dictionary<string, object>();
+            var operationDataFields = nodeData?.OperationDataFields ?? new List<object>(); // 包含 jsonKey 的完整字段信息
             var mappedFields = nodeData?.MappedFields ?? new List<object>();
 
             // 調試日誌：記錄原始查詢條件
@@ -3578,6 +3716,42 @@ namespace PurpleRice.Services
                 else
                 {
                     WriteLog("欄位映射轉換失敗，mapping 為 null");
+                }
+            }
+
+            // 轉換操作數據字段（包含 jsonKey 信息）
+            if (operationDataFields.Count > 0)
+            {
+                WriteLog($"讀取 operationDataFields，數量: {operationDataFields.Count}");
+                foreach (var fieldObj in operationDataFields)
+                {
+                    var fieldJson = JsonSerializer.Serialize(fieldObj);
+                    WriteLog($"轉換操作數據字段 JSON: {fieldJson}");
+                    
+                    var field = JsonSerializer.Deserialize<Models.DTOs.OperationDataField>(fieldJson);
+                    if (field != null)
+                    {
+                        WriteLog($"成功轉換操作數據字段: {field.Name} = {field.Value}, JsonKey = {field.JsonKey ?? "null"}");
+                        request.OperationDataFields.Add(field);
+                    }
+                    else
+                    {
+                        WriteLog("操作數據字段轉換失敗，field 為 null");
+                    }
+                }
+            }
+            else
+            {
+                // 兼容舊格式：從 operationData 字典轉換
+                WriteLog("未找到 operationDataFields，嘗試從 operationData 轉換");
+                foreach (var kvp in operationData)
+                {
+                    request.OperationDataFields.Add(new Models.DTOs.OperationDataField
+                    {
+                        Name = kvp.Key,
+                        Value = kvp.Value?.ToString() ?? string.Empty,
+                        JsonKey = null
+                    });
                 }
             }
 
@@ -4108,6 +4282,501 @@ namespace PurpleRice.Services
         
         WriteLog($"🔍 [DEBUG] EForm 通知發送完成，收件人數量: {resolvedRecipients.Count}");
     }
+    
+    // 輔助方法：處理 maxRetries 字段（將字符串轉換為整數）
+    private static void ProcessMaxRetriesField(System.Text.Json.Nodes.JsonNode node)
+    {
+        if (node == null) return;
+        
+        if (node is System.Text.Json.Nodes.JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("maxRetries", out var maxRetriesNode))
+            {
+                if (maxRetriesNode != null && maxRetriesNode.GetValueKind() == JsonValueKind.String)
+                {
+                    var strValue = maxRetriesNode.GetValue<string>();
+                    if (int.TryParse(strValue, out var intValue))
+                    {
+                        obj["maxRetries"] = intValue;
+                    }
+                }
+            }
+            
+            // 遞歸處理所有子對象
+            foreach (var property in obj)
+            {
+                if (property.Value != null)
+                {
+                    ProcessMaxRetriesField(property.Value);
+                }
+            }
+        }
+        else if (node is System.Text.Json.Nodes.JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                ProcessMaxRetriesField(item);
+            }
+        }
+    }
+
+    // 從 nodeData 中讀取屬性（支持動態屬性）
+    private string? GetNodeDataProperty(WorkflowNodeData nodeData, string propertyName)
+    {
+        try
+        {
+            // 首先嘗試從 JSON 中讀取（因為前端可能使用動態屬性）
+            // nodeData 是從 JSON 反序列化的，可能包含額外的動態屬性
+            var jsonString = JsonSerializer.Serialize(nodeData, new JsonSerializerOptions 
+            { 
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase // 使用 camelCase 命名策略
+            });
+            var jsonElement = JsonSerializer.Deserialize<JsonElement>(jsonString);
+            
+            // 嘗試直接匹配（精確匹配）
+            if (jsonElement.TryGetProperty(propertyName, out var propertyValue))
+            {
+                var strValue = propertyValue.GetString();
+                if (!string.IsNullOrEmpty(strValue))
+                {
+                    WriteLog($"🔍 [DEBUG] GetNodeDataProperty: 找到屬性 '{propertyName}' = '{strValue}'");
+                    return strValue;
+                }
+            }
+            
+            // 嘗試所有屬性，進行大小寫不敏感的匹配
+            foreach (var prop in jsonElement.EnumerateObject())
+            {
+                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var strValue = prop.Value.GetString();
+                    if (!string.IsNullOrEmpty(strValue))
+                    {
+                        WriteLog($"🔍 [DEBUG] GetNodeDataProperty: 通過大小寫不敏感匹配找到屬性 '{prop.Name}' = '{strValue}'");
+                        return strValue;
+                    }
+                }
+            }
+            
+            // 如果 JSON 方式失敗，嘗試使用反射獲取屬性
+            var property = typeof(WorkflowNodeData).GetProperty(propertyName, 
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
+            if (property != null)
+            {
+                var value = property.GetValue(nodeData);
+                var strValue = value?.ToString();
+                if (!string.IsNullOrEmpty(strValue))
+                {
+                    WriteLog($"🔍 [DEBUG] GetNodeDataProperty: 通過反射找到屬性 '{propertyName}' = '{strValue}'");
+                    return strValue;
+                }
+            }
+            
+            WriteLog($"🔍 [DEBUG] GetNodeDataProperty: 未找到屬性 '{propertyName}'");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"❌ [ERROR] GetNodeDataProperty 異常: {ex.Message}");
+            return null;
+        }
+    }
+
+    // 從工作流定義的原始 JSON 中讀取 Flow 配置（因為動態屬性不會在 WorkflowNodeData 中）
+    private string? GetFlowConfigFromWorkflowDefinition(WorkflowExecution execution, string nodeId, string propertyName)
+    {
+        try
+        {
+            if (execution?.WorkflowDefinition == null || string.IsNullOrEmpty(execution.WorkflowDefinition.Json))
+            {
+                WriteLog($"🔍 [DEBUG] GetFlowConfigFromWorkflowDefinition: WorkflowDefinition 或 Json 為空");
+                return null;
+            }
+            
+            var flowData = JsonSerializer.Deserialize<JsonElement>(execution.WorkflowDefinition.Json);
+            
+            // 查找節點
+            if (flowData.TryGetProperty("nodes", out var nodesElement))
+            {
+                foreach (var node in nodesElement.EnumerateArray())
+                {
+                    if (node.TryGetProperty("id", out var idElement) && idElement.GetString() == nodeId)
+                    {
+                        // 找到對應的節點，讀取 data 屬性
+                        if (node.TryGetProperty("data", out var dataElement))
+                        {
+                            // 嘗試直接讀取屬性（camelCase）
+                            if (dataElement.TryGetProperty(propertyName, out var propertyValue))
+                            {
+                                var strValue = propertyValue.GetString();
+                                if (!string.IsNullOrEmpty(strValue))
+                                {
+                                    WriteLog($"🔍 [DEBUG] GetFlowConfigFromWorkflowDefinition: 從節點 {nodeId} 的 data 找到屬性 '{propertyName}' = '{strValue}'");
+                                    return strValue;
+                                }
+                            }
+                            
+                            // 嘗試大小寫不敏感匹配
+                            foreach (var prop in dataElement.EnumerateObject())
+                            {
+                                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var strValue = prop.Value.GetString();
+                                    if (!string.IsNullOrEmpty(strValue))
+                                    {
+                                        WriteLog($"🔍 [DEBUG] GetFlowConfigFromWorkflowDefinition: 通過大小寫不敏感匹配找到屬性 '{prop.Name}' = '{strValue}'");
+                                        return strValue;
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            WriteLog($"🔍 [DEBUG] GetFlowConfigFromWorkflowDefinition: 未找到節點 {nodeId} 或屬性 '{propertyName}'");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"❌ [ERROR] GetFlowConfigFromWorkflowDefinition 異常: {ex.Message}");
+            return null;
+        }
+    }
+
+    // 從 stepExec.InputJson 中讀取 Flow 配置（因為動態屬性不會在 WorkflowNodeData 中）
+    private string? GetFlowConfigFromInputJson(WorkflowStepExecution stepExec, string propertyName)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(stepExec.InputJson))
+            {
+                WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: InputJson 為空");
+                return null;
+            }
+            
+            // 輸出 InputJson 的完整內容以便調試
+            WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: InputJson 內容: {stepExec.InputJson}");
+            
+            var inputJson = JsonSerializer.Deserialize<JsonElement>(stepExec.InputJson);
+            
+            // InputJson 的結構通常是: { "Data": { ... } }
+            if (inputJson.TryGetProperty("Data", out var dataElement))
+            {
+                WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: 找到 Data 屬性");
+                
+                // 輸出 Data 的所有屬性名稱
+                var allProps = new List<string>();
+                foreach (var prop in dataElement.EnumerateObject())
+                {
+                    allProps.Add(prop.Name);
+                }
+                WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: Data 中的所有屬性: {string.Join(", ", allProps)}");
+                
+                // 嘗試直接讀取屬性（camelCase）
+                if (dataElement.TryGetProperty(propertyName, out var propertyValue))
+                {
+                    var strValue = propertyValue.GetString();
+                    if (!string.IsNullOrEmpty(strValue))
+                    {
+                        WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: 從 InputJson.Data 找到屬性 '{propertyName}' = '{strValue}'");
+                        return strValue;
+                    }
+                }
+                
+                // 嘗試大小寫不敏感匹配
+                foreach (var prop in dataElement.EnumerateObject())
+                {
+                    if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var strValue = prop.Value.GetString();
+                        if (!string.IsNullOrEmpty(strValue))
+                        {
+                            WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: 通過大小寫不敏感匹配找到屬性 '{prop.Name}' = '{strValue}'");
+                            return strValue;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: InputJson 中沒有找到 Data 屬性，嘗試直接讀取");
+                
+                // 如果沒有 Data 屬性，嘗試直接從根級別讀取
+                if (inputJson.TryGetProperty(propertyName, out var directPropertyValue))
+                {
+                    var strValue = directPropertyValue.GetString();
+                    if (!string.IsNullOrEmpty(strValue))
+                    {
+                        WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: 從 InputJson 根級別找到屬性 '{propertyName}' = '{strValue}'");
+                        return strValue;
+                    }
+                }
+            }
+            
+            WriteLog($"🔍 [DEBUG] GetFlowConfigFromInputJson: 未找到屬性 '{propertyName}'");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"❌ [ERROR] GetFlowConfigFromInputJson 異常: {ex.Message}");
+            WriteLog($"❌ [ERROR] 堆棧跟踪: {ex.StackTrace}");
+            return null;
+        }
+    }
+
+    // 發送 Flow 給收件人（MetaFlows 模式）
+    private async Task SendFlowToRecipients(
+        List<ResolvedRecipient> recipients,
+        string flowId,
+        string flowMessageVersion,
+        eFormDefinition eFormDefinition,
+        WorkflowNodeData nodeData,
+        WorkflowExecution execution,
+        WorkflowStepExecution stepExec,
+        PurpleRiceDbContext db,
+        string nodeId = null)
+    {
+        WriteLog($"🔍 [DEBUG] 開始為 {recipients.Count} 個收件人發送 Flow");
+        WriteLog($"🔍 [DEBUG] Flow ID: {flowId}");
+        
+        var company = await db.Companies.FindAsync(execution.WorkflowDefinition.CompanyId);
+        if (company == null)
+        {
+            WriteLog($"❌ [ERROR] 找不到公司配置");
+            throw new Exception("Company not found");
+        }
+
+        if (string.IsNullOrEmpty(company.WA_API_Key) || string.IsNullOrEmpty(company.WA_PhoneNo_ID))
+        {
+            WriteLog($"❌ [ERROR] 公司 WhatsApp 配置不完整");
+            throw new Exception("WhatsApp configuration incomplete");
+        }
+
+        var parentInstanceId = Guid.NewGuid(); // 用於關聯同一批次的表單
+        var instanceIds = new List<Guid>();
+
+        // 為每個收件人創建 EFormInstance 並發送 Flow
+        foreach (var recipient in recipients)
+        {
+            try
+            {
+                // 創建 EFormInstance
+                var instanceId = Guid.NewGuid();
+                var eFormInstance = new EFormInstance
+                {
+                    Id = instanceId,
+                    EFormDefinitionId = eFormDefinition.Id,
+                    WorkflowExecutionId = execution.Id,
+                    WorkflowStepExecutionId = stepExec.Id,
+                    CompanyId = company.Id,
+                    InstanceName = $"{nodeData.FormName ?? eFormDefinition.Name}_{recipient.RecipientName ?? recipient.PhoneNumber}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                    OriginalHtmlCode = eFormDefinition.HtmlCode ?? "",
+                    FilledHtmlCode = null,
+                    UserMessage = null,
+                    Status = "Pending",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    FillType = "MetaFlows",
+                    RecipientWhatsAppNo = recipient.PhoneNumber,
+                    RecipientName = recipient.RecipientName,
+                    ParentInstanceId = parentInstanceId
+                };
+
+                db.EFormInstances.Add(eFormInstance);
+                instanceIds.Add(instanceId);
+                
+                WriteLog($"🔍 [DEBUG] 為收件人 {recipient.PhoneNumber} 創建表單實例: {instanceId}");
+
+                // 格式化電話號碼
+                var formattedTo = FormatPhoneNumberForWhatsApp(recipient.PhoneNumber);
+                WriteLog($"🔍 [DEBUG] 格式化電話號碼: {recipient.PhoneNumber} -> {formattedTo}");
+
+                // 從工作流定義的原始 JSON 讀取 Flow 配置（因為動態屬性不會在 WorkflowNodeData 中）
+                // 注意：前端使用 camelCase (flowHeader, flowBody, flowCta)
+                string? flowHeader = null;
+                string? flowBody = null;
+                string? flowCta = null;
+                
+                if (!string.IsNullOrEmpty(nodeId))
+                {
+                    // 優先從工作流定義的原始 JSON 讀取
+                    flowHeader = GetFlowConfigFromWorkflowDefinition(execution, nodeId, "flowHeader") ?? 
+                                GetFlowConfigFromWorkflowDefinition(execution, nodeId, "FlowHeader");
+                    flowBody = GetFlowConfigFromWorkflowDefinition(execution, nodeId, "flowBody") ?? 
+                              GetFlowConfigFromWorkflowDefinition(execution, nodeId, "FlowBody");
+                    flowCta = GetFlowConfigFromWorkflowDefinition(execution, nodeId, "flowCta") ?? 
+                             GetFlowConfigFromWorkflowDefinition(execution, nodeId, "FlowCta");
+                }
+                
+                // 如果從工作流定義讀取失敗，嘗試從 InputJson 讀取
+                flowHeader = flowHeader ?? GetFlowConfigFromInputJson(stepExec, "flowHeader") ?? 
+                            GetFlowConfigFromInputJson(stepExec, "FlowHeader") ?? 
+                            "請填寫表單";
+                flowBody = flowBody ?? GetFlowConfigFromInputJson(stepExec, "flowBody") ?? 
+                          GetFlowConfigFromInputJson(stepExec, "FlowBody") ?? 
+                          "請點擊下方按鈕開始填寫表單";
+                flowCta = flowCta ?? GetFlowConfigFromInputJson(stepExec, "flowCta") ?? 
+                         GetFlowConfigFromInputJson(stepExec, "FlowCta") ?? 
+                         "填寫表單";
+                
+                WriteLog($"🔍 [DEBUG] 最終 Flow 配置 - Header: '{flowHeader}', Body: '{flowBody}', CTA: '{flowCta}'");
+                
+                // 處理流程變量注入（PV 注入）
+                flowHeader = await _variableReplacementService.ReplaceVariablesAsync(flowHeader ?? "", execution.Id);
+                flowBody = await _variableReplacementService.ReplaceVariablesAsync(flowBody ?? "", execution.Id);
+                flowCta = await _variableReplacementService.ReplaceVariablesAsync(flowCta ?? "", execution.Id);
+                
+                WriteLog($"🔍 [DEBUG] PV 注入後的 Flow 配置 - Header: '{flowHeader}', Body: '{flowBody}', CTA: '{flowCta}'");
+                
+                // 發送 Flow
+                var messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta);
+                WriteLog($"🔍 [DEBUG] Flow 發送成功，消息 ID: {messageId}");
+
+                // 注意：不再單獨發送 "Flow sent" 消息，因為 Flow 消息本身已經發送
+
+                // 保存原始消息 ID 到 EFormInstance（用於後續關聯）
+                // 注意：這裡我們暫時將消息 ID 保存到 UserMessage 字段，後續可以新增專門的字段
+                // 或者可以通過 WorkflowStepExecution 關聯
+                eFormInstance.UserMessage = messageId; // 臨時使用 UserMessage 字段保存消息 ID
+                
+                WriteLog($"🔍 [DEBUG] 為收件人 {recipient.PhoneNumber} 發送 Flow 完成");
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"❌ [ERROR] 為收件人 {recipient.PhoneNumber} 發送 Flow 失敗: {ex.Message}");
+                // 繼續處理下一個收件人
+            }
+        }
+
+        await db.SaveChangesAsync();
+        WriteLog($"🔍 [DEBUG] 已創建 {instanceIds.Count} 個表單實例並發送 Flow");
+    }
+
+    // 發送 Flow 消息
+    private async Task<string> SendFlowMessageAsync(Company company, string to, string flowId, string flowMessageVersion, string flowHeader, string flowBody, string flowCta)
+    {
+        try
+        {
+            WriteLog($"🔍 [DEBUG] 開始發送 Flow 消息");
+            WriteLog($"🔍 [DEBUG] 收件人: {to}");
+            WriteLog($"🔍 [DEBUG] Flow ID: {flowId}");
+            WriteLog($"🔍 [DEBUG] Header: {flowHeader}");
+            WriteLog($"🔍 [DEBUG] Body: {flowBody}");
+            WriteLog($"🔍 [DEBUG] CTA: {flowCta}");
+
+            var apiVersion = WhatsAppApiConfig.GetApiVersion();
+            var url = $"https://graph.facebook.com/{apiVersion}/{company.WA_PhoneNo_ID}/messages";
+
+            // 構建 interactive 對象
+            var interactiveObj = new Dictionary<string, object>
+            {
+                { "type", "flow" },
+                { "header", new Dictionary<string, object> { { "type", "text" }, { "text", flowHeader } } },
+                { "body", new Dictionary<string, object> { { "text", flowBody } } },
+                { "action", new Dictionary<string, object>
+                    {
+                        { "name", "flow" },
+                        { "parameters", new Dictionary<string, object>
+                            {
+                                { "flow_token", Guid.NewGuid().ToString() }, // 生成臨時的 flow_token
+                                { "flow_id", flowId },
+                                { "flow_cta", flowCta },
+                                { "flow_message_version", flowMessageVersion } // 必需的參數：Flow 版本號
+                                // 注意：flow_action_payload 是可選的，如果不需要則不包含
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Footer 是可選的，如果為空則不包含
+            // 注意：根據 API 要求，如果包含 footer，text 長度必須至少為 1
+            // 所以我們不包含 footer 字段
+
+            var payload = new Dictionary<string, object>
+            {
+                { "messaging_product", "whatsapp" },
+                { "recipient_type", "individual" },
+                { "to", to },
+                { "type", "interactive" },
+                { "interactive", interactiveObj }
+            };
+
+            var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            });
+
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow API URL: {url}");
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow API Payload: {jsonPayload}");
+
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+            var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+
+            var response = await httpClient.PostAsync(url, content);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow API Response Status: {response.StatusCode}");
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow API Response Content: {responseContent}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"WhatsApp Flow API 請求失敗: {response.StatusCode} - {responseContent}");
+            }
+
+            // 解析響應獲取消息 ID
+            var responseJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
+            string messageId = null;
+            if (responseJson.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0)
+            {
+                var firstMessage = messages[0];
+                if (firstMessage.TryGetProperty("id", out var idProp))
+                {
+                    messageId = idProp.GetString();
+                }
+            }
+
+            WriteLog($"🔍 [DEBUG] Flow 消息發送成功，消息 ID: {messageId}");
+            return messageId ?? "unknown";
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"❌ [ERROR] 發送 Flow 消息失敗: {ex.Message}");
+            throw;
+        }
+    }
+
+    // 格式化電話號碼（用於 WhatsApp API）
+    private string FormatPhoneNumberForWhatsApp(string phoneNumber)
+    {
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+        {
+            return phoneNumber;
+        }
+        
+        // 移除所有非數字字符
+        var cleanedNumber = new string(phoneNumber.Where(char.IsDigit).ToArray());
+        
+        // 如果號碼以 0 開頭，移除開頭的 0
+        if (cleanedNumber.StartsWith("0"))
+        {
+            cleanedNumber = cleanedNumber.Substring(1);
+        }
+        
+        // 如果號碼不包含國家代碼，添加默認國家代碼（852 為香港）
+        // 注意：這裡應該根據實際情況調整，或者從公司配置獲取
+        if (!cleanedNumber.StartsWith("852") && cleanedNumber.Length < 10)
+        {
+            cleanedNumber = "852" + cleanedNumber;
+        }
+        
+        return cleanedNumber;
+    }
 } // class WorkflowEngine
 } // namespace PurpleRice.Services
 
@@ -4321,6 +4990,9 @@ namespace PurpleRice.Services
         [System.Text.Json.Serialization.JsonPropertyName("operationData")]
         public Dictionary<string, object> OperationData { get; set; }
         
+        [System.Text.Json.Serialization.JsonPropertyName("operationDataFields")]
+        public List<object> OperationDataFields { get; set; } // 包含 jsonKey 的完整字段信息
+        
         [System.Text.Json.Serialization.JsonPropertyName("mappedFields")]
         public List<object> MappedFields { get; set; }
         
@@ -4384,7 +5056,15 @@ namespace PurpleRice.Services
         public string ValidatorType { get; set; }
         public string Prompt { get; set; }
         public string RetryMessage { get; set; }
-        public int MaxRetries { get; set; }
+        
+        // MaxRetries 改為可空整數，並添加字符串屬性映射（處理前端可能發送字符串的情況）
+        [System.Text.Json.Serialization.JsonPropertyName("maxRetries")]
+        public int? MaxRetries { get; set; }
+        
+        // 字符串形式的 maxRetries（用於處理前端可能發送字符串的情況）
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string MaxRetriesFromUI { get; set; }
+        
         [System.Text.Json.Serialization.JsonPropertyName("aiIsActive")]
         public bool? AiIsActive { get; set; }
         [System.Text.Json.Serialization.JsonPropertyName("timeIsActive")]

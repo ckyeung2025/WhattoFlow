@@ -45,10 +45,65 @@ export const getDefaultScreen = (id = null) => {
 };
 
 /**
- * 生成默認組件
+ * 生成唯一的組件 name
+ * 例如：Dropdown, Dropdown1, Dropdown2, ...
  */
-export const getDefaultComponent = (type, id = null) => {
+const generateUniqueComponentName = (type, existingComponents = []) => {
+  // 組件類型到基礎名稱的映射
+  const typeToBaseName = {
+    'select': 'Dropdown',
+    'checkbox': 'CheckboxGroup',
+    'radio': 'RadioButtonsGroup',
+    'chips_selector': 'ChipsSelector',
+    'text_input': 'TextInput',
+    'date_picker': 'DatePicker',
+    'calendar_picker': 'CalendarPicker',
+    'time_picker': 'TimePicker',
+    'photo_picker': 'PhotoPicker',
+    'document_picker': 'DocumentPicker'
+  };
+  
+  const baseName = typeToBaseName[type] || type;
+  
+  // 收集現有組件的所有 name
+  const existingNames = new Set();
+  existingComponents.forEach(comp => {
+    if (comp.name) {
+      existingNames.add(comp.name);
+    }
+    // 也檢查 data.name（某些組件可能將 name 存在 data 中）
+    if (comp.data?.name) {
+      existingNames.add(comp.data.name);
+    }
+  });
+  
+  // 如果基礎名稱可用，直接使用
+  if (!existingNames.has(baseName)) {
+    return baseName;
+  }
+  
+  // 否則嘗試 baseName1, baseName2, ...
+  let counter = 1;
+  let uniqueName = `${baseName}${counter}`;
+  while (existingNames.has(uniqueName)) {
+    counter++;
+    uniqueName = `${baseName}${counter}`;
+  }
+  
+  return uniqueName;
+};
+
+/**
+ * 生成默認組件
+ * @param {string} type - 組件類型
+ * @param {string|null} id - 可選的組件 ID
+ * @param {Array} existingComponents - 現有組件列表（用於生成唯一的 name）
+ */
+export const getDefaultComponent = (type, id = null, existingComponents = []) => {
   const componentId = id || `${type}_${Date.now()}`;
+  
+  // 生成唯一的 name（對於需要 name 的組件）
+  const uniqueName = generateUniqueComponentName(type, existingComponents);
   
   switch (type) {
     // 文本組件
@@ -107,7 +162,7 @@ export const getDefaultComponent = (type, id = null) => {
       return {
         type: 'date_picker',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // name 用於 Meta JSON
+        name: uniqueName, // name 用於 Meta JSON，使用唯一名稱
         title: '日期選擇',
         data: {
           required: false
@@ -122,7 +177,7 @@ export const getDefaultComponent = (type, id = null) => {
       return {
         type: 'calendar_picker',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // name 用於 Meta JSON
+        name: uniqueName, // name 用於 Meta JSON，使用唯一名稱
         title: '日曆選擇',
         data: {
           required: false
@@ -136,7 +191,7 @@ export const getDefaultComponent = (type, id = null) => {
     case 'time_picker':
       return {
         type: 'time_picker',
-        name: componentId,
+        name: uniqueName, // 使用唯一名稱
         title: '時間選擇',
         data: {
           required: false
@@ -150,11 +205,11 @@ export const getDefaultComponent = (type, id = null) => {
     // 選擇組件
     case 'select':
       // 為每個 Dropdown 組件生成唯一的 data-source 名稱
-      const dropdownDataSourceName = `dropdown_${componentId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      const dropdownDataSourceName = `dropdown_${uniqueName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
       return {
         type: 'select',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // Dropdown 使用 name 而不是 id（用於 Meta JSON）
+        name: uniqueName, // Dropdown 使用 name 而不是 id（用於 Meta JSON），使用唯一名稱
         title: '下拉選擇',
         data: {
           data_source: `\${data.${dropdownDataSourceName}}`, // 使用唯一的 data-source 名稱
@@ -168,11 +223,11 @@ export const getDefaultComponent = (type, id = null) => {
     
     case 'checkbox':
       // 為每個 CheckboxGroup 組件生成唯一的 data-source 名稱
-      const checkboxDataSourceName = `checkbox_${componentId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      const checkboxDataSourceName = `checkbox_${uniqueName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
       return {
         type: 'checkbox',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // CheckboxGroup 使用 name 而不是 id（用於 Meta JSON）
+        name: uniqueName, // CheckboxGroup 使用 name 而不是 id（用於 Meta JSON），使用唯一名稱
         title: '複選框組',
         data: {
           data_source: `\${data.${checkboxDataSourceName}}`, // 使用唯一的 data-source 名稱
@@ -186,11 +241,11 @@ export const getDefaultComponent = (type, id = null) => {
     
     case 'radio':
       // 為每個 RadioButtonsGroup 組件生成唯一的 data-source 名稱
-      const radioDataSourceName = `radio_${componentId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      const radioDataSourceName = `radio_${uniqueName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
       return {
         type: 'radio',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // RadioButtonsGroup 使用 name 而不是 id（用於 Meta JSON）
+        name: uniqueName, // RadioButtonsGroup 使用 name 而不是 id（用於 Meta JSON），使用唯一名稱
         title: '單選框組',
         data: {
           data_source: `\${data.${radioDataSourceName}}`, // 使用唯一的 data-source 名稱
@@ -206,7 +261,7 @@ export const getDefaultComponent = (type, id = null) => {
       return {
         type: 'chips_selector',
         id: componentId,
-        name: componentId, // ChipsSelector 使用 name
+        name: uniqueName, // ChipsSelector 使用 name，使用唯一名稱
         title: '小標籤選擇器',
         data: {
           options: [], // 不提供默認值，讓用戶自己添加
@@ -285,15 +340,15 @@ export const getDefaultComponent = (type, id = null) => {
       return {
         type: 'photo_picker',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // name 用於 Meta JSON
+        name: uniqueName, // name 用於 Meta JSON，使用唯一名稱
         title: '照片選擇器',
         data: {
           label: '請選擇照片',
           // description 不包含空字符串，只在有值時才添加
           photo_source: 'camera_gallery',
-          max_file_size_kb: 25600,
+          max_file_size_kb: 25600, // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
           min_uploaded_photos: 0,
-          max_uploaded_photos: 30,
+          max_uploaded_photos: 3, // 默認值：3 張照片
           enabled: true,
           visible: true
           // error-message 不包含空字符串，只在有值時才添加
@@ -308,14 +363,14 @@ export const getDefaultComponent = (type, id = null) => {
       return {
         type: 'document_picker',
         id: componentId, // 添加 id 以便在 UI 中識別和操作
-        name: componentId, // name 用於 Meta JSON
+        name: uniqueName, // name 用於 Meta JSON，使用唯一名稱
         title: '文檔選擇器',
         data: {
           label: '請選擇文檔',
           // description 不包含空字符串，只在有值時才添加
-          max_file_size_kb: 25600,
+          max_file_size_kb: 25600, // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
           min_uploaded_documents: 0,
-          max_uploaded_documents: 30,
+          max_uploaded_documents: 10, // Meta API 限制：所有組件的總文件數量不能超過 10
           allowed_mime_types: ['application/pdf', 'image/jpeg', 'image/png'],
           enabled: true,
           visible: true
@@ -792,20 +847,18 @@ const convertActionToComponent = (action) => {
         ? dropdownName 
         : `dropdown_${Date.now()}`;
       
-      // Dropdown 必須使用 data-source 來引用動態數據
-      // 如果沒有提供 data-source，為每個組件生成唯一的 data-source 名稱
-      let dataSource = action.data?.data_source || action.data?.dataSource;
-      if (!dataSource || dataSource === '${data.options}') {
-        // 為每個組件生成唯一的 data-source 名稱，基於組件的 name 或 id
-        const uniqueDataSourceName = `dropdown_${finalDropdownName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-        dataSource = `\${data.${uniqueDataSourceName}}`;
-      }
+      // Dropdown 使用靜態 data-source 數組（與 example 一樣）
+      // 將 options 轉換為 data-source 格式：[{ "id": "...", "title": "..." }]
+      const dropdownOptions = (action.data?.options || []).map(opt => ({
+        id: opt.id || opt.value || '',
+        title: opt.title || opt.text || ''
+      }));
       
       return {
         type: 'Dropdown',
         name: finalDropdownName,
         label: action.title || '下拉選擇',
-        'data-source': dataSource, // Dropdown 必須使用 data-source，不能使用 options
+        'data-source': dropdownOptions, // 直接使用靜態數組，格式：[{ "id": "...", "title": "..." }]
         required: action.data?.required || false,
         'on-select-action': dropdownAction
       };
@@ -835,20 +888,18 @@ const convertActionToComponent = (action) => {
         ? checkboxName 
         : `checkbox_${Date.now()}`;
       
-      // CheckboxGroup 必須使用 data-source 來引用動態數據
-      // 如果沒有提供 data-source，為每個組件生成唯一的 data-source 名稱
-      let checkboxDataSource = action.data?.data_source || action.data?.dataSource;
-      if (!checkboxDataSource || checkboxDataSource === '${data.options}') {
-        // 為每個組件生成唯一的 data-source 名稱，基於組件的 name 或 id
-        const uniqueDataSourceName = `checkbox_${finalCheckboxName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-        checkboxDataSource = `\${data.${uniqueDataSourceName}}`;
-      }
+      // CheckboxGroup 使用靜態 data-source 數組（與 example 一樣）
+      // 將 options 轉換為 data-source 格式：[{ "id": "...", "title": "..." }]
+      const checkboxOptions = (action.data?.options || []).map(opt => ({
+        id: opt.id || opt.value || '',
+        title: opt.title || opt.text || ''
+      }));
       
       return {
         type: 'CheckboxGroup',
         name: finalCheckboxName,
         label: action.title || '複選框組',
-        'data-source': checkboxDataSource, // CheckboxGroup 必須使用 data-source，不能使用 options
+        'data-source': checkboxOptions, // 直接使用靜態數組，格式：[{ "id": "...", "title": "..." }]
         required: action.data?.required || false,
         'on-select-action': checkboxAction // 使用 on-select-action 而不是 on-click-action
       };
@@ -878,20 +929,18 @@ const convertActionToComponent = (action) => {
         ? radioName 
         : `radio_${Date.now()}`;
       
-      // RadioButtonsGroup 必須使用 data-source 來引用動態數據
-      // 如果沒有提供 data-source，為每個組件生成唯一的 data-source 名稱
-      let radioDataSource = action.data?.data_source || action.data?.dataSource;
-      if (!radioDataSource || radioDataSource === '${data.options}') {
-        // 為每個組件生成唯一的 data-source 名稱，基於組件的 name 或 id
-        const uniqueDataSourceName = `radio_${finalRadioName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-        radioDataSource = `\${data.${uniqueDataSourceName}}`;
-      }
+      // RadioButtonsGroup 使用靜態 data-source 數組（與 example 一樣）
+      // 將 options 轉換為 data-source 格式：[{ "id": "...", "title": "..." }]
+      const radioOptions = (action.data?.options || []).map(opt => ({
+        id: opt.id || opt.value || '',
+        title: opt.title || opt.text || ''
+      }));
       
       return {
         type: 'RadioButtonsGroup',
         name: finalRadioName,
         label: action.title || '單選框組',
-        'data-source': radioDataSource, // RadioButtonsGroup 必須使用 data-source，不能使用 options
+        'data-source': radioOptions, // 直接使用靜態數組，格式：[{ "id": "...", "title": "..." }]
         required: action.data?.required || false,
         'on-select-action': radioAction // 使用 on-select-action 而不是 on-click-action
       };
@@ -952,9 +1001,9 @@ const convertActionToComponent = (action) => {
         name: cleanedName,
         label: action.data?.label || action.title || '請選擇照片',
         'photo-source': action.data?.photo_source || 'camera_gallery',
-        'max-file-size-kb': action.data?.max_file_size_kb || 25600,
+        'max-file-size-kb': action.data?.max_file_size_kb ?? 25600, // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
         'min-uploaded-photos': action.data?.min_uploaded_photos ?? 0,
-        'max-uploaded-photos': action.data?.max_uploaded_photos || 30,
+        'max-uploaded-photos': action.data?.max_uploaded_photos ?? 3, // 默認值：3 張照片
         enabled: action.data?.enabled !== undefined ? action.data.enabled : true,
         visible: action.data?.visible !== undefined ? action.data.visible : true
       };
@@ -977,13 +1026,18 @@ const convertActionToComponent = (action) => {
       return photoPickerComponent;
     
     case 'document_picker':
+      // 根據 Meta API 限制，需要檢查總文件數量和總文件大小
+      // 這裡先使用用戶設置的值，在 generateMetaFlowJson 中會進行總體驗證
+      const documentPickerMaxUploaded = action.data?.max_uploaded_documents ?? 10; // Meta API 限制：所有組件的總文件數量不能超過 10
+      const documentPickerMaxFileSize = action.data?.max_file_size_kb ?? 25600; // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
+      
       const documentPickerComponent = {
         type: 'DocumentPicker',
         name: cleanedName,
         label: action.data?.label || action.title || '請選擇文檔',
-        'max-file-size-kb': action.data?.max_file_size_kb || 25600,
+        'max-file-size-kb': documentPickerMaxFileSize,
         'min-uploaded-documents': action.data?.min_uploaded_documents ?? 0,
-        'max-uploaded-documents': action.data?.max_uploaded_documents || 30,
+        'max-uploaded-documents': documentPickerMaxUploaded,
         'allowed-mime-types': action.data?.allowed_mime_types || [
           'application/pdf',
           'image/jpeg',
@@ -1105,7 +1159,7 @@ const convertActionToComponent = (action) => {
         type: 'ChipsSelector',
         name: cleanId(action.name || action.id || `chips_selector_${Date.now()}`),
         label: action.title || '小標籤選擇器',
-        'data-source': chipsOptions, // 直接使用內聯數組，不是 ${data.xxx} 格式
+        'data-source': chipsOptions, // 直接使用靜態數組，格式：[{ "id": "...", "title": "..." }]
         required: action.data?.required || false
       };
       
@@ -1232,6 +1286,46 @@ export const generateMetaFlowJson = (flowData) => {
     const screensArray = screens || [];
     const categoriesArray = categories && categories.length > 0 ? categories : ['LEAD_GENERATION'];
     
+    // 根據 Meta API 限制，檢查所有 PhotoPicker 和 DocumentPicker 組件
+    // 限制 1: 總文件數量不能超過 10
+    // 限制 2: 總文件大小不能超過 102400 KB
+    // 如果沒有設置，默認值是 30 個文件和 25600 KB 每個文件
+    let totalMaxFiles = 0; // 所有 PhotoPicker 和 DocumentPicker 的 max-uploaded 總和
+    let totalMaxSizeKB = 0; // 所有 PhotoPicker 和 DocumentPicker 的 max-file-size-kb 總和
+    
+    // 先遍歷所有屏幕，收集所有 PhotoPicker 和 DocumentPicker 組件
+        screensArray.forEach((screen, screenIndex) => {
+      if (screen.data?.actions && screen.data.actions.length > 0) {
+        screen.data.actions.forEach(action => {
+          if (action.type === 'photo_picker') {
+            const maxUploaded = action.data?.max_uploaded_photos ?? 3; // 默認值：3 張照片
+            const maxFileSize = action.data?.max_file_size_kb ?? 25600; // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
+            totalMaxFiles += maxUploaded;
+            totalMaxSizeKB += maxFileSize;
+          } else if (action.type === 'document_picker') {
+            const maxUploaded = action.data?.max_uploaded_documents ?? 10; // Meta API 限制：所有組件的總文件數量不能超過 10
+            const maxFileSize = action.data?.max_file_size_kb ?? 25600; // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
+            totalMaxFiles += maxUploaded;
+            totalMaxSizeKB += maxFileSize;
+          }
+        });
+      }
+    });
+    
+    // 檢查限制並給出警告
+    const MAX_TOTAL_FILES = 10;
+    const MAX_TOTAL_SIZE_KB = 102400;
+    
+    if (totalMaxFiles > MAX_TOTAL_FILES) {
+      console.warn(`⚠️ [Meta Flow 限制警告] 所有 PhotoPicker 和 DocumentPicker 的總文件數量 (${totalMaxFiles}) 超過限制 (${MAX_TOTAL_FILES})。Meta API 可能會拒絕此 Flow。`);
+      console.warn(`   建議：調整各組件的 max-uploaded-photos 或 max-uploaded-documents 值，使總和不超過 ${MAX_TOTAL_FILES}。`);
+    }
+    
+    if (totalMaxSizeKB > MAX_TOTAL_SIZE_KB) {
+      console.warn(`⚠️ [Meta Flow 限制警告] 所有 PhotoPicker 和 DocumentPicker 的總文件大小 (${totalMaxSizeKB} KB) 超過限制 (${MAX_TOTAL_SIZE_KB} KB)。Meta API 可能會拒絕此 Flow。`);
+      console.warn(`   建議：調整各組件的 max-file-size-kb 值，使總和不超過 ${MAX_TOTAL_SIZE_KB} KB。`);
+    }
+    
     // 根據官方 Flow JSON 格式：https://developers.facebook.com/docs/whatsapp/flows/reference/flowjson
     // 先檢查是否有任何屏幕使用 data_exchange action，如果有則需要在頂層添加 data_api_version
     let hasDataExchangeInAnyScreen = false;
@@ -1275,24 +1369,33 @@ export const generateMetaFlowJson = (flowData) => {
               }
               children.push(component);
               
-              // 如果是 Dropdown、CheckboxGroup 或 RadioButtonsGroup 組件，收集選項以便更新 __example__
+              // 注意：Dropdown、CheckboxGroup、RadioButtonsGroup 現在直接使用靜態 data-source 數組
+              // 不再需要更新 dataModel 的 __example__，因為 data-source 已經是靜態數組了
+              // 這段代碼保留用於向後兼容（如果 data-source 是 ${data.xxx} 格式）
               if (component.type === 'Dropdown' || component.type === 'CheckboxGroup' || component.type === 'RadioButtonsGroup') {
-                const dataSource = component['data-source'] || '${data.options}';
-                const dataSourceName = extractDataSourceName(dataSource);
-                if (dataSourceName) {
-                  // 優先使用 action.data.options（用戶在編輯器中編輯的選項）
-                  if (action.data?.options && Array.isArray(action.data.options) && action.data.options.length > 0) {
-                    // 將選項轉換為 __example__ 格式：{ id: string, title: string }
-                    const exampleOptions = action.data.options.map(opt => ({
-                      id: opt.id || opt.value || `option_${Date.now()}_${Math.random()}`,
-                      title: opt.title || opt.text || opt.label || ''
-                    }));
-                    dynamicOptionsMap.set(dataSourceName, exampleOptions);
-                  } else if (screen.data?.dataModel?.[dataSourceName]?.__example__ && 
-                             Array.isArray(screen.data.dataModel[dataSourceName].__example__) &&
-                             screen.data.dataModel[dataSourceName].__example__.length > 0) {
-                    // 如果 action.data.options 不存在或為空，但 dataModel 中有 __example__，使用它
-                    dynamicOptionsMap.set(dataSourceName, screen.data.dataModel[dataSourceName].__example__);
+                const dataSource = component['data-source'];
+                // 如果 data-source 是數組（靜態數據），則不需要處理
+                if (Array.isArray(dataSource)) {
+                  // 已經是靜態數組，不需要更新 dataModel
+                  // 跳過後續處理
+                } else {
+                  // 如果是 ${data.xxx} 格式（向後兼容），則保留原有邏輯
+                  const dataSourceName = extractDataSourceName(dataSource);
+                  if (dataSourceName) {
+                    // 優先使用 action.data.options（用戶在編輯器中編輯的選項）
+                    if (action.data?.options && Array.isArray(action.data.options) && action.data.options.length > 0) {
+                      // 將選項轉換為 __example__ 格式：{ id: string, title: string }
+                      const exampleOptions = action.data.options.map(opt => ({
+                        id: opt.id || opt.value || `option_${Date.now()}_${Math.random()}`,
+                        title: opt.title || opt.text || opt.label || ''
+                      }));
+                      dynamicOptionsMap.set(dataSourceName, exampleOptions);
+                    } else if (screen.data?.dataModel?.[dataSourceName]?.__example__ && 
+                               Array.isArray(screen.data.dataModel[dataSourceName].__example__) &&
+                               screen.data.dataModel[dataSourceName].__example__.length > 0) {
+                      // 如果 action.data.options 不存在或為空，但 dataModel 中有 __example__，使用它
+                      dynamicOptionsMap.set(dataSourceName, screen.data.dataModel[dataSourceName].__example__);
+                    }
                   }
                 }
               }
@@ -1305,12 +1408,44 @@ export const generateMetaFlowJson = (flowData) => {
         // 4. Footer - 必須有，從 screen.data.footer
         // Footer 是必填項，如果為空則使用默認值
         const footerText = screen.data?.footer?.text || '提交';
+        
+        // 收集所有輸入組件的 name，用於生成 complete payload
+        // 根據 Meta 文檔，payload 中應該包含所有要提交的字段，格式：{ "fieldName": "${form.fieldName}" }
+        const inputComponentNames = [];
+        children.forEach(child => {
+          // 檢查是否是輸入組件（有 name 字段的組件）
+          if (child.name) {
+            // 跳過非輸入組件（如 TextHeading, TextBody, Image 等）
+            const inputComponentTypes = [
+              'TextInput', 'DatePicker', 'CalendarPicker', 'TimePicker',
+              'Dropdown', 'CheckboxGroup', 'RadioButtonsGroup', 'ChipsSelector',
+              'PhotoPicker', 'DocumentPicker'
+            ];
+            if (inputComponentTypes.includes(child.type)) {
+              inputComponentNames.push(child.name);
+            }
+          }
+        });
+        
+        // 生成 complete payload
+        const completePayload = {};
+        inputComponentNames.forEach(fieldName => {
+          // 根據 Meta 文檔，payload 格式：{ "fieldName": "${form.fieldName}" }
+          completePayload[fieldName] = `\${form.${fieldName}}`;
+        });
+        
+        console.log(`📋 [generateMetaFlowJson] Footer complete payload:`, {
+          inputComponentNames,
+          completePayload,
+          payloadKeys: Object.keys(completePayload)
+        });
+        
         children.push({
           type: 'Footer',
           label: footerText,
           'on-click-action': {
             name: 'complete',
-            payload: {}
+            payload: completePayload
           }
         });
         
@@ -1400,28 +1535,81 @@ export const generateMetaFlowJson = (flowData) => {
         // 注意：screen.data 只應包含數據模型定義（如 dropdown_select、checkbox_checkbox 等），
         // 不應包含 body、footer、header、actions 等編輯器內部字段
         // 重要：data 字段必須在 layout 和 terminal 之後，以匹配 Meta API 的格式要求
+        
+        // 首先收集所有使用靜態 data-source 數組的組件名稱
+        // 這些組件不需要在 screen.data 中定義數據模型
+        const staticDataSourceComponentNames = new Set();
+        children.forEach(child => {
+          if (child['data-source'] && Array.isArray(child['data-source'])) {
+            // 組件使用靜態 data-source 數組，不需要數據模型定義
+            // 記錄組件名稱，以便後續過濾掉對應的數據模型定義
+            if (child.name) {
+              staticDataSourceComponentNames.add(child.name);
+            }
+          }
+        });
+        
         if (needsDataModel || screen.data?.dataModel) {
           // 從 dataModel 中過濾掉編輯器內部字段，只保留數據模型定義
           const dataModel = screen.data?.dataModel || {};
           const filteredDataModel = {};
           
           // 只保留數據模型定義（不包含 body、footer、header、actions）
+          // 同時過濾掉使用靜態 data-source 數組的組件對應的數據模型定義
           Object.keys(dataModel).forEach(key => {
             if (key !== 'body' && key !== 'footer' && key !== 'header' && key !== 'actions') {
-              filteredDataModel[key] = dataModel[key];
+              // 檢查這個數據模型是否對應於使用靜態 data-source 的組件
+              // 數據模型名稱格式通常是：dropdown_<component_name> 或 checkbox_<component_name> 等
+              // 例如：dropdown_select 對應於 name="select" 的 Dropdown 組件
+              let shouldInclude = true;
+              
+              // 檢查是否匹配任何使用靜態 data-source 的組件名稱
+              for (const componentName of staticDataSourceComponentNames) {
+                // 數據模型名稱可能包含組件類型前綴（如 dropdown_、checkbox_、radio_）
+                // 檢查 key 是否匹配以下模式：
+                // 1. key === componentName（完全匹配）
+                // 2. key === `${type}_${componentName}`（例如：dropdown_select）
+                // 3. key.endsWith(`_${componentName}`)（例如：some_prefix_select）
+                const prefixes = ['dropdown_', 'checkbox_', 'radio_'];
+                const matches = prefixes.some(prefix => key === `${prefix}${componentName}`) ||
+                               key === componentName ||
+                               key.endsWith(`_${componentName}`);
+                
+                if (matches) {
+                  shouldInclude = false;
+                  console.log(`🔍 [generateMetaFlowJson] 過濾掉數據模型 "${key}"，因為組件 "${componentName}" 使用靜態 data-source 數組`);
+                  break;
+                }
+              }
+              
+              if (shouldInclude) {
+                filteredDataModel[key] = dataModel[key];
+              }
             }
           });
           
           // 在 layout 和 terminal 之後添加 data 字段
-          screenObj.data = filteredDataModel;
+          // 只有在 filteredDataModel 不為空時才添加
+          if (Object.keys(filteredDataModel).length > 0) {
+            screenObj.data = filteredDataModel;
+          }
           
           // 使用規範配置為所有需要數據模型的組件添加數據定義
           children.forEach(child => {
             const spec = getComponentSpec(child.type);
+            // 只處理需要數據模型且使用動態 data-source（${data.xxx} 格式）的組件
             if (spec && spec.requiresDataModel && child['data-source']) {
+              // 如果 data-source 是數組（靜態數據），跳過
+              if (Array.isArray(child['data-source'])) {
+                return; // 跳過，不需要數據模型定義
+              }
+              
               const dataSourceName = extractDataSourceName(child['data-source']);
               if (dataSourceName) {
                 // 如果已經存在數據模型，使用現有的；否則創建新的
+                if (!screenObj.data) {
+                  screenObj.data = {};
+                }
                 if (!screenObj.data[dataSourceName]) {
                   // 使用規範配置中的數據模型模板
                   const dataModel = generateDataModel(dataSourceName, child.type);
@@ -1597,17 +1785,26 @@ const convertLayoutToDataFormat = (screen) => {
         case 'Select':
         case 'select':
           // Dropdown 使用 name 而不是 id，使用 on-select-action 而不是 on-click-action
-          // 從 screen.data 的 __example__ 中讀取選項
-          const dataSource = child['data-source'] || '${data.options}';
-          const dataSourceName = extractDataSourceName(dataSource);
+          // data-source 現在是靜態數組格式：[{ "id": "...", "title": "..." }]
+          const dataSource = child['data-source'] || [];
           let dropdownOptions = [];
           
-          // 如果 screen.data 中有對應的數據模型，從 __example__ 中讀取選項
-          if (dataSourceName && screen.data && screen.data[dataSourceName] && screen.data[dataSourceName].__example__) {
-            dropdownOptions = screen.data[dataSourceName].__example__.map(example => ({
-              id: example.id || '',
-              title: example.title || ''
+          // 如果 data-source 是數組（靜態數據），直接使用
+          if (Array.isArray(dataSource)) {
+            dropdownOptions = dataSource.map(opt => ({
+              id: opt.id || opt.value || '',
+              title: opt.title || opt.text || ''
             }));
+          } 
+          // 如果是字符串格式（向後兼容），嘗試從 screen.data 的 __example__ 中讀取
+          else if (typeof dataSource === 'string') {
+            const dataSourceName = extractDataSourceName(dataSource);
+            if (dataSourceName && screen.data && screen.data[dataSourceName] && screen.data[dataSourceName].__example__) {
+              dropdownOptions = screen.data[dataSourceName].__example__.map(example => ({
+                id: example.id || '',
+                title: example.title || ''
+              }));
+            }
           }
           
           data.actions.push({
@@ -1629,9 +1826,7 @@ const convertLayoutToDataFormat = (screen) => {
               endpoint: ''
             },
             data: {
-              data_source: dataSource,
-              required: child.required || false,
-              options: dropdownOptions // 添加選項，以便在編輯器中顯示
+              options: dropdownOptions // 直接使用選項數組，不再保存 data_source
             }
           });
           break;
@@ -1689,17 +1884,26 @@ const convertLayoutToDataFormat = (screen) => {
         case 'CheckboxGroup':
         case 'checkbox':
           // CheckboxGroup 使用 name 和 data-source 而不是 id 和 options
-          // 從 screen.data 的 __example__ 中讀取選項
-          const checkboxDataSource = child['data-source'] || '${data.options}';
-          const checkboxDataSourceName = extractDataSourceName(checkboxDataSource);
+          // data-source 現在是靜態數組格式：[{ "id": "...", "title": "..." }]
+          const checkboxDataSource = child['data-source'] || [];
           let checkboxOptions = [];
           
-          // 如果 screen.data 中有對應的數據模型，從 __example__ 中讀取選項
-          if (checkboxDataSourceName && screen.data && screen.data[checkboxDataSourceName] && screen.data[checkboxDataSourceName].__example__) {
-            checkboxOptions = screen.data[checkboxDataSourceName].__example__.map(example => ({
-              id: example.id || '',
-              title: example.title || ''
+          // 如果 data-source 是數組（靜態數據），直接使用
+          if (Array.isArray(checkboxDataSource)) {
+            checkboxOptions = checkboxDataSource.map(opt => ({
+              id: opt.id || opt.value || '',
+              title: opt.title || opt.text || ''
             }));
+          } 
+          // 如果是字符串格式（向後兼容），嘗試從 screen.data 的 __example__ 中讀取
+          else if (typeof checkboxDataSource === 'string') {
+            const checkboxDataSourceName = extractDataSourceName(checkboxDataSource);
+            if (checkboxDataSourceName && screen.data && screen.data[checkboxDataSourceName] && screen.data[checkboxDataSourceName].__example__) {
+              checkboxOptions = screen.data[checkboxDataSourceName].__example__.map(example => ({
+                id: example.id || '',
+                title: example.title || ''
+              }));
+            }
           }
           
           data.actions.push({
@@ -1721,9 +1925,7 @@ const convertLayoutToDataFormat = (screen) => {
               endpoint: ''
             },
             data: {
-              data_source: checkboxDataSource,
-              required: child.required || false,
-              options: checkboxOptions // 添加選項，以便在編輯器中顯示
+              options: checkboxOptions // 直接使用選項數組，不再保存 data_source
             }
           });
           break;
@@ -1731,17 +1933,26 @@ const convertLayoutToDataFormat = (screen) => {
         case 'RadioButtonsGroup':
         case 'radio':
           // RadioButtonsGroup 使用 name 和 data-source 而不是 id 和 options
-          // 從 screen.data 的 __example__ 中讀取選項
-          const radioDataSource = child['data-source'] || '${data.options}';
-          const radioDataSourceName = extractDataSourceName(radioDataSource);
+          // data-source 現在是靜態數組格式：[{ "id": "...", "title": "..." }]
+          const radioDataSource = child['data-source'] || [];
           let radioOptions = [];
           
-          // 如果 screen.data 中有對應的數據模型，從 __example__ 中讀取選項
-          if (radioDataSourceName && screen.data && screen.data[radioDataSourceName] && screen.data[radioDataSourceName].__example__) {
-            radioOptions = screen.data[radioDataSourceName].__example__.map(example => ({
-              id: example.id || '',
-              title: example.title || ''
+          // 如果 data-source 是數組（靜態數據），直接使用
+          if (Array.isArray(radioDataSource)) {
+            radioOptions = radioDataSource.map(opt => ({
+              id: opt.id || opt.value || '',
+              title: opt.title || opt.text || ''
             }));
+          } 
+          // 如果是字符串格式（向後兼容），嘗試從 screen.data 的 __example__ 中讀取
+          else if (typeof radioDataSource === 'string') {
+            const radioDataSourceName = extractDataSourceName(radioDataSource);
+            if (radioDataSourceName && screen.data && screen.data[radioDataSourceName] && screen.data[radioDataSourceName].__example__) {
+              radioOptions = screen.data[radioDataSourceName].__example__.map(example => ({
+                id: example.id || '',
+                title: example.title || ''
+              }));
+            }
           }
           
           data.actions.push({
@@ -1763,9 +1974,7 @@ const convertLayoutToDataFormat = (screen) => {
               endpoint: ''
             },
             data: {
-              data_source: radioDataSource,
-              required: child.required || false,
-              options: radioOptions // 添加選項，以便在編輯器中顯示
+              options: radioOptions // 直接使用選項數組，不再保存 data_source
             }
           });
           break;
@@ -1859,9 +2068,9 @@ const convertLayoutToDataFormat = (screen) => {
           const photoPickerData = {
             label: child.label || '請選擇照片',
             photo_source: child['photo-source'] || 'camera_gallery',
-            max_file_size_kb: child['max-file-size-kb'] || 25600,
+            max_file_size_kb: child['max-file-size-kb'] ?? 25600, // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
             min_uploaded_photos: child['min-uploaded-photos'] ?? 0,
-            max_uploaded_photos: child['max-uploaded-photos'] || 30,
+            max_uploaded_photos: child['max-uploaded-photos'] ?? 3, // 默認值：3 張照片
             enabled: child.enabled !== undefined ? child.enabled : true,
             visible: child.visible !== undefined ? child.visible : true
           };
@@ -1896,9 +2105,9 @@ const convertLayoutToDataFormat = (screen) => {
         case 'document_picker':
           const documentPickerData = {
             label: child.label || '請選擇文檔',
-            max_file_size_kb: child['max-file-size-kb'] || 25600,
+            max_file_size_kb: child['max-file-size-kb'] ?? 25600, // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
             min_uploaded_documents: child['min-uploaded-documents'] ?? 0,
-            max_uploaded_documents: child['max-uploaded-documents'] || 30,
+            max_uploaded_documents: child['max-uploaded-documents'] ?? 10, // Meta API 限制：所有組件的總文件數量不能超過 10
             allowed_mime_types: child['allowed-mime-types'] || ['application/pdf', 'image/jpeg', 'image/png'],
             enabled: child.enabled !== undefined ? child.enabled : true,
             visible: child.visible !== undefined ? child.visible : true
@@ -2308,6 +2517,10 @@ export const validateMetaFlowJson = (json) => {
                     if (child['photo-source'] && !['camera_gallery', 'camera', 'gallery'].includes(child['photo-source'])) {
                       errors.push(`Screen[${index}], Component[${childIndex}] (PhotoPicker): photo-source 必須是 'camera_gallery', 'camera' 或 'gallery'`);
                     }
+                    // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB
+                    if (child['max-file-size-kb'] !== undefined && child['max-file-size-kb'] > 25600) {
+                      errors.push(`Screen[${index}], Component[${childIndex}] (PhotoPicker): max-file-size-kb 不能超過 25600 KB`);
+                    }
                   }
                   
                   // 驗證 DocumentPicker 特定屬性
@@ -2316,6 +2529,10 @@ export const validateMetaFlowJson = (json) => {
                       if (child['min-uploaded-documents'] > child['max-uploaded-documents']) {
                         errors.push(`Screen[${index}], Component[${childIndex}] (DocumentPicker): min-uploaded-documents 不能大於 max-uploaded-documents`);
                       }
+                    }
+                    // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB
+                    if (child['max-file-size-kb'] !== undefined && child['max-file-size-kb'] > 25600) {
+                      errors.push(`Screen[${index}], Component[${childIndex}] (DocumentPicker): max-file-size-kb 不能超過 25600 KB`);
                     }
                     // 驗證 description: 如果提供，不能是空字符串
                     if (child.description !== undefined && child.description !== null && child.description.trim() === '') {
@@ -2493,6 +2710,44 @@ export const validateMetaFlowJson = (json) => {
           }
         }
       });
+    }
+    
+    // 總體驗證：檢查所有 PhotoPicker 和 DocumentPicker 的總文件數量和總文件大小限制
+    // 根據 Meta API 限制：
+    // 1. 總文件數量不能超過 10（所有 PhotoPicker 和 DocumentPicker 的 max-uploaded 總和）
+    // 2. 總文件大小不能超過 102400 KB（所有 PhotoPicker 和 DocumentPicker 的 max-file-size-kb 總和）
+    // 如果沒有設置，默認值是 30 個文件和 25600 KB 每個文件
+    if (flowData.screens && Array.isArray(flowData.screens)) {
+      let totalMaxFiles = 0;
+      let totalMaxSizeKB = 0;
+      const MAX_TOTAL_FILES = 10;
+      const MAX_TOTAL_SIZE_KB = 102400;
+      
+      flowData.screens.forEach((screen, screenIndex) => {
+        if (screen.layout && screen.layout.children && Array.isArray(screen.layout.children)) {
+          screen.layout.children.forEach(child => {
+            if (child.type === 'PhotoPicker') {
+              const maxUploaded = child['max-uploaded-photos'] ?? 3; // 默認值：3 張照片
+              const maxFileSize = child['max-file-size-kb'] ?? 25600; // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
+              totalMaxFiles += maxUploaded;
+              totalMaxSizeKB += maxFileSize;
+            } else if (child.type === 'DocumentPicker') {
+              const maxUploaded = child['max-uploaded-documents'] ?? 10; // Meta API 限制：所有組件的總文件數量不能超過 10
+              const maxFileSize = child['max-file-size-kb'] ?? 25600; // Meta API 限制：單個組件的 max-file-size-kb 最大值為 25600 KB，所有組件的總和不能超過 102400 KB
+              totalMaxFiles += maxUploaded;
+              totalMaxSizeKB += maxFileSize;
+            }
+          });
+        }
+      });
+      
+      if (totalMaxFiles > MAX_TOTAL_FILES) {
+        errors.push(`Meta API 限制違規: 所有 PhotoPicker 和 DocumentPicker 的總文件數量 (${totalMaxFiles}) 超過限制 (${MAX_TOTAL_FILES})。請調整各組件的 max-uploaded-photos 或 max-uploaded-documents 值，使總和不超過 ${MAX_TOTAL_FILES}。`);
+      }
+      
+      if (totalMaxSizeKB > MAX_TOTAL_SIZE_KB) {
+        errors.push(`Meta API 限制違規: 所有 PhotoPicker 和 DocumentPicker 的總文件大小 (${totalMaxSizeKB} KB) 超過限制 (${MAX_TOTAL_SIZE_KB} KB)。請調整各組件的 max-file-size-kb 值，使總和不超過 ${MAX_TOTAL_SIZE_KB} KB。`);
+      }
     }
     
     return {

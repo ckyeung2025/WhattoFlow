@@ -80,6 +80,16 @@ namespace PurpleRice.Models
         /// 針對文件類訊息，解析後的結構化 JSON（序列化字串）
         /// </summary>
         public string? DocumentStructuredJson { get; set; }
+
+        /// <summary>
+        /// Context 中的 from（用於 Flow 回覆關聯）
+        /// </summary>
+        public string? ContextFrom { get; set; }
+
+        /// <summary>
+        /// Context 中的 id（原始消息 ID，用於 Flow 回覆關聯）
+        /// </summary>
+        public string? ContextId { get; set; }
     }
 }
 

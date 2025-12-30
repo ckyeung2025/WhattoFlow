@@ -462,8 +462,9 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
       message.warning('請先選擇一個 Screen');
       return;
     }
-    const newComponent = getDefaultComponent(componentType);
+    // 傳入現有組件列表，以便生成唯一的 name
     const currentActions = selectedScreen.data?.actions || [];
+    const newComponent = getDefaultComponent(componentType, null, currentActions);
     const updatedScreen = {
       ...selectedScreen,
       data: {

@@ -131,6 +131,23 @@ namespace PurpleRice.Services.ApiProviders
                 _logger.LogInformation($"📤 發送 AI 請求到 '{runtimeProvider.ProviderKey}' -> {endpoint}");
                 _logger.LogDebug($"請求內容預覽: {payloadPreview}");
                 
+                // ✅ 記錄完整的 POST 請求格式（將 base64 替換為占位符以便查看完整結構）
+                try
+                {
+                    using var doc = JsonDocument.Parse(payload);
+                    var cleanedPayload = CleanBase64FromJson(doc.RootElement);
+                    var cleanedPayloadJson = JsonSerializer.Serialize(cleanedPayload, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = null,
+                        WriteIndented = true  // 格式化以便閱讀
+                    });
+                    _logger.LogInformation($"📋 完整 POST 請求格式（base64 已替換為占位符）:\n{cleanedPayloadJson}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"無法解析 payload 以記錄完整格式: {ex.Message}");
+                }
+                
                 // 檢查是否包含圖片
                 if (payload.Contains("image_url") || payload.Contains("inline_data"))
                 {
@@ -141,6 +158,17 @@ namespace PurpleRice.Services.ApiProviders
 
                 var response = await httpClient.SendAsync(request, cancellationToken);
                 var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                _logger.LogInformation($"📥 收到 AI 響應，狀態碼: {(int)response.StatusCode}, 內容長度: {responseContent?.Length ?? 0}");
+                
+                // ✅ 記錄完整的 AI 響應內容（用於調試）
+                if (!string.IsNullOrEmpty(responseContent))
+                {
+                    var responsePreview = responseContent.Length > 2000 
+                        ? responseContent.Substring(0, 2000) + "... (截斷，完整長度: " + responseContent.Length + ")" 
+                        : responseContent;
+                    _logger.LogInformation($"📄 AI 完整響應內容: {responsePreview}");
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -154,8 +182,27 @@ namespace PurpleRice.Services.ApiProviders
                     };
                 }
 
+                _logger.LogDebug($"✅ AI 響應成功，開始解析響應內容");
                 var parsedResult = ParseResponse(runtimeProvider.ProviderKey, responseContent);
                 parsedResult.ProviderKey = runtimeProvider.ProviderKey;
+                parsedResult.RawResponse = responseContent; // 保存完整響應
+                
+                if (parsedResult.Success)
+                {
+                    _logger.LogInformation($"✅ AI 響應解析成功，內容長度: {parsedResult.Content?.Length ?? 0}");
+                    if (!string.IsNullOrEmpty(parsedResult.Content))
+                    {
+                        var contentPreview = parsedResult.Content.Length > 1000 
+                            ? parsedResult.Content.Substring(0, 1000) + "... (截斷，完整長度: " + parsedResult.Content.Length + ")" 
+                            : parsedResult.Content;
+                        _logger.LogInformation($"📄 AI 解析後的內容: {contentPreview}");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning($"⚠️ AI 響應解析失敗: {parsedResult.ErrorMessage}");
+                }
+                
                 return parsedResult;
             }
             catch (TaskCanceledException ex)
@@ -229,7 +276,14 @@ namespace PurpleRice.Services.ApiProviders
             {
                 case "apikey":
                 case "bearertoken":
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                    // 清理 API Key 中的換行符、空白字符和非 ASCII 字符（避免 HTTP header 錯誤）
+                    var cleanedApiKey = apiKey?.Replace("\r", "").Replace("\n", "").Trim();
+                    // 移除所有非 ASCII 字符（只保留 ASCII 字符 0-127）
+                    if (!string.IsNullOrEmpty(cleanedApiKey))
+                    {
+                        cleanedApiKey = new string(cleanedApiKey.Where(c => c <= 127).ToArray());
+                    }
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", cleanedApiKey);
                     break;
                 default:
                     // 其他認證方式留給 ExtraHeaders 處理
@@ -246,10 +300,22 @@ namespace PurpleRice.Services.ApiProviders
 
             foreach (var kvp in runtime.ExtraHeaders)
             {
-                if (!request.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value))
+                // 清理 header 值中的非 ASCII 字符（避免 HTTP header 錯誤）
+                var cleanedKey = kvp.Key?.Trim();
+                var cleanedValue = kvp.Value?.Replace("\r", "").Replace("\n", "").Trim();
+                // 移除所有非 ASCII 字符（只保留 ASCII 字符 0-127）
+                if (!string.IsNullOrEmpty(cleanedValue))
                 {
-                    request.Content ??= new StringContent(string.Empty);
-                    request.Content.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value);
+                    cleanedValue = new string(cleanedValue.Where(c => c <= 127).ToArray());
+                }
+                
+                if (!string.IsNullOrEmpty(cleanedKey) && !string.IsNullOrEmpty(cleanedValue))
+                {
+                    if (!request.Headers.TryAddWithoutValidation(cleanedKey, cleanedValue))
+                    {
+                        request.Content ??= new StringContent(string.Empty);
+                        request.Content.Headers.TryAddWithoutValidation(cleanedKey, cleanedValue);
+                    }
                 }
             }
         }
@@ -670,8 +736,79 @@ namespace PurpleRice.Services.ApiProviders
 
                 var contentParts = new List<Dictionary<string, object>>();
 
-                // 檢查是否有 media 對象包含 base64 圖片
-                if (root.TryGetProperty("media", out var mediaElement) && mediaElement.ValueKind == JsonValueKind.Object)
+                // ✅ 優先檢查是否有 mediaArray（多張圖片）
+                if (root.TryGetProperty("mediaArray", out var mediaArrayElement) && mediaArrayElement.ValueKind == JsonValueKind.Array)
+                {
+                    var imageCount = 0;
+                    foreach (var mediaItem in mediaArrayElement.EnumerateArray())
+                    {
+                        if (mediaItem.ValueKind == JsonValueKind.Object)
+                        {
+                            if (mediaItem.TryGetProperty("base64", out var base64Element) && 
+                                base64Element.ValueKind == JsonValueKind.String)
+                            {
+                                var base64 = base64Element.GetString();
+                                var mimeType = "image/jpeg"; // 默認值
+                                
+                                if (mediaItem.TryGetProperty("mimeType", out var mimeTypeElement) && 
+                                    mimeTypeElement.ValueKind == JsonValueKind.String)
+                                {
+                                    mimeType = mimeTypeElement.GetString() ?? mimeType;
+                                }
+
+                                if (!string.IsNullOrWhiteSpace(base64))
+                                {
+                                    // 驗證 base64 格式
+                                    var base64Preview = base64.Length > 50 ? base64.Substring(0, 50) + "..." : base64;
+                                    _logger.LogInformation($"🔍 檢測到第 {imageCount + 1} 張圖片，MIME 類型: {mimeType}, Base64 長度: {base64.Length}, 預覽: {base64Preview}");
+                                    
+                                    // 檢查 base64 是否有效（應該只包含 base64 字符）
+                                    var isValidBase64 = System.Text.RegularExpressions.Regex.IsMatch(base64, @"^[A-Za-z0-9+/=]+$");
+                                    if (!isValidBase64)
+                                    {
+                                        _logger.LogWarning($"⚠️ Base64 格式可能無效，包含非 base64 字符");
+                                    }
+                                    
+                                    // 構建圖片 URL（OpenAI vision API 格式）
+                                    var imageUrl = $"data:{mimeType};base64,{base64}";
+                                    var imageUrlDict = new Dictionary<string, object>
+                                    {
+                                        ["url"] = imageUrl
+                                    };
+                                    
+                                    // 為 xai 和其他支持 detail 的 provider 添加 detail 參數
+                                    var providerKey = runtime?.ProviderKey?.ToLowerInvariant();
+                                    if (providerKey == "xai" || providerKey == "openai")
+                                    {
+                                        // 從 settings 讀取 imageDetail，默認使用 "high"
+                                        var imageDetail = "high";
+                                        if (settings != null && settings.TryGetValue("imageDetail", out var detailElement))
+                                        {
+                                            if (detailElement.ValueKind == JsonValueKind.String)
+                                            {
+                                                imageDetail = detailElement.GetString() ?? "high";
+                                            }
+                                        }
+                                        imageUrlDict["detail"] = imageDetail;
+                                    }
+                                    
+                                    contentParts.Add(new Dictionary<string, object>
+                                    {
+                                        ["type"] = "image_url",
+                                        ["image_url"] = imageUrlDict
+                                    });
+
+                                    var detailInfo = imageUrlDict.ContainsKey("detail") ? $", detail: {imageUrlDict["detail"]}" : "";
+                                    _logger.LogInformation($"✅ 已添加第 {imageCount + 1} 張圖片到多模態內容，圖片 URL 長度: {imageUrl.Length}{detailInfo}");
+                                    imageCount++;
+                                }
+                            }
+                        }
+                    }
+                    _logger.LogInformation($"📸 共添加 {imageCount} 張圖片到多模態內容");
+                }
+                // 檢查是否有 media 對象包含 base64 圖片（單張圖片，向後兼容）
+                else if (root.TryGetProperty("media", out var mediaElement) && mediaElement.ValueKind == JsonValueKind.Object)
                 {
                     if (mediaElement.TryGetProperty("base64", out var base64Element) && 
                         base64Element.ValueKind == JsonValueKind.String)
@@ -766,6 +903,49 @@ namespace PurpleRice.Services.ApiProviders
                     }
                 }
 
+                // ✅ 收集所有其他字段（如 ProjectCode 等回覆字段），將它們序列化為 JSON 添加到文本中
+                var otherFields = new Dictionary<string, object>();
+                foreach (var property in root.EnumerateObject())
+                {
+                    var fieldName = property.Name;
+                    // 跳過已處理的字段和圖片字段
+                    if (fieldName != "prompt" && 
+                        fieldName != "text" && 
+                        fieldName != "caption" && 
+                        fieldName != "media" && 
+                        fieldName != "mediaArray" &&
+                        fieldName != "document" &&
+                        fieldName != "documentText" &&
+                        fieldName != "messageType" &&
+                        fieldName != "node")
+                    {
+                        try
+                        {
+                            // 將字段值轉換為對象
+                            var fieldValue = JsonSerializer.Deserialize<object>(property.Value.GetRawText());
+                            if (fieldValue != null)
+                            {
+                                otherFields[fieldName] = fieldValue;
+                            }
+                        }
+                        catch
+                        {
+                            // 如果解析失敗，跳過這個字段
+                        }
+                    }
+                }
+
+                // 如果有其他字段，將它們序列化為 JSON 字符串並添加到文本中
+                if (otherFields.Count > 0)
+                {
+                    var otherFieldsJson = JsonSerializer.Serialize(otherFields, new JsonSerializerOptions
+                    {
+                        WriteIndented = false
+                    });
+                    textParts.Add($"\n\n用戶回覆的字段數據（JSON 格式）:\n{otherFieldsJson}");
+                    _logger.LogInformation($"✅ 已將 {otherFields.Count} 個回覆字段添加到文本內容中: {string.Join(", ", otherFields.Keys)}");
+                }
+
                 // 如果沒有找到文本，但有圖片，添加一個默認提示
                 if (textParts.Count == 0 && contentParts.Any(p => p.ContainsKey("type") && p["type"]?.ToString() == "image_url"))
                 {
@@ -840,8 +1020,59 @@ namespace PurpleRice.Services.ApiProviders
                 var parts = new List<Dictionary<string, object>>();
                 bool hasImage = false;
 
-                // 檢查是否有 media 對象包含 base64 圖片
-                if (root.TryGetProperty("media", out var mediaElement) && mediaElement.ValueKind == JsonValueKind.Object)
+                // ✅ 優先檢查是否有 mediaArray（多張圖片）
+                if (root.TryGetProperty("mediaArray", out var mediaArrayElement) && mediaArrayElement.ValueKind == JsonValueKind.Array)
+                {
+                    var imageCount = 0;
+                    foreach (var mediaItem in mediaArrayElement.EnumerateArray())
+                    {
+                        if (mediaItem.ValueKind == JsonValueKind.Object)
+                        {
+                            if (mediaItem.TryGetProperty("base64", out var base64Element) && 
+                                base64Element.ValueKind == JsonValueKind.String)
+                            {
+                                var base64 = base64Element.GetString();
+                                var mimeType = "image/jpeg"; // 默認值
+                                
+                                if (mediaItem.TryGetProperty("mimeType", out var mimeTypeElement) && 
+                                    mimeTypeElement.ValueKind == JsonValueKind.String)
+                                {
+                                    mimeType = mimeTypeElement.GetString() ?? mimeType;
+                                }
+
+                                if (!string.IsNullOrWhiteSpace(base64))
+                                {
+                                    // 驗證 base64 格式
+                                    var base64Preview = base64.Length > 50 ? base64.Substring(0, 50) + "..." : base64;
+                                    _logger.LogInformation($"🔍 Gemini: 檢測到第 {imageCount + 1} 張圖片，MIME 類型: {mimeType}, Base64 長度: {base64.Length}, 預覽: {base64Preview}");
+                                    
+                                    // 檢查 base64 是否有效
+                                    var isValidBase64 = System.Text.RegularExpressions.Regex.IsMatch(base64, @"^[A-Za-z0-9+/=]+$");
+                                    if (!isValidBase64)
+                                    {
+                                        _logger.LogWarning($"⚠️ Gemini: Base64 格式可能無效，包含非 base64 字符");
+                                    }
+                                    
+                                    // Gemini API 格式：inline_data
+                                    parts.Add(new Dictionary<string, object>
+                                    {
+                                        ["inline_data"] = new Dictionary<string, object>
+                                        {
+                                            ["mime_type"] = mimeType,
+                                            ["data"] = base64
+                                        }
+                                    });
+                                    hasImage = true;
+                                    imageCount++;
+                                    _logger.LogInformation($"✅ Gemini: 已添加第 {imageCount} 張圖片到多模態內容");
+                                }
+                            }
+                        }
+                    }
+                    _logger.LogInformation($"📸 Gemini: 共添加 {imageCount} 張圖片到多模態內容");
+                }
+                // 檢查是否有 media 對象包含 base64 圖片（單張圖片，向後兼容）
+                else if (root.TryGetProperty("media", out var mediaElement) && mediaElement.ValueKind == JsonValueKind.Object)
                 {
                     if (mediaElement.TryGetProperty("base64", out var base64Element) && 
                         base64Element.ValueKind == JsonValueKind.String)
@@ -916,6 +1147,49 @@ namespace PurpleRice.Services.ApiProviders
                     }
                 }
 
+                // ✅ 收集所有其他字段（如 ProjectCode 等回覆字段），將它們序列化為 JSON 添加到文本中
+                var otherFields = new Dictionary<string, object>();
+                foreach (var property in root.EnumerateObject())
+                {
+                    var fieldName = property.Name;
+                    // 跳過已處理的字段和圖片字段
+                    if (fieldName != "prompt" && 
+                        fieldName != "text" && 
+                        fieldName != "caption" && 
+                        fieldName != "media" && 
+                        fieldName != "mediaArray" &&
+                        fieldName != "document" &&
+                        fieldName != "documentText" &&
+                        fieldName != "messageType" &&
+                        fieldName != "node")
+                    {
+                        try
+                        {
+                            // 將字段值轉換為對象
+                            var fieldValue = JsonSerializer.Deserialize<object>(property.Value.GetRawText());
+                            if (fieldValue != null)
+                            {
+                                otherFields[fieldName] = fieldValue;
+                            }
+                        }
+                        catch
+                        {
+                            // 如果解析失敗，跳過這個字段
+                        }
+                    }
+                }
+
+                // 如果有其他字段，將它們序列化為 JSON 字符串並添加到文本中
+                if (otherFields.Count > 0)
+                {
+                    var otherFieldsJson = JsonSerializer.Serialize(otherFields, new JsonSerializerOptions
+                    {
+                        WriteIndented = false
+                    });
+                    textParts.Add($"\n\n用戶回覆的字段數據（JSON 格式）:\n{otherFieldsJson}");
+                    _logger.LogInformation($"✅ Gemini: 已將 {otherFields.Count} 個回覆字段添加到文本內容中: {string.Join(", ", otherFields.Keys)}");
+                }
+
                 // 如果沒有找到文本，但有圖片，添加一個默認提示
                 if (textParts.Count == 0 && hasImage)
                 {
@@ -951,6 +1225,84 @@ namespace PurpleRice.Services.ApiProviders
             {
                 _logger.LogWarning($"解析 Gemini 多模態內容時發生錯誤: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// 從 JSON 中清理 base64 數據，替換為占位符以便記錄完整結構
+        /// </summary>
+        private object CleanBase64FromJson(JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    var obj = new Dictionary<string, object>();
+                    foreach (var prop in element.EnumerateObject())
+                    {
+                        if (prop.Name == "url" && prop.Value.ValueKind == JsonValueKind.String)
+                        {
+                            var url = prop.Value.GetString();
+                            if (!string.IsNullOrEmpty(url) && url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // 替換 base64 圖片為占位符
+                                obj[prop.Name] = "[BASE64_IMAGE_DATA_REMOVED]";
+                                continue;
+                            }
+                        }
+                        else if (prop.Name == "data" && prop.Value.ValueKind == JsonValueKind.String)
+                        {
+                            var data = prop.Value.GetString();
+                            if (!string.IsNullOrEmpty(data) && data.Length > 100) // 可能是 base64
+                            {
+                                // 替換 base64 數據為占位符
+                                obj[prop.Name] = $"[BASE64_DATA_REMOVED_LENGTH:{data.Length}]";
+                                continue;
+                            }
+                        }
+                        else if (prop.Name == "base64" && prop.Value.ValueKind == JsonValueKind.String)
+                        {
+                            var base64 = prop.Value.GetString();
+                            obj[prop.Name] = $"[BASE64_DATA_REMOVED_LENGTH:{base64?.Length ?? 0}]";
+                            continue;
+                        }
+                        
+                        obj[prop.Name] = CleanBase64FromJson(prop.Value);
+                    }
+                    return obj;
+                    
+                case JsonValueKind.Array:
+                    var arr = new List<object>();
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        arr.Add(CleanBase64FromJson(item));
+                    }
+                    return arr;
+                    
+                case JsonValueKind.String:
+                    var str = element.GetString();
+                    // 如果是很長的字符串且看起來像 base64，替換為占位符
+                    if (!string.IsNullOrEmpty(str) && str.Length > 1000 && 
+                        (str.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) || 
+                         System.Text.RegularExpressions.Regex.IsMatch(str, @"^[A-Za-z0-9+/=]+$")))
+                    {
+                        return $"[BASE64_STRING_REMOVED_LENGTH:{str.Length}]";
+                    }
+                    return str;
+                    
+                case JsonValueKind.Number:
+                    return element.GetDecimal();
+                    
+                case JsonValueKind.True:
+                    return true;
+                    
+                case JsonValueKind.False:
+                    return false;
+                    
+                case JsonValueKind.Null:
+                    return null;
+                    
+                default:
+                    return element.GetRawText();
             }
         }
     }

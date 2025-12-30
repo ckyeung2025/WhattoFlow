@@ -15,6 +15,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
     
     const formValues = {
       id: component.id,
+      name: component.name || component.id || '', // 添加 name 字段
       title: component.title || '',
       type: component.type,
       actionType: component.action?.type || 'navigate',
@@ -74,6 +75,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
   const handleFinish = (values) => {
     const updates = {
       id: values.id,
+      name: values.name || values.id || component.name || component.id, // 保存 name 字段
       title: values.title,
       type: values.type || component.type,
       data: {},
@@ -724,6 +726,23 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
       <Form.Item label="組件 ID" name="id">
         <Input disabled />
       </Form.Item>
+      
+      {/* 對於需要 name 字段的組件，顯示 name 編輯框 */}
+      {['text_input', 'select', 'checkbox', 'radio', 'chips_selector', 
+        'date_picker', 'calendar_picker', 'time_picker', 
+        'photo_picker', 'document_picker'].includes(component.type) && (
+        <Form.Item 
+          label="字段名稱 (Name)" 
+          name="name"
+          tooltip="此名稱將用於 Meta Flow JSON 和 webhook 回覆數據。建議使用有意義的名稱，如 'customer_name', 'order_date' 等。"
+          rules={[
+            { required: true, message: '請輸入字段名稱' },
+            { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '名稱只能包含字母、數字和下劃線，且必須以字母開頭' }
+          ]}
+        >
+          <Input placeholder="例如: customer_name" />
+        </Form.Item>
+      )}
       
       <Form.Item label="標題" name="title" rules={[{ required: true, message: '請輸入標題' }]}>
         <Input />

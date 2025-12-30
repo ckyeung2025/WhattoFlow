@@ -1948,6 +1948,16 @@ const zhSC = {
       notificationMessageHelp: '当表单发送后，此消息会自动发送给用户',
       defaultNotificationMessage: '请填写并回复此表单',
       promptMessagePlaceholder: '输入提示消息，提醒用户填写表单前需要了解的信息',
+      
+      // MetaFlows 專用配置
+      flowHeader: '標題',
+      flowHeaderPlaceholder: '請輸入 Flow 消息的標題（例如：請填寫表單）',
+      flowBody: '內容',
+      flowBodyPlaceholder: '請輸入 Flow 消息的主體內容（例如：請點擊下方按鈕開始填寫表單）',
+      flowCta: '按鈕文字',
+      flowCtaPlaceholder: '請輸入按鈕文字（例如：填寫表單）',
+      metaFlowsManualFillOnly: 'Meta Flows 表單僅支持手動填表模式',
+      
       aiProvider: 'AI 提供商',
       aiProviderPlaceholder: '选择用于解析用户自然语言输入的 AI 提供商',
       aiProviderRequired: '请为 AI 自动填写模式选择 AI 提供商',
@@ -3498,6 +3508,7 @@ const zhSC = {
     formInstance: '表单实例',
     formBasicInfo: '表单基本信息',
     formContent: '表单内容',
+    formReplyContent: '表单回复内容',
     formName: '表单名称',
     instanceName: '实例名称',
     fillType: '填充类型',

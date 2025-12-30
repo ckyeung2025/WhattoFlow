@@ -2158,7 +2158,7 @@ namespace PurpleRice.Controllers
         {
             try
             {
-            _loggingService.LogInformation($"開始同步 Google Docs 數據，數據集ID: {dataSet.Id}");
+                _loggingService.LogInformation($"開始同步 Google Docs 數據，數據集ID: {dataSet.Id}");
                 
                 if (string.IsNullOrEmpty(dataSource.GoogleDocsUrl))
                 {
@@ -2176,99 +2176,244 @@ namespace PurpleRice.Controllers
 
                 _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
 
-                // 測試連接
-                var connectionTest = await _googleSheetsService.TestConnectionAsync(dataSet.CompanyId, spreadsheetId);
-                if (!connectionTest)
-                {
-                    _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
-                    return new SyncResult { Success = false, ErrorMessage = "無法連接到 Google Sheets，請檢查 URL 是否正確且表格為公開訪問" };
-                }
+                // 檢測文件類型
+                _loggingService.LogInformation($"開始檢測文件類型，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+                var fileType = await _googleSheetsService.DetectFileTypeAsync(dataSet.CompanyId, spreadsheetId);
+                _loggingService.LogInformation($"檢測到文件類型: {fileType}, 數據集ID: {dataSet.Id}");
 
                 // 獲取工作表名稱
                 var sheetName = dataSource.GoogleDocsSheetName ?? "Sheet1";
                 _loggingService.LogInformation($"使用工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
 
-                // 讀取數據
-                var sheetData = await _googleSheetsService.ReadSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName);
-                if (!sheetData.Any())
-                {
-                    _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {sheetName}, 數據集ID: {dataSet.Id}");
-                    return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有數據" };
-                }
+                List<string> headers;
+                List<Dictionary<string, object>> data;
 
-                // 尋找標題行（跳過空行）
-                var headers = new List<string>();
-                var headerRowIndex = -1;
-                
-                for (int i = 0; i < sheetData.Count; i++)
+                if (fileType == "excel")
                 {
-                    var row = sheetData[i];
-                    if (row.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+                    // 處理 Excel 文件（上傳到 Google Drive 的 Excel 文件）
+                    _loggingService.LogInformation($"開始處理 Excel 文件，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+
+                    var apiProviderService = _serviceProvider.GetRequiredService<Services.ApiProviders.IApiProviderService>();
+                    var runtime = await apiProviderService.GetRuntimeProviderAsync(dataSet.CompanyId, "google-docs");
+                    if (runtime == null || string.IsNullOrWhiteSpace(runtime.ApiKey))
                     {
-                        headers = row.ToList();
-                        headerRowIndex = i;
-                        break;
-                    }
-                }
-                
-                if (!headers.Any())
-                {
-                    _loggingService.LogWarning($"Google Sheets 沒有找到有效的標題行，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
-                    return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有找到有效的標題行" };
-                }
-
-                _loggingService.LogInformation($"Google Sheets 標題行（第 {headerRowIndex + 1} 行）: {string.Join(", ", headers)}, 數據集ID: {dataSet.Id}");
-
-                // 測試標準化邏輯
-                foreach (var header in headers)
-                {
-                    var normalized = ColumnNameNormalizer.Normalize(header);
-                    _loggingService.LogInformation($"標準化測試: '{header}' -> '{normalized}', 數據集ID: {dataSet.Id}");
-                }
-
-                // 檢查並創建欄位定義
-                await EnsureGoogleSheetsColumnsExist(dataSet, headers);
-
-                // 處理數據行（從標題行之後開始）
-                var dataRows = sheetData.Skip(headerRowIndex + 1).ToList();
-                _loggingService.LogInformation($"準備處理 {dataRows.Count} 行數據，數據集ID: {dataSet.Id}");
-                
-                // 將 Google Sheets 數據轉換為統一的 Dictionary 格式
-                var googleSheetsData = new List<Dictionary<string, object>>();
-                
-                foreach (var (row, rowIndex) in dataRows.Select((row, index) => (row, index)))
-                {
-                    // 檢查是否為空行
-                    if (row.All(cell => string.IsNullOrWhiteSpace(cell)))
-                    {
-                        continue;
+                        _loggingService.LogWarning($"無法獲取 API Key，無法下載 Excel 文件，數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "無法獲取 Google API 配置，請檢查 API Provider 設定" };
                     }
 
-                    var rowData = new Dictionary<string, object>();
+                    // 從 Google Drive 下載 Excel 文件
+                    var downloadUrl = $"https://drive.google.com/uc?id={spreadsheetId}&export=download";
+                    _loggingService.LogInformation($"開始從 Google Drive 下載 Excel 文件，URL: {downloadUrl}, 數據集ID: {dataSet.Id}");
+
+                    using var httpClient = new System.Net.Http.HttpClient();
+                    httpClient.Timeout = TimeSpan.FromSeconds(60);
                     
-                    for (int i = 0; i < headers.Count; i++)
+                    var response = await httpClient.GetAsync(downloadUrl);
+                    if (!response.IsSuccessStatusCode)
                     {
-                        var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
-                        var value = i < row.Count ? row[i] : string.Empty;
-                        rowData[normalizedColumnName] = value ?? string.Empty;
+                        _loggingService.LogWarning($"Google Drive 下載失敗，狀態碼: {response.StatusCode}, 數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "無法從 Google Drive 下載 Excel 文件，請確保文件是公開的或有適當的權限" };
+                    }
+
+                    var fileBytes = await response.Content.ReadAsByteArrayAsync();
+                    _loggingService.LogInformation($"Excel 文件下載成功，大小: {fileBytes.Length} bytes, 數據集ID: {dataSet.Id}");
+
+                    // 解析 Excel 文件
+                    using var stream = new System.IO.MemoryStream(fileBytes);
+                    using var spreadsheetDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(stream, false);
+                    
+                    var workbookPart = spreadsheetDocument.WorkbookPart;
+                    if (workbookPart == null)
+                    {
+                        _loggingService.LogWarning($"無法讀取 Excel 工作簿，數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "無法讀取 Excel 工作簿" };
+                    }
+
+                    // 查找指定的工作表
+                    DocumentFormat.OpenXml.Packaging.WorksheetPart worksheetPart = null;
+                    if (!string.IsNullOrEmpty(sheetName) && workbookPart.Workbook?.Sheets != null)
+                    {
+                        var sheet = workbookPart.Workbook.Sheets.Elements<DocumentFormat.OpenXml.Spreadsheet.Sheet>()
+                            .FirstOrDefault(s => s.Name == sheetName);
+                        
+                        if (sheet != null)
+                        {
+                            worksheetPart = (DocumentFormat.OpenXml.Packaging.WorksheetPart)workbookPart.GetPartById(sheet.Id);
+                        }
                     }
                     
-                    googleSheetsData.Add(rowData);
+                    if (worksheetPart == null)
+                    {
+                        worksheetPart = workbookPart.WorksheetParts.FirstOrDefault();
+                    }
+
+                    if (worksheetPart == null)
+                    {
+                        _loggingService.LogWarning($"無法找到工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = $"無法找到工作表: {sheetName}" };
+                    }
+
+                    var worksheet = worksheetPart.Worksheet;
+                    var sheetData = worksheet.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.SheetData>();
+                    
+                    if (sheetData == null)
+                    {
+                        _loggingService.LogWarning($"Excel 工作表為空，數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "Excel 工作表為空或無數據" };
+                    }
+
+                    var rows = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().ToList();
+                    if (rows.Count == 0)
+                    {
+                        _loggingService.LogWarning($"Excel 工作表沒有數據行，數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "Excel 工作表沒有數據" };
+                    }
+
+                    // 讀取標題行（第一行）
+                    var headerRow = rows.First();
+                    var headerCells = headerRow.Elements<DocumentFormat.OpenXml.Spreadsheet.Cell>().ToList();
+                    headers = GetCellValues(headerRow, workbookPart.SharedStringTablePart).ToList();
+                    
+                    if (!headers.Any(h => !string.IsNullOrWhiteSpace(h)))
+                    {
+                        _loggingService.LogWarning($"Excel 沒有找到有效的標題行，數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "Excel 沒有找到有效的標題行" };
+                    }
+
+                    _loggingService.LogInformation($"Excel 標題行: {string.Join(", ", headers)}, 數據集ID: {dataSet.Id}");
+
+                    // 檢查並創建欄位定義
+                    await EnsureColumnsExist(dataSet, headers, headerCells, workbookPart);
+
+                    // 讀取數據行（從第二行開始）
+                    var dataRows = rows.Skip(1).ToList();
+                    
+                    // 將 Excel 數據轉換為統一的 Dictionary 格式
+                    data = new List<Dictionary<string, object>>();
+                    
+                    foreach (var (row, rowIndex) in dataRows.Select((row, index) => (row, index)))
+                    {
+                        var cellValues = GetCellValues(row, workbookPart.SharedStringTablePart);
+                        
+                        // 確保有足夠的單元格值
+                        while (cellValues.Count < headers.Count)
+                        {
+                            cellValues.Add(string.Empty);
+                        }
+
+                        // 檢查是否為空行
+                        if (cellValues.All(cell => string.IsNullOrWhiteSpace(cell)))
+                        {
+                            continue;
+                        }
+
+                        var rowData = new Dictionary<string, object>();
+                        
+                        for (int i = 0; i < headers.Count; i++)
+                        {
+                            var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
+                            rowData[normalizedColumnName] = cellValues[i] ?? string.Empty;
+                        }
+                        
+                        data.Add(rowData);
+                    }
+                }
+                else
+                {
+                    // 處理原生 Google Sheets
+                    _loggingService.LogInformation($"開始處理原生 Google Sheets，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+
+                    // 測試連接
+                    var connectionTest = await _googleSheetsService.TestConnectionAsync(dataSet.CompanyId, spreadsheetId);
+                    if (!connectionTest)
+                    {
+                        _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "無法連接到 Google Sheets，請檢查 URL 是否正確且表格為公開訪問" };
+                    }
+
+                    // 讀取數據
+                    var sheetData = await _googleSheetsService.ReadSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName);
+                    if (!sheetData.Any())
+                    {
+                        _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有數據" };
+                    }
+
+                    // 尋找標題行（跳過空行）
+                    headers = new List<string>();
+                    var headerRowIndex = -1;
+                    
+                    for (int i = 0; i < sheetData.Count; i++)
+                    {
+                        var row = sheetData[i];
+                        if (row.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+                        {
+                            headers = row.ToList();
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    if (!headers.Any(h => !string.IsNullOrWhiteSpace(h)))
+                    {
+                        _loggingService.LogWarning($"Google Sheets 沒有找到有效的標題行，表格ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "Google Sheets 沒有找到有效的標題行" };
+                    }
+
+                    _loggingService.LogInformation($"Google Sheets 標題行（第 {headerRowIndex + 1} 行）: {string.Join(", ", headers)}, 數據集ID: {dataSet.Id}");
+
+                    // 測試標準化邏輯
+                    foreach (var header in headers)
+                    {
+                        var normalized = ColumnNameNormalizer.Normalize(header);
+                        _loggingService.LogInformation($"標準化測試: '{header}' -> '{normalized}', 數據集ID: {dataSet.Id}");
+                    }
+
+                    // 檢查並創建欄位定義
+                    await EnsureGoogleSheetsColumnsExist(dataSet, headers);
+
+                    // 處理數據行（從標題行之後開始）
+                    var dataRows = sheetData.Skip(headerRowIndex + 1).ToList();
+                    _loggingService.LogInformation($"準備處理 {dataRows.Count} 行數據，數據集ID: {dataSet.Id}");
+                    
+                    // 將 Google Sheets 數據轉換為統一的 Dictionary 格式
+                    data = new List<Dictionary<string, object>>();
+                    
+                    foreach (var (row, rowIndex) in dataRows.Select((row, index) => (row, index)))
+                    {
+                        // 檢查是否為空行
+                        if (row.All(cell => string.IsNullOrWhiteSpace(cell)))
+                        {
+                            continue;
+                        }
+
+                        var rowData = new Dictionary<string, object>();
+                        
+                        for (int i = 0; i < headers.Count; i++)
+                        {
+                            var normalizedColumnName = ColumnNameNormalizer.Normalize(headers[i]);
+                            var value = i < row.Count ? row[i] : string.Empty;
+                            rowData[normalizedColumnName] = value ?? string.Empty;
+                        }
+                        
+                        data.Add(rowData);
+                    }
                 }
 
                 // 使用通用的增量同步方法
-                var processedRecords = await ProcessIncrementalSync(dataSet, googleSheetsData, "Google Sheets");
+                var sourceType = fileType == "excel" ? "Excel (Google Drive)" : "Google Sheets";
+                var processedRecords = await ProcessIncrementalSync(dataSet, data, sourceType);
                 
                 // 返回實際的數據源記錄數，而不是處理的記錄數
-                var actualRecordCount = googleSheetsData.Count;
+                var actualRecordCount = data.Count;
                 
-                _loggingService.LogInformation($"Google Sheets 數據同步完成，數據源記錄數: {actualRecordCount}，處理記錄數: {processedRecords}，數據集ID: {dataSet.Id}");
+                _loggingService.LogInformation($"{sourceType} 數據同步完成，數據源記錄數: {actualRecordCount}，處理記錄數: {processedRecords}，數據集ID: {dataSet.Id}");
                 return new SyncResult { Success = true, TotalRecords = actualRecordCount };
             }
             catch (Exception ex)
             {
-                _loggingService.LogError("Google Sheets 數據同步失敗", ex);
-                return new SyncResult { Success = false, ErrorMessage = $"Google Sheets 數據同步失敗: {ex.Message}" };
+                _loggingService.LogError("Google Docs 數據同步失敗", ex);
+                return new SyncResult { Success = false, ErrorMessage = $"Google Docs 數據同步失敗: {ex.Message}" };
             }
         }
 
@@ -2349,71 +2494,201 @@ namespace PurpleRice.Controllers
         {
             try
             {
-                _loggingService.LogInformation($"開始預覽 Google Sheets 欄位定義，URL: {url}, 工作表: {sheetName}");
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始預覽 Google Sheets 欄位定義，URL: {url}, 工作表: {sheetName ?? "null"}");
 
                 var companyId = GetCurrentCompanyId();
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 當前公司ID: {companyId}");
+                
                 if (companyId == Guid.Empty)
                 {
+                    _loggingService.LogWarning("[PreviewGoogleSheetsColumns] 無法識別公司資訊，CompanyId 為空");
                     return Unauthorized(new { success = false, message = "無法識別公司資訊" });
                 }
 
                 if (string.IsNullOrEmpty(url))
                 {
+                    _loggingService.LogWarning("[PreviewGoogleSheetsColumns] URL 為空");
                     return BadRequest(new { success = false, message = "請提供 Google Sheets URL" });
                 }
 
                 // 從 URL 中提取表格 ID
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始從 URL 提取表格 ID，URL: {url}");
                 var spreadsheetId = GoogleSheetsService.ExtractSpreadsheetId(url);
                 if (string.IsNullOrEmpty(spreadsheetId))
                 {
-                    _loggingService.LogWarning($"無法從 URL 中提取表格 ID: {url}");
+                    _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] 無法從 URL 中提取表格 ID: {url}");
                     return BadRequest(new { success = false, message = "無效的 Google Sheets URL" });
                 }
 
-                _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}");
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 成功提取表格 ID: {spreadsheetId}");
 
-                // 測試連接
-                var connectionTest = await _googleSheetsService.TestConnectionAsync(companyId, spreadsheetId);
-                if (!connectionTest)
+                // 檢測文件類型
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始檢測文件類型，表格ID: {spreadsheetId}");
+                var fileType = await _googleSheetsService.DetectFileTypeAsync(companyId, spreadsheetId);
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 檢測到文件類型: {fileType}");
+
+                List<string> headers;
+
+                if (fileType == "excel")
                 {
-                    _loggingService.LogWarning($"無法連接到 Google Sheets，表格ID: {spreadsheetId}");
-                    return BadRequest(new { success = false, message = "無法連接到 Google Sheets，請檢查 URL 是否正確且表格為公開訪問" });
-                }
+                    // 處理 Excel 文件（上傳到 Google Drive 的 Excel 文件）
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始處理 Excel 文件，表格ID: {spreadsheetId}");
 
-                // 獲取工作表名稱
-                var targetSheetName = sheetName ?? "Sheet1";
-                _loggingService.LogInformation($"使用工作表名稱: {targetSheetName}");
-
-                // 讀取數據
-                var sheetData = await _googleSheetsService.ReadSheetDataAsync(companyId, spreadsheetId, targetSheetName);
-                if (!sheetData.Any())
-                {
-                    _loggingService.LogWarning($"Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {targetSheetName}");
-                    return BadRequest(new { success = false, message = "Google Sheets 沒有數據" });
-                }
-
-                // 尋找標題行（跳過空行）
-                var headers = new List<string>();
-                var headerRowIndex = -1;
-                
-                for (int i = 0; i < sheetData.Count; i++)
-                {
-                    var row = sheetData[i];
-                    if (row.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+                    var apiProviderService = _serviceProvider.GetRequiredService<Services.ApiProviders.IApiProviderService>();
+                    var runtime = await apiProviderService.GetRuntimeProviderAsync(companyId, "google-docs");
+                    if (runtime == null || string.IsNullOrWhiteSpace(runtime.ApiKey))
                     {
-                        headers = row.ToList();
-                        headerRowIndex = i;
-                        break;
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] 無法獲取 API Key，無法下載 Excel 文件");
+                        return BadRequest(new { success = false, message = "無法獲取 Google API 配置，請檢查 API Provider 設定" });
                     }
-                }
-                
-                if (!headers.Any())
-                {
-                    _loggingService.LogWarning($"Google Sheets 沒有找到有效的標題行，表格ID: {spreadsheetId}");
-                    return BadRequest(new { success = false, message = "Google Sheets 沒有找到有效的標題行" });
-                }
 
-                _loggingService.LogInformation($"Google Sheets 標題行（第 {headerRowIndex + 1} 行）: {string.Join(", ", headers)}");
+                    // 從 Google Drive 下載 Excel 文件
+                    var downloadUrl = $"https://drive.google.com/uc?id={spreadsheetId}&export=download";
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始從 Google Drive 下載 Excel 文件，URL: {downloadUrl}");
+
+                    using var httpClient = new System.Net.Http.HttpClient();
+                    httpClient.Timeout = TimeSpan.FromSeconds(60);
+                    
+                    var response = await httpClient.GetAsync(downloadUrl);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] Google Drive 下載失敗，狀態碼: {response.StatusCode}");
+                        return BadRequest(new { success = false, message = "無法從 Google Drive 下載 Excel 文件，請確保文件是公開的或有適當的權限" });
+                    }
+
+                    var fileBytes = await response.Content.ReadAsByteArrayAsync();
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] Excel 文件下載成功，大小: {fileBytes.Length} bytes");
+
+                    // 解析 Excel 文件
+                    var targetSheetName = sheetName ?? "Sheet1";
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始解析 Excel 文件，工作表: {targetSheetName}");
+
+                    using var stream = new System.IO.MemoryStream(fileBytes);
+                    using var spreadsheetDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(stream, false);
+                    
+                    var workbookPart = spreadsheetDocument.WorkbookPart;
+                    if (workbookPart == null)
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] 無法讀取 Excel 工作簿");
+                        return BadRequest(new { success = false, message = "無法讀取 Excel 工作簿" });
+                    }
+
+                    // 查找指定的工作表
+                    DocumentFormat.OpenXml.Packaging.WorksheetPart worksheetPart = null;
+                    if (!string.IsNullOrEmpty(targetSheetName) && workbookPart.Workbook?.Sheets != null)
+                    {
+                        var sheet = workbookPart.Workbook.Sheets.Elements<DocumentFormat.OpenXml.Spreadsheet.Sheet>()
+                            .FirstOrDefault(s => s.Name == targetSheetName);
+                        
+                        if (sheet != null)
+                        {
+                            worksheetPart = (DocumentFormat.OpenXml.Packaging.WorksheetPart)workbookPart.GetPartById(sheet.Id);
+                        }
+                    }
+                    
+                    if (worksheetPart == null)
+                    {
+                        worksheetPart = workbookPart.WorksheetParts.FirstOrDefault();
+                    }
+
+                    if (worksheetPart == null)
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] 無法找到工作表: {targetSheetName}");
+                        return BadRequest(new { success = false, message = $"無法找到工作表: {targetSheetName}" });
+                    }
+
+                    var worksheet = worksheetPart.Worksheet;
+                    var sheetData = worksheet.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.SheetData>();
+                    
+                    if (sheetData == null)
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] Excel 工作表為空");
+                        return BadRequest(new { success = false, message = "Excel 工作表為空或無數據" });
+                    }
+
+                    var rows = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().ToList();
+                    if (rows.Count == 0)
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] Excel 工作表沒有數據行");
+                        return BadRequest(new { success = false, message = "Excel 工作表沒有數據" });
+                    }
+
+                    // 讀取標題行（第一行）
+                    headers = new List<string>();
+                    var headerRow = rows.FirstOrDefault();
+                    if (headerRow != null)
+                    {
+                        var sharedStringTable = workbookPart.SharedStringTablePart;
+                        var cells = headerRow.Elements<DocumentFormat.OpenXml.Spreadsheet.Cell>().ToList();
+                        foreach (var cell in cells)
+                        {
+                            var cellValue = GetCellValue(cell, sharedStringTable);
+                            headers.Add(cellValue ?? string.Empty);
+                        }
+                    }
+
+                    if (!headers.Any(h => !string.IsNullOrWhiteSpace(h)))
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] Excel 沒有找到有效的標題行");
+                        return BadRequest(new { success = false, message = "Excel 沒有找到有效的標題行" });
+                    }
+
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] Excel 標題行: {string.Join(", ", headers)}");
+                }
+                else
+                {
+                    // 處理原生 Google Sheets
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始處理原生 Google Sheets，表格ID: {spreadsheetId}");
+
+                    // 測試連接
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始測試 Google Sheets 連接，公司ID: {companyId}, 表格ID: {spreadsheetId}");
+                    var connectionTest = await _googleSheetsService.TestConnectionAsync(companyId, spreadsheetId);
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 連接測試結果: {connectionTest}");
+                    
+                    if (!connectionTest)
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] 無法連接到 Google Sheets，表格ID: {spreadsheetId}，公司ID: {companyId}。請檢查後端日誌以獲取詳細錯誤信息");
+                        return BadRequest(new { success = false, message = "無法連接到 Google Sheets，請檢查 URL 是否正確且表格為公開訪問。請查看後端日誌以獲取詳細錯誤信息" });
+                    }
+
+                    // 獲取工作表名稱
+                    var targetSheetName = sheetName ?? "Sheet1";
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 使用工作表名稱: {targetSheetName}");
+
+                    // 讀取數據
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 開始讀取 Google Sheets 數據，表格ID: {spreadsheetId}, 工作表: {targetSheetName}");
+                    var sheetData = await _googleSheetsService.ReadSheetDataAsync(companyId, spreadsheetId, targetSheetName);
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 數據讀取完成，共 {sheetData?.Count ?? 0} 行");
+                    
+                    if (!sheetData.Any())
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] Google Sheets 沒有數據，表格ID: {spreadsheetId}, 工作表: {targetSheetName}");
+                        return BadRequest(new { success = false, message = "Google Sheets 沒有數據" });
+                    }
+
+                    // 尋找標題行（跳過空行）
+                    headers = new List<string>();
+                    var headerRowIndex = -1;
+                    
+                    for (int i = 0; i < sheetData.Count; i++)
+                    {
+                        var row = sheetData[i];
+                        if (row.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+                        {
+                            headers = row.ToList();
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    if (!headers.Any(h => !string.IsNullOrWhiteSpace(h)))
+                    {
+                        _loggingService.LogWarning($"[PreviewGoogleSheetsColumns] Google Sheets 沒有找到有效的標題行，表格ID: {spreadsheetId}");
+                        return BadRequest(new { success = false, message = "Google Sheets 沒有找到有效的標題行" });
+                    }
+
+                    _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] Google Sheets 標題行（第 {headerRowIndex + 1} 行）: {string.Join(", ", headers)}");
+                }
 
                 // 生成欄位定義
                 var columns = new List<object>();
@@ -2439,7 +2714,7 @@ namespace PurpleRice.Controllers
                     });
                 }
 
-                _loggingService.LogInformation($"成功預覽 Google Sheets 欄位定義，共 {columns.Count} 個欄位");
+                _loggingService.LogInformation($"[PreviewGoogleSheetsColumns] 成功預覽 Google Sheets 欄位定義，共 {columns.Count} 個欄位");
 
                 return Ok(new
                 {
@@ -2449,7 +2724,7 @@ namespace PurpleRice.Controllers
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"預覽 Google Sheets 欄位定義失敗: {ex.Message}", ex);
+                _loggingService.LogError($"[PreviewGoogleSheetsColumns] 預覽 Google Sheets 欄位定義失敗，錯誤類型: {ex.GetType().Name}，錯誤訊息: {ex.Message}，內部異常: {ex.InnerException?.Message ?? "null"}，堆棧追蹤: {ex.StackTrace}", ex);
                 return StatusCode(500, new { success = false, message = "預覽欄位定義失敗: " + ex.Message });
             }
         }

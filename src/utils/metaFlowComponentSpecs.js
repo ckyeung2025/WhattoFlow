@@ -121,7 +121,7 @@ export const COMPONENT_SPECS = {
     actionType: 'on-select-action', // 使用 on-select-action 而不是 on-click-action
     allowedActions: ['update_data', 'data_exchange'], // 根據錯誤信息，應該使用 update_data
     requiresTerminal: false,
-    requiresDataModel: true, // 需要 data 模型來定義 data-source 引用的數據
+    requiresDataModel: false, // 現在使用靜態數組，不再需要 data 模型
     dataModelTemplate: (dataSourceName) => ({
       type: 'array',
       items: {
@@ -146,7 +146,7 @@ export const COMPONENT_SPECS = {
     actionType: 'on-select-action', // 使用 on-select-action 而不是 on-click-action
     allowedActions: ['update_data', 'data_exchange'], // 根據錯誤信息，應該使用 update_data 或 data_exchange
     requiresTerminal: false,
-    requiresDataModel: true, // 需要 data 模型來定義 data-source 引用的數據
+    requiresDataModel: false, // 現在使用靜態數組，不再需要 data 模型
     dataModelTemplate: (dataSourceName) => ({
       type: 'array',
       items: {
@@ -172,7 +172,7 @@ export const COMPONENT_SPECS = {
     actionType: 'on-select-action', // 使用 on-select-action 而不是 on-click-action
     allowedActions: ['update_data', 'data_exchange'], // 根據錯誤信息，應該使用 update_data 或 data_exchange
     requiresTerminal: false,
-    requiresDataModel: true, // 需要 data 模型來定義 data-source 引用的數據
+    requiresDataModel: false, // 現在使用靜態數組，不再需要 data 模型
     dataModelTemplate: (dataSourceName) => ({
       type: 'array',
       items: {
@@ -343,13 +343,13 @@ export const COMPONENT_SPECS = {
   
   ChipsSelector: {
     type: 'ChipsSelector',
-    identifierType: 'id',
-    requiredFields: ['id', 'label', 'options'],
-    optionalFields: ['required', 'on-click-action'],
-    actionType: 'on-click-action',
-    allowedActions: ['data_exchange', 'navigate', 'update_data'],
+    identifierType: 'name', // 使用 name 而不是 id（與實際生成一致）
+    requiredFields: ['name', 'label', 'data-source'], // 使用 data-source（靜態數組）而不是 options
+    optionalFields: ['required', 'max-selected-items', 'description', 'on-select-action'],
+    actionType: 'on-select-action', // 使用 on-select-action 而不是 on-click-action
+    allowedActions: ['update_data', 'data_exchange', 'navigate'],
     requiresTerminal: false,
-    requiresDataModel: false
+    requiresDataModel: false // 使用靜態數組，不需要 data 模型
   }
 };
 
@@ -425,10 +425,38 @@ export const validateComponent = (component, spec) => {
   }
   
   // 驗證 data-source（對於 Dropdown 等組件）
+  // 支持兩種格式：
+  // 1. 靜態數組格式：[{ "id": "...", "title": "..." }]（推薦）
+  // 2. 動態引用格式：${data.field_name}（向後兼容）
   if (spec.requiresDataModel && component['data-source']) {
-    const dataSourceMatch = component['data-source'].match(/\$\{data\.(\w+)\}/);
-    if (!dataSourceMatch) {
-      errors.push(`data-source 格式無效，應為 \${data.field_name} 格式`);
+    const dataSource = component['data-source'];
+    
+    // 如果是數組格式（靜態數據）
+    if (Array.isArray(dataSource)) {
+      // 驗證數組中的每個元素
+      dataSource.forEach((item, index) => {
+        if (!item || typeof item !== 'object') {
+          errors.push(`data-source[${index}]: 必須是對象`);
+        } else {
+          if (!item.id || typeof item.id !== 'string') {
+            errors.push(`data-source[${index}]: 缺少 id 字段或 id 不是字符串`);
+          }
+          if (!item.title || typeof item.title !== 'string') {
+            errors.push(`data-source[${index}]: 缺少 title 字段或 title 不是字符串`);
+          }
+        }
+      });
+    } 
+    // 如果是字符串格式（動態引用，向後兼容）
+    else if (typeof dataSource === 'string') {
+      const dataSourceMatch = dataSource.match(/\$\{data\.(\w+)\}/);
+      if (!dataSourceMatch) {
+        errors.push(`data-source 格式無效，應為數組格式 [{ "id": "...", "title": "..." }] 或 \${data.field_name} 格式`);
+      }
+    } 
+    // 其他格式無效
+    else {
+      errors.push(`data-source 格式無效，應為數組格式 [{ "id": "...", "title": "..." }] 或字符串格式 \${data.field_name}`);
     }
   }
   

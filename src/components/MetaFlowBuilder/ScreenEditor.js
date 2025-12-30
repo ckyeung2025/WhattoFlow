@@ -48,7 +48,6 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
 
   // 添加組件
   const handleAddComponent = (componentType) => {
-    const newComponent = getDefaultComponent(componentType);
     const currentActions = localScreen.data?.actions || [];
     
     // 檢查 Image 組件數量限制（每個屏幕最多 3 張圖片）
@@ -59,6 +58,9 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
         return;
       }
     }
+    
+    // 傳入現有組件列表，以便生成唯一的 name
+    const newComponent = getDefaultComponent(componentType, null, currentActions);
     
     // 如果添加的是 RichText，需要移除 TextHeading 和 TextBody
     if (componentType === 'rich_text') {
