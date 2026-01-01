@@ -1790,36 +1790,131 @@ namespace PurpleRice.Services
                 await newDbContext.SaveChangesAsync();
                 loggingService.LogInformation($"已設置同步狀態為運行中，數據集ID: {scopedDataSet.Id}");
                 
-                // 直接調用具體的同步方法（同步執行）
-                SyncResult result;
-                var methodName = dataSource.SourceType.ToUpper() switch
-                {
-                    "SQL" => "SyncFromSql",
-                    "EXCEL" => "SyncFromExcel", 
-                    "GOOGLE_DOCS" => "SyncFromGoogleDocs",
-                    _ => null
-                };
+                // 獲取同步方向，優先使用 DataSet 中保存的設置，默認為 inbound
+                var syncDirection = scopedDataSet.SyncDirection ?? "inbound";
+                loggingService.LogInformation($"數據集 {scopedDataSet.Name} 同步方向: {syncDirection}");
                 
-                if (methodName == null)
+                SyncResult result = new SyncResult { Success = false, TotalRecords = 0 };
+                
+                // 根據同步方向執行不同的邏輯
+                if (syncDirection == "outbound" || syncDirection == "bidirectional")
                 {
-                    loggingService.LogWarning($"不支援的數據源類型，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
-                    return new SyncResult { Success = false, ErrorMessage = "不支援的數據源類型" };
+                    // 出站同步：將內部數據寫回外部數據源
+                    // 支持 GOOGLE_DOCS 和 EXCEL 數據源的出站同步
+                    if (dataSource.SourceType.ToUpper() == "GOOGLE_DOCS")
+                    {
+                        var syncToMethod = typeof(DataSetsController).GetMethod("SyncToGoogleDocs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (syncToMethod != null)
+                        {
+                            result = await (Task<SyncResult>)syncToMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                            loggingService.LogInformation($"出站同步完成，結果: {result.Success}, 記錄數: {result.TotalRecords}");
+                        }
+                        else
+                        {
+                            loggingService.LogError($"無法找到 DataSetsController.SyncToGoogleDocs 方法");
+                            return new SyncResult { Success = false, ErrorMessage = "無法找到出站同步方法" };
+                        }
+                    }
+                    else if (dataSource.SourceType.ToUpper() == "EXCEL")
+                    {
+                        // Excel 數據源支持出站同步（本地文件）
+                        var syncToMethod = typeof(DataSetsController).GetMethod("SyncToLocalExcel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (syncToMethod != null)
+                        {
+                            result = await (Task<SyncResult>)syncToMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                            loggingService.LogInformation($"Excel 出站同步完成，結果: {result.Success}, 記錄數: {result.TotalRecords}");
+                        }
+                        else
+                        {
+                            loggingService.LogError($"無法找到 DataSetsController.SyncToLocalExcel 方法");
+                            return new SyncResult { Success = false, ErrorMessage = "無法找到 Excel 出站同步方法" };
+                        }
+                    }
+                    else if (dataSource.SourceType.ToUpper() == "SQL")
+                    {
+                        // SQL 數據源不支持出站同步
+                        loggingService.LogWarning($"SQL 數據源不支持出站同步，數據集ID: {scopedDataSet.Id}");
+                        return new SyncResult { Success = false, ErrorMessage = "SQL 數據源不支持出站同步" };
+                    }
+                    else
+                    {
+                        loggingService.LogWarning($"出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
+                        return new SyncResult { Success = false, ErrorMessage = "出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源" };
+                    }
                 }
                 
-                // 使用反射調用具體的同步方法
-                var syncMethod = typeof(DataSetsController).GetMethod(methodName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                // 如果是雙向同步，先執行出站，再執行入站
+                if (syncDirection == "bidirectional")
+                {
+                    if (result.Success)
+                    {
+                        if (dataSource.SourceType.ToUpper() == "GOOGLE_DOCS")
+                        {
+                            loggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
+                            var syncFromMethod = typeof(DataSetsController).GetMethod("SyncFromGoogleDocs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            if (syncFromMethod != null)
+                            {
+                                var inboundResult = await (Task<SyncResult>)syncFromMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                                // 合併結果
+                                result = new SyncResult
+                                {
+                                    Success = inboundResult.Success && result.Success,
+                                    TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
+                                    ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
+                                };
+                            }
+                        }
+                        else if (dataSource.SourceType.ToUpper() == "EXCEL")
+                        {
+                            loggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
+                            var syncFromMethod = typeof(DataSetsController).GetMethod("SyncFromExcel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            if (syncFromMethod != null)
+                            {
+                                var inboundResult = await (Task<SyncResult>)syncFromMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                                // 合併結果
+                                result = new SyncResult
+                                {
+                                    Success = inboundResult.Success && result.Success,
+                                    TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
+                                    ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
+                                };
+                            }
+                        }
+                    }
+                }
+                else if (syncDirection == "inbound")
+                {
+                    // 入站同步：從外部數據源讀取數據
+                    var methodName = dataSource.SourceType.ToUpper() switch
+                    {
+                        "SQL" => "SyncFromSql",
+                        "EXCEL" => "SyncFromExcel", 
+                        "GOOGLE_DOCS" => "SyncFromGoogleDocs",
+                        _ => null
+                    };
+                    
+                    if (methodName == null)
+                    {
+                        loggingService.LogWarning($"不支援的數據源類型，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
+                        return new SyncResult { Success = false, ErrorMessage = "不支援的數據源類型" };
+                    }
+                    
+                    // 使用反射調用具體的同步方法
+                    var syncMethod = typeof(DataSetsController).GetMethod(methodName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    
+                    if (syncMethod != null)
+                    {
+                        result = await (Task<SyncResult>)syncMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                    }
+                    else
+                    {
+                        loggingService.LogError($"無法找到 DataSetsController.{methodName} 方法");
+                        return new SyncResult { Success = false, ErrorMessage = $"無法找到同步方法 {methodName}" };
+                    }
+                }
                 
-                if (syncMethod != null)
-                {
-                    result = await (Task<SyncResult>)syncMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
-                    loggingService.LogInformation($"數據集 {dataSet.Name} 同步完成，結果: {result.Success}, 記錄數: {result.TotalRecords}");
-                    return result;
-                }
-                else
-                {
-                    loggingService.LogError($"無法找到 DataSetsController.{methodName} 方法");
-                    return new SyncResult { Success = false, ErrorMessage = $"無法找到同步方法 {methodName}" };
-                }
+                loggingService.LogInformation($"數據集 {dataSet.Name} 同步完成，結果: {result.Success}, 記錄數: {result.TotalRecords}");
+                return result;
             }
             catch (Exception ex)
             {

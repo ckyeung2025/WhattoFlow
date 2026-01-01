@@ -390,6 +390,7 @@ namespace PurpleRice.Data
                 entity.Property(e => e.Status).HasColumnName("status");
                 entity.Property(e => e.IsScheduled).HasColumnName("is_scheduled");
                 entity.Property(e => e.UpdateIntervalMinutes).HasColumnName("update_interval_minutes");
+                entity.Property(e => e.SyncDirection).HasColumnName("sync_direction");
                 entity.Property(e => e.LastUpdateTime).HasColumnName("last_update_time");
                 entity.Property(e => e.NextUpdateTime).HasColumnName("next_update_time");
                 entity.Property(e => e.TotalRecords).HasColumnName("total_records");

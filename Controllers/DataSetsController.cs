@@ -132,6 +132,7 @@ namespace PurpleRice.Controllers
                     NextUpdateTime = ds.NextUpdateTime,
                     TotalRecords = ds.TotalRecords,
                     LastDataSyncTime = ds.LastDataSyncTime,
+                    SyncDirection = ds.SyncDirection ?? "inbound",
                     CreatedAt = ds.CreatedAt,
                     CreatedBy = ds.CreatedBy,
                     UpdatedAt = ds.UpdatedAt,
@@ -326,6 +327,7 @@ namespace PurpleRice.Controllers
                     Status = "Active",
                     IsScheduled = request.IsScheduled,
                     UpdateIntervalMinutes = request.UpdateIntervalMinutes,
+                    SyncDirection = request.SyncDirection ?? "inbound",
                     CreatedBy = request.CreatedBy,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -399,6 +401,7 @@ namespace PurpleRice.Controllers
                     Status = dataSet.Status,
                     IsScheduled = dataSet.IsScheduled,
                     UpdateIntervalMinutes = dataSet.UpdateIntervalMinutes,
+                    SyncDirection = dataSet.SyncDirection,
                     CreatedBy = dataSet.CreatedBy,
                     CreatedAt = dataSet.CreatedAt,
                     
@@ -494,6 +497,10 @@ namespace PurpleRice.Controllers
                 dataSet.Status = request.Status ?? dataSet.Status;
                 dataSet.IsScheduled = request.IsScheduled ?? dataSet.IsScheduled;
                 dataSet.UpdateIntervalMinutes = request.UpdateIntervalMinutes ?? dataSet.UpdateIntervalMinutes;
+                if (request.SyncDirection != null)
+                {
+                    dataSet.SyncDirection = request.SyncDirection;
+                }
                 dataSet.UpdatedBy = request.UpdatedBy;
                 dataSet.UpdatedAt = DateTime.UtcNow;
 
@@ -623,11 +630,11 @@ namespace PurpleRice.Controllers
 
         // POST: api/datasets/{id}/sync
         [HttpPost("{id}/sync")]
-        public async Task<IActionResult> SyncDataSet(Guid id)
+        public async Task<IActionResult> SyncDataSet(Guid id, [FromBody] SyncRequest? request = null)
         {
             try
             {
-                _loggingService.LogInformation($"開始同步數據集，ID: {id}");
+                _loggingService.LogInformation($"開始同步數據集，ID: {id}, 同步方向: {request?.SyncDirection ?? "inbound"}");
                 var dataSet = await _context.DataSets
                     .Include(ds => ds.Columns)
                     .Include(ds => ds.DataSources)
@@ -640,7 +647,9 @@ namespace PurpleRice.Controllers
                 }
 
                 // 執行數據同步邏輯
-                var syncResult = await SyncDataSetData(dataSet);
+                // 優先使用請求中的同步方向，否則使用 DataSet 中保存的設置，最後默認為 inbound
+                var syncDirection = request?.SyncDirection ?? dataSet.SyncDirection ?? "inbound";
+                var syncResult = await SyncDataSetData(dataSet, syncDirection);
                 
                 if (syncResult.Success)
                 {
@@ -811,6 +820,58 @@ namespace PurpleRice.Controllers
                     message = "獲取 DataSet 記錄失敗",
                     error = ex.Message,
                     stackTrace = ex.StackTrace
+                });
+            }
+        }
+
+        // DELETE: api/datasets/{datasetId}/records/{recordId}
+        [HttpDelete("{datasetId}/records/{recordId}")]
+        public async Task<IActionResult> DeleteDataSetRecord(Guid datasetId, Guid recordId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始刪除數據集記錄，數據集ID: {datasetId}, 記錄ID: {recordId}");
+                
+                // 檢查數據集是否存在
+                var dataSet = await _context.DataSets.FindAsync(datasetId);
+                if (dataSet == null)
+                {
+                    _loggingService.LogWarning($"數據集不存在，ID: {datasetId}");
+                    return NotFound(new { success = false, message = "數據集不存在" });
+                }
+                
+                // 查找記錄
+                var record = await _context.DataSetRecords
+                    .Include(r => r.Values)
+                    .FirstOrDefaultAsync(r => r.Id == recordId && r.DataSetId == datasetId);
+                
+                if (record == null)
+                {
+                    _loggingService.LogWarning($"記錄不存在，數據集ID: {datasetId}, 記錄ID: {recordId}");
+                    return NotFound(new { success = false, message = "記錄不存在" });
+                }
+                
+                // 刪除記錄值（EF Core 會自動處理，但我們明確刪除以確保）
+                if (record.Values != null && record.Values.Any())
+                {
+                    _context.DataSetRecordValues.RemoveRange(record.Values);
+                    _loggingService.LogInformation($"刪除 {record.Values.Count} 個記錄值");
+                }
+                
+                // 刪除記錄
+                _context.DataSetRecords.Remove(record);
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"成功刪除數據集記錄，數據集ID: {datasetId}, 記錄ID: {recordId}");
+                return Ok(new { success = true, message = "記錄已成功刪除" });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"刪除數據集記錄失敗: {ex.Message}", ex);
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = "刪除記錄失敗",
+                    error = ex.Message
                 });
             }
         }
@@ -1305,11 +1366,11 @@ namespace PurpleRice.Controllers
             public string SqlQuery { get; set; } = string.Empty;
         }
 
-        private async Task<SyncResult> SyncDataSetData(DataSet dataSet)
+        private async Task<SyncResult> SyncDataSetData(DataSet dataSet, string syncDirection = "inbound")
         {
             try
             {
-                _loggingService.LogInformation($"開始同步數據集數據，數據集ID: {dataSet.Id}");
+                _loggingService.LogInformation($"開始同步數據集數據，數據集ID: {dataSet.Id}, 同步方向: {syncDirection}");
                 
                 // 檢查是否允許重疊同步
                 if (dataSet.SyncStatus == "Running" && !(dataSet.AllowOverlap ?? false))
@@ -1357,6 +1418,7 @@ namespace PurpleRice.Controllers
                 }
 
                 // 異步執行同步過程，讓前端能夠輪詢進度
+                var syncDirectionCopy = syncDirection; // 捕獲變量
                 _ = Task.Run(async () =>
                 {
                     using var scope = _serviceProvider.CreateScope();
@@ -1367,6 +1429,7 @@ namespace PurpleRice.Controllers
                     // 重新獲取 DataSet 對象，確保使用 scopedContext
                     var scopedDataSet = await scopedContext.DataSets
                         .Include(ds => ds.DataSources)
+                        .Include(ds => ds.Columns)
                         .FirstOrDefaultAsync(ds => ds.Id == dataSet.Id);
                     
                     if (scopedDataSet == null)
@@ -1403,34 +1466,104 @@ namespace PurpleRice.Controllers
                     
                     try
                     {
-                        SyncResult result;
-                        switch (dataSource.SourceType.ToUpper())
+                        SyncResult result = new SyncResult { Success = false, TotalRecords = 0 };
+                        var scopedDataSource = scopedDataSet.DataSources.FirstOrDefault();
+                        
+                        if (scopedDataSource == null)
                         {
-                            case "SQL":
-                                result = await syncController.SyncFromSql(scopedDataSet, dataSource);
-                                break;
-                            case "EXCEL":
-                                result = await syncController.SyncFromExcel(scopedDataSet, dataSource);
-                                break;
-                            case "GOOGLE_DOCS":
-                                result = await syncController.SyncFromGoogleDocs(scopedDataSet, dataSource);
-                                break;
-                            default:
-                                scopedLoggingService.LogWarning($"不支援的數據源類型，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
-                                await syncController.SetSyncStatusFailedWithContext(scopedDataSet, "不支援的數據源類型", scopedContext, scopedLoggingService);
+                            scopedLoggingService.LogWarning($"未找到數據源配置，數據集ID: {scopedDataSet.Id}");
+                            await syncController.SetSyncStatusFailedWithContext(scopedDataSet, "未找到數據源配置", scopedContext, scopedLoggingService);
+                            return;
+                        }
+                        
+                        // 根據同步方向執行不同的邏輯
+                        if (syncDirectionCopy == "outbound" || syncDirectionCopy == "bidirectional")
+                        {
+                            // 出站同步：將內部數據寫回外部數據源
+                            if (scopedDataSource.SourceType.ToUpper() == "GOOGLE_DOCS")
+                            {
+                                result = await syncController.SyncToGoogleDocs(scopedDataSet, scopedDataSource);
+                            }
+                            else if (scopedDataSource.SourceType.ToUpper() == "EXCEL")
+                            {
+                                result = await syncController.SyncToLocalExcel(scopedDataSet, scopedDataSource);
+                            }
+                            else
+                            {
+                                scopedLoggingService.LogWarning($"出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源，數據集ID: {scopedDataSet.Id}, 數據源類型: {scopedDataSource.SourceType}");
+                                await syncController.SetSyncStatusFailedWithContext(scopedDataSet, $"出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源", scopedContext, scopedLoggingService);
                                 return;
+                            }
+                        }
+                        
+                        // 如果是雙向同步，先執行出站，再執行入站
+                        if (syncDirectionCopy == "bidirectional")
+                        {
+                            if (result.Success)
+                            {
+                                if (scopedDataSource.SourceType.ToUpper() == "GOOGLE_DOCS")
+                                {
+                                    scopedLoggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
+                                    var inboundResult = await syncController.SyncFromGoogleDocs(scopedDataSet, scopedDataSource);
+                                    // 合併結果
+                                    result = new SyncResult
+                                    {
+                                        Success = inboundResult.Success && result.Success,
+                                        TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
+                                        ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
+                                    };
+                                }
+                                else if (scopedDataSource.SourceType.ToUpper() == "EXCEL")
+                                {
+                                    scopedLoggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
+                                    var inboundResult = await syncController.SyncFromExcel(scopedDataSet, scopedDataSource);
+                                    // 合併結果
+                                    result = new SyncResult
+                                    {
+                                        Success = inboundResult.Success && result.Success,
+                                        TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
+                                        ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
+                                    };
+                                }
+                            }
+                        }
+                        else if (syncDirectionCopy == "inbound")
+                        {
+                            // 入站同步：從外部數據源讀取數據
+                            switch (scopedDataSource.SourceType.ToUpper())
+                            {
+                                case "SQL":
+                                    result = await syncController.SyncFromSql(scopedDataSet, scopedDataSource);
+                                    break;
+                                case "EXCEL":
+                                    result = await syncController.SyncFromExcel(scopedDataSet, scopedDataSource);
+                                    break;
+                                case "GOOGLE_DOCS":
+                                    result = await syncController.SyncFromGoogleDocs(scopedDataSet, scopedDataSource);
+                                    break;
+                                default:
+                                    scopedLoggingService.LogWarning($"不支援的數據源類型，數據集ID: {scopedDataSet.Id}, 數據源類型: {scopedDataSource.SourceType}");
+                                    await syncController.SetSyncStatusFailedWithContext(scopedDataSet, "不支援的數據源類型", scopedContext, scopedLoggingService);
+                                    return;
+                            }
+                        }
+                        else
+                        {
+                            scopedLoggingService.LogWarning($"不支援的同步方向，數據集ID: {scopedDataSet.Id}, 同步方向: {syncDirectionCopy}");
+                            await syncController.SetSyncStatusFailedWithContext(scopedDataSet, $"不支援的同步方向: {syncDirectionCopy}", scopedContext, scopedLoggingService);
+                            return;
                         }
                         
                         // 設置同步完成狀態
                         if (result.Success)
                         {
                             await syncController.SetSyncStatusCompletedWithContext(scopedDataSet, result.TotalRecords, scopedContext, scopedLoggingService);
-                            scopedLoggingService.LogInformation($"異步同步成功，數據集ID: {scopedDataSet.Id}, 總記錄數: {result.TotalRecords}");
+                            scopedLoggingService.LogInformation($"異步同步成功，數據集ID: {scopedDataSet.Id}, 總記錄數: {result.TotalRecords}, 同步方向: {syncDirectionCopy}");
                         }
                         else
                         {
                             await syncController.SetSyncStatusFailedWithContext(scopedDataSet, result.ErrorMessage, scopedContext, scopedLoggingService);
-                            scopedLoggingService.LogError($"異步同步失敗，數據集ID: {scopedDataSet.Id}, 錯誤: {result.ErrorMessage}");
+                            scopedLoggingService.LogError($"異步同步失敗，數據集ID: {scopedDataSet.Id}, 錯誤: {result.ErrorMessage}, 同步方向: {syncDirectionCopy}");
                         }
                     }
                     catch (Exception ex)
@@ -2181,9 +2314,17 @@ namespace PurpleRice.Controllers
                 var fileType = await _googleSheetsService.DetectFileTypeAsync(dataSet.CompanyId, spreadsheetId);
                 _loggingService.LogInformation($"檢測到文件類型: {fileType}, 數據集ID: {dataSet.Id}");
 
-                // 獲取工作表名稱
-                var sheetName = dataSource.GoogleDocsSheetName ?? "Sheet1";
-                _loggingService.LogInformation($"使用工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
+                // 獲取工作表名稱：如果用戶沒有指定，自動獲取第一個工作表
+                var sheetName = dataSource.GoogleDocsSheetName;
+                if (string.IsNullOrWhiteSpace(sheetName))
+                {
+                    sheetName = await _googleSheetsService.GetFirstSheetNameAsync(dataSet.CompanyId, spreadsheetId);
+                    _loggingService.LogInformation($"未指定工作表名稱，自動獲取第一個工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"使用指定的工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
+                }
 
                 List<string> headers;
                 List<Dictionary<string, object>> data;
@@ -2402,7 +2543,9 @@ namespace PurpleRice.Controllers
 
                 // 使用通用的增量同步方法
                 var sourceType = fileType == "excel" ? "Excel (Google Drive)" : "Google Sheets";
-                var processedRecords = await ProcessIncrementalSync(dataSet, data, sourceType);
+                // 檢查是否為雙向同步的入站階段（通過檢查 DataSet 的 SyncDirection）
+                var isBidirectionalInbound = dataSet.SyncDirection == "bidirectional";
+                var processedRecords = await ProcessIncrementalSync(dataSet, data, sourceType, skipDeletes: isBidirectionalInbound);
                 
                 // 返回實際的數據源記錄數，而不是處理的記錄數
                 var actualRecordCount = data.Count;
@@ -2414,6 +2557,1198 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogError("Google Docs 數據同步失敗", ex);
                 return new SyncResult { Success = false, ErrorMessage = $"Google Docs 數據同步失敗: {ex.Message}" };
+            }
+        }
+
+        /// <summary>
+        /// 將內部 DataSet 數據同步到 Excel 文件（出站同步）
+        /// </summary>
+        private async Task<SyncResult> SyncToExcel(DataSet dataSet, DataSetDataSource dataSource)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始將數據同步到 Excel 文件，數據集ID: {dataSet.Id}");
+                
+                if (string.IsNullOrEmpty(dataSource.GoogleDocsUrl))
+                {
+                    _loggingService.LogWarning($"Google Docs URL 為空，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Google Docs URL 不能為空" };
+                }
+
+                // 從 URL 中提取表格 ID
+                var spreadsheetId = GoogleSheetsService.ExtractSpreadsheetId(dataSource.GoogleDocsUrl);
+                if (string.IsNullOrEmpty(spreadsheetId))
+                {
+                    _loggingService.LogWarning($"無法從 URL 中提取表格 ID: {dataSource.GoogleDocsUrl}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "無效的 Google Sheets URL" };
+                }
+
+                _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+
+                // 獲取工作表名稱
+                var sheetName = dataSource.GoogleDocsSheetName ?? "Sheet1";
+                _loggingService.LogInformation($"使用工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
+
+                // 獲取欄位定義（按 sortOrder 排序）
+                var columns = await _context.DataSetColumns
+                    .Where(c => c.DataSetId == dataSet.Id)
+                    .OrderBy(c => c.SortOrder)
+                    .ThenBy(c => c.ColumnName)
+                    .ToListAsync();
+
+                if (!columns.Any())
+                {
+                    _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "數據集沒有欄位定義" };
+                }
+
+                // 獲取所有記錄
+                var records = await _context.DataSetRecords
+                    .Where(r => r.DataSetId == dataSet.Id && r.Status == "Active")
+                    .Include(r => r.Values)
+                    .OrderBy(r => r.CreatedAt)
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {records.Count} 條活躍記錄，數據集ID: {dataSet.Id}");
+
+                if (!records.Any())
+                {
+                    _loggingService.LogInformation($"沒有活躍記錄需要同步，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = true, TotalRecords = 0 };
+                }
+
+                // 下載 Excel 文件
+                _loggingService.LogInformation($"開始下載 Excel 文件，文件ID: {spreadsheetId}");
+                byte[] fileBytes = null;
+                try
+                {
+                    fileBytes = await _googleSheetsService.DownloadExcelFileAsync(dataSet.CompanyId, spreadsheetId);
+                }
+                catch (Exception downloadEx)
+                {
+                    _loggingService.LogWarning($"下載 Excel 文件失敗，可能是因為 fileId 是 Google Sheets 的 ID 而不是 Drive 文件的 ID。錯誤: {downloadEx.Message}");
+                    // 如果下載失敗，可能是因為 fileId 是 Google Sheets 的 ID，不是 Drive 文件的 ID
+                    // 在這種情況下，回退到使用 Google Sheets API 來更新數據
+                    _loggingService.LogInformation($"檢測到文件可能是 Google Sheets，回退到使用 Google Sheets API 來更新數據");
+                    // 繼續執行後續的 Google Sheets API 更新邏輯（不返回，繼續執行）
+                    // 但我們需要跳過 Excel 同步，直接使用 Google Sheets API
+                    // 這裡我們應該返回一個錯誤，讓調用者知道需要使用 Google Sheets API
+                    return new SyncResult 
+                    { 
+                        Success = false, 
+                        ErrorMessage = $"無法使用 Excel 同步方法。文件 ID ({spreadsheetId}) 可能是 Google Sheets 的 ID，不是 Google Drive 文件的 ID。請確保文件類型檢測正確，或使用 Google Sheets API 來更新數據。原始錯誤: {downloadEx.Message}" 
+                    };
+                }
+                
+                // 如果文件為空或不存在，創建新的 Excel 文件
+                if (fileBytes == null || fileBytes.Length == 0)
+                {
+                    _loggingService.LogInformation($"Excel 文件為空或不存在，創建新的 Excel 文件，文件ID: {spreadsheetId}");
+                    
+                    using var newStream = new MemoryStream();
+                    using (var newDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Create(newStream, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook))
+                    {
+                        var newWorkbookPart = newDocument.AddWorkbookPart();
+                        newWorkbookPart.Workbook = new DocumentFormat.OpenXml.Spreadsheet.Workbook();
+                        
+                        // 添加 SharedStringTablePart
+                        var newSharedStringTablePart = newWorkbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.SharedStringTablePart>();
+                        newSharedStringTablePart.SharedStringTable = new DocumentFormat.OpenXml.Spreadsheet.SharedStringTable();
+                        
+                        // 創建工作表
+                        var newWorksheetPart = newWorkbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.WorksheetPart>();
+                        newWorksheetPart.Worksheet = new DocumentFormat.OpenXml.Spreadsheet.Worksheet(new DocumentFormat.OpenXml.Spreadsheet.SheetData());
+                        
+                        // 添加工作表到工作簿
+                        var sheets = newWorkbookPart.Workbook.AppendChild(new DocumentFormat.OpenXml.Spreadsheet.Sheets());
+                        var sheet = new DocumentFormat.OpenXml.Spreadsheet.Sheet()
+                        {
+                            Id = newWorkbookPart.GetIdOfPart(newWorksheetPart),
+                            SheetId = 1,
+                            Name = sheetName ?? "Sheet1"
+                        };
+                        sheets.Append(sheet);
+                        
+                        newWorkbookPart.Workbook.Save();
+                    }
+                    fileBytes = newStream.ToArray();
+                    _loggingService.LogInformation($"創建新的 Excel 文件成功，大小: {fileBytes.Length} bytes");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"Excel 文件下載成功，大小: {fileBytes.Length} bytes");
+                }
+
+                // 使用 OpenXML 修改 Excel 文件
+                using var stream = new MemoryStream();
+                stream.Write(fileBytes, 0, fileBytes.Length);
+                stream.Position = 0;
+
+                using var spreadsheetDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(stream, true);
+                var workbookPart = spreadsheetDocument.WorkbookPart;
+                
+                if (workbookPart == null)
+                {
+                    _loggingService.LogWarning($"無法讀取 Excel 工作簿，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "無法讀取 Excel 工作簿" };
+                }
+
+                // 確保 SharedStringTablePart 存在
+                var sharedStringTablePart = workbookPart.SharedStringTablePart;
+                if (sharedStringTablePart == null)
+                {
+                    sharedStringTablePart = workbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.SharedStringTablePart>();
+                    sharedStringTablePart.SharedStringTable = new DocumentFormat.OpenXml.Spreadsheet.SharedStringTable();
+                }
+
+                // 查找或創建工作表
+                DocumentFormat.OpenXml.Packaging.WorksheetPart worksheetPart = null;
+                if (!string.IsNullOrEmpty(sheetName) && workbookPart.Workbook?.Sheets != null)
+                {
+                    var sheet = workbookPart.Workbook.Sheets.Elements<DocumentFormat.OpenXml.Spreadsheet.Sheet>()
+                        .FirstOrDefault(s => s.Name == sheetName);
+                    
+                    if (sheet != null)
+                    {
+                        worksheetPart = (DocumentFormat.OpenXml.Packaging.WorksheetPart)workbookPart.GetPartById(sheet.Id);
+                    }
+                }
+                
+                if (worksheetPart == null)
+                {
+                    worksheetPart = workbookPart.WorksheetParts.FirstOrDefault();
+                }
+
+                if (worksheetPart == null)
+                {
+                    _loggingService.LogWarning($"無法找到工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = $"無法找到工作表: {sheetName}" };
+                }
+
+                var worksheet = worksheetPart.Worksheet;
+                var sheetData = worksheet.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.SheetData>();
+                
+                if (sheetData == null)
+                {
+                    sheetData = new DocumentFormat.OpenXml.Spreadsheet.SheetData();
+                    worksheet.AppendChild(sheetData);
+                }
+
+                // 構建主鍵映射（讀取現有數據）
+                var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+                var primaryKeyToRowMap = new Dictionary<string, uint>();
+                
+                if (sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().Any())
+                {
+                    var existingRows = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().ToList();
+                    var existingHeaderRow = existingRows.FirstOrDefault();
+                    
+                    if (existingHeaderRow != null && primaryKeyColumns.Any())
+                    {
+                        var headerCells = existingHeaderRow.Elements<DocumentFormat.OpenXml.Spreadsheet.Cell>().ToList();
+                        var headerValues = GetCellValues(existingHeaderRow, workbookPart.SharedStringTablePart);
+                        
+                        // 找到主鍵欄位在標題行中的位置
+                        var primaryKeyIndices = new List<int>();
+                        foreach (var pkColumn in primaryKeyColumns)
+                        {
+                            var normalizedPkName = ColumnNameNormalizer.Normalize(pkColumn.ColumnName);
+                            for (int i = 0; i < headerValues.Count; i++)
+                            {
+                                var normalizedHeader = ColumnNameNormalizer.Normalize(headerValues[i]);
+                                if (normalizedHeader == normalizedPkName || headerValues[i] == pkColumn.DisplayName || headerValues[i] == pkColumn.ColumnName)
+                                {
+                                    primaryKeyIndices.Add(i);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 構建主鍵值到行號的映射（從第2行開始，第1行是標題）
+                        // 使用與出站同步相同的格式：columnName:value
+                        var dataRows = existingRows.Skip(1).ToList();
+                        for (int rowIndex = 0; rowIndex < dataRows.Count; rowIndex++)
+                        {
+                            var row = dataRows[rowIndex];
+                            var cellValues = GetCellValues(row, workbookPart.SharedStringTablePart);
+                            
+                            if (primaryKeyIndices.Any() && primaryKeyIndices.All(idx => idx < cellValues.Count))
+                            {
+                                // 使用與 BuildCompositeKey 相同的格式：columnName:value
+                                var keyParts = new List<string>();
+                                foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
+                                {
+                                    var pkIndex = primaryKeyIndices.FirstOrDefault(idx => 
+                                        ColumnNameNormalizer.Normalize(headerValues[idx]) == ColumnNameNormalizer.Normalize(pkColumn.ColumnName) ||
+                                        headerValues[idx] == pkColumn.DisplayName ||
+                                        headerValues[idx] == pkColumn.ColumnName);
+                                    
+                                    if (pkIndex >= 0 && pkIndex < cellValues.Count)
+                                    {
+                                        var value = cellValues[pkIndex]?.Trim() ?? string.Empty;
+                                        if (string.IsNullOrEmpty(value))
+                                        {
+                                            value = "NULL";
+                                        }
+                                        keyParts.Add($"{pkColumn.ColumnName}:{value}");
+                                    }
+                                }
+                                
+                                var compositeKey = string.Join("|", keyParts);
+                                if (!string.IsNullOrEmpty(compositeKey))
+                                {
+                                    primaryKeyToRowMap[compositeKey] = row.RowIndex ?? (uint)(rowIndex + 2);
+                                }
+                            }
+                        }
+                        
+                        _loggingService.LogInformation($"構建主鍵映射完成，找到 {primaryKeyToRowMap.Count} 個映射關係");
+                    }
+                }
+
+                // 更新標題行
+                var headerRow = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().FirstOrDefault();
+                if (headerRow == null)
+                {
+                    headerRow = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = 1 };
+                    sheetData.AppendChild(headerRow);
+                }
+                else
+                {
+                    headerRow.RemoveAllChildren<DocumentFormat.OpenXml.Spreadsheet.Cell>();
+                }
+
+                // 構建標題行
+                uint columnIndex = 1;
+                foreach (var column in columns)
+                {
+                    var cell = new DocumentFormat.OpenXml.Spreadsheet.Cell
+                    {
+                        CellReference = GetExcelColumnName(columnIndex) + "1",
+                        DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String,
+                        CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(column.DisplayName ?? column.ColumnName)
+                    };
+                    headerRow.AppendChild(cell);
+                    columnIndex++;
+                }
+
+                // 構建數據行並進行增量同步
+                var rowsToAdd = new List<DocumentFormat.OpenXml.Spreadsheet.Row>();
+                var rowsToUpdate = new Dictionary<uint, DocumentFormat.OpenXml.Spreadsheet.Row>();
+                var processedRowNumbers = new HashSet<uint>();
+
+                uint nextRowIndex = 2; // 從第2行開始（第1行是標題）
+                if (sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().Any())
+                {
+                    var maxRowIndex = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>()
+                        .Where(r => r.RowIndex.HasValue)
+                        .Select(r => r.RowIndex.Value)
+                        .DefaultIfEmpty((uint)1)
+                        .Max();
+                    nextRowIndex = maxRowIndex + 1;
+                }
+
+                foreach (var record in records)
+                {
+                    // 構建主鍵值（使用與入站同步相同的格式：columnName:value）
+                    string primaryKeyValue = string.Empty;
+                    if (primaryKeyColumns.Any())
+                    {
+                        primaryKeyValue = BuildCompositeKeyFromRecord(record, primaryKeyColumns);
+                    }
+                    else
+                    {
+                        primaryKeyValue = record.PrimaryKeyValue ?? string.Empty;
+                    }
+
+                    // 構建數據行
+                    var dataRow = BuildExcelRow(record, columns, workbookPart, sharedStringTablePart, nextRowIndex);
+
+                    // 檢查是否需要更新現有行或添加新行
+                    if (!string.IsNullOrEmpty(primaryKeyValue) && primaryKeyToRowMap.ContainsKey(primaryKeyValue))
+                    {
+                        // 更新現有行
+                        var rowIndex = primaryKeyToRowMap[primaryKeyValue];
+                        dataRow.RowIndex = rowIndex;
+                        rowsToUpdate[rowIndex] = dataRow;
+                        processedRowNumbers.Add(rowIndex);
+                        _loggingService.LogDebug($"準備更新行 {rowIndex}，主鍵: {primaryKeyValue}");
+                    }
+                    else
+                    {
+                        // 添加新行
+                        dataRow.RowIndex = nextRowIndex;
+                        rowsToAdd.Add(dataRow);
+                        nextRowIndex++;
+                        _loggingService.LogDebug($"準備添加新行，主鍵: {primaryKeyValue}");
+                    }
+                }
+
+                // 刪除未處理的現有行（如果需要的話，這裡暫時不刪除，只更新和添加）
+                // 應用更新：先刪除舊行，再插入新行
+                foreach (var (rowIndex, row) in rowsToUpdate)
+                {
+                    var existingRow = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>()
+                        .FirstOrDefault(r => r.RowIndex == rowIndex);
+                    if (existingRow != null)
+                    {
+                        sheetData.RemoveChild(existingRow);
+                    }
+                    sheetData.InsertAt(row, (int)rowIndex - 1);
+                }
+
+                // 添加新行（按照 RowIndex 順序插入，OpenXML 要求行必須按順序排列）
+                var sortedRowsToAdd = rowsToAdd.OrderBy(r => r.RowIndex).ToList();
+                foreach (var row in sortedRowsToAdd)
+                {
+                    // 找到正確的插入位置（在 RowIndex 小於當前行的最後一行之後）
+                    var existingRows = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().ToList();
+                    var insertPosition = existingRows.Count;
+                    
+                    for (int i = 0; i < existingRows.Count; i++)
+                    {
+                        if (existingRows[i].RowIndex.HasValue && existingRows[i].RowIndex.Value > row.RowIndex)
+                        {
+                            insertPosition = i;
+                            break;
+                        }
+                    }
+                    
+                    if (insertPosition < existingRows.Count)
+                    {
+                        sheetData.InsertAt(row, insertPosition);
+                    }
+                    else
+                    {
+                        sheetData.AppendChild(row);
+                    }
+                    
+                    _loggingService.LogDebug($"已添加新行到 sheetData，RowIndex: {row.RowIndex}，插入位置: {insertPosition}");
+                }
+
+                // 驗證行數和順序
+                var totalRowsAfterAdd = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().Count();
+                var rowIndices = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>()
+                    .Select(r => r.RowIndex?.ToString() ?? "null")
+                    .ToList();
+                _loggingService.LogInformation($"添加數據行後，sheetData 中共有 {totalRowsAfterAdd} 行（包括標題行），RowIndex 順序: {string.Join(", ", rowIndices)}");
+
+                // 保存工作表
+                worksheet.Save();
+                workbookPart.Workbook.Save();
+                
+                // 確保所有更改都已寫入 stream
+                spreadsheetDocument.WorkbookPart.Workbook.Save();
+                
+                // 獲取更新後的文件字節（在 using 塊結束前讀取）
+                stream.Position = 0;
+                var updatedBytes = stream.ToArray();
+                _loggingService.LogInformation($"更新後的 Excel 文件大小: {updatedBytes.Length} bytes");
+                
+                // 驗證數據行是否正確寫入
+                var rowCount = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().Count();
+                _loggingService.LogInformation($"驗證：sheetData 中共有 {rowCount} 行，文件大小: {updatedBytes.Length} bytes");
+
+                // 上傳回 Google Drive
+                _loggingService.LogInformation($"開始上傳更新後的 Excel 文件，文件ID: {spreadsheetId}");
+                await _googleSheetsService.UploadExcelFileAsync(dataSet.CompanyId, spreadsheetId, updatedBytes);
+                _loggingService.LogInformation($"成功上傳 Excel 文件");
+
+                var totalRecords = rowsToAdd.Count + rowsToUpdate.Count;
+                _loggingService.LogInformation($"Excel 出站同步完成，數據集ID: {dataSet.Id}，新增: {rowsToAdd.Count}，更新: {rowsToUpdate.Count}，總計: {totalRecords}");
+                
+                return new SyncResult { Success = true, TotalRecords = totalRecords };
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"Excel 出站同步失敗: {ex.Message}", ex);
+                return new SyncResult { Success = false, ErrorMessage = $"Excel 出站同步失敗: {ex.Message}" };
+            }
+        }
+
+        /// <summary>
+        /// 將內部 DataSet 數據同步到本地 Excel 文件（出站同步）
+        /// </summary>
+        private async Task<SyncResult> SyncToLocalExcel(DataSet dataSet, DataSetDataSource dataSource)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始將數據同步到本地 Excel 文件，數據集ID: {dataSet.Id}");
+                
+                if (string.IsNullOrEmpty(dataSource.ExcelFilePath))
+                {
+                    _loggingService.LogWarning($"Excel 文件路徑為空，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Excel 文件路徑不能為空" };
+                }
+
+                // 構建完整的文件路徑
+                var filePath = dataSource.ExcelFilePath;
+                if (!Path.IsPathRooted(filePath) || (filePath.StartsWith("/") && !filePath.StartsWith("\\")))
+                {
+                    var relativePath = filePath.TrimStart('/');
+                    filePath = Path.Combine(Directory.GetCurrentDirectory(), relativePath);
+                    _loggingService.LogInformation($"構建完整路徑: {filePath}");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"使用絕對路徑: {filePath}");
+                }
+
+                // 獲取工作表名稱
+                var sheetName = dataSource.ExcelSheetName ?? "Sheet1";
+                _loggingService.LogInformation($"使用工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
+
+                // 獲取欄位定義（按 sortOrder 排序）
+                var columns = await _context.DataSetColumns
+                    .Where(c => c.DataSetId == dataSet.Id)
+                    .OrderBy(c => c.SortOrder)
+                    .ThenBy(c => c.ColumnName)
+                    .ToListAsync();
+
+                if (!columns.Any())
+                {
+                    _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "數據集沒有欄位定義" };
+                }
+
+                // 獲取所有記錄
+                var records = await _context.DataSetRecords
+                    .Where(r => r.DataSetId == dataSet.Id && r.Status == "Active")
+                    .Include(r => r.Values)
+                    .OrderBy(r => r.CreatedAt)
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {records.Count} 條活躍記錄，數據集ID: {dataSet.Id}");
+
+                if (!records.Any())
+                {
+                    _loggingService.LogInformation($"沒有活躍記錄需要同步，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = true, TotalRecords = 0 };
+                }
+
+                // 檢查文件是否存在，如果不存在則創建新文件
+                byte[] fileBytes = null;
+                if (System.IO.File.Exists(filePath))
+                {
+                    _loggingService.LogInformation($"讀取現有 Excel 文件: {filePath}");
+                    fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+                }
+                else
+                {
+                    _loggingService.LogInformation($"Excel 文件不存在，創建新文件: {filePath}");
+                    // 確保目錄存在
+                    var directory = Path.GetDirectoryName(filePath);
+                    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    // 創建新的 Excel 文件
+                    using var newStream = new MemoryStream();
+                    using (var newDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Create(newStream, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook))
+                    {
+                        var newWorkbookPart = newDocument.AddWorkbookPart();
+                        newWorkbookPart.Workbook = new DocumentFormat.OpenXml.Spreadsheet.Workbook();
+                        
+                        // 添加 SharedStringTablePart
+                        var newSharedStringTablePart = newWorkbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.SharedStringTablePart>();
+                        newSharedStringTablePart.SharedStringTable = new DocumentFormat.OpenXml.Spreadsheet.SharedStringTable();
+                        
+                        // 創建工作表
+                        var newWorksheetPart = newWorkbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.WorksheetPart>();
+                        newWorksheetPart.Worksheet = new DocumentFormat.OpenXml.Spreadsheet.Worksheet(new DocumentFormat.OpenXml.Spreadsheet.SheetData());
+                        
+                        // 添加工作表到工作簿
+                        var sheets = newWorkbookPart.Workbook.AppendChild(new DocumentFormat.OpenXml.Spreadsheet.Sheets());
+                        var sheet = new DocumentFormat.OpenXml.Spreadsheet.Sheet()
+                        {
+                            Id = newWorkbookPart.GetIdOfPart(newWorksheetPart),
+                            SheetId = 1,
+                            Name = sheetName
+                        };
+                        sheets.Append(sheet);
+                        
+                        newWorkbookPart.Workbook.Save();
+                    }
+                    fileBytes = newStream.ToArray();
+                    _loggingService.LogInformation($"創建新的 Excel 文件成功，大小: {fileBytes.Length} bytes");
+                }
+
+                // 使用 OpenXML 修改 Excel 文件
+                using var stream = new MemoryStream();
+                stream.Write(fileBytes, 0, fileBytes.Length);
+                stream.Position = 0;
+
+                using var spreadsheetDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(stream, true);
+                var workbookPart = spreadsheetDocument.WorkbookPart;
+                
+                if (workbookPart == null)
+                {
+                    _loggingService.LogWarning($"無法讀取 Excel 工作簿，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "無法讀取 Excel 工作簿" };
+                }
+
+                // 確保 SharedStringTablePart 存在
+                var sharedStringTablePart = workbookPart.SharedStringTablePart;
+                if (sharedStringTablePart == null)
+                {
+                    sharedStringTablePart = workbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.SharedStringTablePart>();
+                    sharedStringTablePart.SharedStringTable = new DocumentFormat.OpenXml.Spreadsheet.SharedStringTable();
+                }
+
+                // 查找或創建工作表
+                DocumentFormat.OpenXml.Packaging.WorksheetPart worksheetPart = null;
+                if (!string.IsNullOrEmpty(sheetName) && workbookPart.Workbook?.Sheets != null)
+                {
+                    var sheet = workbookPart.Workbook.Sheets.Elements<DocumentFormat.OpenXml.Spreadsheet.Sheet>()
+                        .FirstOrDefault(s => s.Name == sheetName);
+                    
+                    if (sheet != null)
+                    {
+                        worksheetPart = (DocumentFormat.OpenXml.Packaging.WorksheetPart)workbookPart.GetPartById(sheet.Id);
+                    }
+                }
+                
+                if (worksheetPart == null)
+                {
+                    worksheetPart = workbookPart.WorksheetParts.FirstOrDefault();
+                }
+
+                if (worksheetPart == null)
+                {
+                    _loggingService.LogWarning($"無法找到工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = $"無法找到工作表: {sheetName}" };
+                }
+
+                var worksheet = worksheetPart.Worksheet;
+                var sheetData = worksheet.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.SheetData>();
+                
+                if (sheetData == null)
+                {
+                    sheetData = new DocumentFormat.OpenXml.Spreadsheet.SheetData();
+                    worksheet.AppendChild(sheetData);
+                }
+
+                // 構建主鍵映射（讀取現有數據）
+                var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+                var primaryKeyToRowMap = new Dictionary<string, uint>();
+                
+                if (sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().Any())
+                {
+                    var existingRows = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().ToList();
+                    var existingHeaderRow = existingRows.FirstOrDefault();
+                    
+                    if (existingHeaderRow != null && primaryKeyColumns.Any())
+                    {
+                        var headerValues = GetCellValues(existingHeaderRow, workbookPart.SharedStringTablePart);
+                        
+                        // 找到主鍵欄位在標題行中的位置
+                        var primaryKeyIndices = new List<int>();
+                        foreach (var pkColumn in primaryKeyColumns)
+                        {
+                            var normalizedPkName = ColumnNameNormalizer.Normalize(pkColumn.ColumnName);
+                            for (int i = 0; i < headerValues.Count; i++)
+                            {
+                                var normalizedHeader = ColumnNameNormalizer.Normalize(headerValues[i]);
+                                if (normalizedHeader == normalizedPkName || headerValues[i] == pkColumn.DisplayName || headerValues[i] == pkColumn.ColumnName)
+                                {
+                                    primaryKeyIndices.Add(i);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 構建主鍵值到行號的映射（從第2行開始，第1行是標題）
+                        var dataRows = existingRows.Skip(1).ToList();
+                        for (int rowIndex = 0; rowIndex < dataRows.Count; rowIndex++)
+                        {
+                            var row = dataRows[rowIndex];
+                            var cellValues = GetCellValues(row, workbookPart.SharedStringTablePart);
+                            
+                            if (primaryKeyIndices.Any() && primaryKeyIndices.All(idx => idx < cellValues.Count))
+                            {
+                                var keyParts = new List<string>();
+                                foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
+                                {
+                                    var pkIndex = primaryKeyIndices.FirstOrDefault(idx => 
+                                        ColumnNameNormalizer.Normalize(headerValues[idx]) == ColumnNameNormalizer.Normalize(pkColumn.ColumnName) ||
+                                        headerValues[idx] == pkColumn.DisplayName ||
+                                        headerValues[idx] == pkColumn.ColumnName);
+                                    
+                                    if (pkIndex >= 0 && pkIndex < cellValues.Count)
+                                    {
+                                        var value = cellValues[pkIndex]?.Trim() ?? string.Empty;
+                                        if (string.IsNullOrEmpty(value))
+                                        {
+                                            value = "NULL";
+                                        }
+                                        keyParts.Add($"{pkColumn.ColumnName}:{value}");
+                                    }
+                                }
+                                
+                                var compositeKey = string.Join("|", keyParts);
+                                if (!string.IsNullOrEmpty(compositeKey))
+                                {
+                                    primaryKeyToRowMap[compositeKey] = row.RowIndex ?? (uint)(rowIndex + 2);
+                                }
+                            }
+                        }
+                        
+                        _loggingService.LogInformation($"構建主鍵映射完成，找到 {primaryKeyToRowMap.Count} 個映射關係");
+                    }
+                }
+
+                // 更新標題行
+                var headerRow = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().FirstOrDefault();
+                if (headerRow == null)
+                {
+                    headerRow = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = 1 };
+                    sheetData.AppendChild(headerRow);
+                }
+                else
+                {
+                    headerRow.RemoveAllChildren<DocumentFormat.OpenXml.Spreadsheet.Cell>();
+                }
+
+                // 構建標題行
+                uint columnIndex = 1;
+                foreach (var column in columns)
+                {
+                    var cell = new DocumentFormat.OpenXml.Spreadsheet.Cell
+                    {
+                        CellReference = GetExcelColumnName(columnIndex) + "1",
+                        DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String,
+                        CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(column.DisplayName ?? column.ColumnName)
+                    };
+                    headerRow.AppendChild(cell);
+                    columnIndex++;
+                }
+
+                // 構建數據行並進行增量同步
+                var rowsToAdd = new List<DocumentFormat.OpenXml.Spreadsheet.Row>();
+                var rowsToUpdate = new Dictionary<uint, DocumentFormat.OpenXml.Spreadsheet.Row>();
+                var processedRowNumbers = new HashSet<uint>();
+
+                uint nextRowIndex = 2; // 從第2行開始（第1行是標題）
+                if (sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().Any())
+                {
+                    var maxRowIndex = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>()
+                        .Where(r => r.RowIndex.HasValue)
+                        .Select(r => r.RowIndex.Value)
+                        .DefaultIfEmpty((uint)1)
+                        .Max();
+                    nextRowIndex = maxRowIndex + 1;
+                }
+
+                foreach (var record in records)
+                {
+                    // 構建主鍵值（使用與入站同步相同的格式：columnName:value）
+                    string primaryKeyValue = string.Empty;
+                    if (primaryKeyColumns.Any())
+                    {
+                        primaryKeyValue = BuildCompositeKeyFromRecord(record, primaryKeyColumns);
+                    }
+                    else
+                    {
+                        primaryKeyValue = record.PrimaryKeyValue ?? string.Empty;
+                    }
+
+                    // 構建數據行
+                    var dataRow = BuildExcelRow(record, columns, workbookPart, sharedStringTablePart, nextRowIndex);
+
+                    // 檢查是否需要更新現有行或添加新行
+                    if (!string.IsNullOrEmpty(primaryKeyValue) && primaryKeyToRowMap.ContainsKey(primaryKeyValue))
+                    {
+                        // 更新現有行
+                        var rowIndex = primaryKeyToRowMap[primaryKeyValue];
+                        dataRow.RowIndex = rowIndex;
+                        rowsToUpdate[rowIndex] = dataRow;
+                        processedRowNumbers.Add(rowIndex);
+                        _loggingService.LogDebug($"準備更新行 {rowIndex}，主鍵: {primaryKeyValue}");
+                    }
+                    else
+                    {
+                        // 添加新行
+                        dataRow.RowIndex = nextRowIndex;
+                        rowsToAdd.Add(dataRow);
+                        nextRowIndex++;
+                        _loggingService.LogDebug($"準備添加新行，主鍵: {primaryKeyValue}");
+                    }
+                }
+
+                // 應用更新：先刪除舊行，再插入新行
+                foreach (var (rowIndex, row) in rowsToUpdate)
+                {
+                    var existingRow = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>()
+                        .FirstOrDefault(r => r.RowIndex == rowIndex);
+                    if (existingRow != null)
+                    {
+                        sheetData.RemoveChild(existingRow);
+                    }
+                    sheetData.InsertAt(row, (int)rowIndex - 1);
+                }
+
+                // 添加新行（按照 RowIndex 順序插入）
+                var sortedRowsToAdd = rowsToAdd.OrderBy(r => r.RowIndex).ToList();
+                foreach (var row in sortedRowsToAdd)
+                {
+                    var existingRows = sheetData.Elements<DocumentFormat.OpenXml.Spreadsheet.Row>().ToList();
+                    var insertPosition = existingRows.Count;
+                    
+                    for (int i = 0; i < existingRows.Count; i++)
+                    {
+                        if (existingRows[i].RowIndex.HasValue && existingRows[i].RowIndex.Value > row.RowIndex)
+                        {
+                            insertPosition = i;
+                            break;
+                        }
+                    }
+                    
+                    if (insertPosition < existingRows.Count)
+                    {
+                        sheetData.InsertAt(row, insertPosition);
+                    }
+                    else
+                    {
+                        sheetData.AppendChild(row);
+                    }
+                }
+
+                // 保存工作表
+                worksheet.Save();
+                workbookPart.Workbook.Save();
+                spreadsheetDocument.WorkbookPart.Workbook.Save();
+
+                // 保存到本地文件
+                stream.Position = 0;
+                var updatedBytes = stream.ToArray();
+                await System.IO.File.WriteAllBytesAsync(filePath, updatedBytes);
+                _loggingService.LogInformation($"成功保存 Excel 文件到: {filePath}");
+
+                var totalRecords = rowsToAdd.Count + rowsToUpdate.Count;
+                _loggingService.LogInformation($"本地 Excel 出站同步完成，數據集ID: {dataSet.Id}，新增: {rowsToAdd.Count}，更新: {rowsToUpdate.Count}，總計: {totalRecords}");
+                
+                return new SyncResult { Success = true, TotalRecords = totalRecords };
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"本地 Excel 出站同步失敗: {ex.Message}", ex);
+                return new SyncResult { Success = false, ErrorMessage = $"本地 Excel 出站同步失敗: {ex.Message}" };
+            }
+        }
+
+        /// <summary>
+        /// 構建 Excel 行
+        /// </summary>
+        private DocumentFormat.OpenXml.Spreadsheet.Row BuildExcelRow(
+            DataSetRecord record, 
+            List<DataSetColumn> columns, 
+            DocumentFormat.OpenXml.Packaging.WorkbookPart workbookPart,
+            DocumentFormat.OpenXml.Packaging.SharedStringTablePart sharedStringTablePart,
+            uint rowIndex)
+        {
+            var row = new DocumentFormat.OpenXml.Spreadsheet.Row { RowIndex = rowIndex };
+            uint columnIndex = 1;
+
+            foreach (var column in columns)
+            {
+                var value = record.Values?.FirstOrDefault(v => v.ColumnName == column.ColumnName);
+                var cellValue = GetValueAsString(value, column.DataType) ?? string.Empty;
+                
+                var cell = new DocumentFormat.OpenXml.Spreadsheet.Cell
+                {
+                    CellReference = GetExcelColumnName(columnIndex) + rowIndex.ToString()
+                };
+
+                // 根據數據類型設置單元格類型和值
+                switch (column.DataType?.ToLower())
+                {
+                    case "int":
+                    case "integer":
+                        if (int.TryParse(cellValue, out var intValue))
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.Number;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(intValue.ToString());
+                        }
+                        else
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(cellValue);
+                        }
+                        break;
+                        
+                    case "decimal":
+                        if (decimal.TryParse(cellValue, out var decimalValue))
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.Number;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(decimalValue.ToString());
+                        }
+                        else
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(cellValue);
+                        }
+                        break;
+                        
+                    case "datetime":
+                    case "date":
+                        if (DateTime.TryParse(cellValue, out var dateValue))
+                        {
+                            // Excel 日期需要轉換為序列號
+                            var excelDateNumber = (dateValue - new DateTime(1900, 1, 1)).TotalDays + 2; // +2 因為 Excel 的日期系統從 1900-01-01 開始，但認為 1900 是閏年
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.Number;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(excelDateNumber.ToString());
+                        }
+                        else
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(cellValue);
+                        }
+                        break;
+                        
+                    case "boolean":
+                    case "bool":
+                        if (bool.TryParse(cellValue, out var boolValue))
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.Boolean;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(boolValue ? "1" : "0");
+                        }
+                        else
+                        {
+                            cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String;
+                            cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(cellValue);
+                        }
+                        break;
+                        
+                    default: // string, text
+                        // 使用 SharedStringTable 來存儲字符串（優化文件大小）
+                        var sharedStringIndex = GetOrAddSharedString(sharedStringTablePart, cellValue);
+                        cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.SharedString;
+                        cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(sharedStringIndex.ToString());
+                        break;
+                }
+                
+                row.AppendChild(cell);
+                columnIndex++;
+            }
+
+            return row;
+        }
+
+        /// <summary>
+        /// 獲取或添加共享字符串
+        /// </summary>
+        private int GetOrAddSharedString(DocumentFormat.OpenXml.Packaging.SharedStringTablePart sharedStringTablePart, string value)
+        {
+            if (sharedStringTablePart.SharedStringTable == null)
+            {
+                sharedStringTablePart.SharedStringTable = new DocumentFormat.OpenXml.Spreadsheet.SharedStringTable();
+            }
+
+            var sharedStringTable = sharedStringTablePart.SharedStringTable;
+            var existingItem = sharedStringTable.Elements<DocumentFormat.OpenXml.Spreadsheet.SharedStringItem>()
+                .Select((item, index) => new { item, index })
+                .FirstOrDefault(x => x.item.Text?.Text == value);
+
+            if (existingItem != null)
+            {
+                return existingItem.index;
+            }
+
+            var newItem = new DocumentFormat.OpenXml.Spreadsheet.SharedStringItem();
+            newItem.Text = new DocumentFormat.OpenXml.Spreadsheet.Text(value);
+            sharedStringTable.AppendChild(newItem);
+            sharedStringTable.Count = (uint)sharedStringTable.ChildElements.Count;
+
+            return sharedStringTable.ChildElements.Count - 1;
+        }
+
+        /// <summary>
+        /// 獲取 Excel 列名（1 -> A, 2 -> B, 27 -> AA）
+        /// </summary>
+        private string GetExcelColumnName(uint columnNumber)
+        {
+            string columnName = string.Empty;
+            uint temp = columnNumber;
+            while (temp > 0)
+            {
+                uint remainder = (temp - 1) % 26;
+                columnName = (char)(65 + remainder) + columnName;
+                temp = (temp - 1) / 26;
+            }
+            return columnName;
+        }
+
+        /// <summary>
+        /// 將內部 DataSet 數據同步到 Google Sheets（出站同步）
+        /// </summary>
+        private async Task<SyncResult> SyncToGoogleDocs(DataSet dataSet, DataSetDataSource dataSource)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始將數據同步到 Google Sheets，數據集ID: {dataSet.Id}");
+                
+                if (string.IsNullOrEmpty(dataSource.GoogleDocsUrl))
+                {
+                    _loggingService.LogWarning($"Google Docs URL 為空，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "Google Docs URL 不能為空" };
+                }
+
+                // 從 URL 中提取表格 ID
+                var spreadsheetId = GoogleSheetsService.ExtractSpreadsheetId(dataSource.GoogleDocsUrl);
+                if (string.IsNullOrEmpty(spreadsheetId))
+                {
+                    _loggingService.LogWarning($"無法從 URL 中提取表格 ID: {dataSource.GoogleDocsUrl}, 數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "無效的 Google Sheets URL" };
+                }
+
+                _loggingService.LogInformation($"提取的表格 ID: {spreadsheetId}, 數據集ID: {dataSet.Id}");
+
+                // 檢測文件類型
+                var fileType = await _googleSheetsService.DetectFileTypeAsync(dataSet.CompanyId, spreadsheetId);
+                if (fileType == "excel")
+                {
+                    // 調用 Excel 同步方法
+                    _loggingService.LogInformation($"檢測到 Excel 文件類型，使用 Excel 同步方法，數據集ID: {dataSet.Id}");
+                    try
+                    {
+                        return await SyncToExcel(dataSet, dataSource);
+                    }
+                    catch (Exception excelEx)
+                    {
+                        // 如果 Excel 同步失敗（可能是因為 fileId 是 Google Sheets 的 ID），回退到使用 Google Sheets API
+                        if (excelEx.Message.Contains("Google Sheets 的 ID") || 
+                            excelEx.Message.Contains("File not found") || 
+                            excelEx.Message.Contains("文件不存在於 Google Drive") ||
+                            excelEx.Message.Contains("沒有權限訪問文件"))
+                        {
+                            _loggingService.LogWarning($"Excel 同步失敗，檢測到文件可能是 Google Sheets 或權限問題，回退到使用 Google Sheets API。錯誤: {excelEx.Message}");
+                            _loggingService.LogInformation($"使用 Google Sheets API 來更新數據，數據集ID: {dataSet.Id}");
+                            // 重新檢測文件類型，使用 Service Account
+                            fileType = "googlesheets"; // 強制使用 Google Sheets API
+                            // 繼續執行後續的 Google Sheets API 更新邏輯
+                        }
+                        else
+                        {
+                            throw; // 其他錯誤直接拋出
+                        }
+                    }
+                }
+
+                // 獲取工作表名稱：如果用戶沒有指定，自動獲取第一個工作表
+                var sheetName = dataSource.GoogleDocsSheetName;
+                if (string.IsNullOrWhiteSpace(sheetName))
+                {
+                    sheetName = await _googleSheetsService.GetFirstSheetNameAsync(dataSet.CompanyId, spreadsheetId);
+                    _loggingService.LogInformation($"未指定工作表名稱，自動獲取第一個工作表: {sheetName}, 數據集ID: {dataSet.Id}");
+                }
+                else
+                {
+                    _loggingService.LogInformation($"使用指定的工作表名稱: {sheetName}, 數據集ID: {dataSet.Id}");
+                }
+
+                // 獲取欄位定義（按 sortOrder 排序）
+                var columns = await _context.DataSetColumns
+                    .Where(c => c.DataSetId == dataSet.Id)
+                    .OrderBy(c => c.SortOrder)
+                    .ThenBy(c => c.ColumnName)
+                    .ToListAsync();
+
+                if (!columns.Any())
+                {
+                    _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "數據集沒有欄位定義" };
+                }
+
+                // 獲取所有記錄
+                var records = await _context.DataSetRecords
+                    .Where(r => r.DataSetId == dataSet.Id && r.Status == "Active")
+                    .Include(r => r.Values)
+                    .OrderBy(r => r.CreatedAt)
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {records.Count} 條活躍記錄，數據集ID: {dataSet.Id}");
+
+                if (!records.Any())
+                {
+                    _loggingService.LogInformation($"沒有活躍記錄需要同步，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = true, TotalRecords = 0 };
+                }
+
+                // 讀取 Google Sheets 現有數據以進行主鍵映射
+                var existingSheetData = await _googleSheetsService.ReadSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName);
+                var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+                
+                // 構建主鍵值到行號的映射（行號從2開始，因為第1行是標題）
+                var primaryKeyToRowMap = new Dictionary<string, int>();
+                if (existingSheetData.Count > 1 && primaryKeyColumns.Any())
+                {
+                    // 假設第一行是標題行
+                    var existingHeaderRow = existingSheetData[0];
+                    var dataRows = existingSheetData.Skip(1).ToList();
+                    
+                    // 找到主鍵欄位在標題行中的位置
+                    var primaryKeyIndices = new List<int>();
+                    foreach (var pkColumn in primaryKeyColumns)
+                    {
+                        // 嘗試匹配標準化的欄位名稱
+                        var normalizedPkName = ColumnNameNormalizer.Normalize(pkColumn.ColumnName);
+                        for (int i = 0; i < existingHeaderRow.Count; i++)
+                        {
+                            var normalizedHeader = ColumnNameNormalizer.Normalize(existingHeaderRow[i]);
+                            if (normalizedHeader == normalizedPkName || existingHeaderRow[i] == pkColumn.DisplayName || existingHeaderRow[i] == pkColumn.ColumnName)
+                            {
+                                primaryKeyIndices.Add(i);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // 構建主鍵值到行號的映射
+                    for (int rowIndex = 0; rowIndex < dataRows.Count; rowIndex++)
+                    {
+                        var row = dataRows[rowIndex];
+                        if (primaryKeyIndices.Any() && primaryKeyIndices.All(idx => idx < row.Count))
+                        {
+                            var keyParts = primaryKeyIndices.Select(idx => row[idx]?.ToString() ?? string.Empty).ToList();
+                            var compositeKey = string.Join("|", keyParts);
+                            if (!string.IsNullOrEmpty(compositeKey))
+                            {
+                                primaryKeyToRowMap[compositeKey] = rowIndex + 2; // +2 因為第1行是標題，行號從1開始
+                            }
+                        }
+                    }
+                    
+                    _loggingService.LogInformation($"構建主鍵映射完成，找到 {primaryKeyToRowMap.Count} 個映射關係");
+                }
+
+                // 構建標題行
+                var headerRow = new List<object>();
+                foreach (var column in columns)
+                {
+                    headerRow.Add(column.DisplayName ?? column.ColumnName);
+                }
+
+                // 檢查是否需要更新標題行
+                var needsHeaderUpdate = false;
+                if (existingSheetData.Count == 0 || existingSheetData[0].Count != headerRow.Count)
+                {
+                    needsHeaderUpdate = true;
+                }
+                else
+                {
+                    var existingHeaders = existingSheetData[0];
+                    for (int i = 0; i < Math.Min(headerRow.Count, existingHeaders.Count); i++)
+                    {
+                        if (headerRow[i].ToString() != existingHeaders[i])
+                        {
+                            needsHeaderUpdate = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 更新標題行（如果需要）
+                if (needsHeaderUpdate)
+                {
+                    _loggingService.LogInformation($"更新 Google Sheets 標題行，數據集ID: {dataSet.Id}");
+                    await _googleSheetsService.WriteSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName, new List<List<object>> { headerRow }, 1);
+                }
+
+                // 構建數據行並進行增量同步
+                var rowsToWrite = new List<List<object>>();
+                var rowsToUpdate = new Dictionary<int, List<object>>(); // 行號 -> 數據行
+                var processedRowNumbers = new HashSet<int>();
+
+                foreach (var record in records)
+                {
+                    // 構建主鍵值
+                    string primaryKeyValue = string.Empty;
+                    if (primaryKeyColumns.Any())
+                    {
+                        var keyParts = new List<string>();
+                        foreach (var pkColumn in primaryKeyColumns)
+                        {
+                            var value = record.Values?.FirstOrDefault(v => v.ColumnName == pkColumn.ColumnName);
+                            var valueStr = GetValueAsString(value, pkColumn.DataType)?.Trim() ?? string.Empty;
+                            keyParts.Add(valueStr);
+                        }
+                        primaryKeyValue = string.Join("|", keyParts);
+                    }
+                    else
+                    {
+                        primaryKeyValue = record.PrimaryKeyValue ?? string.Empty;
+                    }
+
+                    // 構建數據行
+                    var dataRow = new List<object>();
+                    foreach (var column in columns)
+                    {
+                        var value = record.Values?.FirstOrDefault(v => v.ColumnName == column.ColumnName);
+                        var valueStr = GetValueAsString(value, column.DataType) ?? string.Empty;
+                        dataRow.Add(valueStr);
+                    }
+
+                    // 檢查是否需要更新現有行或添加新行
+                    if (!string.IsNullOrEmpty(primaryKeyValue) && primaryKeyToRowMap.ContainsKey(primaryKeyValue))
+                    {
+                        // 更新現有行
+                        var rowNumber = primaryKeyToRowMap[primaryKeyValue];
+                        rowsToUpdate[rowNumber] = dataRow;
+                        processedRowNumbers.Add(rowNumber);
+                        _loggingService.LogDebug($"準備更新行 {rowNumber}，主鍵: {primaryKeyValue}");
+                    }
+                    else
+                    {
+                        // 添加新行
+                        rowsToWrite.Add(dataRow);
+                        _loggingService.LogDebug($"準備添加新行，主鍵: {primaryKeyValue}");
+                    }
+                }
+
+                // 批量寫入新行
+                if (rowsToWrite.Any())
+                {
+                    _loggingService.LogInformation($"開始寫入 {rowsToWrite.Count} 行新數據到 Google Sheets");
+                    var startRow = existingSheetData.Count > 0 ? existingSheetData.Count + 1 : 2; // 如果沒有數據，從第2行開始（第1行是標題）
+                    await _googleSheetsService.WriteSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName, rowsToWrite, startRow);
+                    _loggingService.LogInformation($"成功寫入 {rowsToWrite.Count} 行新數據");
+                }
+
+                // 批量更新現有行
+                if (rowsToUpdate.Any())
+                {
+                    _loggingService.LogInformation($"開始更新 {rowsToUpdate.Count} 行數據到 Google Sheets");
+                    
+                    // 將行更新轉換為 UpdateSheetDataAsync 需要的格式
+                    var updates = new Dictionary<int, Dictionary<int, object>>();
+                    foreach (var kvp in rowsToUpdate)
+                    {
+                        var rowNumber = kvp.Key;
+                        var rowData = kvp.Value;
+                        var columnUpdates = new Dictionary<int, object>();
+                        
+                        for (int colIndex = 0; colIndex < rowData.Count; colIndex++)
+                        {
+                            columnUpdates[colIndex + 1] = rowData[colIndex]; // 列號從1開始
+                        }
+                        
+                        updates[rowNumber] = columnUpdates;
+                    }
+                    
+                    await _googleSheetsService.UpdateSheetDataAsync(dataSet.CompanyId, spreadsheetId, sheetName, updates);
+                    _loggingService.LogInformation($"成功更新 {rowsToUpdate.Count} 行數據");
+                }
+
+                var totalRecords = rowsToWrite.Count + rowsToUpdate.Count;
+                _loggingService.LogInformation($"Google Sheets 出站同步完成，數據集ID: {dataSet.Id}，新增: {rowsToWrite.Count}，更新: {rowsToUpdate.Count}，總計: {totalRecords}");
+                
+                return new SyncResult { Success = true, TotalRecords = totalRecords };
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"Google Sheets 出站同步失敗: {ex.Message}", ex);
+                return new SyncResult { Success = false, ErrorMessage = $"Google Sheets 出站同步失敗: {ex.Message}" };
             }
         }
 
@@ -3075,7 +4410,8 @@ namespace PurpleRice.Controllers
         /// <summary>
         /// 通用的增量同步方法 - 使用 Hash 比較檢測新增、更新、刪除
         /// </summary>
-        private async Task<int> ProcessIncrementalSync(DataSet dataSet, List<Dictionary<string, object>> sourceData, string sourceType)
+        /// <param name="skipDeletes">如果為 true，跳過刪除操作（用於雙向同步的入站階段）</param>
+        private async Task<int> ProcessIncrementalSync(DataSet dataSet, List<Dictionary<string, object>> sourceData, string sourceType, bool skipDeletes = false)
         {
             try
             {
@@ -3150,9 +4486,15 @@ namespace PurpleRice.Controllers
                     existingRecordsHash, 
                     newRecordsHash, 
                     sourceData, 
-                    primaryKeyColumns
+                    primaryKeyColumns,
+                    skipDeletes
                 );
 
+                if (skipDeletes && deleteRecords.Any())
+                {
+                    _loggingService.LogInformation($"雙向同步入站階段：跳過刪除 {deleteRecords.Count} 條記錄（這些記錄將在下次出站同步時寫入外部數據源）");
+                }
+                
                 _loggingService.LogInformation($"記錄分類完成 - 新增: {newRecords.Count}, 更新: {updateRecords.Count}, 刪除: {deleteRecords.Count}");
                 
                 // 調試：顯示前幾個需要更新的記錄
@@ -3362,13 +4704,15 @@ namespace PurpleRice.Controllers
         }
 
         // 分類記錄：新增、更新、刪除（支援複合主鍵）
+        /// <param name="skipDeletes">如果為 true，跳過刪除操作（用於雙向同步的入站階段）</param>
         private (List<Dictionary<string, object>> NewRecords, 
                  List<(DataSetRecord Record, Dictionary<string, object> Row)> UpdateRecords, 
                  List<DataSetRecord> DeleteRecords) ClassifyRecords(
             Dictionary<string, (DataSetRecord Record, string Hash)> existingRecordsHash,
             Dictionary<string, (Dictionary<string, object> Row, string Hash)> newRecordsHash,
             List<Dictionary<string, object>> sqlResults,
-            List<DataSetColumn> primaryKeyColumns)
+            List<DataSetColumn> primaryKeyColumns,
+            bool skipDeletes = false)
         {
             var newRecords = new List<Dictionary<string, object>>();
             var updateRecords = new List<(DataSetRecord Record, Dictionary<string, object> Row)>();
@@ -3411,14 +4755,29 @@ namespace PurpleRice.Controllers
                 }
             }
 
-            // 找出刪除的記錄
-            var existingPrimaryKeys = existingRecordsHash.Keys.ToHashSet();
-            var newPrimaryKeys = newRecordsHash.Keys.ToHashSet();
-            var deletedPrimaryKeys = existingPrimaryKeys.Except(newPrimaryKeys);
-
-            foreach (var deletedPk in deletedPrimaryKeys)
+            // 找出刪除的記錄（如果未設置跳過刪除）
+            if (!skipDeletes)
             {
-                deleteRecords.Add(existingRecordsHash[deletedPk].Record);
+                var existingPrimaryKeys = existingRecordsHash.Keys.ToHashSet();
+                var newPrimaryKeys = newRecordsHash.Keys.ToHashSet();
+                var deletedPrimaryKeys = existingPrimaryKeys.Except(newPrimaryKeys);
+
+                foreach (var deletedPk in deletedPrimaryKeys)
+                {
+                    deleteRecords.Add(existingRecordsHash[deletedPk].Record);
+                }
+            }
+            else
+            {
+                // 雙向同步的入站階段：記錄那些在 dataset 中但不在外部數據源中的記錄
+                var existingPrimaryKeys = existingRecordsHash.Keys.ToHashSet();
+                var newPrimaryKeys = newRecordsHash.Keys.ToHashSet();
+                var deletedPrimaryKeys = existingPrimaryKeys.Except(newPrimaryKeys);
+                
+                if (deletedPrimaryKeys.Any())
+                {
+                    _loggingService.LogInformation($"雙向同步入站階段：發現 {deletedPrimaryKeys.Count()} 條記錄在 dataset 中但不在外部數據源中，這些記錄將在下次出站同步時寫入");
+                }
             }
 
             return (newRecords, updateRecords, deleteRecords);
@@ -3505,9 +4864,35 @@ namespace PurpleRice.Controllers
 
                 foreach (var (record, row) in batch)
                 {
-                    // 重新附加記錄到 DbContext 以確保變更追蹤
-                    _context.DataSetRecords.Attach(record);
-                    _context.Entry(record).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                    // 檢查記錄是否已經被追蹤
+                    DataSetRecord recordToUpdate = record;
+                    var trackedEntry = _context.Entry(record);
+                    var isTracked = trackedEntry.State != Microsoft.EntityFrameworkCore.EntityState.Detached;
+                    
+                    if (!isTracked)
+                    {
+                        // 檢查 Local 緩存中是否有相同 ID 的實體
+                        var trackedRecord = _context.DataSetRecords.Local.FirstOrDefault(r => r.Id == record.Id);
+                        if (trackedRecord != null)
+                        {
+                            // 如果已經被追蹤，使用已追蹤的實體
+                            recordToUpdate = trackedRecord;
+                            _context.Entry(recordToUpdate).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                        }
+                        else
+                        {
+                            // 如果沒有被追蹤，重新附加記錄到 DbContext 以確保變更追蹤
+                            _context.DataSetRecords.Attach(record);
+                            _context.Entry(record).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                            recordToUpdate = record;
+                        }
+                    }
+                    else
+                    {
+                        // 已經被追蹤，直接設置為 Modified
+                        _context.Entry(record).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                        recordToUpdate = record;
+                    }
                     
                     var hasChanges = false;
 
@@ -3517,7 +4902,7 @@ namespace PurpleRice.Controllers
                         var columnName = column.ColumnName;
                         var newValue = row.ContainsKey(columnName) ? row[columnName] : null;
                         
-                        var existingValue = record.Values?.FirstOrDefault(v => v.ColumnName == columnName);
+                        var existingValue = recordToUpdate.Values?.FirstOrDefault(v => v.ColumnName == columnName);
                         
                         if (existingValue == null)
                         {
@@ -3525,7 +4910,7 @@ namespace PurpleRice.Controllers
                             var recordValue = new DataSetRecordValue
                             {
                                 Id = Guid.NewGuid(),
-                                RecordId = record.Id,
+                                RecordId = recordToUpdate.Id,
                                 ColumnName = columnName,
                                 StringValue = null,
                                 NumericValue = null,
@@ -3535,6 +4920,11 @@ namespace PurpleRice.Controllers
                             
                             SetValueByType(recordValue, newValue, column.DataType);
                             _context.DataSetRecordValues.Add(recordValue);
+                            // 確保 recordToUpdate.Values 包含新值（如果已加載）
+                            if (recordToUpdate.Values != null)
+                            {
+                                recordToUpdate.Values.Add(recordValue);
+                            }
                             hasChanges = true;
                         }
                         else
@@ -3560,7 +4950,7 @@ namespace PurpleRice.Controllers
                     
                     if (hasChanges)
                     {
-                        record.UpdatedAt = DateTime.UtcNow;
+                        recordToUpdate.UpdatedAt = DateTime.UtcNow;
                         totalUpdated++;
                     }
                 }
@@ -3585,12 +4975,19 @@ namespace PurpleRice.Controllers
                 var batch = deleteRecords.Skip(i).Take(batchSize).ToList();
                 _loggingService.LogInformation($"批量刪除記錄 {i + 1}-{Math.Min(i + batchSize, deleteRecords.Count)}/{deleteRecords.Count}");
 
-                _context.DataSetRecords.RemoveRange(batch);
+                // 使用 ID 重新查詢記錄，避免追蹤衝突
+                var recordIds = batch.Select(r => r.Id).ToList();
+                var recordsToDelete = await _context.DataSetRecords
+                    .Where(r => recordIds.Contains(r.Id))
+                    .Include(r => r.Values) // 包含關聯的 Values，確保級聯刪除
+                    .ToListAsync();
+
+                _context.DataSetRecords.RemoveRange(recordsToDelete);
                 await _context.SaveChangesAsync();
                 
-                totalDeleted += batch.Count;
+                totalDeleted += recordsToDelete.Count;
                 
-                _loggingService.LogInformation($"批量刪除完成，本批次: {batch.Count}，累計: {totalDeleted}");
+                _loggingService.LogInformation($"批量刪除完成，本批次: {recordsToDelete.Count}，累計: {totalDeleted}");
             }
 
             return totalDeleted;
@@ -4357,6 +5754,7 @@ namespace PurpleRice.Controllers
         public Guid CompanyId { get; set; }
         public bool IsScheduled { get; set; } = false;
         public int? UpdateIntervalMinutes { get; set; }
+        public string? SyncDirection { get; set; } = "inbound";
         public string CreatedBy { get; set; } = string.Empty;
         public List<CreateColumnRequest>? Columns { get; set; }
         public CreateDataSourceRequest? DataSource { get; set; }
@@ -4397,6 +5795,7 @@ namespace PurpleRice.Controllers
         public string? Status { get; set; }
         public bool? IsScheduled { get; set; }
         public int? UpdateIntervalMinutes { get; set; }
+        public string? SyncDirection { get; set; }
         public string UpdatedBy { get; set; } = string.Empty;
         
         // 新增：數據源相關字段
@@ -4418,6 +5817,11 @@ namespace PurpleRice.Controllers
         public string ColumnName { get; set; } = string.Empty;
         public string Operator { get; set; } = string.Empty; // equals, contains, greater_than, less_than, date_range
         public string Value { get; set; } = string.Empty;
+    }
+
+    public class SyncRequest
+    {
+        public string SyncDirection { get; set; } = "inbound"; // inbound, outbound, bidirectional
     }
 
     public class SyncResult

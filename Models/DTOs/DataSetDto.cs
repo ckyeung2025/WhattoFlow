@@ -15,6 +15,7 @@ namespace PurpleRice.Models.DTOs
         public int? UpdateIntervalMinutes { get; set; }
         public DateTime? LastUpdateTime { get; set; }
         public DateTime? NextUpdateTime { get; set; }
+        public string SyncDirection { get; set; } = "inbound"; // inbound, outbound, bidirectional
         public int TotalRecords { get; set; }
         public DateTime? LastDataSyncTime { get; set; }
         public DateTime CreatedAt { get; set; }

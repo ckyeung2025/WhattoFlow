@@ -242,7 +242,8 @@ const DataSetManagementPage = () => {
       name: record.name,
       description: record.description,
       isScheduled: record.isScheduled,
-      updateIntervalMinutes: record.updateIntervalMinutes
+      updateIntervalMinutes: record.updateIntervalMinutes,
+      syncDirection: record.syncDirection || 'inbound'
     });
     
     // 修正：使用 dataSource 而不是 dataSources
@@ -377,6 +378,30 @@ const DataSetManagementPage = () => {
     } catch (error) {
       console.error('handleDelete: 刪除請求失敗:', error);
       message.error(t('dataSetManagement.deleteFailed'));
+    }
+  };
+
+  const handleDeleteRecord = async (recordId) => {
+    if (!selectedDataSet) return;
+    
+    console.log('handleDeleteRecord: 開始刪除記錄，DataSet ID:', selectedDataSet.id, 'Record ID:', recordId);
+    try {
+      const response = await fetchWithAuth(`/api/datasets/${selectedDataSet.id}/records/${recordId}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      console.log('handleDeleteRecord: 刪除結果:', result);
+      
+      if (result.success) {
+        message.success(t('dataSetManagement.recordDeleted'));
+        // 刷新記錄列表
+        await fetchRecords(selectedDataSet.id);
+      } else {
+        message.error(t('dataSetManagement.recordDeleteFailed') + ': ' + result.message);
+      }
+    } catch (error) {
+      console.error('handleDeleteRecord: 刪除請求失敗:', error);
+      message.error(t('dataSetManagement.recordDeleteFailed'));
     }
   };
 
@@ -1830,6 +1855,19 @@ const DataSetManagementPage = () => {
                   </Form.Item>
                 </Col>
               </Row>
+              
+              <Form.Item 
+                name="syncDirection" 
+                label={t('dataSetManagement.syncDirection')}
+                tooltip={t('dataSetManagement.syncDirectionTooltip')}
+                initialValue="inbound"
+              >
+                <Select placeholder={t('dataSetManagement.syncDirectionPlaceholder')}>
+                  <Select.Option value="inbound">{t('dataSetManagement.syncDirectionInbound')}</Select.Option>
+                  <Select.Option value="outbound">{t('dataSetManagement.syncDirectionOutbound')}</Select.Option>
+                  <Select.Option value="bidirectional">{t('dataSetManagement.syncDirectionBidirectional')}</Select.Option>
+                </Select>
+              </Form.Item>
             </Form>
           </TabPane>
           
@@ -2465,7 +2503,32 @@ const DataSetManagementPage = () => {
                   ellipsis: true,
                   render: (time) => TimezoneUtils.formatDateWithTimezone(time, userTimezoneOffset)
                 },
-                ...renderRecordColumns()
+                ...renderRecordColumns(),
+                {
+                  title: t('dataSetManagement.actions'),
+                  key: 'actions',
+                  width: 100,
+                  fixed: 'right',
+                  render: (_, record) => (
+                    <Popconfirm
+                      title={t('dataSetManagement.confirmDeleteRecord')}
+                      description={t('dataSetManagement.confirmDeleteRecordDescription')}
+                      onConfirm={() => handleDeleteRecord(record.id)}
+                      okText={t('dataSetManagement.confirmDeleteOk')}
+                      cancelText={t('dataSetManagement.confirmDeleteCancel')}
+                      okType="danger"
+                    >
+                      <Tooltip title={t('dataSetManagement.deleteRecord')}>
+                        <Button 
+                          type="text" 
+                          danger 
+                          icon={<DeleteOutlined />} 
+                          size="small"
+                        />
+                      </Tooltip>
+                    </Popconfirm>
+                  )
+                }
               ]}
               dataSource={records}
               loading={recordsLoading}

@@ -34,6 +34,10 @@ namespace PurpleRice.Models
         public DateTime? LastUpdateTime { get; set; }
         public DateTime? NextUpdateTime { get; set; }
         
+        // 同步方向設定
+        [StringLength(20)]
+        public string SyncDirection { get; set; } = "inbound"; // inbound, outbound, bidirectional
+        
         // 數據統計
         public int TotalRecords { get; set; } = 0;
         public DateTime? LastDataSyncTime { get; set; }

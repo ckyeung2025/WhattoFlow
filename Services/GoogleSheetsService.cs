@@ -2,6 +2,8 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
 using Google.Apis.Sheets.v4.Data;
+using Google.Apis.Drive.v3;
+using Google.Apis.Drive.v3.Data;
 using PurpleRice.Models.Dto.ApiProviders;
 using PurpleRice.Services.ApiProviders;
 using System;
@@ -15,8 +17,18 @@ namespace PurpleRice.Services
     {
         Task<List<List<string>>> ReadSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, string range = null);
         Task<List<string>> GetSheetNamesAsync(Guid companyId, string spreadsheetId);
+        Task<string> GetFirstSheetNameAsync(Guid companyId, string spreadsheetId);
         Task<bool> TestConnectionAsync(Guid companyId, string spreadsheetId);
         Task<string> DetectFileTypeAsync(Guid companyId, string spreadsheetId);
+        
+        // 寫入方法（用於雙向同步）
+        Task<bool> WriteSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, List<List<object>> data, int startRow = 1);
+        Task<bool> UpdateSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, Dictionary<int, Dictionary<int, object>> updates);
+        Task<bool> ClearSheetRangeAsync(Guid companyId, string spreadsheetId, string sheetName, string range);
+        
+        // Excel 文件操作方法（用於雙向同步）
+        Task<byte[]> DownloadExcelFileAsync(Guid companyId, string fileId);
+        Task<bool> UploadExcelFileAsync(Guid companyId, string fileId, byte[] fileBytes);
     }
 
     public class GoogleSheetsService : IGoogleSheetsService
@@ -30,11 +42,11 @@ namespace PurpleRice.Services
             _apiProviderService = apiProviderService;
         }
 
-        private async Task<SheetsService> CreateSheetsServiceAsync(Guid companyId)
+        private async Task<SheetsService> CreateSheetsServiceAsync(Guid companyId, bool requireWriteAccess = false)
         {
             try
             {
-                _loggingService.LogInformation($"[GoogleSheetsService] 開始創建 Google Sheets 服務，公司ID: {companyId}");
+                _loggingService.LogInformation($"[GoogleSheetsService] 開始創建 Google Sheets 服務，公司ID: {companyId}, 需要寫入權限: {requireWriteAccess}");
                 
                 var runtime = await _apiProviderService.GetRuntimeProviderAsync(companyId, "google-docs");
 
@@ -54,48 +66,108 @@ namespace PurpleRice.Services
                     ApplicationName = applicationName
                 };
 
-                if (!string.IsNullOrWhiteSpace(runtime.ApiKey))
+                // 如果需要寫入權限，必須使用 Service Account（OAuth2），不能使用 API Key
+                if (requireWriteAccess)
                 {
-                    initializer.ApiKey = runtime.ApiKey;
-                    _loggingService.LogInformation($"[GoogleSheetsService] Google Sheets 服務初始化成功（使用資料庫中的 API Key），API Key 長度: {runtime.ApiKey.Length}");
-                }
-                else if (string.Equals(runtime.AuthType, "serviceAccount", StringComparison.OrdinalIgnoreCase) &&
-                         !string.IsNullOrWhiteSpace(runtime.AuthConfigJson))
-                {
-                    _loggingService.LogInformation($"[GoogleSheetsService] 嘗試使用 Service Account 認證，AuthConfigJson 長度: {runtime.AuthConfigJson.Length}");
-                    
-                    try
+                    if (string.Equals(runtime.AuthType, "serviceAccount", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(runtime.AuthConfigJson))
                     {
-                        var credential = GoogleCredential.FromJson(runtime.AuthConfigJson);
-                        var scopes = ResolveScopes(runtime) ?? new[]
-                        {
-                            "https://www.googleapis.com/auth/documents",
-                            "https://www.googleapis.com/auth/drive.file",
-                            "https://www.googleapis.com/auth/spreadsheets.readonly"
-                        };
-                        _loggingService.LogInformation($"[GoogleSheetsService] Service Account Scopes: {string.Join(", ", scopes)}");
+                        _loggingService.LogInformation($"[GoogleSheetsService] 寫入操作需要 Service Account 認證，AuthConfigJson 長度: {runtime.AuthConfigJson.Length}");
                         
-                        credential = credential.CreateScoped(scopes);
-                        initializer.HttpClientInitializer = credential;
-                        _loggingService.LogInformation("[GoogleSheetsService] Google Sheets 服務初始化成功（使用 Service Account）");
+                        try
+                        {
+                            var credential = GoogleCredential.FromJson(runtime.AuthConfigJson);
+                            var resolvedScopes = ResolveScopes(runtime);
+                            var scopes = new List<string>();
+                            
+                            // 如果從配置中解析到 scopes，使用它們；否則使用默認值
+                            if (resolvedScopes != null && resolvedScopes.Any())
+                            {
+                                scopes.AddRange(resolvedScopes);
+                            }
+                            else
+                            {
+                                scopes.AddRange(new[]
+                                {
+                                    "https://www.googleapis.com/auth/documents",
+                                    "https://www.googleapis.com/auth/drive.file",
+                                    "https://www.googleapis.com/auth/spreadsheets"
+                                });
+                            }
+                            
+                            // 確保寫入操作必需的 spreadsheets scope 被包含
+                            var spreadsheetsScope = "https://www.googleapis.com/auth/spreadsheets";
+                            if (!scopes.Contains(spreadsheetsScope))
+                            {
+                                _loggingService.LogWarning($"[GoogleSheetsService] 自定義 scopes 中缺少 spreadsheets scope，自動添加: {spreadsheetsScope}");
+                                scopes.Add(spreadsheetsScope);
+                            }
+                            
+                            _loggingService.LogInformation($"[GoogleSheetsService] Service Account Scopes: {string.Join(", ", scopes)}");
+                            
+                            credential = credential.CreateScoped(scopes);
+                            initializer.HttpClientInitializer = credential;
+                            _loggingService.LogInformation("[GoogleSheetsService] Google Sheets 服務初始化成功（使用 Service Account，支持寫入）");
+                        }
+                        catch (Exception saEx)
+                        {
+                            _loggingService.LogError($"[GoogleSheetsService] Service Account 認證失敗: {saEx.Message}", saEx);
+                            throw;
+                        }
                     }
-                    catch (Exception saEx)
+                    else
                     {
-                        _loggingService.LogError($"[GoogleSheetsService] Service Account 認證失敗: {saEx.Message}", saEx);
-                        throw;
+                        var errorMessage = "寫入操作需要 Service Account 認證。請在 Google Docs API 供應商配置中設置 AuthType 為 'serviceAccount' 並提供 AuthConfigJson（Service Account JSON）。API Key 僅支持讀取操作，不能用於寫入。";
+                        _loggingService.LogError($"[GoogleSheetsService] {errorMessage}");
+                        throw new InvalidOperationException(errorMessage);
                     }
                 }
                 else
                 {
-                    var fallbackKey = Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
-                    if (!string.IsNullOrWhiteSpace(fallbackKey))
+                    // 讀取操作：優先使用 API Key（如果有的話），否則使用 Service Account
+                    if (!string.IsNullOrWhiteSpace(runtime.ApiKey))
                     {
-                        initializer.ApiKey = fallbackKey;
-                        _loggingService.LogWarning($"[GoogleSheetsService] 使用環境變量 GOOGLE_API_KEY 作為後備，API Key 長度: {fallbackKey.Length}");
+                        initializer.ApiKey = runtime.ApiKey;
+                        _loggingService.LogInformation($"[GoogleSheetsService] Google Sheets 服務初始化成功（使用資料庫中的 API Key，僅支持讀取），API Key 長度: {runtime.ApiKey.Length}");
+                    }
+                    else if (string.Equals(runtime.AuthType, "serviceAccount", StringComparison.OrdinalIgnoreCase) &&
+                             !string.IsNullOrWhiteSpace(runtime.AuthConfigJson))
+                    {
+                        _loggingService.LogInformation($"[GoogleSheetsService] 嘗試使用 Service Account 認證，AuthConfigJson 長度: {runtime.AuthConfigJson.Length}");
+                        
+                        try
+                        {
+                            var credential = GoogleCredential.FromJson(runtime.AuthConfigJson);
+                            var scopes = ResolveScopes(runtime) ?? new[]
+                            {
+                                "https://www.googleapis.com/auth/documents",
+                                "https://www.googleapis.com/auth/drive.file",
+                                "https://www.googleapis.com/auth/spreadsheets"
+                            };
+                            _loggingService.LogInformation($"[GoogleSheetsService] Service Account Scopes: {string.Join(", ", scopes)}");
+                            
+                            credential = credential.CreateScoped(scopes);
+                            initializer.HttpClientInitializer = credential;
+                            _loggingService.LogInformation("[GoogleSheetsService] Google Sheets 服務初始化成功（使用 Service Account）");
+                        }
+                        catch (Exception saEx)
+                        {
+                            _loggingService.LogError($"[GoogleSheetsService] Service Account 認證失敗: {saEx.Message}", saEx);
+                            throw;
+                        }
                     }
                     else
                     {
-                        _loggingService.LogWarning($"[GoogleSheetsService] Google Docs provider 未提供 API Key 或 Service Account 配置，公司 {companyId}。AuthType: {runtime.AuthType ?? "null"}, HasApiKey: {!string.IsNullOrWhiteSpace(runtime.ApiKey)}, HasAuthConfigJson: {!string.IsNullOrWhiteSpace(runtime.AuthConfigJson)}");
+                        var fallbackKey = Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+                        if (!string.IsNullOrWhiteSpace(fallbackKey))
+                        {
+                            initializer.ApiKey = fallbackKey;
+                            _loggingService.LogWarning($"[GoogleSheetsService] 使用環境變量 GOOGLE_API_KEY 作為後備，API Key 長度: {fallbackKey.Length}");
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning($"[GoogleSheetsService] Google Docs provider 未提供 API Key 或 Service Account 配置，公司 {companyId}。AuthType: {runtime.AuthType ?? "null"}, HasApiKey: {!string.IsNullOrWhiteSpace(runtime.ApiKey)}, HasAuthConfigJson: {!string.IsNullOrWhiteSpace(runtime.AuthConfigJson)}");
+                        }
                     }
                 }
 
@@ -116,8 +188,12 @@ namespace PurpleRice.Services
             {
                 _loggingService.LogInformation($"開始讀取 Google Sheets 數據，表格ID: {spreadsheetId}, 工作表: {sheetName}");
 
-                // 構建範圍字符串 - 擴大讀取範圍以確保讀取所有數據
-                var rangeString = range ?? $"{sheetName}!A:ZZ"; // 擴展到 ZZ 列以確保讀取所有數據
+                // 構建範圍字符串
+                // Google Sheets API 支持只使用工作表名稱來讀取整個工作表的所有數據
+                // 或者使用完整的範圍格式，例如 Sheet1!A1:Z1000
+                // 如果沒有指定範圍，使用工作表名稱來讀取整個工作表（轉義工作表名稱以支持特殊字符）
+                var escapedSheetName = EscapeSheetName(sheetName);
+                var rangeString = range ?? escapedSheetName; // 只使用工作表名稱，讀取整個工作表的所有數據
                 
                 _loggingService.LogInformation($"讀取範圍: {rangeString}");
 
@@ -193,6 +269,39 @@ namespace PurpleRice.Services
             }
         }
 
+        /// <summary>
+        /// 獲取 Google Sheets 的第一個工作表名稱
+        /// </summary>
+        public async Task<string> GetFirstSheetNameAsync(Guid companyId, string spreadsheetId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"獲取 Google Sheets 第一個工作表名稱，表格ID: {spreadsheetId}");
+
+                using var sheetsService = await CreateSheetsServiceAsync(companyId);
+                var request = sheetsService.Spreadsheets.Get(spreadsheetId);
+                var response = await request.ExecuteAsync();
+
+                if (response.Sheets == null || !response.Sheets.Any())
+                {
+                    _loggingService.LogWarning($"Google Sheets 沒有工作表，表格ID: {spreadsheetId}");
+                    return "Sheet1"; // 默認值
+                }
+
+                var firstSheet = response.Sheets.First();
+                var sheetName = firstSheet.Properties?.Title ?? "Sheet1";
+                
+                _loggingService.LogInformation($"成功獲取第一個工作表名稱: {sheetName}, 表格ID: {spreadsheetId}");
+                return sheetName;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"獲取 Google Sheets 第一個工作表名稱失敗，表格ID: {spreadsheetId}", ex);
+                // 發生錯誤時返回默認值
+                return "Sheet1";
+            }
+        }
+
         public async Task<string> DetectFileTypeAsync(Guid companyId, string spreadsheetId)
         {
             try
@@ -206,6 +315,7 @@ namespace PurpleRice.Services
                     return "unknown";
                 }
 
+                // 首先嘗試使用 Google Sheets API 檢測（適用於原生 Google Sheets）
                 using var httpClient = new System.Net.Http.HttpClient();
                 httpClient.Timeout = TimeSpan.FromSeconds(30);
 
@@ -225,11 +335,79 @@ namespace PurpleRice.Services
                 }
                 else
                 {
+                    // 如果 Google Sheets API 失敗，嘗試使用 Google Drive API 檢測（適用於 Excel 文件）
                     if (responseContent.Contains("This operation is not supported for this document") || 
                         responseContent.Contains("FAILED_PRECONDITION"))
                     {
-                        _loggingService.LogInformation($"[GoogleSheetsService] 檢測到文件類型: excel (Excel 文件上傳到 Google Drive)");
-                        return "excel";
+                        // 這可能是 Excel 文件，但需要驗證它是否在 Google Drive 中存在
+                        try
+                        {
+                            using var driveService = await CreateDriveServiceAsync(companyId);
+                            var driveRequest = driveService.Files.Get(spreadsheetId);
+                            driveRequest.Fields = "id, name, mimeType";
+                            var driveFile = await driveRequest.ExecuteAsync();
+                            
+                            // 檢查 MIME 類型
+                            if (driveFile.MimeType == "application/vnd.google-apps.spreadsheet")
+                            {
+                                // 這是 Google Sheets，但 Google Sheets API 讀不到（可能是權限問題）
+                                _loggingService.LogWarning($"[GoogleSheetsService] 文件在 Google Drive 中是 Google Sheets 類型，但 Google Sheets API 無法訪問。可能是權限問題。");
+                                return "googlesheets"; // 返回 googlesheets，但可能需要檢查權限
+                            }
+                            else if (driveFile.MimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+                                     driveFile.MimeType == "application/vnd.ms-excel")
+                            {
+                                _loggingService.LogInformation($"[GoogleSheetsService] 檢測到文件類型: excel (Excel 文件上傳到 Google Drive)");
+                                return "excel";
+                            }
+                            else
+                            {
+                                _loggingService.LogWarning($"[GoogleSheetsService] 未知的 MIME 類型: {driveFile.MimeType}");
+                                return "unknown";
+                            }
+                        }
+                        catch (Google.GoogleApiException gex) when (gex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+                        {
+                            // 文件在 Google Drive 中不存在，這可能是因為：
+                            // 1. Service Account 沒有權限訪問該文件（文件沒有分享給 Service Account）
+                            // 2. fileId 是 Google Sheets 的 ID，不是 Drive 文件的 ID
+                            // 3. 文件確實不存在
+                            // 
+                            // 當 Google Sheets API 返回 "This operation is not supported" 時，通常表示是 Excel 文件
+                            // 但如果 Google Drive API 也找不到，可能是權限問題
+                            // 我們應該嘗試使用 Service Account 通過 Google Sheets API 來驗證
+                            _loggingService.LogWarning($"[GoogleSheetsService] 文件在 Google Drive 中不存在（可能是權限問題或 fileId 是 Google Sheets 的 ID）。");
+                            
+                            // 嘗試使用 Service Account 通過 Google Sheets API 來驗證是否是 Google Sheets
+                            try
+                            {
+                                using var sheetsService = await CreateSheetsServiceAsync(companyId);
+                                var testRequest = sheetsService.Spreadsheets.Get(spreadsheetId);
+                                testRequest.Fields = "spreadsheetId, properties.title";
+                                var testResponse = await testRequest.ExecuteAsync();
+                                
+                                if (testResponse != null && !string.IsNullOrEmpty(testResponse.SpreadsheetId))
+                                {
+                                    _loggingService.LogInformation($"[GoogleSheetsService] 使用 Service Account 成功訪問文件，確認是 Google Sheets 類型。");
+                                    return "googlesheets";
+                                }
+                            }
+                            catch (Exception sheetsEx)
+                            {
+                                _loggingService.LogWarning($"[GoogleSheetsService] 使用 Service Account 也無法訪問文件: {sheetsEx.Message}。可能是權限問題。");
+                            }
+                            
+                            // 如果都失敗，可能是 Excel 文件但沒有權限，或者確實是 Google Sheets 但沒有權限
+                            // 我們返回 "googlesheets" 作為默認，因為從 URL 來看通常是 Google Sheets
+                            _loggingService.LogWarning($"[GoogleSheetsService] 無法確定文件類型，可能是權限問題。默認假設是 Google Sheets。");
+                            _loggingService.LogWarning($"[GoogleSheetsService] 請確保文件已分享給 Service Account，並且 Service Account 有讀寫權限。");
+                            return "googlesheets"; // 默認返回 googlesheets，因為從 URL 格式來看通常是 Google Sheets
+                        }
+                        catch (Exception driveEx)
+                        {
+                            _loggingService.LogWarning($"[GoogleSheetsService] 使用 Google Drive API 檢測失敗: {driveEx.Message}。假設是 Excel 文件。");
+                            return "excel";
+                        }
                     }
                     else
                     {
@@ -376,6 +554,397 @@ namespace PurpleRice.Services
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 寫入數據到 Google Sheets
+        /// </summary>
+        public async Task<bool> WriteSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, List<List<object>> data, int startRow = 1)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始寫入 Google Sheets 數據，表格ID: {spreadsheetId}, 工作表: {sheetName}, 起始行: {startRow}, 數據行數: {data.Count}");
+
+                if (data == null || !data.Any())
+                {
+                    _loggingService.LogWarning($"沒有數據需要寫入，表格ID: {spreadsheetId}");
+                    return false;
+                }
+
+                using var sheetsService = await CreateSheetsServiceAsync(companyId, requireWriteAccess: true);
+                
+                // 構建範圍字符串（轉義工作表名稱以支持特殊字符）
+                var escapedSheetName = EscapeSheetName(sheetName);
+                var endRow = startRow + data.Count - 1;
+                var rangeString = $"{escapedSheetName}!A{startRow}:ZZ{endRow}";
+                
+                _loggingService.LogInformation($"寫入範圍: {rangeString}");
+
+                // 構建 ValueRange 對象
+                var valueRange = new ValueRange
+                {
+                    Values = data.Select(row => row.Select(cell => cell ?? string.Empty).Cast<object>().ToList()).Cast<IList<object>>().ToList()
+                };
+
+                // 執行寫入操作
+                var request = sheetsService.Spreadsheets.Values.Update(valueRange, spreadsheetId, rangeString);
+                request.ValueInputOption = SpreadsheetsResource.ValuesResource.UpdateRequest.ValueInputOptionEnum.USERENTERED;
+                
+                var response = await request.ExecuteAsync();
+                
+                _loggingService.LogInformation($"成功寫入 Google Sheets 數據，表格ID: {spreadsheetId}, 更新單元格數: {response.UpdatedCells ?? 0}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"寫入 Google Sheets 數據失敗，表格ID: {spreadsheetId}, 工作表: {sheetName}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 更新 Google Sheets 中的特定單元格
+        /// </summary>
+        /// <param name="updates">Dictionary&lt;行號, Dictionary&lt;列號, 值&gt;&gt;，行號和列號從1開始</param>
+        public async Task<bool> UpdateSheetDataAsync(Guid companyId, string spreadsheetId, string sheetName, Dictionary<int, Dictionary<int, object>> updates)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始更新 Google Sheets 數據，表格ID: {spreadsheetId}, 工作表: {sheetName}, 更新單元格數: {updates.Sum(u => u.Value.Count)}");
+
+                if (updates == null || !updates.Any())
+                {
+                    _loggingService.LogWarning($"沒有更新數據，表格ID: {spreadsheetId}");
+                    return false;
+                }
+
+                using var sheetsService = await CreateSheetsServiceAsync(companyId, requireWriteAccess: true);
+
+                // 構建批量更新請求
+                var data = new List<ValueRange>();
+                
+                foreach (var rowUpdate in updates)
+                {
+                    var rowNumber = rowUpdate.Key;
+                    var columnUpdates = rowUpdate.Value;
+                    
+                    if (!columnUpdates.Any()) continue;
+
+                    // 找到最小和最大列號
+                    var minCol = columnUpdates.Keys.Min();
+                    var maxCol = columnUpdates.Keys.Max();
+                    
+                    // 將列號轉換為字母（A, B, C...）
+                    var startCol = ConvertColumnNumberToLetter(minCol);
+                    var endCol = ConvertColumnNumberToLetter(maxCol);
+                    
+                    // 構建範圍（轉義工作表名稱以支持特殊字符）
+                    var escapedSheetName = EscapeSheetName(sheetName);
+                    var rangeString = $"{escapedSheetName}!{startCol}{rowNumber}:{endCol}{rowNumber}";
+                    
+                    // 構建行數據（確保所有列都有值）
+                    var rowData = new List<object>();
+                    for (int col = minCol; col <= maxCol; col++)
+                    {
+                        rowData.Add(columnUpdates.ContainsKey(col) ? columnUpdates[col] ?? string.Empty : string.Empty);
+                    }
+                    
+                    data.Add(new ValueRange
+                    {
+                        Range = rangeString,
+                        Values = new List<IList<object>> { rowData }
+                    });
+                }
+
+                // 執行批量更新
+                var batchUpdateRequest = new BatchUpdateValuesRequest
+                {
+                    ValueInputOption = "USER_ENTERED",
+                    Data = data
+                };
+
+                var request = sheetsService.Spreadsheets.Values.BatchUpdate(batchUpdateRequest, spreadsheetId);
+                var response = await request.ExecuteAsync();
+                
+                _loggingService.LogInformation($"成功更新 Google Sheets 數據，表格ID: {spreadsheetId}, 更新單元格數: {response.TotalUpdatedCells ?? 0}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"更新 Google Sheets 數據失敗，表格ID: {spreadsheetId}, 工作表: {sheetName}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 清除 Google Sheets 中的指定範圍
+        /// </summary>
+        public async Task<bool> ClearSheetRangeAsync(Guid companyId, string spreadsheetId, string sheetName, string range)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始清除 Google Sheets 範圍，表格ID: {spreadsheetId}, 工作表: {sheetName}, 範圍: {range}");
+
+                using var sheetsService = await CreateSheetsServiceAsync(companyId, requireWriteAccess: true);
+                
+                // 構建完整範圍字符串（轉義工作表名稱以支持特殊字符）
+                // Google Sheets API 支持只使用工作表名稱來清除整個工作表
+                // 或者使用完整的範圍格式，例如 Sheet1!A1:Z1000
+                var escapedSheetName = EscapeSheetName(sheetName);
+                var rangeString = string.IsNullOrEmpty(range) ? escapedSheetName : $"{escapedSheetName}!{range}";
+                
+                var request = sheetsService.Spreadsheets.Values.Clear(new ClearValuesRequest(), spreadsheetId, rangeString);
+                var response = await request.ExecuteAsync();
+                
+                _loggingService.LogInformation($"成功清除 Google Sheets 範圍，表格ID: {spreadsheetId}, 清除範圍: {rangeString}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"清除 Google Sheets 範圍失敗，表格ID: {spreadsheetId}, 工作表: {sheetName}, 範圍: {range}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 將列號轉換為字母（1 -> A, 2 -> B, 27 -> AA）
+        /// </summary>
+        private string ConvertColumnNumberToLetter(int columnNumber)
+        {
+            if (columnNumber < 1)
+                throw new ArgumentException("列號必須大於0", nameof(columnNumber));
+
+            var result = string.Empty;
+            while (columnNumber > 0)
+            {
+                columnNumber--;
+                result = (char)('A' + columnNumber % 26) + result;
+                columnNumber /= 26;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 轉義工作表名稱，如果包含特殊字符（空格、中文、標點符號等），用單引號括起來
+        /// </summary>
+        private string EscapeSheetName(string sheetName)
+        {
+            if (string.IsNullOrWhiteSpace(sheetName))
+                return sheetName;
+
+            // 如果工作表名稱只包含字母、數字和下劃線，不需要轉義
+            if (System.Text.RegularExpressions.Regex.IsMatch(sheetName, @"^[A-Za-z0-9_]+$"))
+            {
+                return sheetName;
+            }
+
+            // 如果包含特殊字符，需要用單引號括起來，並轉義單引號（用兩個單引號表示一個單引號）
+            return $"'{sheetName.Replace("'", "''")}'";
+        }
+
+        /// <summary>
+        /// 創建 Google Drive 服務
+        /// </summary>
+        private async Task<DriveService> CreateDriveServiceAsync(Guid companyId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"[GoogleSheetsService] 開始創建 Google Drive 服務，公司ID: {companyId}");
+                
+                var runtime = await _apiProviderService.GetRuntimeProviderAsync(companyId, "google-docs");
+
+                if (runtime == null)
+                {
+                    _loggingService.LogWarning($"[GoogleSheetsService] 公司 {companyId} 尚未設定 Google Docs API 供應商（ProviderKey: google-docs）");
+                    throw new InvalidOperationException("Google Docs API provider is not configured.");
+                }
+
+                _loggingService.LogInformation($"[GoogleSheetsService] 成功獲取 Google Docs provider 配置，ProviderKey: {runtime.ProviderKey}, AuthType: {runtime.AuthType ?? "null"}, HasApiKey: {!string.IsNullOrWhiteSpace(runtime.ApiKey)}, HasAuthConfigJson: {!string.IsNullOrWhiteSpace(runtime.AuthConfigJson)}");
+
+                var applicationName = ResolveApplicationName(runtime) ?? "WhatoFlow Google Drive";
+                _loggingService.LogInformation($"[GoogleSheetsService] 應用程式名稱: {applicationName}");
+
+                var initializer = new BaseClientService.Initializer
+                {
+                    ApplicationName = applicationName
+                };
+
+                // Google Drive API 需要 OAuth 或 Service Account 認證才能下載/上傳文件
+                // API Key 對 Drive API 的權限非常有限，不能用於文件操作
+                if (string.Equals(runtime.AuthType, "serviceAccount", StringComparison.OrdinalIgnoreCase) &&
+                     !string.IsNullOrWhiteSpace(runtime.AuthConfigJson))
+                {
+                    _loggingService.LogInformation($"[GoogleSheetsService] 嘗試使用 Service Account 認證創建 Drive 服務，AuthConfigJson 長度: {runtime.AuthConfigJson.Length}");
+                    
+                    try
+                    {
+                        var credential = GoogleCredential.FromJson(runtime.AuthConfigJson);
+                        var scopes = ResolveScopes(runtime) ?? new[]
+                        {
+                            "https://www.googleapis.com/auth/documents",
+                            "https://www.googleapis.com/auth/drive.file",
+                            "https://www.googleapis.com/auth/spreadsheets"
+                        };
+                        _loggingService.LogInformation($"[GoogleSheetsService] Drive Service Account Scopes: {string.Join(", ", scopes)}");
+                        
+                        credential = credential.CreateScoped(scopes);
+                        initializer.HttpClientInitializer = credential;
+                        _loggingService.LogInformation("[GoogleSheetsService] Google Drive 服務初始化成功（使用 Service Account）");
+                    }
+                    catch (Exception saEx)
+                    {
+                        _loggingService.LogError($"[GoogleSheetsService] Service Account 認證失敗: {saEx.Message}", saEx);
+                        throw;
+                    }
+                }
+                else
+                {
+                    // 檢查是否有 API Key，但 Drive API 需要 Service Account 或 OAuth
+                    var hasApiKey = !string.IsNullOrWhiteSpace(runtime.ApiKey);
+                    var hasAuthConfig = !string.IsNullOrWhiteSpace(runtime.AuthConfigJson);
+                    var authType = runtime.AuthType ?? "null";
+                    
+                    _loggingService.LogWarning($"[GoogleSheetsService] Google Drive API 需要 Service Account 或 OAuth 認證才能下載/上載文件。當前配置 - AuthType: {authType}, HasApiKey: {hasApiKey}, HasAuthConfigJson: {hasAuthConfig}，公司 {companyId}");
+                    
+                    if (hasApiKey && !hasAuthConfig)
+                    {
+                        throw new InvalidOperationException("Google Drive API 需要 Service Account 認證才能下載/上傳文件。API Key 僅支持有限的讀取操作。請在 Google Docs API 供應商配置中添加 Service Account 認證信息（AuthType: serviceAccount, AuthConfigJson: Service Account JSON）。");
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Google Drive service requires Service Account authentication. Please configure Service Account credentials in the Google Docs API provider settings.");
+                    }
+                }
+
+                var driveService = new DriveService(initializer);
+                _loggingService.LogInformation($"[GoogleSheetsService] DriveService 實例創建成功");
+                return driveService;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"[GoogleSheetsService] 創建 Google Drive 服務失敗，公司ID: {companyId}，錯誤類型: {ex.GetType().Name}，錯誤訊息: {ex.Message}，堆棧追蹤: {ex.StackTrace}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 從 Google Drive 下載 Excel 文件
+        /// </summary>
+        public async Task<byte[]> DownloadExcelFileAsync(Guid companyId, string fileId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始從 Google Drive 下載 Excel 文件，文件ID: {fileId}");
+
+                using var driveService = await CreateDriveServiceAsync(companyId);
+                
+                // 先檢查文件是否存在及權限
+                try
+                {
+                    var getRequest = driveService.Files.Get(fileId);
+                    getRequest.Fields = "id, name, mimeType, size";
+                    var fileInfo = await getRequest.ExecuteAsync();
+                    var fileSize = fileInfo.Size.HasValue ? fileInfo.Size.Value.ToString() : "未知";
+                    _loggingService.LogInformation($"文件信息：ID: {fileInfo.Id}, 名稱: {fileInfo.Name}, MIME類型: {fileInfo.MimeType}, 大小: {fileSize} bytes");
+                    
+                    // 檢查 MIME 類型
+                    if (fileInfo.MimeType == "application/vnd.google-apps.spreadsheet")
+                    {
+                        _loggingService.LogWarning($"文件是 Google Sheets 類型（不是 Excel），文件ID: {fileId}。應該使用 Google Sheets API 而不是 Google Drive API。");
+                        throw new Exception($"文件是 Google Sheets 類型（不是 Excel），文件ID: {fileId}。應該使用 Google Sheets API 而不是 Google Drive API。");
+                    }
+                }
+                catch (Google.GoogleApiException gex) when (gex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _loggingService.LogError($"文件不存在於 Google Drive（ID: {fileId}）。這可能是因為：1) Service Account 沒有權限訪問該文件，2) 文件確實不存在，3) fileId 是 Google Sheets 的 ID 而不是 Drive 文件的 ID。");
+                    _loggingService.LogError($"請確保：1) 文件已分享給 Service Account 的 email，2) Service Account 有讀寫權限，3) 如果這是 Google Sheets，請使用 Google Sheets API。");
+                    throw new Exception($"文件不存在於 Google Drive（ID: {fileId}）。請確保文件已分享給 Service Account 並有讀寫權限。");
+                }
+                catch (Google.GoogleApiException gex) when (gex.HttpStatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    _loggingService.LogError($"沒有權限訪問文件（ID: {fileId}）。請確保文件已分享給 Service Account 的 email，並且 Service Account 有讀寫權限。");
+                    throw new Exception($"沒有權限訪問文件（ID: {fileId}）。請確保文件已分享給 Service Account 並有讀寫權限。");
+                }
+                
+                // 下載文件
+                var request = driveService.Files.Get(fileId);
+                using var stream = new MemoryStream();
+                await request.DownloadAsync(stream);
+                
+                var fileBytes = stream.ToArray();
+                _loggingService.LogInformation($"成功下載 Excel 文件，大小: {fileBytes.Length} bytes，文件ID: {fileId}");
+                
+                // 如果文件為空，可能是權限問題
+                if (fileBytes.Length == 0)
+                {
+                    _loggingService.LogWarning($"下載的 Excel 文件為空，文件ID: {fileId}。這可能是因為 Service Account 沒有權限訪問該文件。");
+                    throw new Exception($"下載的 Excel 文件為空（文件ID: {fileId}）。請確保文件已分享給 Service Account 並有讀寫權限。");
+                }
+                
+                return fileBytes;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"下載 Excel 文件失敗，文件ID: {fileId}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 上傳 Excel 文件到 Google Drive
+        /// </summary>
+        public async Task<bool> UploadExcelFileAsync(Guid companyId, string fileId, byte[] fileBytes)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始上傳 Excel 文件到 Google Drive，文件ID: {fileId}，大小: {fileBytes.Length} bytes");
+
+                using var driveService = await CreateDriveServiceAsync(companyId);
+                
+                // 先檢查文件是否存在於 Google Drive
+                try
+                {
+                    var getRequest = driveService.Files.Get(fileId);
+                    getRequest.Fields = "id, name, mimeType";
+                    var existingFile = await getRequest.ExecuteAsync();
+                    _loggingService.LogInformation($"文件已存在於 Google Drive，ID: {existingFile.Id}, 名稱: {existingFile.Name}, MIME類型: {existingFile.MimeType}");
+                    
+                    // 文件存在，使用 Update 方法
+                    using var stream = new MemoryStream(fileBytes);
+                    var updateRequest = driveService.Files.Update(
+                        new Google.Apis.Drive.v3.Data.File(), 
+                        fileId, 
+                        stream, 
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                    
+                    var uploadProgress = await updateRequest.UploadAsync();
+                    
+                    if (uploadProgress.Status != Google.Apis.Upload.UploadStatus.Completed)
+                    {
+                        var error = uploadProgress.Exception;
+                        _loggingService.LogError($"上傳 Excel 文件未完成，文件ID: {fileId}，狀態: {uploadProgress.Status}，錯誤: {error?.Message}");
+                        throw new Exception($"上傳 Excel 文件未完成: {uploadProgress.Status}，錯誤: {error?.Message}");
+                    }
+                    
+                    _loggingService.LogInformation($"成功更新 Excel 文件到 Google Drive，文件ID: {fileId}，上傳大小: {uploadProgress.BytesSent} bytes");
+                    return true;
+                }
+                catch (Google.GoogleApiException gex) when (gex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // 文件不存在於 Google Drive，這可能是因為：
+                    // 1. fileId 是 Google Sheets 的 ID，不是 Drive 文件的 ID
+                    // 2. 文件確實不存在
+                    _loggingService.LogError($"文件不存在於 Google Drive（ID: {fileId}）。這可能是因為 fileId 是 Google Sheets 的 ID，不是 Drive 文件的 ID。");
+                    _loggingService.LogError($"無法使用 Google Drive API 更新文件。如果這是 Google Sheets，請使用 Google Sheets API 來更新數據。");
+                    _loggingService.LogError($"如果這是 Excel 文件，請確保 fileId 是 Google Drive 文件的 ID，而不是 Google Sheets 的 spreadsheetId。");
+                    throw new Exception($"文件不存在於 Google Drive（ID: {fileId}）。如果這是 Google Sheets 文件，請使用 Google Sheets API 來更新數據。如果這是 Excel 文件，請確保 fileId 是 Google Drive 文件的 ID。");
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"上傳 Excel 文件失敗，文件ID: {fileId}", ex);
+                throw;
+            }
         }
     }
 }

@@ -2294,11 +2294,16 @@ const zhSC = {
     syncData: '同步数据',
     edit: '编辑',
     delete: '删除',
+    deleteRecord: '删除记录',
     
     // 确认对话框
     confirmDelete: '确定要删除这个 DataSet 吗？',
     confirmDeleteOk: '确定',
     confirmDeleteCancel: '取消',
+    confirmDeleteRecord: '确定要删除这条记录吗？',
+    confirmDeleteRecordDescription: '删除此记录将无法复原，请确认是否继续？',
+    recordDeleted: '记录已成功删除',
+    recordDeleteFailed: '删除记录失败',
     
     // 分页
     totalRecords: '共 {total} 条记录',
@@ -2321,6 +2326,12 @@ const zhSC = {
     updateInterval: '更新间隔（分钟）',
     updateIntervalPlaceholder: '例如：60（1小时）',
     updateIntervalRequired: '请设定更新间隔',
+    syncDirection: '同步方向',
+    syncDirectionTooltip: '选择数据同步的方向：入站（从外部读取）、出站（写入外部）、双向（先写入再读取）',
+    syncDirectionPlaceholder: '请选择同步方向',
+    syncDirectionInbound: '入站（从外部数据源读取到内部）',
+    syncDirectionOutbound: '出站（从内部写入到外部数据源）',
+    syncDirectionBidirectional: '双向（先写入外部，再从外部读取）',
     
     // 数据源配置
     dataSourceTypeLabel: '数据源类型',

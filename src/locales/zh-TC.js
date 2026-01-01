@@ -3724,12 +3724,17 @@ const zhTC = {
     syncData: '同步數據',
     edit: '編輯',
     delete: '刪除',
+    deleteRecord: '刪除記錄',
     
     // 確認對話框
     confirmDelete: '確定要刪除這個 DataSet 嗎？',
     confirmDeleteDescription: '刪除「{datasetName}」將同時刪除所有已同步的 {recordCount} 條記錄，此操作無法復原！',
     confirmDeleteOk: '確定',
     confirmDeleteCancel: '取消',
+    confirmDeleteRecord: '確定要刪除這條記錄嗎？',
+    confirmDeleteRecordDescription: '刪除此記錄將無法復原，請確認是否繼續？',
+    recordDeleted: '記錄已成功刪除',
+    recordDeleteFailed: '刪除記錄失敗',
     
     // 分頁
     totalRecords: '共 {total} 條記錄',
@@ -3752,6 +3757,12 @@ const zhTC = {
     updateInterval: '更新間隔（分鐘）',
     updateIntervalPlaceholder: '例如：60（1小時）',
     updateIntervalRequired: '請設定更新間隔',
+    syncDirection: '同步方向',
+    syncDirectionTooltip: '選擇數據同步的方向：入站（從外部讀取）、出站（寫入外部）、雙向（先寫入再讀取）',
+    syncDirectionPlaceholder: '請選擇同步方向',
+    syncDirectionInbound: '入站（從外部數據源讀取到內部）',
+    syncDirectionOutbound: '出站（從內部寫入到外部數據源）',
+    syncDirectionBidirectional: '雙向（先寫入外部，再從外部讀取）',
     
     // 數據源配置
     dataSourceTypeLabel: '數據源類型',

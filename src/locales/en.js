@@ -3272,12 +3272,17 @@ const en = {
     syncData: 'Sync Data',
     edit: 'Edit',
     delete: 'Delete',
+    deleteRecord: 'Delete Record',
     
     // Confirmation dialogs
     confirmDelete: 'Are you sure you want to delete this DataSet?',
     confirmDeleteDescription: 'This will permanently delete the dataset "{datasetName}" and all {recordCount} records. This action cannot be undone.',
     confirmDeleteOk: 'Confirm',
     confirmDeleteCancel: 'Cancel',
+    confirmDeleteRecord: 'Are you sure you want to delete this record?',
+    confirmDeleteRecordDescription: 'This action cannot be undone. Please confirm to continue.',
+    recordDeleted: 'Record deleted successfully',
+    recordDeleteFailed: 'Failed to delete record',
     
     // Pagination
     totalRecords: 'Total {total} records',
@@ -3300,6 +3305,12 @@ const en = {
     updateInterval: 'Update Interval (minutes)',
     updateIntervalPlaceholder: 'e.g.: 60 (1 hour)',
     updateIntervalRequired: 'Please set update interval',
+    syncDirection: 'Sync Direction',
+    syncDirectionTooltip: 'Select the data synchronization direction: Inbound (read from external), Outbound (write to external), Bidirectional (write then read)',
+    syncDirectionPlaceholder: 'Please select sync direction',
+    syncDirectionInbound: 'Inbound (Read from external data source to internal)',
+    syncDirectionOutbound: 'Outbound (Write from internal to external data source)',
+    syncDirectionBidirectional: 'Bidirectional (Write to external, then read from external)',
     
     // Data source configuration
     dataSourceTypeLabel: 'Data Source Type',
