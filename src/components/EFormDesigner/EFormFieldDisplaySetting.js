@@ -14,6 +14,7 @@ import {
   Empty
 } from 'antd';
 import { SettingOutlined, SaveOutlined, EyeOutlined } from '@ant-design/icons';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const { Title, Text } = Typography;
 
@@ -24,6 +25,7 @@ const EFormFieldDisplaySetting = ({
   onSave, 
   initialSettings = [] 
 }) => {
+  const { t } = useLanguage();
   const [fieldSettings, setFieldSettings] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -91,7 +93,7 @@ const EFormFieldDisplaySetting = ({
     // 嘗試從 id 獲取
     if (element.id) return element.id;
     
-    return '未命名字段';
+    return t('eformDesigner.fieldDisplaySetting.messages.unnamedField');
   };
 
   // 初始化字段設定
@@ -125,10 +127,10 @@ const EFormFieldDisplaySetting = ({
     setLoading(true);
     try {
       await onSave(fieldSettings);
-      message.success('字段顯示設定已保存');
+      message.success(t('eformDesigner.fieldDisplaySetting.messages.saveSuccess'));
       onClose();
     } catch (error) {
-      message.error('保存失敗: ' + error.message);
+      message.error(t('eformDesigner.fieldDisplaySetting.messages.saveFailed') + error.message);
     } finally {
       setLoading(false);
     }
@@ -137,7 +139,7 @@ const EFormFieldDisplaySetting = ({
   // 表格列定義
   const columns = [
     {
-      title: '字段類型',
+      title: t('eformDesigner.fieldDisplaySetting.tableColumns.fieldType'),
       dataIndex: 'fieldType',
       key: 'fieldType',
       width: 100,
@@ -152,14 +154,14 @@ const EFormFieldDisplaySetting = ({
       )
     },
     {
-      title: '原始標籤',
+      title: t('eformDesigner.fieldDisplaySetting.tableColumns.originalLabel'),
       dataIndex: 'originalLabel',
       key: 'originalLabel',
       width: 150,
       ellipsis: true
     },
     {
-      title: '顯示標籤',
+      title: t('eformDesigner.fieldDisplaySetting.tableColumns.displayLabel'),
       dataIndex: 'displayLabel',
       key: 'displayLabel',
       width: 200,
@@ -171,12 +173,12 @@ const EFormFieldDisplaySetting = ({
             newSettings[index].displayLabel = e.target.value;
             setFieldSettings(newSettings);
           }}
-          placeholder="輸入顯示標籤"
+          placeholder={t('eformDesigner.fieldDisplaySetting.placeholders.displayLabel')}
         />
       )
     },
     {
-      title: '在列表中顯示',
+      title: t('eformDesigner.fieldDisplaySetting.tableColumns.showInList'),
       dataIndex: 'showInList',
       key: 'showInList',
       width: 120,
@@ -192,7 +194,7 @@ const EFormFieldDisplaySetting = ({
       )
     },
     {
-      title: '字段ID',
+      title: t('eformDesigner.fieldDisplaySetting.tableColumns.fieldId'),
       dataIndex: 'fieldId',
       key: 'fieldId',
       width: 150,
@@ -208,7 +210,7 @@ const EFormFieldDisplaySetting = ({
       title={
         <Space>
           <SettingOutlined />
-          <span>表單字段顯示設定</span>
+          <span>{t('eformDesigner.fieldDisplaySetting.modalTitle')}</span>
         </Space>
       }
       open={visible}
@@ -217,7 +219,7 @@ const EFormFieldDisplaySetting = ({
       style={{ top: 20 }}
       footer={[
         <Button key="cancel" onClick={onClose}>
-          取消
+          {t('eformDesigner.fieldDisplaySetting.buttons.cancel')}
         </Button>,
         <Button 
           key="save" 
@@ -226,13 +228,13 @@ const EFormFieldDisplaySetting = ({
           loading={loading}
           onClick={handleSave}
         >
-          確定
+          {t('eformDesigner.fieldDisplaySetting.buttons.confirm')}
         </Button>
       ]}
     >
       <div style={{ marginBottom: 16 }}>
         <Text type="secondary">
-          系統已自動掃描表單中的所有輸入字段，您可以自定義顯示標籤和選擇是否在列表中顯示。
+          {t('eformDesigner.fieldDisplaySetting.helperText')}
         </Text>
       </div>
       
@@ -244,7 +246,7 @@ const EFormFieldDisplaySetting = ({
         size="small"
         scroll={{ y: 400 }}
         locale={{
-          emptyText: '未找到表單字段'
+          emptyText: t('eformDesigner.fieldDisplaySetting.messages.noFieldsFound')
         }}
       />
     </Modal>

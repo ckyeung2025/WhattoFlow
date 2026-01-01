@@ -1146,7 +1146,38 @@ const en = {
     error: 'Error',
     success: 'Success',
     warning: 'Warning',
-    info: 'Information'
+    info: 'Information',
+    
+    // Upload related translations
+    upload: {
+      authTokenNotFound: 'Authentication token not found, please login again'
+    },
+    
+    // Field display setting related translations
+    fieldDisplaySetting: {
+      modalTitle: 'Form Field Display Settings',
+      tableColumns: {
+        fieldType: 'Field Type',
+        originalLabel: 'Original Label',
+        displayLabel: 'Display Label',
+        showInList: 'Show in List',
+        fieldId: 'Field ID'
+      },
+      placeholders: {
+        displayLabel: 'Enter display label'
+      },
+      buttons: {
+        cancel: 'Cancel',
+        confirm: 'Confirm'
+      },
+      helperText: 'The system has automatically scanned all input fields in the form. You can customize display labels and choose whether to display them in the list.',
+      messages: {
+        saveSuccess: 'Field display settings saved',
+        saveFailed: 'Save failed: ',
+        unnamedField: 'Unnamed Field',
+        noFieldsFound: 'No form fields found'
+      }
+    }
   },
   
   // EForm Instance
@@ -4311,6 +4342,278 @@ const en = {
     },
     actionTypes: 'action types',
     groups: 'groups'
+  },
+  
+  // MetaFlowBuilder related
+  metaFlowBuilder: {
+    componentPropertyEditor: {
+      labels: {
+        inputType: 'Input Type',
+        required: 'Required',
+        validationPattern: 'Validation Pattern',
+        helperText: 'Helper Text',
+        richTextContent: 'Rich Text Content',
+        options: 'Options',
+        maxSelectedItems: 'Max Selected Items',
+        description: 'Description',
+        image: 'Image',
+        width: 'Width (width)',
+        height: 'Height (height)',
+        imageList: 'Image List',
+        altText: 'Alt Text',
+        aspectRatio: 'Aspect Ratio',
+        scaleType: 'Scale Type',
+        componentId: 'Component ID',
+        fieldName: 'Field Name (Name)',
+        title: 'Title',
+        actionType: 'Action Type',
+        targetScreen: 'Target Screen',
+        payload: 'Payload',
+        httpMethod: 'HTTP Method',
+        endpointUrl: 'Endpoint URL'
+      },
+      placeholders: {
+        patternExample: 'e.g.: [0-9]+',
+        helperTextHint: 'Hint text displayed below the input field',
+        richTextContentHint: 'Enter rich text content, supports Markdown syntax\nFor example:\n# Title\nThis is *bold* and _italic_ text\n~strikethrough~',
+        optionId: 'Option ID',
+        optionTitle: 'Option Title',
+        maxSelectedItemsExample: 'e.g.: 2',
+        descriptionHint: 'Selector description text',
+        widthHeightExample: 'e.g.: 200',
+        altTextHint: 'Image description (for accessibility)',
+        fieldNameExample: 'e.g.: customer_name',
+        selectScreen: 'Select Screen',
+        payloadHint: 'Optional payload data',
+        endpointUrlHint: 'API endpoint URL'
+      },
+      tooltips: {
+        bold: 'Bold (**text**)',
+        italic: 'Italic (*text*)',
+        strikethrough: 'Strikethrough (~~text~~)',
+        code: 'Inline Code (`code`)',
+        heading1: 'Heading 1 (# Title)',
+        heading2: 'Heading 2 (## Title)',
+        list: 'Unordered List (- Item)',
+        link: 'Link ([text](URL))',
+        richTextHint: 'Supports Markdown syntax: *bold*, _italic_, ~strikethrough~, # heading, etc. Each line will be an element in the array.',
+        imageUpload: 'Upload image, will automatically convert to base64 format and generate as src attribute in JSON',
+        fieldNameHint: 'This name will be used in Meta Flow JSON and webhook reply data. Recommended to use meaningful names like \'customer_name\', \'order_date\', etc.',
+        targetScreenHint: 'Select the Screen ID to navigate to'
+      },
+      selectOptions: {
+        inputTypes: {
+          text: 'Text',
+          email: 'Email',
+          phone: 'Phone',
+          number: 'Number',
+          url: 'URL'
+        },
+        actionTypes: {
+          navigate: 'Navigate to Screen',
+          submit: 'Submit',
+          call: 'Call',
+          url: 'Open URL'
+        },
+        scaleTypes: {
+          contain: 'Contain (Full Display)',
+          cover: 'Cover (Fill)'
+        },
+        httpMethods: {
+          get: 'GET',
+          post: 'POST',
+          put: 'PUT',
+          delete: 'DELETE'
+        }
+      },
+      buttons: {
+        list: 'List',
+        link: 'Link',
+        addOption: 'Add Option',
+        remove: 'Remove',
+        uploadImage: 'Upload Image',
+        deleteImage: 'Delete This Image',
+        addImage: 'Add Image',
+        saveChanges: 'Save Changes'
+      },
+      messages: {
+        optionIdRequired: 'Option ID is required',
+        optionTitleRequired: 'Option Title is required',
+        altTextRequired: 'Alt Text is required',
+        fieldNameRequired: 'Please enter field name',
+        fieldNamePattern: 'Name can only contain letters, numbers, and underscores, and must start with a letter',
+        titleRequired: 'Please enter title',
+        imageReadFailed: 'Image read failed',
+        imageFormatError: 'Only JPEG and PNG formats are supported!',
+        imageSizeExceeded: 'Image size cannot exceed {maxSizeKB}KB (1MB)!',
+        imageSizeWarning: 'Image size {fileSizeKB}KB exceeds recommended value 300KB, may affect performance',
+        maxImagesWarning: 'Maximum 3 images can be added!'
+      },
+      helperText: {
+        richTextHint: 'Tip: Each line will be an element in the array. Supports Markdown syntax. Select text and click buttons above to format.',
+        imageConverted: 'Tip: Image has been converted to base64 format'
+      },
+      defaultValues: {
+        richTextDefault: 'Please enter rich text content',
+        richTextDefaultLine2: 'Supports *bold*, _italic_, ~strikethrough~, etc. Markdown syntax',
+        imageAltDefault: 'Image {index}'
+      },
+      dividers: {
+        actionSettings: 'Action Settings'
+      }
+    },
+    screenEditor: {
+      cardTitles: {
+        header: 'Header (Optional)',
+        body: 'Body (Required)',
+        footer: 'Footer (Required)',
+        actions: 'Actions (Action Components)'
+      },
+      labels: {
+        headerType: 'Header Type:',
+        headerText: 'Header Text:',
+        mediaUrl: 'Media URL:'
+      },
+      selectOptions: {
+        headerTypes: {
+          text: 'Text',
+          image: 'Image',
+          video: 'Video',
+          document: 'Document'
+        }
+      },
+      placeholders: {
+        headerText: 'Header Text',
+        mediaUrl: 'Media URL',
+        bodyContent: 'Enter Body content',
+        footerContent: 'Enter Footer content (Required)',
+        addComponent: 'Please enter component type (text_input, rich_text, date_picker, select, checkbox, radio):',
+        dropZone: 'Drag and drop components here or click "Add Component" button'
+      },
+      buttons: {
+        removeHeader: 'Remove Header',
+        addHeader: 'Add Header',
+        addComponent: 'Add Component'
+      },
+      messages: {
+        maxImagesError: 'Each screen can have a maximum of 3 images!',
+        addRichTextSuccess: 'Added {componentType} component, automatically removed Header and Body',
+        addComponentSuccess: 'Added {componentType} component',
+        deleteRichTextSuccess: 'Deleted RichText component, automatically restored Header and Body',
+        deleteComponentSuccess: 'Component deleted',
+        richTextConflict1: 'RichText component can only be used with Footer, cannot coexist with other components',
+        richTextConflict2: 'RichText component can only be used with Footer, please remove RichText first'
+      },
+      helperText: {
+        footerRequired: '* Footer is required and cannot be empty'
+      },
+      defaultValues: {
+        headerText: 'Title',
+        bodyText: 'Please enter content',
+        footerText: 'Submit'
+      }
+    },
+    componentRenderer: {
+      placeholders: {
+        button: 'Button',
+        textInput: 'Text Input',
+        richText: 'Rich Text Content (Supports Markdown)',
+        select: 'Dropdown Selection',
+        datePicker: 'Date Selection',
+        option: 'Option',
+        image: 'Image',
+        imageIndex: 'Image {index}',
+        addImages: 'Please add images (minimum 1, maximum 3)',
+        unknownComponent: 'Unknown Component',
+        component: 'Component'
+      },
+      cardTitles: {
+        edit: 'Edit {componentType}'
+      },
+      buttons: {
+        cancel: 'Cancel'
+      },
+      helperText: {
+        imageCarouselSettings: 'Aspect Ratio: {aspectRatio}, Scale: {scaleType}'
+      },
+      altText: {
+        preview: 'Preview'
+      }
+    },
+    componentPalette: {
+      componentLabels: {
+        textInput: 'Text Input',
+        datePicker: 'Date Selection',
+        calendarPicker: 'Calendar Selection',
+        select: 'Dropdown Selection',
+        checkbox: 'Checkbox Group',
+        radio: 'Radio Group',
+        chipsSelector: 'Chips Selector',
+        image: 'Image',
+        imageCarousel: 'Image Carousel',
+        photoPicker: 'Photo Picker',
+        documentPicker: 'Document Picker',
+        embeddedLink: 'Embedded Link',
+        optIn: 'Opt In',
+        if: 'Conditional (If)',
+        switch: 'Conditional Render (Switch)',
+        navigationList: 'Navigation List',
+        richText: 'Rich Text Display'
+      },
+      categories: {
+        input: 'Input',
+        select: 'Selection',
+        media: 'Media',
+        mediaUpload: 'Media Upload',
+        link: 'Link',
+        logic: 'Logic',
+        container: 'Container',
+        textDisplay: 'Text Display',
+        other: 'Other'
+      },
+      sectionTitles: {
+        componentLibrary: 'Component Library'
+      }
+    },
+    page: {
+      formInfo: 'Form Information',
+      flowName: 'Flow Name:',
+      flowNamePlaceholder: 'Flow Name',
+      description: 'Description:',
+      descriptionPlaceholder: 'Description',
+      screens: 'Screens',
+      editScreen: 'Edit Screen: {title}',
+      selectScreenToEdit: 'Please select a Screen to edit',
+      componentProperties: 'Component Properties',
+      back: 'Back',
+      screenProperties: 'Screen Properties',
+      screenId: 'Screen ID:',
+      screenTitle: 'Screen Title:',
+      screenTitlePlaceholder: 'Screen Title',
+      componentList: 'Component List',
+      noComponents: 'No components yet, please add from the component library on the left',
+      delete: 'Delete',
+      defaultFlowName: 'New Flow',
+      defaultScreenTitle: 'New Screen',
+      defaultComponentName: 'Component {index}',
+      messages: {
+        flowNameRequired: 'Please enter Flow name',
+        screenAdded: 'New Screen added',
+        selectScreenFirst: 'Please select a Screen first',
+        componentUpdated: 'Component updated'
+      }
+    },
+    formTypeSelection: {
+      title: 'Select Form Type',
+      htmlFormDesigner: {
+        title: 'HTML Form Designer',
+        description: 'Use existing HTML form designer to create forms'
+      },
+      metaFlowBuilder: {
+        title: 'Meta Flow Builder',
+        description: 'Create WhatsApp Flows form (JSON format)'
+      }
+    }
   }
 };
 

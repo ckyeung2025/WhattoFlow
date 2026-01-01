@@ -2,9 +2,96 @@ import React from 'react';
 import { Card, Button, Space, Input, Select, Checkbox, Radio } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import ComponentPropertyEditor from './ComponentPropertyEditor';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, allScreens = [] }) => {
+  const { t } = useLanguage();
   const [editing, setEditing] = React.useState(false);
+
+  // 將組件 type 映射到翻譯鍵
+  const getComponentLabel = (componentType) => {
+    const typeToLabelKey = {
+      'text_input': 'textInput',
+      'date_picker': 'datePicker',
+      'calendar_picker': 'calendarPicker',
+      'select': 'select',
+      'checkbox': 'checkbox',
+      'radio': 'radio',
+      'chips_selector': 'chipsSelector',
+      'image': 'image',
+      'image_carousel': 'imageCarousel',
+      'photo_picker': 'photoPicker',
+      'document_picker': 'documentPicker',
+      'embedded_link': 'embeddedLink',
+      'opt_in': 'optIn',
+      'if': 'if',
+      'switch': 'switch',
+      'navigation_list': 'navigationList',
+      'rich_text': 'richText',
+      'button': 'button'
+    };
+    const labelKey = typeToLabelKey[componentType];
+    if (labelKey) {
+      return t(`metaFlowBuilder.componentPalette.componentLabels.${labelKey}`);
+    }
+    return componentType;
+  };
+  
+  // 檢查 title 是否為默認值（硬編碼的中文）
+  const isDefaultTitle = (title, componentType) => {
+    const defaultTitles = {
+      'text_input': '文字輸入',
+      'date_picker': '日期選擇',
+      'calendar_picker': '日曆選擇',
+      'time_picker': '時間選擇',
+      'select': '下拉選擇',
+      'checkbox': '複選框組',
+      'radio': '單選框組',
+      'chips_selector': '小標籤選擇器',
+      'image': '圖片',
+      'image_carousel': '圖片輪播',
+      'photo_picker': '照片選擇器',
+      'document_picker': '文檔選擇器',
+      'embedded_link': '嵌入式鏈接',
+      'opt_in': '選擇加入',
+      'if': '條件判斷 (If)',
+      'switch': '條件渲染 (Switch)',
+      'navigation_list': '導航列表',
+      'rich_text': '富文本顯示',
+      'button': '按鈕'
+    };
+    return title === defaultTitles[componentType];
+  };
+  
+  // 獲取組件顯示標題（如果 title 是默認值，使用翻譯；否則使用用戶自定義的 title）
+  const getComponentDisplayTitle = (comp) => {
+    if (comp.title && !isDefaultTitle(comp.title, comp.type)) {
+      return comp.title;
+    }
+    return getComponentLabel(comp.type);
+  };
+  
+  // 檢查並轉換 Rich Text 的默認文本（如果是默認值，返回翻譯後的文本）
+  const getRichTextDisplayContent = (textArray) => {
+    if (!textArray || textArray.length === 0) {
+      return [t('metaFlowBuilder.componentPropertyEditor.defaultValues.richTextDefault')];
+    }
+    
+    // 檢查是否為默認值
+    const defaultTexts = ['請輸入富文本內容', '支持 *粗體*、_斜體_、~刪除線~ 等 Markdown 語法'];
+    const isDefaultContent = textArray.length === defaultTexts.length && 
+      textArray.every((text, index) => text === defaultTexts[index]);
+    
+    if (isDefaultContent) {
+      // 返回翻譯後的默認文本
+      return [
+        t('metaFlowBuilder.componentPropertyEditor.defaultValues.richTextDefault'),
+        t('metaFlowBuilder.componentPropertyEditor.defaultValues.richTextDefaultLine2')
+      ];
+    }
+    
+    return textArray;
+  };
 
   // 渲染組件預覽
   const renderComponentPreview = () => {
@@ -12,7 +99,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
       case 'button':
         return (
           <Button type="primary" style={{ width: '100%' }}>
-            {component.title || '按鈕'}
+            {getComponentDisplayTitle(component) || t('metaFlowBuilder.componentRenderer.placeholders.button')}
           </Button>
         );
       
@@ -22,13 +109,14 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
             // 注意：TextInput 不支持 placeholder，使用 label 作為提示
             disabled
             style={{ width: '100%' }}
-            addonBefore={component.title || '文字輸入'}
+            addonBefore={getComponentDisplayTitle(component) || t('metaFlowBuilder.componentRenderer.placeholders.textInput')}
           />
         );
       
       case 'rich_text':
         // RichText 使用 text 數組，支持 Markdown 語法
         const textArray = component.data?.text || [];
+        const displayTextArray = getRichTextDisplayContent(textArray);
         return (
           <div style={{ 
             padding: '12px', 
@@ -37,14 +125,14 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
             backgroundColor: '#fafafa',
             minHeight: '60px'
           }}>
-            {textArray.length > 0 ? (
+            {displayTextArray.length > 0 ? (
               <div style={{ whiteSpace: 'pre-wrap' }}>
-                {textArray.map((line, index) => (
+                {displayTextArray.map((line, index) => (
                   <div key={index}>{line}</div>
                 ))}
               </div>
             ) : (
-              <span style={{ color: '#999' }}>富文本內容（支持 Markdown）</span>
+              <span style={{ color: '#999' }}>{t('metaFlowBuilder.componentRenderer.placeholders.richText')}</span>
             )}
           </div>
         );
@@ -52,7 +140,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
       case 'select':
         return (
           <Select
-            placeholder={component.title || '下拉選擇'}
+            placeholder={getComponentDisplayTitle(component) || t('metaFlowBuilder.componentRenderer.placeholders.select')}
             disabled
             style={{ width: '100%' }}
             options={component.data?.options?.map(opt => ({
@@ -66,7 +154,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
         return (
           <Input
             type="date"
-            placeholder={component.title || '日期選擇'}
+            placeholder={getComponentDisplayTitle(component) || t('metaFlowBuilder.componentRenderer.placeholders.datePicker')}
             disabled
             style={{ width: '100%' }}
           />
@@ -79,7 +167,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
               <Checkbox key={opt.id || opt.value} disabled>
                 {opt.title || opt.text}
               </Checkbox>
-            )) || <Checkbox disabled>選項</Checkbox>}
+            )) || <Checkbox disabled>{t('metaFlowBuilder.componentRenderer.placeholders.option')}</Checkbox>}
           </Space>
         );
       
@@ -91,7 +179,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
                 <Radio key={opt.id || opt.value} value={opt.id || opt.value}>
                   {opt.title || opt.text}
                 </Radio>
-              )) || <Radio value="option1">選項</Radio>}
+              )) || <Radio value="option1">{t('metaFlowBuilder.componentRenderer.placeholders.option')}</Radio>}
             </Space>
           </Radio.Group>
         );
@@ -110,7 +198,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
             {component.data?.url ? (
               <img src={component.data.url} alt="預覽" style={{ maxWidth: '100%', maxHeight: '100%' }} />
             ) : (
-              <span style={{ color: '#999' }}>圖片</span>
+              <span style={{ color: '#999' }}>{t('metaFlowBuilder.componentRenderer.placeholders.image')}</span>
             )}
           </div>
         );
@@ -142,27 +230,27 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
                       overflow: 'hidden'
                     }}>
                       {previewUrl ? (
-                        <img src={previewUrl} alt={img['alt-text'] || `圖片 ${index + 1}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        <img src={previewUrl} alt={img['alt-text'] || t('metaFlowBuilder.componentRenderer.placeholders.imageIndex', { index: index + 1 })} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                       ) : (
-                        <span style={{ color: '#999', fontSize: '12px' }}>圖片 {index + 1}</span>
+                        <span style={{ color: '#999', fontSize: '12px' }}>{t('metaFlowBuilder.componentRenderer.placeholders.imageIndex', { index: index + 1 })}</span>
                       )}
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <span style={{ color: '#999' }}>請添加圖片（最少 1 張，最多 3 張）</span>
+              <span style={{ color: '#999' }}>{t('metaFlowBuilder.componentRenderer.placeholders.addImages')}</span>
             )}
             {component.data?.['aspect-ratio'] && (
               <div style={{ marginTop: 8, fontSize: '12px', color: '#666' }}>
-                寬高比: {component.data['aspect-ratio']}, 縮放: {component.data['scale-type'] || 'contain'}
+                {t('metaFlowBuilder.componentRenderer.helperText.imageCarouselSettings', { aspectRatio: component.data['aspect-ratio'], scaleType: component.data['scale-type'] || 'contain' })}
               </div>
             )}
           </div>
         );
       
       default:
-        return <div>{component.type || '未知組件'}</div>;
+        return <div>{component.type || t('metaFlowBuilder.componentRenderer.placeholders.unknownComponent')}</div>;
     }
   };
 
@@ -170,9 +258,9 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
     return (
       <Card
         size="small"
-        title={`編輯 ${component.type}`}
+        title={t('metaFlowBuilder.componentRenderer.cardTitles.edit', { componentType: component.type })}
         extra={
-          <Button size="small" onClick={() => setEditing(false)}>取消</Button>
+          <Button size="small" onClick={() => setEditing(false)}>{t('metaFlowBuilder.componentRenderer.buttons.cancel')}</Button>
         }
       >
         <ComponentPropertyEditor
@@ -193,7 +281,7 @@ const ComponentRenderer = ({ component, onUpdate, onDelete, onEdit, screenId, al
       size="small"
       title={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{component.title || component.type || '組件'}</span>
+          <span>{getComponentDisplayTitle(component) || component.type || t('metaFlowBuilder.componentRenderer.placeholders.component')}</span>
           <Space>
             <Button
               size="small"

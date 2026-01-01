@@ -925,7 +925,7 @@ const EFormListPage = () => {
 
       {/* 表單類型選擇 Modal */}
       <Modal
-        title="選擇表單類型"
+        title={t('metaFlowBuilder.formTypeSelection.title')}
         open={formTypeModalVisible}
         onCancel={() => setFormTypeModalVisible(false)}
         footer={null}
@@ -939,8 +939,8 @@ const EFormListPage = () => {
               style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               <FormOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
-              <h3>HTML 表單設計器</h3>
-              <p style={{ color: '#666' }}>使用現有的 HTML 表單設計器創建表單</p>
+              <h3>{t('metaFlowBuilder.formTypeSelection.htmlFormDesigner.title')}</h3>
+              <p style={{ color: '#666' }}>{t('metaFlowBuilder.formTypeSelection.htmlFormDesigner.description')}</p>
             </Card>
             <Card 
               hoverable 
@@ -948,8 +948,8 @@ const EFormListPage = () => {
               style={{ cursor: 'pointer', textAlign: 'center' }}
             >
               <FormOutlined style={{ fontSize: '48px', color: '#722ed1', marginBottom: '16px' }} />
-              <h3>Meta Flow Builder</h3>
-              <p style={{ color: '#666' }}>創建 WhatsApp Flows 表單（JSON 格式）</p>
+              <h3>{t('metaFlowBuilder.formTypeSelection.metaFlowBuilder.title')}</h3>
+              <p style={{ color: '#666' }}>{t('metaFlowBuilder.formTypeSelection.metaFlowBuilder.description')}</p>
             </Card>
           </Space>
         </div>

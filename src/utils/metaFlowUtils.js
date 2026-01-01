@@ -1275,7 +1275,7 @@ const convertActionToComponent = (action) => {
  * 將編輯器數據轉換為 Meta Flow JSON
  * 嚴格按照官方文檔格式：https://developers.facebook.com/docs/whatsapp/flows/reference/flowjson
  */
-export const generateMetaFlowJson = (flowData) => {
+export const generateMetaFlowJson = (flowData, t = null) => {
   try {
     const { name, categories, screens } = flowData;
     
@@ -1345,9 +1345,14 @@ export const generateMetaFlowJson = (flowData) => {
         }
         
         // 2. TextBody (正文) - 必須有，從 screen.data.body
+        let bodyText = screen.data?.body?.text || '';
+        // 如果 bodyText 是硬編碼的默認值，且提供了翻譯函數，則使用翻譯
+        if (t && bodyText === '請輸入內容') {
+          bodyText = t('metaFlowBuilder.screenEditor.defaultValues.bodyText');
+        }
         children.push({
           type: 'TextBody',
-          text: screen.data?.body?.text || ''
+          text: bodyText
         });
         
         // 3. 處理所有 actions（組件庫中的組件）
@@ -1407,7 +1412,11 @@ export const generateMetaFlowJson = (flowData) => {
         
         // 4. Footer - 必須有，從 screen.data.footer
         // Footer 是必填項，如果為空則使用默認值
-        const footerText = screen.data?.footer?.text || '提交';
+        let footerText = screen.data?.footer?.text || '提交';
+        // 如果 footerText 是硬編碼的默認值，且提供了翻譯函數，則使用翻譯
+        if (t && footerText === '提交') {
+          footerText = t('metaFlowBuilder.screenEditor.defaultValues.footerText');
+        }
         
         // 收集所有輸入組件的 name，用於生成 complete payload
         // 根據 Meta 文檔，payload 中應該包含所有要提交的字段，格式：{ "fieldName": "${form.fieldName}" }
@@ -1508,9 +1517,14 @@ export const generateMetaFlowJson = (flowData) => {
         
         // 先構建基本 screen 對象（不包含 data，因為 data 需要在 layout 之後）
         // 重要：字段順序必須與 Meta API 要求一致：id, title, layout, terminal, data_api_version, data
+        let screenTitle = screen.title || '';
+        // 如果 screenTitle 是硬編碼的默認值，且提供了翻譯函數，則使用翻譯
+        if (t && screenTitle === '新 Screen') {
+          screenTitle = t('metaFlowBuilder.page.defaultScreenTitle');
+        }
         const screenObj = {
           id: screenId,
-          title: screen.title || '',
+          title: screenTitle,
           layout: {
             type: 'SingleColumnLayout',
             children: children

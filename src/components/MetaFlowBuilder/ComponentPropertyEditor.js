@@ -1,22 +1,60 @@
 import React, { useRef, useState } from 'react';
 import { Input, Select, Button, Space, Form, InputNumber, Switch, Divider, Tooltip, Upload, message } from 'antd';
 import { PlusOutlined, DeleteOutlined, BoldOutlined, ItalicOutlined, StrikethroughOutlined, CodeOutlined, UploadOutlined } from '@ant-design/icons';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const { TextArea } = Input;
 
 const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [] }) => {
+  const { t } = useLanguage();
   const [form] = Form.useForm();
   const textAreaRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
+
+  // 檢查 title 是否為默認值（硬編碼的中文）
+  const isDefaultTitle = (title, componentType) => {
+    const defaultTitles = {
+      'text_input': '文字輸入',
+      'date_picker': '日期選擇',
+      'calendar_picker': '日曆選擇',
+      'time_picker': '時間選擇',
+      'select': '下拉選擇',
+      'checkbox': '複選框組',
+      'radio': '單選框組',
+      'chips_selector': '小標籤選擇器',
+      'image': '圖片',
+      'image_carousel': '圖片輪播',
+      'photo_picker': '照片選擇器',
+      'document_picker': '文檔選擇器',
+      'video': '視頻',
+      'navigation_list': '導航列表',
+      'rich_text': '富文本顯示',
+      'button': '按鈕'
+    };
+    return title === defaultTitles[componentType];
+  };
+
+  // 檢查 Rich Text 的 text 數組是否為默認值
+  const isDefaultRichTextContent = (textArray) => {
+    if (!textArray || !Array.isArray(textArray)) return false;
+    const defaultTexts = ['請輸入富文本內容', '支持 *粗體*、_斜體_、~刪除線~ 等 Markdown 語法'];
+    return textArray.length === defaultTexts.length && 
+      textArray.every((text, index) => text === defaultTexts[index]);
+  };
 
   React.useEffect(() => {
     // 先重置表單，清除之前組件的數據
     form.resetFields();
     
+    // 如果 title 是默認值，則顯示為空字符串，讓用戶輸入自己的標題
+    const displayTitle = (component.title && !isDefaultTitle(component.title, component.type)) 
+      ? component.title 
+      : '';
+    
     const formValues = {
       id: component.id,
       name: component.name || component.id || '', // 添加 name 字段
-      title: component.title || '',
+      title: displayTitle,
       type: component.type,
       actionType: component.action?.type || 'navigate',
       actionNext: component.action?.next || '',
@@ -29,7 +67,12 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
     if (component.data) {
       // 對於 rich_text，將 text 數組轉換為字符串（用換行符連接）
       if (component.type === 'rich_text' && Array.isArray(component.data.text)) {
-        formValues.text = component.data.text.join('\n');
+        // 如果 text 是默認值，則顯示為空字符串，讓用戶輸入自己的內容
+        if (isDefaultRichTextContent(component.data.text)) {
+          formValues.text = '';
+        } else {
+          formValues.text = component.data.text.join('\n');
+        }
       } else {
         Object.assign(formValues, component.data);
       }
@@ -73,10 +116,16 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
   }, [component, form]);
 
   const handleFinish = (values) => {
+    // 如果用戶沒有輸入 title（為空），則使用原來的 title（可能是默認值）
+    // 如果用戶輸入了 title，則使用用戶輸入的值
+    const finalTitle = values.title && values.title.trim() 
+      ? values.title.trim() 
+      : (component.title || '');
+    
     const updates = {
       id: values.id,
       name: values.name || values.id || component.name || component.id, // 保存 name 字段
-      title: values.title,
+      title: finalTitle,
       type: values.type || component.type,
       data: {},
       action: {
@@ -105,9 +154,25 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
         // 將字符串按換行符分割為數組
         const textString = values.text || '';
         const textArray = textString.split('\n').filter(line => line.trim() !== '' || line === '');
-        updates.data = {
-          text: textArray.length > 0 ? textArray : ['請輸入富文本內容']
-        };
+        // 如果用戶沒有輸入內容（為空），且原來的內容是默認值，則保留原來的默認值
+        // 如果用戶輸入了內容，則使用用戶輸入的內容
+        if (textArray.length === 0 || (textArray.length === 1 && textArray[0].trim() === '')) {
+          // 如果原來是默認值，保留原來的默認值
+          if (component.data?.text && isDefaultRichTextContent(component.data.text)) {
+            updates.data = {
+              text: component.data.text
+            };
+          } else {
+            // 否則使用翻譯後的默認值（用於新組件）
+            updates.data = {
+              text: [t('metaFlowBuilder.componentPropertyEditor.defaultValues.richTextDefault')]
+            };
+          }
+        } else {
+          updates.data = {
+            text: textArray
+          };
+        }
         break;
       
       case 'select':
@@ -186,24 +251,24 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
       case 'text_input':
         return (
           <>
-            <Form.Item label="輸入類型" name="input_type">
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.inputType')} name="input_type">
               <Select>
-                <Select.Option value="text">文字</Select.Option>
-                <Select.Option value="email">電子郵件</Select.Option>
-                <Select.Option value="phone">電話</Select.Option>
-                <Select.Option value="number">數字</Select.Option>
-                <Select.Option value="url">URL</Select.Option>
+                <Select.Option value="text">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.inputTypes.text')}</Select.Option>
+                <Select.Option value="email">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.inputTypes.email')}</Select.Option>
+                <Select.Option value="phone">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.inputTypes.phone')}</Select.Option>
+                <Select.Option value="number">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.inputTypes.number')}</Select.Option>
+                <Select.Option value="url">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.inputTypes.url')}</Select.Option>
               </Select>
             </Form.Item>
             {/* 注意：TextInput 不支持 placeholder */}
-            <Form.Item label="必填" name="required" valuePropName="checked">
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.required')} name="required" valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item label="驗證模式 (Pattern)" name="pattern">
-              <Input placeholder="例如: [0-9]+" />
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.validationPattern')} name="pattern">
+              <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.patternExample')} />
             </Form.Item>
-            <Form.Item label="幫助文字" name="helper_text">
-              <Input placeholder="顯示在輸入框下方的提示文字" />
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.helperText')} name="helper_text">
+              <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.helperTextHint')} />
             </Form.Item>
           </>
         );
@@ -282,28 +347,28 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                 width: '100%',
                 flexWrap: 'wrap'
               }}>
-                <Tooltip title="粗體 (**文字**)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.bold')}>
                   <Button
                     size="small"
                     icon={<BoldOutlined />}
                     onClick={() => applyFormat('bold')}
                   />
                 </Tooltip>
-                <Tooltip title="斜體 (*文字*)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.italic')}>
                   <Button
                     size="small"
                     icon={<ItalicOutlined />}
                     onClick={() => applyFormat('italic')}
                   />
                 </Tooltip>
-                <Tooltip title="刪除線 (~~文字~~)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.strikethrough')}>
                   <Button
                     size="small"
                     icon={<StrikethroughOutlined />}
                     onClick={() => applyFormat('strikethrough')}
                   />
                 </Tooltip>
-                <Tooltip title="行內代碼 (`代碼`)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.code')}>
                   <Button
                     size="small"
                     icon={<CodeOutlined />}
@@ -311,7 +376,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                   />
                 </Tooltip>
                 <Divider type="vertical" />
-                <Tooltip title="標題 1 (# 標題)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.heading1')}>
                   <Button
                     size="small"
                     onClick={() => applyFormat('heading1')}
@@ -319,7 +384,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                     H1
                   </Button>
                 </Tooltip>
-                <Tooltip title="標題 2 (## 標題)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.heading2')}>
                   <Button
                     size="small"
                     onClick={() => applyFormat('heading2')}
@@ -328,38 +393,38 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                   </Button>
                 </Tooltip>
                 <Divider type="vertical" />
-                <Tooltip title="無序列表 (- 項目)">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.list')}>
                   <Button
                     size="small"
                     onClick={() => applyFormat('list')}
                   >
-                    列表
+                    {t('metaFlowBuilder.componentPropertyEditor.buttons.list')}
                   </Button>
                 </Tooltip>
-                <Tooltip title="鏈接 ([文字](URL))">
+                <Tooltip title={t('metaFlowBuilder.componentPropertyEditor.tooltips.link')}>
                   <Button
                     size="small"
                     onClick={() => applyFormat('link')}
                   >
-                    鏈接
+                    {t('metaFlowBuilder.componentPropertyEditor.buttons.link')}
                   </Button>
                 </Tooltip>
               </Space>
             </div>
             <Form.Item 
-              label="富文本內容" 
+              label={t('metaFlowBuilder.componentPropertyEditor.labels.richTextContent')} 
               name="text"
-              tooltip="支持 Markdown 語法：*粗體*、_斜體_、~刪除線~、# 標題等。每行將作為數組中的一個元素。"
+              tooltip={t('metaFlowBuilder.componentPropertyEditor.tooltips.richTextHint')}
             >
               <TextArea 
                 ref={textAreaRef}
                 rows={8} 
-                placeholder="輸入富文本內容，支持 Markdown 語法&#10;例如：&#10;# 標題&#10;這是 *粗體* 和 _斜體_ 文本&#10;~刪除線~"
+                placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.richTextContentHint')}
                 style={{ fontFamily: 'monospace' }}
               />
             </Form.Item>
             <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '-12px', marginBottom: '12px' }}>
-              提示：每行將作為數組中的一個元素。支持 Markdown 語法。選中文字後點擊上方按鈕進行格式化。
+              {t('metaFlowBuilder.componentPropertyEditor.helperText.richTextHint')}
             </div>
           </>
         );
@@ -370,7 +435,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
       case 'chips_selector':
         return (
           <>
-            <Form.Item label="選項" name="options">
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.options')} name="options">
               <Form.List name="options">
                 {(fields, { add, remove }) => (
                   <>
@@ -379,23 +444,23 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                         <Form.Item
                           {...restField}
                           name={[name, 'id']}
-                          rules={[{ required: true, message: '選項 ID 必填' }]}
+                          rules={[{ required: true, message: t('metaFlowBuilder.componentPropertyEditor.messages.optionIdRequired') }]}
                         >
-                          <Input placeholder="選項 ID" />
+                          <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.optionId')} />
                         </Form.Item>
                         <Form.Item
                           {...restField}
                           name={[name, 'title']}
-                          rules={[{ required: true, message: '選項標題必填' }]}
+                          rules={[{ required: true, message: t('metaFlowBuilder.componentPropertyEditor.messages.optionTitleRequired') }]}
                         >
-                          <Input placeholder="選項標題" />
+                          <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.optionTitle')} />
                         </Form.Item>
                         <DeleteOutlined onClick={() => remove(name)} />
                       </Space>
                     ))}
                     <Form.Item>
                       <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                        添加選項
+                        {t('metaFlowBuilder.componentPropertyEditor.buttons.addOption')}
                       </Button>
                     </Form.Item>
                   </>
@@ -404,11 +469,11 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
             </Form.Item>
             {component.type === 'chips_selector' && (
               <>
-                <Form.Item label="最大選擇數量" name="max_selected_items">
-                  <InputNumber min={1} max={20} placeholder="例如: 2" />
+                <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.maxSelectedItems')} name="max_selected_items">
+                  <InputNumber min={1} max={20} placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.maxSelectedItemsExample')} />
                 </Form.Item>
-                <Form.Item label="描述" name="description">
-                  <Input.TextArea rows={2} placeholder="選擇器的描述文字" />
+                <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.description')} name="description">
+                  <Input.TextArea rows={2} placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.descriptionHint')} />
                 </Form.Item>
               </>
             )}
@@ -448,7 +513,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
           // 檢查文件格式（只支持 JPEG 和 PNG）
           const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
           if (!allowedTypes.includes(file.type.toLowerCase())) {
-            message.error('只支持 JPEG 和 PNG 格式的圖片！');
+            message.error(t('metaFlowBuilder.componentPropertyEditor.messages.imageFormatError'));
             return Upload.LIST_IGNORE;
           }
           
@@ -458,12 +523,12 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
           const recommendedSizeKB = 300; // 推薦大小
           
           if (fileSizeKB > maxSizeKB) {
-            message.error(`圖片大小不能超過 ${maxSizeKB}KB（1MB）！`);
+            message.error(t('metaFlowBuilder.componentPropertyEditor.messages.imageSizeExceeded', { maxSizeKB }));
             return Upload.LIST_IGNORE;
           }
           
           if (fileSizeKB > recommendedSizeKB) {
-            message.warning(`圖片大小 ${Math.round(fileSizeKB)}KB 超過推薦值 300KB，可能影響性能`);
+            message.warning(t('metaFlowBuilder.componentPropertyEditor.messages.imageSizeWarning', { fileSizeKB: Math.round(fileSizeKB) }));
           }
           
           // 手動處理上傳
@@ -479,9 +544,9 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
         return (
           <>
             <Form.Item 
-              label="圖片" 
+              label={t('metaFlowBuilder.componentPropertyEditor.labels.image')} 
               name="url" 
-              tooltip="上傳圖片，將自動轉換為 base64 格式並作為 src 屬性生成到 JSON 中"
+              tooltip={t('metaFlowBuilder.componentPropertyEditor.tooltips.imageUpload')}
             >
               <Upload
                 name="image"
@@ -495,7 +560,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                   <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                     <img 
                       src={imagePreview} 
-                      alt="預覽" 
+                      alt={t('metaFlowBuilder.componentRenderer.altText.preview')} 
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                     <Button
@@ -514,27 +579,27 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                         color: 'white'
                       }}
                     >
-                      移除
+                      {t('metaFlowBuilder.componentPropertyEditor.buttons.remove')}
                     </Button>
                   </div>
                 ) : (
                   <div>
                     <UploadOutlined />
-                    <div style={{ marginTop: 8 }}>上傳圖片</div>
+                    <div style={{ marginTop: 8 }}>{t('metaFlowBuilder.componentPropertyEditor.buttons.uploadImage')}</div>
                   </div>
                 )}
               </Upload>
             </Form.Item>
             {imagePreview && (
               <div style={{ marginBottom: 16, fontSize: '12px', color: '#8c8c8c' }}>
-                提示：圖片已轉換為 base64 格式
+                {t('metaFlowBuilder.componentPropertyEditor.helperText.imageConverted')}
               </div>
             )}
-            <Form.Item label="寬度 (width)" name="width">
-              <InputNumber min={1} placeholder="例如: 200" style={{ width: '100%' }} />
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.width')} name="width">
+              <InputNumber min={1} placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.widthHeightExample')} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="高度 (height)" name="height">
-              <InputNumber min={1} placeholder="例如: 200" style={{ width: '100%' }} />
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.height')} name="height">
+              <InputNumber min={1} placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.widthHeightExample')} style={{ width: '100%' }} />
             </Form.Item>
           </>
         );
@@ -555,7 +620,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                 ...currentImages[imageIndex],
                 src: base64Only, // 純 base64 字符串用於 JSON 生成
                 url: dataUrl, // 完整 data URL 用於預覽
-                'alt-text': currentImages[imageIndex]?.['alt-text'] || `圖片 ${imageIndex + 1}`
+                'alt-text': currentImages[imageIndex]?.['alt-text'] || t('metaFlowBuilder.componentPropertyEditor.defaultValues.imageAltDefault', { index: imageIndex + 1 })
               };
               form.setFieldsValue({ images: currentImages });
               resolve(base64Only);
@@ -572,7 +637,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
           // 檢查文件格式（只支持 JPEG 和 PNG）
           const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
           if (!allowedTypes.includes(file.type.toLowerCase())) {
-            message.error('只支持 JPEG 和 PNG 格式的圖片！');
+            message.error(t('metaFlowBuilder.componentPropertyEditor.messages.imageFormatError'));
             return Upload.LIST_IGNORE;
           }
           
@@ -582,12 +647,12 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
           const recommendedSizeKB = 300; // 推薦大小
           
           if (fileSizeKB > maxSizeKB) {
-            message.error(`圖片大小不能超過 ${maxSizeKB}KB（1MB）！`);
+            message.error(t('metaFlowBuilder.componentPropertyEditor.messages.imageSizeExceeded', { maxSizeKB }));
             return Upload.LIST_IGNORE;
           }
           
           if (fileSizeKB > recommendedSizeKB) {
-            message.warning(`圖片大小 ${Math.round(fileSizeKB)}KB 超過推薦值 300KB，可能影響性能`);
+            message.warning(t('metaFlowBuilder.componentPropertyEditor.messages.imageSizeWarning', { fileSizeKB: Math.round(fileSizeKB) }));
           }
           
           // 手動處理上傳
@@ -597,7 +662,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
         
         return (
           <>
-            <Form.Item label="圖片列表" name="images">
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.imageList')} name="images">
               <Form.List name="images">
                 {(fields, { add, remove }) => (
                   <>
@@ -611,12 +676,12 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                             <Form.Item
                               {...restField}
                               name={[name, 'alt-text']}
-                              label="替代文字"
-                              rules={[{ required: true, message: '替代文字必填' }]}
+                              label={t('metaFlowBuilder.componentPropertyEditor.labels.altText')}
+                              rules={[{ required: true, message: t('metaFlowBuilder.componentPropertyEditor.messages.altTextRequired') }]}
                             >
-                              <Input placeholder="圖片描述（用於無障礙訪問）" />
+                              <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.altTextHint')} />
                             </Form.Item>
-                            <Form.Item label="圖片">
+                            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.image')}>
                               <Upload
                                 name="image"
                                 listType="picture-card"
@@ -629,7 +694,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                                   <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                                     <img 
                                       src={previewUrl} 
-                                      alt={imageData?.['alt-text'] || `圖片 ${name + 1}`} 
+                                      alt={imageData?.['alt-text'] || t('metaFlowBuilder.componentPropertyEditor.defaultValues.imageAltDefault', { index: name + 1 })} 
                                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     />
                                     <Button
@@ -650,13 +715,13 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                                         color: 'white'
                                       }}
                                     >
-                                      移除
+                                      {t('metaFlowBuilder.componentPropertyEditor.buttons.remove')}
                                     </Button>
                                   </div>
                                 ) : (
                                   <div>
                                     <UploadOutlined />
-                                    <div style={{ marginTop: 8 }}>上傳圖片</div>
+                                    <div style={{ marginTop: 8 }}>{t('metaFlowBuilder.componentPropertyEditor.buttons.uploadImage')}</div>
                                   </div>
                                 )}
                               </Upload>
@@ -668,7 +733,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                               icon={<DeleteOutlined />}
                               block
                             >
-                              刪除此圖片
+                              {t('metaFlowBuilder.componentPropertyEditor.buttons.deleteImage')}
                             </Button>
                           </Space>
                         </div>
@@ -680,32 +745,32 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
                         onClick={() => {
                           const currentCount = fields.length;
                           if (currentCount >= 3) {
-                            message.warning('最多只能添加 3 張圖片！');
+                            message.warning(t('metaFlowBuilder.componentPropertyEditor.messages.maxImagesWarning'));
                             return;
                           }
-                          add({ src: '', url: '', 'alt-text': `圖片 ${currentCount + 1}` });
+                          add({ src: '', url: '', 'alt-text': t('metaFlowBuilder.componentPropertyEditor.defaultValues.imageAltDefault', { index: currentCount + 1 }) });
                         }} 
                         block 
                         icon={<PlusOutlined />}
                         disabled={fields.length >= 3}
                       >
-                        添加圖片 {fields.length >= 3 ? '(已達上限)' : `(${fields.length}/3)`}
+                        {t('metaFlowBuilder.componentPropertyEditor.buttons.addImage')} {fields.length >= 3 ? '(已達上限)' : `(${fields.length}/3)`}
                       </Button>
                     </Form.Item>
                   </>
                 )}
               </Form.List>
             </Form.Item>
-            <Form.Item label="寬高比" name="aspect-ratio">
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.aspectRatio')} name="aspect-ratio">
               <Select>
                 <Select.Option value="4:3">4:3</Select.Option>
                 <Select.Option value="16:9">16:9</Select.Option>
               </Select>
             </Form.Item>
-            <Form.Item label="縮放類型" name="scale-type">
+            <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.scaleType')} name="scale-type">
               <Select>
-                <Select.Option value="contain">Contain（完整顯示）</Select.Option>
-                <Select.Option value="cover">Cover（填充）</Select.Option>
+                <Select.Option value="contain">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.scaleTypes.contain')}</Select.Option>
+                <Select.Option value="cover">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.scaleTypes.cover')}</Select.Option>
               </Select>
             </Form.Item>
           </>
@@ -723,7 +788,7 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
       onFinish={handleFinish}
       initialValues={component}
     >
-      <Form.Item label="組件 ID" name="id">
+      <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.componentId')} name="id">
         <Input disabled />
       </Form.Item>
       
@@ -732,41 +797,41 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
         'date_picker', 'calendar_picker', 'time_picker', 
         'photo_picker', 'document_picker'].includes(component.type) && (
         <Form.Item 
-          label="字段名稱 (Name)" 
+          label={t('metaFlowBuilder.componentPropertyEditor.labels.fieldName')} 
           name="name"
-          tooltip="此名稱將用於 Meta Flow JSON 和 webhook 回覆數據。建議使用有意義的名稱，如 'customer_name', 'order_date' 等。"
+          tooltip={t('metaFlowBuilder.componentPropertyEditor.tooltips.fieldNameHint')}
           rules={[
-            { required: true, message: '請輸入字段名稱' },
-            { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '名稱只能包含字母、數字和下劃線，且必須以字母開頭' }
+            { required: true, message: t('metaFlowBuilder.componentPropertyEditor.messages.fieldNameRequired') },
+            { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: t('metaFlowBuilder.componentPropertyEditor.messages.fieldNamePattern') }
           ]}
         >
-          <Input placeholder="例如: customer_name" />
+          <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.fieldNameExample')} />
         </Form.Item>
       )}
       
-      <Form.Item label="標題" name="title" rules={[{ required: true, message: '請輸入標題' }]}>
+      <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.title')} name="title" rules={[{ required: true, message: t('metaFlowBuilder.componentPropertyEditor.messages.titleRequired') }]}>
         <Input />
       </Form.Item>
 
       {renderTypeSpecificFields()}
 
-      <Divider>操作設置</Divider>
+      <Divider>{t('metaFlowBuilder.componentPropertyEditor.dividers.actionSettings')}</Divider>
 
-      <Form.Item label="操作類型" name="actionType">
+      <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.actionType')} name="actionType">
         <Select>
-          <Select.Option value="navigate">導航到 Screen</Select.Option>
-          <Select.Option value="submit">提交</Select.Option>
-          <Select.Option value="call">調用</Select.Option>
-          <Select.Option value="url">打開 URL</Select.Option>
+          <Select.Option value="navigate">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.actionTypes.navigate')}</Select.Option>
+          <Select.Option value="submit">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.actionTypes.submit')}</Select.Option>
+          <Select.Option value="call">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.actionTypes.call')}</Select.Option>
+          <Select.Option value="url">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.actionTypes.url')}</Select.Option>
         </Select>
       </Form.Item>
 
       <Form.Item 
-        label="目標 Screen" 
+        label={t('metaFlowBuilder.componentPropertyEditor.labels.targetScreen')} 
         name="actionNext"
-        tooltip="選擇導航到的 Screen ID"
+        tooltip={t('metaFlowBuilder.componentPropertyEditor.tooltips.targetScreenHint')}
       >
-        <Select placeholder="選擇 Screen">
+        <Select placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.selectScreen')}>
           {allScreens.map(screen => (
             <Select.Option key={screen.id} value={screen.id}>
               {screen.title || screen.id}
@@ -775,26 +840,26 @@ const ComponentPropertyEditor = ({ component, onUpdate, screenId, allScreens = [
         </Select>
       </Form.Item>
 
-      <Form.Item label="Payload" name="actionPayload">
-        <TextArea rows={2} placeholder="可選的 payload 數據" />
+      <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.payload')} name="actionPayload">
+        <TextArea rows={2} placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.payloadHint')} />
       </Form.Item>
 
-      <Form.Item label="HTTP 方法" name="actionMethod">
+      <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.httpMethod')} name="actionMethod">
         <Select>
-          <Select.Option value="GET">GET</Select.Option>
-          <Select.Option value="POST">POST</Select.Option>
-          <Select.Option value="PUT">PUT</Select.Option>
-          <Select.Option value="DELETE">DELETE</Select.Option>
+          <Select.Option value="GET">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.httpMethods.get')}</Select.Option>
+          <Select.Option value="POST">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.httpMethods.post')}</Select.Option>
+          <Select.Option value="PUT">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.httpMethods.put')}</Select.Option>
+          <Select.Option value="DELETE">{t('metaFlowBuilder.componentPropertyEditor.selectOptions.httpMethods.delete')}</Select.Option>
         </Select>
       </Form.Item>
 
-      <Form.Item label="端點 URL" name="actionEndpoint">
-        <Input placeholder="API 端點 URL" />
+      <Form.Item label={t('metaFlowBuilder.componentPropertyEditor.labels.endpointUrl')} name="actionEndpoint">
+        <Input placeholder={t('metaFlowBuilder.componentPropertyEditor.placeholders.endpointUrlHint')} />
       </Form.Item>
 
       <Form.Item>
         <Button type="primary" htmlType="submit" block>
-          保存更改
+          {t('metaFlowBuilder.componentPropertyEditor.buttons.saveChanges')}
         </Button>
       </Form.Item>
     </Form>

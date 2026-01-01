@@ -3,11 +3,63 @@ import { Card, Input, Button, Space, Divider, message } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { getDefaultComponent } from '../../utils/metaFlowUtils';
 import ComponentRenderer from './ComponentRenderer';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 const { TextArea } = Input;
 
 const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) => {
+  const { t } = useLanguage();
   const [localScreen, setLocalScreen] = useState(screen);
+  
+  // 檢查並獲取 Body 顯示值（如果是默認值，返回翻譯後的默認值）
+  const getBodyDisplayValue = () => {
+    const bodyText = localScreen.data?.body?.text || '';
+    const defaultBodyText = '請輸入內容';
+    if (bodyText === defaultBodyText || bodyText === '') {
+      // 如果是默認值或為空，顯示翻譯後的默認值
+      return t('metaFlowBuilder.screenEditor.defaultValues.bodyText');
+    }
+    return bodyText;
+  };
+  
+  // 檢查並獲取 Footer 顯示值（如果是默認值，返回翻譯後的默認值）
+  const getFooterDisplayValue = () => {
+    const footerText = localScreen.data?.footer?.text || '';
+    const defaultFooterText = '提交';
+    if (footerText === defaultFooterText || footerText === '') {
+      // 如果是默認值或為空，顯示翻譯後的默認值
+      return t('metaFlowBuilder.screenEditor.defaultValues.footerText');
+    }
+    return footerText;
+  };
+  
+  // 檢查值是否為翻譯後的默認值
+  const isTranslatedDefault = (value, defaultKey) => {
+    const translatedDefault = t(defaultKey);
+    return value === translatedDefault;
+  };
+  
+  // 處理 Body 值變化
+  const handleBodyChangeWithDefault = (value) => {
+    // 如果用戶輸入的值等於翻譯後的默認值，或者為空，保存為硬編碼的默認值
+    const translatedDefault = t('metaFlowBuilder.screenEditor.defaultValues.bodyText');
+    if (!value || value.trim() === '' || value === translatedDefault) {
+      handleBodyChange('請輸入內容');
+    } else {
+      handleBodyChange(value);
+    }
+  };
+  
+  // 處理 Footer 值變化
+  const handleFooterChangeWithDefault = (value) => {
+    // 如果用戶輸入的值等於翻譯後的默認值，或者為空，保存為硬編碼的默認值
+    const translatedDefault = t('metaFlowBuilder.screenEditor.defaultValues.footerText');
+    if (!value || value.trim() === '' || value === translatedDefault) {
+      handleFooterChange('提交');
+    } else {
+      handleFooterChange(value);
+    }
+  };
 
   // 當 screen prop 改變時更新本地狀態
   useEffect(() => {
@@ -54,7 +106,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
     if (componentType === 'image') {
       const imageCount = currentActions.filter(action => action.type === 'image').length;
       if (imageCount >= 3) {
-        message.error('每個屏幕最多只能添加 3 張圖片！');
+        message.error(t('metaFlowBuilder.screenEditor.messages.maxImagesError'));
         return;
       }
     }
@@ -83,10 +135,10 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
       updatedData.actions = [...currentActions, newComponent];
       
       updateScreen({ data: updatedData });
-      message.success(`已添加 ${componentType} 組件，已自動移除 Header 和 Body`);
+      message.success(t('metaFlowBuilder.screenEditor.messages.addRichTextSuccess', { componentType }));
     } else {
       updateData('actions', [...currentActions, newComponent]);
-      message.success(`已添加 ${componentType} 組件`);
+      message.success(t('metaFlowBuilder.screenEditor.messages.addComponentSuccess', { componentType }));
     }
   };
 
@@ -106,7 +158,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
         updatedData.header = {
           type: 'header',
           format: 'TEXT',
-          text: '標題'
+          text: t('metaFlowBuilder.screenEditor.defaultValues.headerText')
         };
       }
       
@@ -114,7 +166,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
       if (!updatedData.body || !updatedData.body.text) {
         updatedData.body = {
           type: 'body',
-          text: '請輸入內容'
+          text: t('metaFlowBuilder.screenEditor.defaultValues.bodyText')
         };
       }
       
@@ -124,12 +176,12 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
       );
       
       updateScreen({ data: updatedData });
-      message.success('已刪除 RichText 組件，已自動恢復 Header 和 Body');
+      message.success(t('metaFlowBuilder.screenEditor.messages.deleteRichTextSuccess'));
     } else {
       updateData('actions', currentActions.filter(comp => 
         (comp.id || comp.name) !== componentId
       ));
-      message.success('已刪除組件');
+      message.success(t('metaFlowBuilder.screenEditor.messages.deleteComponentSuccess'));
     }
   };
 
@@ -151,7 +203,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
 
   // 更新 Footer
   const handleFooterChange = (text) => {
-    // Footer 是必填項，如果為空則使用默認值
+    // Footer 是必填項，如果為空則使用默認值（保存為中文 "提交"，顯示時會通過 getFooterDisplayValue 轉換）
     const footerText = text.trim() || '提交';
     updateData('footer', {
       type: 'footer',
@@ -178,28 +230,28 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
         {/* Header 編輯 */}
         {/* 如果存在 RichText 組件，隱藏 Header 和 Body 編輯器 */}
         {!localScreen.data?.actions?.some(comp => comp.type === 'rich_text') && (
-        <Card size="small" title="Header（可選）">
+        <Card size="small" title={t('metaFlowBuilder.screenEditor.cardTitles.header')}>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <div>
-              <label>Header 類型:</label>
+              <label>{t('metaFlowBuilder.screenEditor.labels.headerType')}</label>
               <select
                 value={localScreen.data?.header?.format || 'TEXT'}
                 onChange={(e) => handleHeaderChange('format', e.target.value)}
                 style={{ width: '100%', marginTop: '4px', padding: '4px' }}
               >
-                <option value="TEXT">文字</option>
-                <option value="IMAGE">圖片</option>
-                <option value="VIDEO">視頻</option>
-                <option value="DOCUMENT">文檔</option>
+                <option value="TEXT">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.text')}</option>
+                <option value="IMAGE">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.image')}</option>
+                <option value="VIDEO">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.video')}</option>
+                <option value="DOCUMENT">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.document')}</option>
               </select>
             </div>
             {localScreen.data?.header?.format === 'TEXT' && (
               <div>
-                <label>Header 文字:</label>
+                <label>{t('metaFlowBuilder.screenEditor.labels.headerText')}</label>
                 <Input
                   value={localScreen.data?.header?.text || ''}
                   onChange={(e) => handleHeaderChange('text', e.target.value)}
-                  placeholder="Header 文字"
+                  placeholder={t('metaFlowBuilder.screenEditor.placeholders.headerText')}
                   style={{ marginTop: '4px' }}
                 />
               </div>
@@ -208,14 +260,14 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
               localScreen.data?.header?.format === 'VIDEO' || 
               localScreen.data?.header?.format === 'DOCUMENT') && (
               <div>
-                <label>媒體 URL:</label>
+                <label>{t('metaFlowBuilder.screenEditor.labels.mediaUrl')}</label>
                 <Input
                   value={localScreen.data?.header?.media?.url || ''}
                   onChange={(e) => handleHeaderChange('media', { 
                     ...localScreen.data?.header?.media, 
                     url: e.target.value 
                   })}
-                  placeholder="媒體 URL"
+                  placeholder={t('metaFlowBuilder.screenEditor.placeholders.mediaUrl')}
                   style={{ marginTop: '4px' }}
                 />
               </div>
@@ -226,7 +278,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
                 danger
                 onClick={() => updateData('header', null)}
               >
-                移除 Header
+                {t('metaFlowBuilder.screenEditor.buttons.removeHeader')}
               </Button>
             )}
             {!localScreen.data?.header && (
@@ -234,7 +286,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
                 size="small"
                 onClick={() => handleHeaderChange('format', 'TEXT')}
               >
-                添加 Header
+                {t('metaFlowBuilder.screenEditor.buttons.addHeader')}
               </Button>
             )}
           </Space>
@@ -243,11 +295,11 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
 
         {/* Body 編輯 */}
         {!localScreen.data?.actions?.some(comp => comp.type === 'rich_text') && (
-        <Card size="small" title="Body（必填）">
+        <Card size="small" title={t('metaFlowBuilder.screenEditor.cardTitles.body')}>
           <TextArea
-            value={localScreen.data?.body?.text || ''}
-            onChange={(e) => handleBodyChange(e.target.value)}
-            placeholder="輸入 Body 內容"
+            value={getBodyDisplayValue()}
+            onChange={(e) => handleBodyChangeWithDefault(e.target.value)}
+            placeholder={t('metaFlowBuilder.screenEditor.placeholders.bodyContent')}
             rows={4}
             style={{ marginTop: '4px' }}
           />
@@ -255,47 +307,47 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
         )}
 
         {/* Footer 編輯 */}
-        <Card size="small" title="Footer（必填）">
+        <Card size="small" title={t('metaFlowBuilder.screenEditor.cardTitles.footer')}>
           <Input
-            value={localScreen.data?.footer?.text || '提交'}
-            onChange={(e) => handleFooterChange(e.target.value)}
-            placeholder="輸入 Footer 內容（必填）"
+            value={getFooterDisplayValue()}
+            onChange={(e) => handleFooterChangeWithDefault(e.target.value)}
+            placeholder={t('metaFlowBuilder.screenEditor.placeholders.footerContent')}
             style={{ marginTop: '4px' }}
             maxLength={60}
             showCount
             required
           />
           <div style={{ fontSize: '12px', color: '#ff4d4f', marginTop: '4px' }}>
-            * Footer 是必填項，不能為空
+            {t('metaFlowBuilder.screenEditor.helperText.footerRequired')}
           </div>
         </Card>
 
         {/* Actions 編輯 */}
         <Card 
           size="small" 
-          title="Actions（操作組件）"
+          title={t('metaFlowBuilder.screenEditor.cardTitles.actions')}
           extra={
             <Button
               size="small"
               icon={<PlusOutlined />}
               onClick={() => {
-                const componentType = prompt('請輸入組件類型 (text_input, rich_text, date_picker, select, checkbox, radio):');
+                const componentType = prompt(t('metaFlowBuilder.screenEditor.placeholders.addComponent'));
                 if (componentType) {
                   // 如果已經有 RichText，不允許添加其他組件（除了 Footer）
                   if (localScreen.data?.actions?.some(comp => comp.type === 'rich_text') && componentType !== 'rich_text') {
-                    message.warning('RichText 組件只能與 Footer 配對使用，不能與其他組件共存');
+                    message.warning(t('metaFlowBuilder.screenEditor.messages.richTextConflict1'));
                     return;
                   }
                   // 如果添加其他組件，且已經有 RichText，提示並阻止
                   if (componentType !== 'rich_text' && localScreen.data?.actions?.some(comp => comp.type === 'rich_text')) {
-                    message.warning('RichText 組件只能與 Footer 配對使用，請先移除 RichText');
+                    message.warning(t('metaFlowBuilder.screenEditor.messages.richTextConflict2'));
                     return;
                   }
                   handleAddComponent(componentType);
                 }
               }}
             >
-              添加組件
+              {t('metaFlowBuilder.screenEditor.buttons.addComponent')}
             </Button>
           }
         >
@@ -348,7 +400,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
                 padding: '40px 0',
                 fontSize: '14px'
               }}>
-                拖放組件到這裡或點擊「添加組件」按鈕
+                {t('metaFlowBuilder.screenEditor.placeholders.dropZone')}
               </div>
             )}
           </div>

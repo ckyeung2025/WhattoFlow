@@ -1493,6 +1493,37 @@ const zhSC = {
       success: '成功',
       warning: '警告',
       info: '信息'
+    },
+    
+    // 上传相关翻译
+    upload: {
+      authTokenNotFound: '未找到认证 token，请重新登入'
+    },
+    
+    // 字段显示设定相关翻译
+    fieldDisplaySetting: {
+      modalTitle: '表单字段显示设定',
+      tableColumns: {
+        fieldType: '字段类型',
+        originalLabel: '原始标签',
+        displayLabel: '显示标签',
+        showInList: '在列表中显示',
+        fieldId: '字段ID'
+      },
+      placeholders: {
+        displayLabel: '输入显示标签'
+      },
+      buttons: {
+        cancel: '取消',
+        confirm: '确定'
+      },
+      helperText: '系统已自动扫描表单中的所有输入字段，您可以自定义显示标签和选择是否在列表中显示。',
+      messages: {
+        saveSuccess: '字段显示设定已保存',
+        saveFailed: '保存失败: ',
+        unnamedField: '未命名字段',
+        noFieldsFound: '未找到表单字段'
+      }
     }
   },
   
@@ -3937,6 +3968,278 @@ const zhSC = {
     },
     actionTypes: '种操作类型',
     groups: '个分组'
+  },
+  
+  // MetaFlowBuilder 相关
+  metaFlowBuilder: {
+    componentPropertyEditor: {
+      labels: {
+        inputType: '输入类型',
+        required: '必填',
+        validationPattern: '验证模式 (Pattern)',
+        helperText: '帮助文字',
+        richTextContent: '富文本内容',
+        options: '选项',
+        maxSelectedItems: '最大选择数量',
+        description: '描述',
+        image: '图片',
+        width: '宽度 (width)',
+        height: '高度 (height)',
+        imageList: '图片列表',
+        altText: '替代文字',
+        aspectRatio: '宽高比',
+        scaleType: '缩放类型',
+        componentId: '组件 ID',
+        fieldName: '字段名称 (Name)',
+        title: '标题',
+        actionType: '操作类型',
+        targetScreen: '目标 Screen',
+        payload: 'Payload',
+        httpMethod: 'HTTP 方法',
+        endpointUrl: '端点 URL'
+      },
+      placeholders: {
+        patternExample: '例如: [0-9]+',
+        helperTextHint: '显示在输入框下方的提示文字',
+        richTextContentHint: '输入富文本内容，支持 Markdown 语法\n例如：\n# 标题\n这是 *粗体* 和 _斜体_ 文本\n~删除线~',
+        optionId: '选项 ID',
+        optionTitle: '选项标题',
+        maxSelectedItemsExample: '例如: 2',
+        descriptionHint: '选择器的描述文字',
+        widthHeightExample: '例如: 200',
+        altTextHint: '图片描述（用于无障碍访问）',
+        fieldNameExample: '例如: customer_name',
+        selectScreen: '选择 Screen',
+        payloadHint: '可选的 payload 数据',
+        endpointUrlHint: 'API 端点 URL'
+      },
+      tooltips: {
+        bold: '粗体 (**文字**)',
+        italic: '斜体 (*文字*)',
+        strikethrough: '删除线 (~~文字~~)',
+        code: '行内代码 (`代码`)',
+        heading1: '标题 1 (# 标题)',
+        heading2: '标题 2 (## 标题)',
+        list: '无序列表 (- 项目)',
+        link: '链接 ([文字](URL))',
+        richTextHint: '支持 Markdown 语法：*粗体*、_斜体_、~删除线~、# 标题等。每行将作为数组中的一个元素。',
+        imageUpload: '上传图片，将自动转换为 base64 格式并作为 src 属性生成到 JSON 中',
+        fieldNameHint: '此名称将用于 Meta Flow JSON 和 webhook 回复数据。建议使用有意义的名称，如 \'customer_name\', \'order_date\' 等。',
+        targetScreenHint: '选择导航到的 Screen ID'
+      },
+      selectOptions: {
+        inputTypes: {
+          text: '文字',
+          email: '电子邮件',
+          phone: '电话',
+          number: '数字',
+          url: 'URL'
+        },
+        actionTypes: {
+          navigate: '导航到 Screen',
+          submit: '提交',
+          call: '调用',
+          url: '打开 URL'
+        },
+        scaleTypes: {
+          contain: 'Contain（完整显示）',
+          cover: 'Cover（填充）'
+        },
+        httpMethods: {
+          get: 'GET',
+          post: 'POST',
+          put: 'PUT',
+          delete: 'DELETE'
+        }
+      },
+      buttons: {
+        list: '列表',
+        link: '链接',
+        addOption: '添加选项',
+        remove: '移除',
+        uploadImage: '上传图片',
+        deleteImage: '删除此图片',
+        addImage: '添加图片',
+        saveChanges: '保存更改'
+      },
+      messages: {
+        optionIdRequired: '选项 ID 必填',
+        optionTitleRequired: '选项标题必填',
+        altTextRequired: '替代文字必填',
+        fieldNameRequired: '请输入字段名称',
+        fieldNamePattern: '名称只能包含字母、数字和下划线，且必须以字母开头',
+        titleRequired: '请输入标题',
+        imageReadFailed: '图片读取失败',
+        imageFormatError: '只支持 JPEG 和 PNG 格式的图片！',
+        imageSizeExceeded: '图片大小不能超过 {maxSizeKB}KB（1MB）！',
+        imageSizeWarning: '图片大小 {fileSizeKB}KB 超过推荐值 300KB，可能影响性能',
+        maxImagesWarning: '最多只能添加 3 张图片！'
+      },
+      helperText: {
+        richTextHint: '提示：每行将作为数组中的一个元素。支持 Markdown 语法。选中文字后点击上方按钮进行格式化。',
+        imageConverted: '提示：图片已转换为 base64 格式'
+      },
+      defaultValues: {
+        richTextDefault: '请输入富文本内容',
+        richTextDefaultLine2: '支持 *粗体*、_斜体_、~删除线~ 等 Markdown 语法',
+        imageAltDefault: '图片 {index}'
+      },
+      dividers: {
+        actionSettings: '操作设置'
+      }
+    },
+    screenEditor: {
+      cardTitles: {
+        header: 'Header（可选）',
+        body: 'Body（必填）',
+        footer: 'Footer（必填）',
+        actions: 'Actions（操作组件）'
+      },
+      labels: {
+        headerType: 'Header 类型:',
+        headerText: 'Header 文字:',
+        mediaUrl: '媒体 URL:'
+      },
+      selectOptions: {
+        headerTypes: {
+          text: '文字',
+          image: '图片',
+          video: '视频',
+          document: '文档'
+        }
+      },
+      placeholders: {
+        headerText: 'Header 文字',
+        mediaUrl: '媒体 URL',
+        bodyContent: '输入 Body 内容',
+        footerContent: '输入 Footer 内容（必填）',
+        addComponent: '请输入组件类型 (text_input, rich_text, date_picker, select, checkbox, radio):',
+        dropZone: '拖放组件到这里或点击「添加组件」按钮'
+      },
+      buttons: {
+        removeHeader: '移除 Header',
+        addHeader: '添加 Header',
+        addComponent: '添加组件'
+      },
+      messages: {
+        maxImagesError: '每个屏幕最多只能添加 3 张图片！',
+        addRichTextSuccess: '已添加 {componentType} 组件，已自动移除 Header 和 Body',
+        addComponentSuccess: '已添加 {componentType} 组件',
+        deleteRichTextSuccess: '已删除 RichText 组件，已自动恢复 Header 和 Body',
+        deleteComponentSuccess: '已删除组件',
+        richTextConflict1: 'RichText 组件只能与 Footer 配对使用，不能与其他组件共存',
+        richTextConflict2: 'RichText 组件只能与 Footer 配对使用，请先移除 RichText'
+      },
+      helperText: {
+        footerRequired: '* Footer 是必填项，不能为空'
+      },
+      defaultValues: {
+        headerText: '标题',
+        bodyText: '请输入内容',
+        footerText: '提交'
+      }
+    },
+    componentRenderer: {
+      placeholders: {
+        button: '按钮',
+        textInput: '文字输入',
+        richText: '富文本内容（支持 Markdown）',
+        select: '下拉选择',
+        datePicker: '日期选择',
+        option: '选项',
+        image: '图片',
+        imageIndex: '图片 {index}',
+        addImages: '请添加图片（最少 1 张，最多 3 张）',
+        unknownComponent: '未知组件',
+        component: '组件'
+      },
+      cardTitles: {
+        edit: '编辑 {componentType}'
+      },
+      buttons: {
+        cancel: '取消'
+      },
+      helperText: {
+        imageCarouselSettings: '宽高比: {aspectRatio}, 缩放: {scaleType}'
+      },
+      altText: {
+        preview: '预览'
+      }
+    },
+    componentPalette: {
+      componentLabels: {
+        textInput: '文字输入',
+        datePicker: '日期选择',
+        calendarPicker: '日历选择',
+        select: '下拉选择',
+        checkbox: '复选框组',
+        radio: '单选框组',
+        chipsSelector: '小标签选择器',
+        image: '图片',
+        imageCarousel: '图片轮播',
+        photoPicker: '照片选择器',
+        documentPicker: '文档选择器',
+        embeddedLink: '嵌入式链接',
+        optIn: '选择加入',
+        if: '条件判断 (If)',
+        switch: '条件渲染 (Switch)',
+        navigationList: '导航列表',
+        richText: '富文本显示'
+      },
+      categories: {
+        input: '输入',
+        select: '选择',
+        media: '媒体',
+        mediaUpload: '媒体上传',
+        link: '链接',
+        logic: '逻辑',
+        container: '容器',
+        textDisplay: '文本显示',
+        other: '其他'
+      },
+      sectionTitles: {
+        componentLibrary: '组件库'
+      }
+    },
+    page: {
+      formInfo: '表单信息',
+      flowName: 'Flow 名称:',
+      flowNamePlaceholder: 'Flow 名称',
+      description: '描述:',
+      descriptionPlaceholder: '描述',
+      screens: 'Screens',
+      editScreen: '编辑 Screen: {title}',
+      selectScreenToEdit: '请选择一个 Screen 进行编辑',
+      componentProperties: '组件属性',
+      back: '返回',
+      screenProperties: 'Screen 属性',
+      screenId: 'Screen ID:',
+      screenTitle: 'Screen Title:',
+      screenTitlePlaceholder: 'Screen 标题',
+      componentList: '组件列表',
+      noComponents: '暂无组件，请在左侧组件库添加',
+      delete: '删除',
+      defaultFlowName: '新 Flow',
+      defaultScreenTitle: '新 Screen',
+      defaultComponentName: '组件 {index}',
+      messages: {
+        flowNameRequired: '请输入 Flow 名称',
+        screenAdded: '已添加新 Screen',
+        selectScreenFirst: '请先选择一个 Screen',
+        componentUpdated: '组件已更新'
+      }
+    },
+    formTypeSelection: {
+      title: '选择表单类型',
+      htmlFormDesigner: {
+        title: 'HTML 表单设计器',
+        description: '使用现有的 HTML 表单设计器创建表单'
+      },
+      metaFlowBuilder: {
+        title: 'Meta Flow Builder',
+        description: '创建 WhatsApp Flows 表单（JSON 格式）'
+      }
+    }
   }
 };
 

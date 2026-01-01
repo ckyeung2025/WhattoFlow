@@ -21,7 +21,7 @@ const EFormDesignerUpload = ({
 
       const token = localStorage.getItem('token');
       if (!token) {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${t('eformDesigner.upload.authTokenNotFound')}`);
         setIsUploading(false);
         return;
       }
@@ -84,7 +84,7 @@ const EFormDesignerUpload = ({
 
       const token = localStorage.getItem('token');
       if (!token) {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${t('eformDesigner.upload.authTokenNotFound')}`);
         setIsUploading(false);
         return;
       }
@@ -147,7 +147,7 @@ const EFormDesignerUpload = ({
 
       const token = localStorage.getItem('token');
       if (!token) {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${t('eformDesigner.upload.authTokenNotFound')}`);
         setIsUploading(false);
         return;
       }
@@ -210,7 +210,7 @@ const EFormDesignerUpload = ({
 
       const token = localStorage.getItem('token');
       if (!token) {
-        message.error(`❌ ${t('eformDesigner.uploadFailed')}: 未找到認證 token，請重新登入`);
+        message.error(`❌ ${t('eformDesigner.uploadFailed')}: ${t('eformDesigner.upload.authTokenNotFound')}`);
         setIsUploading(false);
         return;
       }

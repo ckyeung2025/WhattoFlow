@@ -29,15 +29,89 @@ const purpleButtonStyle = `
 const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
   const { t } = useLanguage();
   
+  // 將組件 type 映射到翻譯鍵
+  const getComponentLabel = (componentType) => {
+    const typeToLabelKey = {
+      'text_input': 'textInput',
+      'date_picker': 'datePicker',
+      'calendar_picker': 'calendarPicker',
+      'select': 'select',
+      'checkbox': 'checkbox',
+      'radio': 'radio',
+      'chips_selector': 'chipsSelector',
+      'image': 'image',
+      'image_carousel': 'imageCarousel',
+      'photo_picker': 'photoPicker',
+      'document_picker': 'documentPicker',
+      'embedded_link': 'embeddedLink',
+      'opt_in': 'optIn',
+      'if': 'if',
+      'switch': 'switch',
+      'navigation_list': 'navigationList',
+      'rich_text': 'richText'
+    };
+    const labelKey = typeToLabelKey[componentType];
+    if (labelKey) {
+      return t(`metaFlowBuilder.componentPalette.componentLabels.${labelKey}`);
+    }
+    return componentType; // 如果沒有對應的翻譯鍵，返回原始 type
+  };
+  
+  // 檢查 title 是否為默認值（硬編碼的中文）
+  const isDefaultTitle = (title, componentType) => {
+    const defaultTitles = {
+      'text_input': '文字輸入',
+      'date_picker': '日期選擇',
+      'calendar_picker': '日曆選擇',
+      'time_picker': '時間選擇',
+      'select': '下拉選擇',
+      'checkbox': '複選框組',
+      'radio': '單選框組',
+      'chips_selector': '小標籤選擇器',
+      'image': '圖片',
+      'image_carousel': '圖片輪播',
+      'photo_picker': '照片選擇器',
+      'document_picker': '文檔選擇器',
+      'embedded_link': '嵌入式鏈接',
+      'opt_in': '選擇加入',
+      'if': '條件判斷 (If)',
+      'switch': '條件渲染 (Switch)',
+      'navigation_list': '導航列表',
+      'rich_text': '富文本顯示'
+    };
+    return title === defaultTitles[componentType];
+  };
+  
+  // 獲取組件顯示標題（如果 title 是默認值，使用翻譯；否則使用用戶自定義的 title）
+  const getComponentDisplayTitle = (component) => {
+    if (component.title && !isDefaultTitle(component.title, component.type)) {
+      // 如果 title 存在且不是默認值，使用用戶自定義的 title
+      return component.title;
+    }
+    // 否則使用翻譯後的標籤
+    return getComponentLabel(component.type);
+  };
+  
+  // 獲取 Screen 顯示標題（如果 title 是默認值，使用翻譯；否則使用用戶自定義的 title）
+  const getScreenDisplayTitle = (screen) => {
+    const defaultScreenTitle = t('metaFlowBuilder.page.defaultScreenTitle');
+    if (screen.title && screen.title !== '新 Screen' && screen.title !== defaultScreenTitle) {
+      // 如果 title 存在且不是默認值，使用用戶自定義的 title
+      return screen.title;
+    }
+    // 否則使用翻譯後的標籤
+    return defaultScreenTitle;
+  };
+  
   // 基本狀態
-  const [flowName, setFlowName] = useState(initialSchema?.name || '新 Flow');
+  const [flowName, setFlowName] = useState(initialSchema?.name || t('metaFlowBuilder.page.defaultFlowName'));
   const [flowDescription, setFlowDescription] = useState(initialSchema?.description || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   // Flow 數據狀態
   const [flowData, setFlowData] = useState({
-    name: initialSchema?.name || '新 Flow',
+    name: initialSchema?.name || t('metaFlowBuilder.page.defaultFlowName'),
     categories: ['LEAD_GENERATION'],
     screens: initialSchema?.metaFlowJson ? 
       parseMetaFlowJson(initialSchema.metaFlowJson).screens : 
@@ -136,7 +210,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
           // 確保 parsed 包含 name（優先使用表單的 name，如果 JSON 中沒有）
           const parsedWithName = {
             ...parsed,
-            name: parsed.name || initialSchema.name || '新 Flow'
+            name: parsed.name || initialSchema.name || t('metaFlowBuilder.page.defaultFlowName')
           };
           setFlowData(parsedWithName);
           setFlowName(parsedWithName.name);
@@ -220,7 +294,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
           // 確保 parsed 包含 name（優先使用表單的 name，如果 JSON 中沒有）
           const parsedWithName = {
             ...parsed,
-            name: parsed.name || formData.name || '新 Flow'
+            name: parsed.name || formData.name || t('metaFlowBuilder.page.defaultFlowName')
           };
           setFlowData(parsedWithName);
           setFlowName(parsedWithName.name);
@@ -268,7 +342,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
     try {
       // 確保有 Flow 名稱
       if (!flowName || flowName.trim() === '') {
-        message.error('請輸入 Flow 名稱');
+        message.error(t('metaFlowBuilder.page.messages.flowNameRequired'));
         return;
       }
 
@@ -286,7 +360,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
       // 確保 finalFlowData 包含 name（使用 flowName）
       finalFlowData = {
         ...finalFlowData,
-        name: flowName || finalFlowData.name || '新 Flow'
+        name: flowName || finalFlowData.name || t('metaFlowBuilder.page.defaultFlowName')
       };
 
       setIsSaving(true);
@@ -318,7 +392,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
       // 添加 name 和 categories 到 JSON（後端需要）
       const fullMetaFlowJson = {
         ...metaFlowJson,
-        name: flowName || finalFlowData.name || '新 Flow',
+        name: flowName || finalFlowData.name || t('metaFlowBuilder.page.defaultFlowName'),
         categories: finalFlowData.categories || ['LEAD_GENERATION']
       };
 
@@ -442,7 +516,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
       screens: [...prev.screens, newScreen]
     }));
     setSelectedScreen(newScreen);
-    message.success('已添加新 Screen');
+    message.success(t('metaFlowBuilder.page.messages.screenAdded'));
   };
 
   // 更新 Screen
@@ -459,7 +533,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
   // 添加組件到當前 Screen
   const handleAddComponent = (componentType) => {
     if (!selectedScreen) {
-      message.warning('請先選擇一個 Screen');
+      message.warning(t('metaFlowBuilder.page.messages.selectScreenFirst'));
       return;
     }
     // 傳入現有組件列表，以便生成唯一的 name
@@ -584,25 +658,25 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
         }}>
           {/* 表單信息 */}
           <div>
-            <h4>表單信息</h4>
+            <h4>{t('metaFlowBuilder.page.formInfo')}</h4>
             <div style={{ marginBottom: '12px' }}>
-              <label>Flow 名稱:</label>
+              <label>{t('metaFlowBuilder.page.flowName')}</label>
               <Input
                 value={flowName}
                 onChange={(e) => {
                   setFlowName(e.target.value);
                   setFlowData(prev => ({ ...prev, name: e.target.value }));
                 }}
-                placeholder="Flow 名稱"
+                placeholder={t('metaFlowBuilder.page.flowNamePlaceholder')}
                 style={{ marginTop: '4px' }}
               />
             </div>
             <div style={{ marginBottom: '12px' }}>
-              <label>描述:</label>
+              <label>{t('metaFlowBuilder.page.description')}</label>
               <TextArea
                 value={flowDescription}
                 onChange={(e) => setFlowDescription(e.target.value)}
-                placeholder="描述"
+                placeholder={t('metaFlowBuilder.page.descriptionPlaceholder')}
                 rows={3}
                 style={{ marginTop: '4px' }}
               />
@@ -612,7 +686,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
           {/* Screen 列表 */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h4 style={{ margin: 0 }}>Screens</h4>
+              <h4 style={{ margin: 0 }}>{t('metaFlowBuilder.page.screens')}</h4>
               <Button
                 icon={<PlusOutlined />}
                 size="small"
@@ -638,7 +712,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontWeight: 'bold' }}>{screen.title || `Screen ${index + 1}`}</div>
+                      <div style={{ fontWeight: 'bold' }}>{getScreenDisplayTitle(screen) || `Screen ${index + 1}`}</div>
                       <div style={{ fontSize: '12px', color: '#666' }}>{screen.id}</div>
                     </div>
                     <Button
@@ -649,7 +723,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                         handleDeleteScreen(screen.id);
                       }}
                     >
-                      刪除
+                      {t('metaFlowBuilder.page.delete')}
                     </Button>
                   </div>
                 </Card>
@@ -670,7 +744,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
           overflow: 'auto'
         }}>
           {selectedScreen ? (
-            <Card title={`編輯 Screen: ${selectedScreen.title || selectedScreen.id}`}>
+            <Card title={t('metaFlowBuilder.page.editScreen', { title: getScreenDisplayTitle(selectedScreen) || selectedScreen.id })}>
               <ScreenEditor
                 screen={selectedScreen}
                 onUpdate={handleUpdateScreen}
@@ -688,7 +762,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
               height: '100%',
               color: '#999'
             }}>
-              請選擇一個 Screen 進行編輯
+              {t('metaFlowBuilder.page.selectScreenToEdit')}
             </div>
           )}
         </div>
@@ -705,8 +779,8 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
             {selectedComponent ? (
               <>
                 <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3>組件屬性</h3>
-                  <Button size="small" onClick={() => setSelectedComponent(null)}>返回</Button>
+                  <h3>{t('metaFlowBuilder.page.componentProperties')}</h3>
+                  <Button size="small" onClick={() => setSelectedComponent(null)}>{t('metaFlowBuilder.page.back')}</Button>
                 </div>
                 <ComponentPropertyEditor
                   component={selectedComponent}
@@ -730,7 +804,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                     };
                     
                     handleUpdateScreen(updatedScreen);
-                    message.success('組件已更新');
+                    message.success(t('metaFlowBuilder.page.messages.componentUpdated'));
                   }}
                   screenId={selectedScreen.id}
                   allScreens={flowData.screens}
@@ -738,9 +812,9 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
               </>
             ) : (
               <>
-                <h3>Screen 屬性</h3>
+                <h3>{t('metaFlowBuilder.page.screenProperties')}</h3>
                 <div style={{ marginBottom: '16px' }}>
-                  <label>Screen ID:</label>
+                  <label>{t('metaFlowBuilder.page.screenId')}</label>
                   <Input
                     value={selectedScreen.id}
                     disabled
@@ -748,21 +822,21 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                   />
                 </div>
                 <div style={{ marginBottom: '16px' }}>
-                  <label>Screen Title:</label>
+                  <label>{t('metaFlowBuilder.page.screenTitle')}</label>
                   <Input
-                    value={selectedScreen.title || ''}
+                    value={selectedScreen.title && selectedScreen.title !== '新 Screen' ? selectedScreen.title : ''}
                     onChange={(e) => {
                       handleUpdateScreen({
                         ...selectedScreen,
-                        title: e.target.value
+                        title: e.target.value || '新 Screen'
                       });
                     }}
-                    placeholder="Screen 標題"
+                    placeholder={t('metaFlowBuilder.page.defaultScreenTitle')}
                     style={{ marginTop: '4px' }}
                   />
                 </div>
                 <div style={{ marginTop: '24px' }}>
-                  <h4>組件列表</h4>
+                  <h4>{t('metaFlowBuilder.page.componentList')}</h4>
                   {selectedScreen.data?.actions && selectedScreen.data.actions.length > 0 ? (
                     <Space direction="vertical" style={{ width: '100%' }} size="small">
                       {selectedScreen.data.actions.map((comp, index) => {
@@ -787,7 +861,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                              <div style={{ fontWeight: 'bold' }}>{comp.title || comp.type || `組件 ${index + 1}`}</div>
+                              <div style={{ fontWeight: 'bold' }}>{getComponentDisplayTitle(comp) || t('metaFlowBuilder.page.defaultComponentName', { index: index + 1 })}</div>
                               <div style={{ fontSize: '12px', color: '#666' }}>{comp.type}</div>
                             </div>
                             <Button
@@ -808,7 +882,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                                 });
                               }}
                             >
-                              刪除
+                              {t('metaFlowBuilder.page.delete')}
                             </Button>
                           </div>
                         </Card>
@@ -816,7 +890,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
                       })}
                     </Space>
                   ) : (
-                    <p style={{ color: '#999', fontSize: '12px' }}>暫無組件，請在左側組件庫添加</p>
+                    <p style={{ color: '#999', fontSize: '12px' }}>{t('metaFlowBuilder.page.noComponents')}</p>
                   )}
                 </div>
               </>
@@ -842,7 +916,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
             overflow: 'auto',
             fontSize: '12px'
           }}>
-            {JSON.stringify(generateMetaFlowJson(flowData), null, 2)}
+            {JSON.stringify(generateMetaFlowJson(flowData, t), null, 2)}
           </pre>
         </div>
       )}
