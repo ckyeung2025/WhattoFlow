@@ -27,8 +27,9 @@ namespace PurpleRice.Controllers
          private readonly WebhookMessageProcessingService _webhookMessageProcessingService;
          private readonly UserSessionService _userSessionService;
          private readonly IEFormTokenService _eFormTokenService;
+         private readonly IProcessVariableService _processVariableService;
          
-         public EFormInstancesController(PurpleRiceDbContext db, IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory, WebhookMessageProcessingService webhookMessageProcessingService, UserSessionService userSessionService, IEFormTokenService eFormTokenService)
+         public EFormInstancesController(PurpleRiceDbContext db, IServiceProvider serviceProvider, WhatsAppWorkflowService whatsAppWorkflowService, Func<string, LoggingService> loggingServiceFactory, WebhookMessageProcessingService webhookMessageProcessingService, UserSessionService userSessionService, IEFormTokenService eFormTokenService, IProcessVariableService processVariableService)
          {
              _db = db;
              _serviceProvider = serviceProvider;
@@ -37,6 +38,7 @@ namespace PurpleRice.Controllers
              _webhookMessageProcessingService = webhookMessageProcessingService;
              _userSessionService = userSessionService;
              _eFormTokenService = eFormTokenService;
+             _processVariableService = processVariableService;
          }
 
         // GET: api/eforminstances/pending - 獲取所有待處理的表單實例
@@ -946,6 +948,22 @@ namespace PurpleRice.Controllers
                 
                 _loggingService.LogInformation($"表單提交成功，ID: {id}");
                 
+                // ✅ 自動匹配表單字段值到流程變量（僅 Manual Fill 模式）
+                if (instance.FillType == "Manual" && instance.WorkflowExecutionId > 0)
+                {
+                    try
+                    {
+                        _loggingService.LogInformation($"🔍 開始自動匹配表單字段值到流程變量");
+                        await AutoMapFormFieldsToProcessVariablesAsync(instance);
+                        _loggingService.LogInformation($"✅ 自動匹配完成");
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogWarning($"⚠️ 自動匹配表單字段值到流程變量時發生錯誤（不影響表單提交）: {ex.Message}");
+                        // 不影響表單提交，只記錄警告
+                    }
+                }
+                
                 return Ok(new { 
                     success = true, 
                     message = "表單提交成功",
@@ -958,6 +976,280 @@ namespace PurpleRice.Controllers
                 _loggingService.LogError($"提交表單時發生錯誤: {ex.Message}", ex);
                 return StatusCode(500, new { error = $"提交表單失敗: {ex.Message}" });
             }
+        }
+
+        /// <summary>
+        /// 自動匹配表單字段值到流程變量
+        /// 當表單字段名稱與流程變量名稱匹配時，自動將表單值設置到流程變量中
+        /// </summary>
+        private async Task AutoMapFormFieldsToProcessVariablesAsync(EFormInstance instance)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(instance.FilledHtmlCode) || instance.WorkflowExecutionId <= 0)
+                {
+                    _loggingService.LogInformation($"跳過自動匹配：FilledHtmlCode 為空或 WorkflowExecutionId 無效");
+                    return;
+                }
+
+                // 獲取工作流程定義 ID
+                var execution = await _db.WorkflowExecutions
+                    .FirstOrDefaultAsync(e => e.Id == instance.WorkflowExecutionId);
+                
+                if (execution == null)
+                {
+                    _loggingService.LogWarning($"找不到工作流程執行記錄: {instance.WorkflowExecutionId}");
+                    return;
+                }
+
+                // 獲取所有流程變量定義
+                var variableDefinitions = await _processVariableService.GetVariableDefinitionsAsync(execution.WorkflowDefinitionId);
+                var variableNames = variableDefinitions.Select(v => v.VariableName).ToList();
+                
+                if (variableNames.Count == 0)
+                {
+                    _loggingService.LogInformation($"工作流程沒有定義流程變量，跳過自動匹配");
+                    return;
+                }
+
+                _loggingService.LogInformation($"找到 {variableNames.Count} 個流程變量: {string.Join(", ", variableNames)}");
+
+                // 提取表單字段值（支持 HTML 和 Meta Flow JSON）
+                Dictionary<string, string> formFieldValues = new Dictionary<string, string>();
+                
+                // 檢查是 HTML 還是 Meta Flow JSON
+                if (instance.FilledHtmlCode.TrimStart().StartsWith("{") || instance.FilledHtmlCode.TrimStart().StartsWith("["))
+                {
+                    // Meta Flow JSON 格式
+                    _loggingService.LogInformation($"檢測到 Meta Flow JSON 格式");
+                    formFieldValues = ExtractFormFieldsFromMetaFlowJson(instance.FilledHtmlCode);
+                }
+                else
+                {
+                    // HTML 格式
+                    _loggingService.LogInformation($"檢測到 HTML 格式");
+                    formFieldValues = ExtractFormFieldsFromHtml(instance.FilledHtmlCode);
+                }
+
+                _loggingService.LogInformation($"從表單中提取到 {formFieldValues.Count} 個字段值");
+
+                // 匹配字段名和變量名，設置流程變量值
+                int matchedCount = 0;
+                foreach (var fieldName in formFieldValues.Keys)
+                {
+                    // 嘗試精確匹配（忽略大小寫）
+                    var matchedVariable = variableNames.FirstOrDefault(v => 
+                        string.Equals(v, fieldName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (matchedVariable != null)
+                    {
+                        var fieldValue = formFieldValues[fieldName];
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            try
+                            {
+                                // 獲取變量定義以確定數據類型
+                                var variableDef = variableDefinitions.FirstOrDefault(v => 
+                                    string.Equals(v.VariableName, matchedVariable, StringComparison.OrdinalIgnoreCase));
+                                
+                                if (variableDef != null)
+                                {
+                                    // 轉換值類型
+                                    object convertedValue = fieldValue;
+                                    try
+                                    {
+                                        convertedValue = await _processVariableService.ConvertValueAsync(variableDef.DataType, fieldValue);
+                                    }
+                                    catch
+                                    {
+                                        // 如果轉換失敗，使用原始字符串值
+                                        convertedValue = fieldValue;
+                                    }
+
+                                    // 設置流程變量值
+                                    await _processVariableService.SetVariableValueAsync(
+                                        instance.WorkflowExecutionId,
+                                        matchedVariable,
+                                        convertedValue,
+                                        setBy: "ManualFillAutoMapping",
+                                        sourceType: "EFormField",
+                                        sourceReference: $"EFormInstance:{instance.Id},Field:{fieldName}"
+                                    );
+
+                                    _loggingService.LogInformation($"✅ 自動匹配成功: 表單字段 '{fieldName}' -> 流程變量 '{matchedVariable}' = '{fieldValue}'");
+                                    matchedCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _loggingService.LogWarning($"設置流程變量 '{matchedVariable}' 時發生錯誤: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+
+                _loggingService.LogInformation($"自動匹配完成：成功匹配 {matchedCount} 個字段到流程變量");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"自動匹配表單字段值到流程變量時發生錯誤: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 從 HTML 表單中提取字段值
+        /// </summary>
+        private Dictionary<string, string> ExtractFormFieldsFromHtml(string html)
+        {
+            var fieldValues = new Dictionary<string, string>();
+            
+            try
+            {
+                // 提取 input 字段值
+                var inputPattern = @"<input[^>]*name\s*=\s*[""']([^""']+)[""'][^>]*value\s*=\s*[""']([^""']*)[""'][^>]*>";
+                var inputMatches = System.Text.RegularExpressions.Regex.Matches(html, inputPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                foreach (System.Text.RegularExpressions.Match match in inputMatches)
+                {
+                    if (match.Groups.Count >= 3)
+                    {
+                        var fieldName = match.Groups[1].Value.Trim();
+                        var fieldValue = match.Groups[2].Value.Trim();
+                        if (!string.IsNullOrEmpty(fieldName))
+                        {
+                            fieldValues[fieldName] = fieldValue;
+                        }
+                    }
+                }
+
+                // 提取 textarea 字段值
+                var textareaPattern = @"<textarea[^>]*name\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</textarea>";
+                var textareaMatches = System.Text.RegularExpressions.Regex.Matches(html, textareaPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                
+                foreach (System.Text.RegularExpressions.Match match in textareaMatches)
+                {
+                    if (match.Groups.Count >= 3)
+                    {
+                        var fieldName = match.Groups[1].Value.Trim();
+                        var fieldValue = match.Groups[2].Value.Trim();
+                        if (!string.IsNullOrEmpty(fieldName))
+                        {
+                            fieldValues[fieldName] = fieldValue;
+                        }
+                    }
+                }
+
+                // 提取 select 字段值（選中的 option）
+                var selectPattern = @"<select[^>]*name\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</select>";
+                var selectMatches = System.Text.RegularExpressions.Regex.Matches(html, selectPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                
+                foreach (System.Text.RegularExpressions.Match match in selectMatches)
+                {
+                    if (match.Groups.Count >= 2)
+                    {
+                        var fieldName = match.Groups[1].Value.Trim();
+                        var selectContent = match.Groups[2].Value;
+                        
+                        // 查找選中的 option
+                        var selectedOptionPattern = @"<option[^>]*selected[^>]*value\s*=\s*[""']([^""']+)[""'][^>]*>";
+                        var selectedMatch = System.Text.RegularExpressions.Regex.Match(selectContent, selectedOptionPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        
+                        if (selectedMatch.Success && selectedMatch.Groups.Count >= 2)
+                        {
+                            var fieldValue = selectedMatch.Groups[1].Value.Trim();
+                            if (!string.IsNullOrEmpty(fieldName))
+                            {
+                                fieldValues[fieldName] = fieldValue;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"從 HTML 提取字段值時發生錯誤: {ex.Message}");
+            }
+
+            return fieldValues;
+        }
+
+        /// <summary>
+        /// 從 Meta Flow JSON 中提取字段值
+        /// Meta Flow 返回的 JSON 格式：{ "fieldName1": "value1", "fieldName2": "value2", ... }
+        /// </summary>
+        private Dictionary<string, string> ExtractFormFieldsFromMetaFlowJson(string json)
+        {
+            var fieldValues = new Dictionary<string, string>();
+            
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(json);
+                var root = jsonDoc.RootElement;
+
+                // 如果是對象，遍歷所有屬性
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in root.EnumerateObject())
+                    {
+                        var fieldName = property.Name;
+                        var fieldValue = property.Value;
+
+                        // 跳過 flow_token
+                        if (fieldName == "flow_token")
+                            continue;
+
+                        // 處理不同類型的值
+                        string valueString = null;
+                        
+                        if (fieldValue.ValueKind == JsonValueKind.String)
+                        {
+                            valueString = fieldValue.GetString();
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.Number)
+                        {
+                            valueString = fieldValue.GetRawText();
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.True || fieldValue.ValueKind == JsonValueKind.False)
+                        {
+                            valueString = fieldValue.GetBoolean().ToString();
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.Object)
+                        {
+                            // 如果是對象（例如包含 dataUrl 的媒體對象），嘗試提取有用的信息
+                            if (fieldValue.TryGetProperty("dataUrl", out var dataUrlProp))
+                            {
+                                valueString = dataUrlProp.GetString();
+                            }
+                            else if (fieldValue.TryGetProperty("filePath", out var filePathProp))
+                            {
+                                valueString = filePathProp.GetString();
+                            }
+                            else
+                            {
+                                // 將整個對象序列化為 JSON 字符串
+                                valueString = fieldValue.GetRawText();
+                            }
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.Array)
+                        {
+                            // 如果是數組，序列化為 JSON 字符串
+                            valueString = fieldValue.GetRawText();
+                        }
+
+                        if (!string.IsNullOrEmpty(valueString) && !string.IsNullOrEmpty(fieldName))
+                        {
+                            fieldValues[fieldName] = valueString;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"從 Meta Flow JSON 提取字段值時發生錯誤: {ex.Message}");
+            }
+
+            return fieldValues;
         }
 
         // GET: api/eforminstances/{id}/validate-token - 驗證 Token 並獲取表單信息

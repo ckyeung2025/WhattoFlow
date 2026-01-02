@@ -2236,7 +2236,7 @@ const en = {
       modeDescription: 'Mode Description',
       integrateWaitReplyDesc: 'Inherit natural language reply from previous waitReply node, use AI to intelligently fill the form',
       integrateDataSetQueryDesc: 'Use query result data from specified DataSet Query node, directly map to form fields',
-      manualFillDesc: 'Send blank form to user to fill manually, no dependency on other nodes',
+      manualFillDesc: 'Send blank form to user to fill manually, no dependency on other nodes. System will automatically copy form field values (field names must match process variable names) to process variables',
       
       // DataSet Query selection
       selectDataSetQueryNode: 'Select DataSet Query Node',
@@ -3385,6 +3385,10 @@ const en = {
     sqlQueryRequired: 'Please enter SQL query statement',
     sqlParameters: 'SQL Parameters (JSON format)',
     sqlParametersPlaceholder: '{"param1": "value1", "param2": "value2"}',
+    targetTableName: 'Target Table Name',
+    targetTableNamePlaceholder: 'e.g., customers',
+    targetTableNameRequired: 'Target table name is required for outbound or bidirectional sync',
+    targetTableNameTooltip: 'Specify the SQL table name to write to during outbound sync (only required for outbound or bidirectional sync)',
     
     // Excel configuration
     excelFilePath: 'Excel File Path',

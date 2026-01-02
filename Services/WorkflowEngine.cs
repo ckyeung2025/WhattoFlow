@@ -131,7 +131,26 @@ namespace PurpleRice.Services
                 // 根據流程狀態決定如何繼續
                 if (execution.Status == "WaitingForFormApproval")
                 {
-                    await ContinueFromFormApproval(execution, flowData, adjacencyList);
+                    // 嘗試從執行記錄中獲取 formInstanceId（如果有的話）
+                    Guid? formInstanceId = null;
+                    using var scope = _serviceProvider.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                    
+                    // 查找最近提交的 EFormInstance
+                    var recentFormInstance = await db.EFormInstances
+                        .Where(f => f.WorkflowExecutionId == execution.Id && 
+                                   f.Status == "Submitted" &&
+                                   f.UpdatedAt >= DateTime.UtcNow.AddMinutes(-5)) // 最近5分鐘內提交的
+                        .OrderByDescending(f => f.UpdatedAt)
+                        .FirstOrDefaultAsync();
+                    
+                    if (recentFormInstance != null)
+                    {
+                        formInstanceId = recentFormInstance.Id;
+                        WriteLog($"找到最近提交的表單實例: {formInstanceId}");
+                    }
+                    
+                    await ContinueFromFormApproval(execution, flowData, adjacencyList, formInstanceId);
                 }
                 else
                 {
@@ -381,19 +400,67 @@ namespace PurpleRice.Services
         }
 
         // 從表單審批狀態繼續
-        private async Task ContinueFromFormApproval(WorkflowExecution execution, WorkflowGraph flowData, Dictionary<string, List<string>> adjacencyList)
+        private async Task ContinueFromFormApproval(WorkflowExecution execution, WorkflowGraph flowData, Dictionary<string, List<string>> adjacencyList, Guid? formInstanceId = null)
                 {
                     WriteLog($"流程狀態為 WaitingForFormApproval，尋找 sendEForm 節點");
                     
-                    var sendEFormNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "sendEForm" || n.Data?.Type == "sendeform");
-                    if (sendEFormNode == null)
+                    // ✅ 修復：如果提供了 formInstanceId，通過它找到對應的 sendEForm 節點
+                    string sendEFormNodeId = null;
+                    
+                    if (formInstanceId.HasValue)
                     {
-                        WriteLog($"錯誤: 找不到 sendEForm 節點");
+                        WriteLog($"通過 EFormInstance ID {formInstanceId} 查找對應的 sendEForm 節點");
+                        using var scope = _serviceProvider.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                        
+                        var formInstance = await db.EFormInstances
+                            .FirstOrDefaultAsync(f => f.Id == formInstanceId.Value);
+                        
+                        if (formInstance != null && formInstance.WorkflowStepExecutionId > 0)
+                        {
+                            var stepExecution = await db.WorkflowStepExecutions
+                                .FirstOrDefaultAsync(s => s.Id == formInstance.WorkflowStepExecutionId);
+                            
+                            if (stepExecution != null && !string.IsNullOrEmpty(stepExecution.InputJson))
+                            {
+                                try
+                                {
+                                    var inputData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(stepExecution.InputJson);
+                                    if (inputData.TryGetValue("Id", out var idElement))
+                                        sendEFormNodeId = idElement.GetString();
+                                    else if (inputData.TryGetValue("NodeId", out var nodeIdElement))
+                                        sendEFormNodeId = nodeIdElement.GetString();
+                                    
+                                    WriteLog($"從步驟執行記錄中找到 sendEForm 節點 ID: {sendEFormNodeId}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteLog($"解析步驟執行記錄的 InputJson 時發生錯誤: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 如果沒有通過 formInstanceId 找到節點，使用舊邏輯（查找第一個 sendEForm 節點）
+                    if (string.IsNullOrEmpty(sendEFormNodeId))
+                    {
+                        WriteLog($"未提供 formInstanceId 或無法從中提取節點 ID，使用舊邏輯查找第一個 sendEForm 節點");
+                        var sendEFormNode = flowData.Nodes.FirstOrDefault(n => n.Data?.Type == "sendEForm" || n.Data?.Type == "sendeform");
+                        if (sendEFormNode == null)
+                        {
+                            WriteLog($"錯誤: 找不到 sendEForm 節點");
+                            return;
+                        }
+                        sendEFormNodeId = sendEFormNode.Id;
+                        WriteLog($"找到第一個 sendEForm 節點: {sendEFormNodeId}");
+                    }
+                    
+                    // 驗證節點是否存在於流程中
+                    if (!flowData.Nodes.Any(n => n.Id == sendEFormNodeId))
+                    {
+                        WriteLog($"錯誤: 節點 {sendEFormNodeId} 不存在於流程中");
                         return;
                     }
-
-                    var sendEFormNodeId = sendEFormNode.Id;
-                    WriteLog($"找到 sendEForm 節點: {sendEFormNodeId}");
 
             // 重要：檢查是否已經有 sendEForm 步驟執行過
             if (await IsNodeAlreadyExecuted(execution.Id, sendEFormNodeId, "sendEForm"))
@@ -401,9 +468,8 @@ namespace PurpleRice.Services
                 WriteLog($"警告: sendEForm 節點 {sendEFormNodeId} 已經執行過，直接執行後續節點");
             }
             
-            // 無論節點是否已經執行過，都應該標記 sendEForm 步驟為完成
-            // 因為表單已經被審批，sendEForm 節點應該從 Waiting 狀態更新為 Completed
-            await MarkSendEFormStepComplete(execution.Id);
+            // ✅ 修復：只標記對應的 sendEForm 步驟為完成（而不是所有 sendEForm 步驟）
+            await MarkSendEFormStepComplete(execution.Id, sendEFormNodeId);
 
             // 更新流程狀態
             execution.Status = "Running";
@@ -839,12 +905,42 @@ namespace PurpleRice.Services
         }
 
         // 標記 sendEForm 步驟完成
-        private async Task MarkSendEFormStepComplete(int executionId)
+        private async Task MarkSendEFormStepComplete(int executionId, string nodeId = null)
         {
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
             
-            var sendEFormStepExecution = await db.WorkflowStepExecutions
+            IQueryable<WorkflowStepExecution> query = db.WorkflowStepExecutions
+                .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm" && s.Status == "Waiting");
+            
+            // ✅ 修復：如果提供了 nodeId，只標記對應的節點
+            if (!string.IsNullOrEmpty(nodeId))
+            {
+                WriteLog($"只標記節點 {nodeId} 的 sendEForm 步驟為完成");
+                // 通過 InputJson 查找對應的步驟執行記錄
+                var stepExecution = await db.WorkflowStepExecutions
+                    .Where(s => s.WorkflowExecutionId == executionId && 
+                               s.StepType == "sendEForm" && 
+                               s.Status == "Waiting" &&
+                               (s.InputJson.Contains($"\"Id\":\"{nodeId}\"") || 
+                                s.InputJson.Contains($"\"NodeId\":\"{nodeId}\"")))
+                    .FirstOrDefaultAsync();
+                
+                if (stepExecution != null)
+                {
+                    stepExecution.Status = "Completed";
+                    stepExecution.EndedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync();
+                    WriteLog($"已標記 sendEForm 步驟 {stepExecution.Id} (節點 {nodeId}) 為完成");
+                    return;
+                }
+                else
+                {
+                    WriteLog($"警告: 找不到節點 {nodeId} 對應的等待中的 sendEForm 步驟執行記錄");
+                }
+            }
+            
+            var sendEFormStepExecution = await query
                 .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
                 .OrderByDescending(s => s.StartedAt)
                 .FirstOrDefaultAsync();

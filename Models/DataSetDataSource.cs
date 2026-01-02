@@ -27,6 +27,10 @@ namespace PurpleRice.Models
         [StringLength(2000)]
         public string? SqlParameters { get; set; } // JSON 格式的參數
         
+        // SQL Outbound 配置
+        [StringLength(200)]
+        public string? TargetTableName { get; set; } // 目標表名（用於出站同步）
+        
         // Excel 數據源
         [StringLength(1000)]
         public string? ExcelFilePath { get; set; }

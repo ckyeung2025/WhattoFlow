@@ -72,6 +72,7 @@ namespace PurpleRice.Models.DTOs
         public string SourceType { get; set; } = string.Empty;
         public string? SqlQuery { get; set; }
         public string? DatabaseConnection { get; set; }
+        public string? TargetTableName { get; set; } // SQL 出站同步目標表名
         public string? ExcelFilePath { get; set; }
         public string? ExcelSheetName { get; set; }
         public string? ExcelUrl { get; set; }

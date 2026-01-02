@@ -1967,7 +1967,7 @@ const zhSC = {
       integrateDataSetQuery: '整合 DataSet 查询',
       integrateDataSetQueryDesc: '从 DataSet Query 节点获取数据并自动填充表单',
       manualFill: '手动填写',
-      manualFillDesc: '用户需要手动填写表单',
+      manualFillDesc: '發送空白表單給用戶自行填寫，無需依賴其他節點。系統會自動將表單字段值（字段名稱需與流程變量名稱匹配）複製到流程變量中',
       notificationMessage: '通知消息',
       selectDataSetQueryNode: '选择 DataSet Query 节点',
       selectDataSetQueryNodePlaceholder: '请选择要整合的 DataSet Query 节点',
@@ -2406,6 +2406,10 @@ const zhSC = {
     sqlQueryRequired: '请输入 SQL 查询语句',
     sqlParameters: 'SQL 参数（JSON 格式）',
     sqlParametersPlaceholder: '{"param1": "value1", "param2": "value2"}',
+    targetTableName: '目标表名',
+    targetTableNamePlaceholder: '例如：customers',
+    targetTableNameRequired: '出站或双向同步时，目标表名为必填项',
+    targetTableNameTooltip: '指定出站同步时要写入的 SQL 表名（仅在出站或双向同步时需要）',
     
     // Excel 配置
     excelFilePath: 'Excel 文件路径',

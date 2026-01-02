@@ -2871,7 +2871,7 @@ const zhTC = {
       modeDescription: '模式說明',
       integrateWaitReplyDesc: '承接前一個 waitReply 節點的自然語言回覆，使用 AI 智能填充表單',
       integrateDataSetQueryDesc: '使用指定 DataSet Query 節點的查詢結果數據，直接映射到表單欄位',
-      manualFillDesc: '發送空白表單給用戶自行填寫，無需依賴其他節點',
+      manualFillDesc: '發送空白表單給用戶自行填寫，無需依賴其他節點。系統會自動將表單字段值（字段名稱需與流程變量名稱匹配）複製到流程變量中',
       
       // DataSet Query 選擇
       selectDataSetQueryNode: '選擇 DataSet Query 節點',
@@ -3837,6 +3837,10 @@ const zhTC = {
     sqlQueryRequired: '請輸入 SQL 查詢語句',
     sqlParameters: 'SQL 參數（JSON 格式）',
     sqlParametersPlaceholder: '{"param1": "value1", "param2": "value2"}',
+    targetTableName: '目標表名',
+    targetTableNamePlaceholder: '例如：customers',
+    targetTableNameRequired: '出站或雙向同步時，目標表名為必填項',
+    targetTableNameTooltip: '指定出站同步時要寫入的 SQL 表名（僅在出站或雙向同步時需要）',
     
     // Excel 配置
     excelFilePath: 'Excel 文件路徑',

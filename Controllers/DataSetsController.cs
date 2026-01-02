@@ -181,6 +181,7 @@ namespace PurpleRice.Controllers
                         SourceType = dataSource.SourceType,
                         SqlQuery = dataSource.SqlQuery,
                         DatabaseConnection = dataSource.DatabaseConnection,
+                        TargetTableName = dataSource.TargetTableName, // 包含目標表名
                         ExcelFilePath = dataSource.ExcelFilePath,
                         ExcelSheetName = dataSource.ExcelSheetName,
                         GoogleDocsUrl = dataSource.GoogleDocsUrl,
@@ -372,6 +373,7 @@ namespace PurpleRice.Controllers
                         DatabaseConnection = request.DataSource.DatabaseConnection,
                         SqlQuery = request.DataSource.SqlQuery,
                         SqlParameters = request.DataSource.SqlParameters,
+                        TargetTableName = request.DataSource.TargetTableName, // 設置目標表名
                         ExcelFilePath = request.DataSource.ExcelFilePath,
                         ExcelSheetName = request.DataSource.ExcelSheetName,
                         GoogleDocsUrl = request.DataSource.GoogleDocsUrl,
@@ -517,6 +519,7 @@ namespace PurpleRice.Controllers
                     dataSource.DatabaseConnection = request.DataSource.DatabaseConnection;
                     dataSource.SqlQuery = request.DataSource.SqlQuery;
                     dataSource.SqlParameters = request.DataSource.SqlParameters;
+                    dataSource.TargetTableName = request.DataSource.TargetTableName; // 更新目標表名
                     dataSource.ExcelFilePath = request.DataSource.ExcelFilePath;
                     dataSource.ExcelSheetName = request.DataSource.ExcelSheetName;
                     dataSource.GoogleDocsUrl = request.DataSource.GoogleDocsUrl;
@@ -1488,10 +1491,14 @@ namespace PurpleRice.Controllers
                             {
                                 result = await syncController.SyncToLocalExcel(scopedDataSet, scopedDataSource);
                             }
+                            else if (scopedDataSource.SourceType.ToUpper() == "SQL")
+                            {
+                                result = await syncController.SyncToSql(scopedDataSet, scopedDataSource);
+                            }
                             else
                             {
-                                scopedLoggingService.LogWarning($"出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源，數據集ID: {scopedDataSet.Id}, 數據源類型: {scopedDataSource.SourceType}");
-                                await syncController.SetSyncStatusFailedWithContext(scopedDataSet, $"出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源", scopedContext, scopedLoggingService);
+                                scopedLoggingService.LogWarning($"出站同步目前僅支持 GOOGLE_DOCS、EXCEL 和 SQL 數據源，數據集ID: {scopedDataSet.Id}, 數據源類型: {scopedDataSource.SourceType}");
+                                await syncController.SetSyncStatusFailedWithContext(scopedDataSet, $"出站同步目前僅支持 GOOGLE_DOCS、EXCEL 和 SQL 數據源", scopedContext, scopedLoggingService);
                                 return;
                             }
                         }
@@ -1517,6 +1524,18 @@ namespace PurpleRice.Controllers
                                 {
                                     scopedLoggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
                                     var inboundResult = await syncController.SyncFromExcel(scopedDataSet, scopedDataSource);
+                                    // 合併結果
+                                    result = new SyncResult
+                                    {
+                                        Success = inboundResult.Success && result.Success,
+                                        TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
+                                        ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
+                                    };
+                                }
+                                else if (scopedDataSource.SourceType.ToUpper() == "SQL")
+                                {
+                                    scopedLoggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
+                                    var inboundResult = await syncController.SyncFromSql(scopedDataSet, scopedDataSource);
                                     // 合併結果
                                     result = new SyncResult
                                     {
@@ -1759,6 +1778,149 @@ namespace PurpleRice.Controllers
             {
                 _loggingService.LogError($"SQL 數據同步失敗: {ex.Message}", ex);
                 return new SyncResult { Success = false, ErrorMessage = $"SQL 數據同步失敗: {ex.Message}" };
+            }
+        }
+
+        /// <summary>
+        /// 將內部 DataSet 數據同步到 SQL 表（出站同步）
+        /// </summary>
+        private async Task<SyncResult> SyncToSql(DataSet dataSet, DataSetDataSource dataSource)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始將數據同步到 SQL 表，數據集ID: {dataSet.Id}, 目標表: {dataSource.TargetTableName}");
+
+                // 1. 驗證配置
+                if (string.IsNullOrEmpty(dataSource.TargetTableName))
+                {
+                    _loggingService.LogWarning($"目標表名不能為空，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "目標表名不能為空" };
+                }
+
+                // 2. 獲取連接字符串（重用 SyncFromSql 的邏輯）
+                string connectionString = GetSqlConnectionStringForSync(dataSource);
+                if (string.IsNullOrEmpty(connectionString))
+                {
+                    return new SyncResult { Success = false, ErrorMessage = "無法獲取數據庫連接字符串" };
+                }
+
+                // 3. 獲取欄位定義和主鍵欄位
+                var columns = await _context.DataSetColumns
+                    .Where(c => c.DataSetId == dataSet.Id)
+                    .OrderBy(c => c.SortOrder)
+                    .ThenBy(c => c.ColumnName)
+                    .ToListAsync();
+
+                if (!columns.Any())
+                {
+                    _loggingService.LogWarning($"數據集沒有欄位定義，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "數據集沒有欄位定義" };
+                }
+
+                var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList();
+                if (!primaryKeyColumns.Any())
+                {
+                    _loggingService.LogWarning($"數據集沒有主鍵欄位定義，無法進行增量同步，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = false, ErrorMessage = "數據集必須定義主鍵欄位才能進行出站同步" };
+                }
+
+                _loggingService.LogInformation($"找到 {primaryKeyColumns.Count} 個主鍵欄位: {string.Join(", ", primaryKeyColumns.Select(c => c.ColumnName))}");
+
+                // 4. 獲取 DataSet 記錄
+                var records = await _context.DataSetRecords
+                    .Where(r => r.DataSetId == dataSet.Id && r.Status == "Active")
+                    .Include(r => r.Values)
+                    .OrderBy(r => r.CreatedAt)
+                    .ToListAsync();
+
+                _loggingService.LogInformation($"找到 {records.Count} 條活躍記錄，數據集ID: {dataSet.Id}");
+
+                if (!records.Any())
+                {
+                    _loggingService.LogInformation($"沒有活躍記錄需要同步，數據集ID: {dataSet.Id}");
+                    return new SyncResult { Success = true, TotalRecords = 0 };
+                }
+
+                // 5. 讀取目標表現有數據，構建主鍵映射
+                var existingRecordsMap = await GetExistingSqlRecords(
+                    connectionString, 
+                    dataSource.TargetTableName, 
+                    primaryKeyColumns
+                );
+                _loggingService.LogInformation($"目標表現有記錄數: {existingRecordsMap.Count}");
+
+                // 7. 分類處理：新增 vs 更新
+                var recordsToInsert = new List<DataSetRecord>();
+                var recordsToUpdate = new List<(DataSetRecord Record, Dictionary<string, object> ExistingData)>();
+
+                foreach (var record in records)
+                {
+                    var primaryKey = BuildCompositeKeyFromRecord(record, primaryKeyColumns);
+                    
+                    if (string.IsNullOrEmpty(primaryKey))
+                    {
+                        _loggingService.LogWarning($"記錄缺少主鍵值，跳過，記錄ID: {record.Id}");
+                        continue;
+                    }
+
+                    if (existingRecordsMap.ContainsKey(primaryKey))
+                    {
+                        recordsToUpdate.Add((record, existingRecordsMap[primaryKey]));
+                    }
+                    else
+                    {
+                        recordsToInsert.Add(record);
+                    }
+                }
+
+                _loggingService.LogInformation($"分類完成 - 新增: {recordsToInsert.Count}, 更新: {recordsToUpdate.Count}");
+
+                // 8. 批量執行 SQL（使用事務）
+                using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+                await connection.OpenAsync();
+                using var transaction = connection.BeginTransaction();
+
+                try
+                {
+                    int insertedCount = 0;
+                    int updatedCount = 0;
+
+                    // 批量插入
+                    if (recordsToInsert.Any())
+                    {
+                        insertedCount = await BatchInsertToSql(
+                            connection, transaction, dataSource.TargetTableName, 
+                            recordsToInsert, columns, primaryKeyColumns
+                        );
+                    }
+
+                    // 批量更新
+                    if (recordsToUpdate.Any())
+                    {
+                        updatedCount = await BatchUpdateToSql(
+                            connection, transaction, dataSource.TargetTableName, 
+                            recordsToUpdate, columns, primaryKeyColumns
+                        );
+                    }
+
+                    transaction.Commit();
+                    
+                    var totalRecords = insertedCount + updatedCount;
+                    _loggingService.LogInformation($"SQL 出站同步完成，數據集ID: {dataSet.Id}，新增: {insertedCount}，更新: {updatedCount}，總計: {totalRecords}");
+                    
+                    return new SyncResult { Success = true, TotalRecords = totalRecords };
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    _loggingService.LogError($"SQL 出站同步失敗: {ex.Message}", ex);
+                    return new SyncResult { Success = false, ErrorMessage = $"SQL 出站同步失敗: {ex.Message}" };
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"SQL 出站同步失敗: {ex.Message}", ex);
+                return new SyncResult { Success = false, ErrorMessage = $"SQL 出站同步失敗: {ex.Message}" };
             }
         }
 
@@ -4323,6 +4485,73 @@ namespace PurpleRice.Controllers
             return builder.ConnectionString;
         }
 
+        // 獲取 SQL 連接字符串（用於出站同步，重用 SyncFromSql 的邏輯）
+        private string GetSqlConnectionStringForSync(DataSetDataSource dataSource)
+        {
+            string connectionString;
+            
+            // 解析連接配置（重用 SyncFromSql 的邏輯）
+            if (!string.IsNullOrEmpty(dataSource.AuthenticationConfig))
+            {
+                try
+                {
+                    _loggingService.LogInformation($"開始解析認證配置 JSON: {dataSource.AuthenticationConfig}");
+                    var config = JsonSerializer.Deserialize<SqlConnectionConfig>(dataSource.AuthenticationConfig);
+                    
+                    if (config?.ConnectionType == "preset")
+                    {
+                        connectionString = GetPresetConnectionString(config.PresetName);
+                        _loggingService.LogInformation($"使用預設連接: {config.PresetName}");
+                    }
+                    else if (config?.ConnectionType == "custom")
+                    {
+                        connectionString = BuildCustomConnectionString(config);
+                        _loggingService.LogInformation($"使用自定義連接");
+                    }
+                    else
+                    {
+                        // 嘗試從其他字段推斷連接類型
+                        if (!string.IsNullOrEmpty(config?.ServerName) && !string.IsNullOrEmpty(config?.DatabaseName))
+                        {
+                            connectionString = BuildCustomConnectionString(config);
+                            _loggingService.LogInformation($"使用推斷的自定義連接");
+                        }
+                        else if (!string.IsNullOrEmpty(config?.PresetName))
+                        {
+                            connectionString = GetPresetConnectionString(config.PresetName);
+                            _loggingService.LogInformation($"使用推斷的預設連接: {config.PresetName}");
+                        }
+                        else
+                        {
+                            _loggingService.LogError($"無法推斷連接類型，ConnectionType: '{config?.ConnectionType}'");
+                            return null;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError($"解析連接配置失敗: {ex.Message}");
+                    return null;
+                }
+            }
+            else
+            {
+                // 向後兼容：使用舊的 databaseConnection 欄位
+                _loggingService.LogInformation($"沒有 AuthenticationConfig，使用舊格式 databaseConnection: {dataSource.DatabaseConnection}");
+                connectionString = GetPresetConnectionString(dataSource.DatabaseConnection);
+                _loggingService.LogInformation($"使用舊格式預設連接: {dataSource.DatabaseConnection}");
+            }
+            
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                _loggingService.LogError($"無法獲取數據庫連接字符串");
+                return null;
+            }
+            
+            _loggingService.LogInformation($"最終使用的連接字符串: {connectionString}");
+            return connectionString;
+        }
+
         // 執行 SQL 查詢
         private async Task<(bool Success, List<Dictionary<string, object>> Data, string ErrorMessage)> ExecuteSqlQuery(string connectionString, string sqlQuery, string sqlParameters)
         {
@@ -5743,6 +5972,237 @@ namespace PurpleRice.Controllers
             
             return results;
         }
+
+        // SQL Outbound 同步輔助方法
+
+        /// <summary>
+        /// 讀取目標 SQL 表的現有數據，構建主鍵映射
+        /// </summary>
+    private async Task<Dictionary<string, Dictionary<string, object>>> GetExistingSqlRecords(
+        string connectionString, 
+        string tableName, 
+        List<DataSetColumn> primaryKeyColumns)
+        {
+            var map = new Dictionary<string, Dictionary<string, object>>();
+            
+            try
+            {
+                // 構建 SELECT 查詢（只查詢主鍵欄位和所有欄位）
+                var query = $"SELECT * FROM [{tableName}]";
+                
+                using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+                await connection.OpenAsync();
+                using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
+                using var reader = await command.ExecuteReaderAsync();
+                
+                while (await reader.ReadAsync())
+                {
+                    var row = new Dictionary<string, object>();
+                    var keyParts = new List<string>();
+                    
+                // 構建主鍵（與 BuildCompositeKeyFromRecord 格式相同）
+                foreach (var pkColumn in primaryKeyColumns.OrderBy(c => c.ColumnName))
+                {
+                    // 直接使用 dataset 欄位名作為 SQL 表欄位名
+                    var columnIndex = -1;
+                    try
+                    {
+                        columnIndex = reader.GetOrdinal(pkColumn.ColumnName);
+                    }
+                    catch
+                    {
+                        _loggingService.LogWarning($"無法找到主鍵欄位 '{pkColumn.ColumnName}' 在表 '{tableName}' 中");
+                        continue;
+                    }
+                        
+                        var value = reader.IsDBNull(columnIndex) ? null : reader.GetValue(columnIndex);
+                        var valueStr = value?.ToString()?.Trim() ?? "NULL";
+                        keyParts.Add($"{pkColumn.ColumnName}:{valueStr}");
+                        row[pkColumn.ColumnName] = value;
+                    }
+                    
+                    // 讀取所有欄位值
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        var columnName = reader.GetName(i);
+                        row[columnName] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    }
+                    
+                    var compositeKey = string.Join("|", keyParts);
+                    if (!string.IsNullOrEmpty(compositeKey))
+                    {
+                        map[compositeKey] = row;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"讀取目標表現有數據失敗: {ex.Message}", ex);
+                throw;
+            }
+            
+            return map;
+        }
+
+        /// <summary>
+        /// 批量插入記錄到 SQL 表
+        /// </summary>
+    private async Task<int> BatchInsertToSql(
+        Microsoft.Data.SqlClient.SqlConnection connection, 
+        Microsoft.Data.SqlClient.SqlTransaction transaction,
+        string tableName,
+        List<DataSetRecord> records,
+        List<DataSetColumn> columns,
+        List<DataSetColumn> primaryKeyColumns)
+    {
+        int insertedCount = 0;
+
+        // 直接使用 dataset 欄位名作為 SQL 表欄位名
+        var sqlColumnNames = columns.Select(c => $"[{c.ColumnName}]").ToList();
+
+            // 小批量使用參數化查詢（< 100 條）
+            if (records.Count < 100)
+            {
+                foreach (var record in records)
+                {
+                    var values = columns.Select((c, idx) => $"@p{idx}").ToList();
+                    var insertSql = $@"
+                        INSERT INTO [{tableName}] ({string.Join(", ", sqlColumnNames)})
+                        VALUES ({string.Join(", ", values)})";
+                    
+                    using var command = new Microsoft.Data.SqlClient.SqlCommand(insertSql, connection, transaction);
+                    
+                    for (int i = 0; i < columns.Count; i++)
+                    {
+                        var column = columns[i];
+                        var value = GetRecordValueForSql(record, column);
+                        command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
+                    }
+                    
+                    await command.ExecuteNonQueryAsync();
+                    insertedCount++;
+                }
+            }
+            else
+            {
+                // 大批量使用參數化查詢（分批處理）
+                const int batchSize = 100;
+                for (int batchStart = 0; batchStart < records.Count; batchStart += batchSize)
+                {
+                    var batch = records.Skip(batchStart).Take(batchSize).ToList();
+                    
+                    foreach (var record in batch)
+                    {
+                        var values = columns.Select((c, idx) => $"@p{idx}").ToList();
+                        var insertSql = $@"
+                            INSERT INTO [{tableName}] ({string.Join(", ", sqlColumnNames)})
+                            VALUES ({string.Join(", ", values)})";
+                        
+                        using var command = new Microsoft.Data.SqlClient.SqlCommand(insertSql, connection, transaction);
+                        
+                        for (int i = 0; i < columns.Count; i++)
+                        {
+                            var column = columns[i];
+                            var value = GetRecordValueForSql(record, column);
+                            command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
+                        }
+                        
+                        await command.ExecuteNonQueryAsync();
+                        insertedCount++;
+                    }
+                    
+                    _loggingService.LogInformation($"批量插入進度: {insertedCount}/{records.Count}");
+                }
+            }
+
+            return insertedCount;
+        }
+
+        /// <summary>
+        /// 批量更新記錄到 SQL 表（使用 MERGE 語句）
+        /// </summary>
+    private async Task<int> BatchUpdateToSql(
+        Microsoft.Data.SqlClient.SqlConnection connection, 
+        Microsoft.Data.SqlClient.SqlTransaction transaction,
+        string tableName,
+        List<(DataSetRecord Record, Dictionary<string, object> ExistingData)> records,
+        List<DataSetColumn> columns,
+        List<DataSetColumn> primaryKeyColumns)
+    {
+        int updatedCount = 0;
+
+        // 直接使用 dataset 欄位名作為 SQL 表欄位名
+        var sqlColumnNames = columns.Select(c => $"[{c.ColumnName}]").ToList();
+
+        // 構建更新欄位列表（排除主鍵）
+        var updateColumns = columns
+            .Where(c => !primaryKeyColumns.Contains(c))
+            .Select(c => $"[{c.ColumnName}]")
+            .ToList();
+
+        // 構建主鍵欄位列表
+        var pkSqlColumns = primaryKeyColumns.Select(c => $"[{c.ColumnName}]").ToList();
+
+            // 使用 MERGE 語句進行更新
+            foreach (var (record, existingData) in records)
+            {
+                // 構建 MERGE 語句
+                var sourceColumns = sqlColumnNames.Select((col, idx) => $"@val{idx} AS {col}").ToList();
+                var matchConditions = pkSqlColumns.Select((col, idx) => $"target.{col} = @pk{idx}").ToList();
+                var updateSet = updateColumns.Select((col, idx) => $"{col} = source.{col}").ToList();
+                
+                var mergeSql = $@"
+                    MERGE [{tableName}] AS target
+                    USING (SELECT {string.Join(", ", sourceColumns)}) AS source
+                    ON {string.Join(" AND ", matchConditions)}
+                    WHEN MATCHED THEN
+                        UPDATE SET {string.Join(", ", updateSet)}
+                    WHEN NOT MATCHED THEN
+                        INSERT ({string.Join(", ", sqlColumnNames)})
+                        VALUES ({string.Join(", ", sqlColumnNames.Select(col => $"source.{col}"))});";
+
+                using var command = new Microsoft.Data.SqlClient.SqlCommand(mergeSql, connection, transaction);
+                
+                // 設置值參數
+                for (int i = 0; i < columns.Count; i++)
+                {
+                    var column = columns[i];
+                    var value = GetRecordValueForSql(record, column);
+                    command.Parameters.AddWithValue($"@val{i}", value ?? DBNull.Value);
+                }
+                
+                // 設置主鍵參數
+                for (int i = 0; i < primaryKeyColumns.Count; i++)
+                {
+                    var pkColumn = primaryKeyColumns[i];
+                    var value = GetRecordValueForSql(record, pkColumn);
+                    command.Parameters.AddWithValue($"@pk{i}", value ?? DBNull.Value);
+                }
+                
+                await command.ExecuteNonQueryAsync();
+                updatedCount++;
+            }
+
+            return updatedCount;
+        }
+
+        /// <summary>
+        /// 從 DataSetRecord 獲取值並轉換為 SQL 兼容的類型
+        /// </summary>
+        private object? GetRecordValueForSql(DataSetRecord record, DataSetColumn column)
+        {
+            var value = record.Values?.FirstOrDefault(v => v.ColumnName == column.ColumnName);
+            if (value == null) return null;
+
+            return column.DataType?.ToLower() switch
+            {
+                "int" => value.NumericValue.HasValue ? (int)value.NumericValue.Value : (object?)null,
+                "decimal" => value.NumericValue,
+                "datetime" => value.DateValue,
+                "boolean" => value.BooleanValue,
+                _ => value.StringValue
+            };
+        }
     }
 
     // DTO 類別
@@ -5781,6 +6241,7 @@ namespace PurpleRice.Controllers
         public string? DatabaseConnection { get; set; }
         public string? SqlQuery { get; set; }
         public string? SqlParameters { get; set; }
+        public string? TargetTableName { get; set; } // SQL 出站同步目標表名
         public string? ExcelFilePath { get; set; }
         public string? ExcelSheetName { get; set; }
         public string? GoogleDocsUrl { get; set; }
@@ -5839,7 +6300,6 @@ namespace PurpleRice.Controllers
         public int DeletedRecords { get; set; }
         public int UnchangedRecords { get; set; }
     }
-    }
 
     // DataSet 查詢預覽請求模型
     public class DataSetQueryPreviewRequest
@@ -5848,4 +6308,5 @@ namespace PurpleRice.Controllers
         public string WhereClause { get; set; } = string.Empty;
         public int Limit { get; set; } = 10;
         public Dictionary<string, object> ProcessVariableValues { get; set; } = new Dictionary<string, object>();
+    }
 }

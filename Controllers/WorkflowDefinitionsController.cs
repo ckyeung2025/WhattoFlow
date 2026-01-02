@@ -776,6 +776,32 @@ namespace PurpleRice.Controllers
             _db.WorkflowDefinitions.Add(newWorkflow);
             await _db.SaveChangesAsync();
 
+            // 複製流程變數定義
+            var originalVariables = await _db.ProcessVariableDefinitions
+                .Where(x => x.WorkflowDefinitionId == id)
+                .ToListAsync();
+
+            if (originalVariables.Any())
+            {
+                var newVariables = originalVariables.Select(v => new ProcessVariableDefinition
+                {
+                    WorkflowDefinitionId = newWorkflow.Id,
+                    VariableName = v.VariableName,
+                    DisplayName = v.DisplayName,
+                    DataType = v.DataType,
+                    Description = v.Description,
+                    IsRequired = v.IsRequired,
+                    DefaultValue = v.DefaultValue,
+                    ValidationRules = v.ValidationRules,
+                    JsonSchema = v.JsonSchema,
+                    CreatedBy = GetCurrentUserName(),
+                    CreatedAt = DateTime.UtcNow
+                }).ToList();
+
+                _db.ProcessVariableDefinitions.AddRange(newVariables);
+                await _db.SaveChangesAsync();
+            }
+
             return Ok(newWorkflow);
         }
 

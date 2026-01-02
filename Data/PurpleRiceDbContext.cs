@@ -462,6 +462,7 @@ namespace PurpleRice.Data
                 entity.Property(e => e.DatabaseConnection).HasColumnName("database_connection");
                 entity.Property(e => e.SqlQuery).HasColumnName("sql_query");
                 entity.Property(e => e.SqlParameters).HasColumnName("sql_parameters");
+                entity.Property(e => e.TargetTableName).HasColumnName("target_table_name");
                 entity.Property(e => e.ExcelFilePath).HasColumnName("excel_file_path");
                 entity.Property(e => e.ExcelSheetName).HasColumnName("excel_sheet_name");
                 entity.Property(e => e.GoogleDocsUrl).HasColumnName("google_docs_url");

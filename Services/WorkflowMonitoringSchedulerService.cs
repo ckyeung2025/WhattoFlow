@@ -1832,14 +1832,23 @@ namespace PurpleRice.Services
                     }
                     else if (dataSource.SourceType.ToUpper() == "SQL")
                     {
-                        // SQL 數據源不支持出站同步
-                        loggingService.LogWarning($"SQL 數據源不支持出站同步，數據集ID: {scopedDataSet.Id}");
-                        return new SyncResult { Success = false, ErrorMessage = "SQL 數據源不支持出站同步" };
+                        // SQL 數據源支持出站同步
+                        var syncToMethod = typeof(DataSetsController).GetMethod("SyncToSql", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (syncToMethod != null)
+                        {
+                            result = await (Task<SyncResult>)syncToMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                            loggingService.LogInformation($"SQL 出站同步完成，結果: {result.Success}, 記錄數: {result.TotalRecords}");
+                        }
+                        else
+                        {
+                            loggingService.LogError($"無法找到 DataSetsController.SyncToSql 方法");
+                            return new SyncResult { Success = false, ErrorMessage = "無法找到 SQL 出站同步方法" };
+                        }
                     }
                     else
                     {
-                        loggingService.LogWarning($"出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
-                        return new SyncResult { Success = false, ErrorMessage = "出站同步目前僅支持 GOOGLE_DOCS 和 EXCEL 數據源" };
+                        loggingService.LogWarning($"出站同步目前僅支持 GOOGLE_DOCS、EXCEL 和 SQL 數據源，數據集ID: {scopedDataSet.Id}, 數據源類型: {dataSource.SourceType}");
+                        return new SyncResult { Success = false, ErrorMessage = "出站同步目前僅支持 GOOGLE_DOCS、EXCEL 和 SQL 數據源" };
                     }
                 }
                 
@@ -1878,6 +1887,23 @@ namespace PurpleRice.Services
                                     TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
                                     ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
                                 };
+                            }
+                        }
+                        else if (dataSource.SourceType.ToUpper() == "SQL")
+                        {
+                            loggingService.LogInformation($"雙向同步：出站同步完成，開始入站同步，數據集ID: {scopedDataSet.Id}");
+                            var syncFromMethod = typeof(DataSetsController).GetMethod("SyncFromSql", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            if (syncFromMethod != null)
+                            {
+                                var inboundResult = await (Task<SyncResult>)syncFromMethod.Invoke(dataSetsController, new object[] { scopedDataSet, dataSource });
+                                // 合併結果
+                                result = new SyncResult
+                                {
+                                    Success = inboundResult.Success && result.Success,
+                                    TotalRecords = inboundResult.TotalRecords + result.TotalRecords,
+                                    ErrorMessage = result.Success ? inboundResult.ErrorMessage : result.ErrorMessage
+                                };
+                                loggingService.LogInformation($"雙向同步完成，出站記錄數: {result.TotalRecords - inboundResult.TotalRecords}, 入站記錄數: {inboundResult.TotalRecords}, 總記錄數: {result.TotalRecords}");
                             }
                         }
                     }

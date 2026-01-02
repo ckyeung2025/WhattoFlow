@@ -3742,6 +3742,22 @@ namespace PurpleRice.Services.WebhookServices
                     return new { success = false, message = "WorkflowExecution not found" };
                 }
 
+                // ✅ 自動匹配 Meta Flow 表單字段值到流程變量
+                if (eFormInstance.WorkflowExecutionId > 0 && !string.IsNullOrEmpty(processedResponseJson))
+                {
+                    try
+                    {
+                        _loggingService.LogInformation($"🔍 開始自動匹配 Meta Flow 表單字段值到流程變量");
+                        await AutoMapMetaFlowFieldsToProcessVariablesAsync(eFormInstance, processedResponseJson, execution);
+                        _loggingService.LogInformation($"✅ 自動匹配完成");
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogWarning($"⚠️ 自動匹配 Meta Flow 表單字段值到流程變量時發生錯誤（不影響流程繼續）: {ex.Message}");
+                        // 不影響流程繼續，只記錄警告
+                    }
+                }
+
                 // ✅ 處理 AI Validator（僅 manual fill + MetaFlow）
                 // 1. 檢查是否為 manual fill 模式
                 // 2. 檢查是否為 MetaFlow
@@ -4199,6 +4215,181 @@ namespace PurpleRice.Services.WebhookServices
                 _loggingService.LogError($"處理 Flow 回覆時發生錯誤: {ex.Message}", ex);
                 return new { success = false, message = $"Error processing flow response: {ex.Message}" };
             }
+        }
+
+        /// <summary>
+        /// 自動匹配 Meta Flow 表單字段值到流程變量
+        /// 當表單字段名稱與流程變量名稱匹配時，自動將表單值設置到流程變量中
+        /// </summary>
+        private async Task AutoMapMetaFlowFieldsToProcessVariablesAsync(EFormInstance instance, string flowResponseJson, WorkflowExecution execution)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(flowResponseJson) || execution == null)
+                {
+                    _loggingService.LogInformation($"跳過自動匹配：flowResponseJson 為空或 execution 為 null");
+                    return;
+                }
+
+                // 獲取所有流程變量定義
+                using var scope = _serviceProvider.CreateScope();
+                var processVariableService = scope.ServiceProvider.GetRequiredService<IProcessVariableService>();
+                
+                var variableDefinitions = await processVariableService.GetVariableDefinitionsAsync(execution.WorkflowDefinitionId);
+                var variableNames = variableDefinitions.Select(v => v.VariableName).ToList();
+                
+                if (variableNames.Count == 0)
+                {
+                    _loggingService.LogInformation($"工作流程沒有定義流程變量，跳過自動匹配");
+                    return;
+                }
+
+                _loggingService.LogInformation($"找到 {variableNames.Count} 個流程變量: {string.Join(", ", variableNames)}");
+
+                // 從 Meta Flow JSON 中提取字段值
+                var formFieldValues = ExtractFormFieldsFromMetaFlowJson(flowResponseJson);
+                _loggingService.LogInformation($"從 Meta Flow JSON 中提取到 {formFieldValues.Count} 個字段值");
+
+                // 匹配字段名和變量名，設置流程變量值
+                int matchedCount = 0;
+                foreach (var fieldName in formFieldValues.Keys)
+                {
+                    // 嘗試精確匹配（忽略大小寫）
+                    var matchedVariable = variableNames.FirstOrDefault(v => 
+                        string.Equals(v, fieldName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (matchedVariable != null)
+                    {
+                        var fieldValue = formFieldValues[fieldName];
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            try
+                            {
+                                // 獲取變量定義以確定數據類型
+                                var variableDef = variableDefinitions.FirstOrDefault(v => 
+                                    string.Equals(v.VariableName, matchedVariable, StringComparison.OrdinalIgnoreCase));
+                                
+                                if (variableDef != null)
+                                {
+                                    // 轉換值類型
+                                    object convertedValue = fieldValue;
+                                    try
+                                    {
+                                        convertedValue = await processVariableService.ConvertValueAsync(variableDef.DataType, fieldValue);
+                                    }
+                                    catch
+                                    {
+                                        // 如果轉換失敗，使用原始字符串值
+                                        convertedValue = fieldValue;
+                                    }
+
+                                    // 設置流程變量值
+                                    await processVariableService.SetVariableValueAsync(
+                                        execution.Id,
+                                        matchedVariable,
+                                        convertedValue,
+                                        setBy: "MetaFlowAutoMapping",
+                                        sourceType: "EFormField",
+                                        sourceReference: $"EFormInstance:{instance.Id},Field:{fieldName}"
+                                    );
+
+                                    _loggingService.LogInformation($"✅ 自動匹配成功: Meta Flow 字段 '{fieldName}' -> 流程變量 '{matchedVariable}' = '{fieldValue}'");
+                                    matchedCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _loggingService.LogWarning($"設置流程變量 '{matchedVariable}' 時發生錯誤: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+
+                _loggingService.LogInformation($"自動匹配完成：成功匹配 {matchedCount} 個字段到流程變量");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"自動匹配 Meta Flow 表單字段值到流程變量時發生錯誤: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 從 Meta Flow JSON 中提取字段值
+        /// Meta Flow 返回的 JSON 格式：{ "fieldName1": "value1", "fieldName2": "value2", ... }
+        /// </summary>
+        private Dictionary<string, string> ExtractFormFieldsFromMetaFlowJson(string json)
+        {
+            var fieldValues = new Dictionary<string, string>();
+            
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(json);
+                var root = jsonDoc.RootElement;
+
+                // 如果是對象，遍歷所有屬性
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in root.EnumerateObject())
+                    {
+                        var fieldName = property.Name;
+                        var fieldValue = property.Value;
+
+                        // 跳過 flow_token
+                        if (fieldName == "flow_token")
+                            continue;
+
+                        // 處理不同類型的值
+                        string valueString = null;
+                        
+                        if (fieldValue.ValueKind == JsonValueKind.String)
+                        {
+                            valueString = fieldValue.GetString();
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.Number)
+                        {
+                            valueString = fieldValue.GetRawText();
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.True || fieldValue.ValueKind == JsonValueKind.False)
+                        {
+                            valueString = fieldValue.GetBoolean().ToString();
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.Object)
+                        {
+                            // 如果是對象（例如包含 dataUrl 的媒體對象），嘗試提取有用的信息
+                            if (fieldValue.TryGetProperty("dataUrl", out var dataUrlProp))
+                            {
+                                valueString = dataUrlProp.GetString();
+                            }
+                            else if (fieldValue.TryGetProperty("filePath", out var filePathProp))
+                            {
+                                valueString = filePathProp.GetString();
+                            }
+                            else
+                            {
+                                // 將整個對象序列化為 JSON 字符串
+                                valueString = fieldValue.GetRawText();
+                            }
+                        }
+                        else if (fieldValue.ValueKind == JsonValueKind.Array)
+                        {
+                            // 如果是數組，序列化為 JSON 字符串
+                            valueString = fieldValue.GetRawText();
+                        }
+
+                        if (!string.IsNullOrEmpty(valueString) && !string.IsNullOrEmpty(fieldName))
+                        {
+                            fieldValues[fieldName] = valueString;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogWarning($"從 Meta Flow JSON 提取字段值時發生錯誤: {ex.Message}");
+            }
+
+            return fieldValues;
         }
         
         // 輔助方法：處理 maxRetries 字段（將字符串轉換為整數）
