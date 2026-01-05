@@ -902,7 +902,8 @@ namespace PurpleRice.Services.WebhookServices
 
                 // 繼續執行流程
                 _loggingService.LogInformation($"開始繼續執行流程...");
-                await _workflowEngine.ContinueWorkflowFromWaitReply(execution, null);
+                // ✅ 修復：傳遞 formInstanceId 確保找到正確的 sendEForm 節點
+                await _workflowEngine.ContinueWorkflowFromWaitReply(execution, null, formInstanceId);
 
                 _loggingService.LogInformation($"=== 表單審批後流程繼續完成 ===");
             }
@@ -3238,8 +3239,51 @@ namespace PurpleRice.Services.WebhookServices
                 // 查找對應的 EFormInstance
                 EFormInstance eFormInstance = null;
 
-                // 方法 1：通過 context.id 查找（原始消息 ID）
-                if (!string.IsNullOrEmpty(messageData.ContextId))
+                // 方法 0（最優先）：通過 flow_token 查找（最準確）
+                if (!string.IsNullOrEmpty(flowToken))
+                {
+                    _loggingService.LogInformation($"嘗試通過 flow_token 查找 EFormInstance: {flowToken}");
+                    
+                    // 解析 flow_token: WorkflowExecutionId_WorkflowStepExecutionId_EFormInstanceId
+                    var tokenParts = flowToken.Split('_');
+                    if (tokenParts.Length >= 3)
+                    {
+                        if (int.TryParse(tokenParts[0], out int workflowExecutionId) && 
+                            int.TryParse(tokenParts[1], out int workflowStepExecutionId) &&
+                            Guid.TryParse(tokenParts[2], out Guid eFormInstanceId))
+                        {
+                            _loggingService.LogInformation($"解析 flow_token - WorkflowExecutionId: {workflowExecutionId}, WorkflowStepExecutionId: {workflowStepExecutionId}, EFormInstanceId: {eFormInstanceId}");
+                            
+                            eFormInstance = await _context.EFormInstances
+                                .FirstOrDefaultAsync(e => 
+                                    e.Id == eFormInstanceId && 
+                                    e.WorkflowExecutionId == workflowExecutionId &&
+                                    e.WorkflowStepExecutionId == workflowStepExecutionId &&
+                                    e.FillType == "MetaFlows" &&
+                                    e.Status == "Pending");
+                            
+                            if (eFormInstance != null)
+                            {
+                                _loggingService.LogInformation($"✅ 通過 flow_token 找到 EFormInstance: {eFormInstance.Id}");
+                            }
+                            else
+                            {
+                                _loggingService.LogWarning($"⚠️ 通過 flow_token 未找到匹配的 EFormInstance");
+                            }
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning($"⚠️ flow_token 格式不正確，無法解析: {flowToken}");
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"⚠️ flow_token 格式不正確，部分數量不足: {flowToken}");
+                    }
+                }
+
+                // 方法 1：通過 context.id 查找（原始消息 ID）- 備用方法
+                if (eFormInstance == null && !string.IsNullOrEmpty(messageData.ContextId))
                 {
                     _loggingService.LogInformation($"嘗試通過 context.id 查找 EFormInstance: {messageData.ContextId}");
                     
@@ -3258,7 +3302,7 @@ namespace PurpleRice.Services.WebhookServices
                     }
                 }
 
-                // 方法 2：通過 WhatsApp 號碼和最近的 WorkflowExecution 查找（備用）
+                // 方法 2：通過 WhatsApp 號碼和最近的 WorkflowExecution 查找（最後備用）
                 if (eFormInstance == null)
                 {
                     _loggingService.LogInformation($"嘗試通過 WhatsApp 號碼查找最近的 EFormInstance");
@@ -3293,6 +3337,21 @@ namespace PurpleRice.Services.WebhookServices
                 }
 
                 _loggingService.LogInformation($"找到 EFormInstance: {eFormInstance.Id}");
+
+                // 獲取對應的 WorkflowStepExecution 以獲取 stepIndex（用於創建 MessageValidation 記錄）
+                var stepExecution = await _context.WorkflowStepExecutions
+                    .FirstOrDefaultAsync(s => s.Id == eFormInstance.WorkflowStepExecutionId);
+                
+                int stepIndex = 0;
+                if (stepExecution != null)
+                {
+                    stepIndex = stepExecution.StepIndex;
+                    _loggingService.LogInformation($"找到 WorkflowStepExecution，StepIndex: {stepIndex}");
+                }
+                else
+                {
+                    _loggingService.LogWarning($"找不到 WorkflowStepExecution (ID: {eFormInstance.WorkflowStepExecutionId})，將使用默認 stepIndex: 0");
+                }
 
                 // 先保存完整的原始 JSON 到 FilledHtmlCode（作為 JSON 字符串）
                 // 但需要處理 MEDIA_ID：下載媒體並轉換為 base64
@@ -3359,59 +3418,90 @@ namespace PurpleRice.Services.WebhookServices
                                             var mimeType = downloadedMedia.MimeType ?? "image/png";
                                             var dataUrl = $"data:{mimeType};base64,{base64String}";
                                             
-                                            // 保存文件到執行目錄（參考現有的 webhook 功能）
-                                            try
-                                            {
-                                                var executionId = eFormInstance.WorkflowExecutionId;
-                                                if (executionId > 0)
-                                                {
-                                                    string savedFilePath = null;
-                                                    
-                                                    // 根據 MIME 類型判斷是圖片還是文檔
-                                                    if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                    // 保存文件到執行目錄（參考現有的 webhook 功能）
+                                                    try
                                                     {
-                                                        // 保存圖片
-                                                        savedFilePath = await SaveWaitReplyImageAsync(
-                                                            executionId, 
-                                                            downloadedMedia.Content, 
-                                                            downloadedMedia.FileName, 
-                                                            mimeType);
-                                                        _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
+                                                        var executionId = eFormInstance.WorkflowExecutionId;
+                                                        if (executionId > 0)
+                                                        {
+                                                            string savedFilePath = null;
+                                                            string messageType = null;
+                                                            
+                                                            // 根據 MIME 類型判斷是圖片還是文檔
+                                                            if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                                                            {
+                                                                // 保存圖片
+                                                                savedFilePath = await SaveWaitReplyImageAsync(
+                                                                    executionId, 
+                                                                    downloadedMedia.Content, 
+                                                                    downloadedMedia.FileName, 
+                                                                    mimeType);
+                                                                messageType = "image";
+                                                                _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
+                                                            }
+                                                            else
+                                                            {
+                                                                // 保存文檔
+                                                                savedFilePath = await SaveWaitReplyDocumentAsync(
+                                                                    executionId, 
+                                                                    downloadedMedia.Content, 
+                                                                    downloadedMedia.FileName, 
+                                                                    mimeType);
+                                                                messageType = "document";
+                                                                _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                            }
+                                                            
+                                                            // ✅ 創建 MessageValidation 記錄（用於前端匹配步驟名稱）
+                                                            if (!string.IsNullOrEmpty(savedFilePath))
+                                                            {
+                                                                try
+                                                                {
+                                                                    var validation = new MessageValidation
+                                                                    {
+                                                                        WorkflowExecutionId = executionId,
+                                                                        StepIndex = stepIndex,
+                                                                        UserWaId = messageData.WaId,
+                                                                        UserMessage = $"[Meta Flows] {fieldName}",
+                                                                        MessageType = messageType,
+                                                                        MediaId = valueString,
+                                                                        MediaUrl = savedFilePath,
+                                                                        IsValid = true, // Meta Flows 提交的媒體默認為有效
+                                                                        CreatedAt = DateTime.UtcNow
+                                                                    };
+                                                                    
+                                                                    _context.MessageValidations.Add(validation);
+                                                                    await _context.SaveChangesAsync();
+                                                                    _loggingService.LogInformation($"✅ 已創建 MessageValidation 記錄 - StepIndex: {stepIndex}, MediaUrl: {savedFilePath}");
+                                                                }
+                                                                catch (Exception validationEx)
+                                                                {
+                                                                    _loggingService.LogWarning($"⚠️ 創建 MessageValidation 記錄時發生錯誤: {validationEx.Message}");
+                                                                }
+                                                            }
+                                                            
+                                                            // 在 JSON 中同時保存文件路徑（可選，用於前端顯示）
+                                                            // 這裡我們保存一個包含 base64 和文件路徑的對象
+                                                            responseDict[fieldName] = new Dictionary<string, object>
+                                                            {
+                                                                ["dataUrl"] = dataUrl,
+                                                                ["filePath"] = savedFilePath ?? "",
+                                                                ["mimeType"] = mimeType,
+                                                                ["fileName"] = downloadedMedia.FileName ?? fieldName,
+                                                                ["fileSize"] = downloadedMedia.Content.Length
+                                                            };
+                                                        }
+                                                        else
+                                                        {
+                                                            // 如果沒有 executionId，只保存 base64
+                                                            responseDict[fieldName] = dataUrl;
+                                                        }
                                                     }
-                                                    else
+                                                    catch (Exception saveEx)
                                                     {
-                                                        // 保存文檔
-                                                        savedFilePath = await SaveWaitReplyDocumentAsync(
-                                                            executionId, 
-                                                            downloadedMedia.Content, 
-                                                            downloadedMedia.FileName, 
-                                                            mimeType);
-                                                        _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                        // 保存文件失敗，但繼續保存 base64
+                                                        _loggingService.LogWarning($"⚠️ 保存媒體文件到目錄時發生錯誤: {saveEx.Message}，將只保存 base64");
+                                                        responseDict[fieldName] = dataUrl;
                                                     }
-                                                    
-                                                    // 在 JSON 中同時保存文件路徑（可選，用於前端顯示）
-                                                    // 這裡我們保存一個包含 base64 和文件路徑的對象
-                                                    responseDict[fieldName] = new Dictionary<string, object>
-                                                    {
-                                                        ["dataUrl"] = dataUrl,
-                                                        ["filePath"] = savedFilePath ?? "",
-                                                        ["mimeType"] = mimeType,
-                                                        ["fileName"] = downloadedMedia.FileName ?? fieldName,
-                                                        ["fileSize"] = downloadedMedia.Content.Length
-                                                    };
-                                                }
-                                                else
-                                                {
-                                                    // 如果沒有 executionId，只保存 base64
-                                                    responseDict[fieldName] = dataUrl;
-                                                }
-                                            }
-                                            catch (Exception saveEx)
-                                            {
-                                                // 保存文件失敗，但繼續保存 base64
-                                                _loggingService.LogWarning($"⚠️ 保存媒體文件到目錄時發生錯誤: {saveEx.Message}，將只保存 base64");
-                                                responseDict[fieldName] = dataUrl;
-                                            }
                                             
                                             hasMediaId = true;
                                             
@@ -3463,6 +3553,7 @@ namespace PurpleRice.Services.WebhookServices
                                                     if (executionId > 0)
                                                     {
                                                         string savedFilePath = null;
+                                                        string messageType = null;
                                                         
                                                         // 根據 MIME 類型判斷是圖片還是文檔
                                                         if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -3473,6 +3564,7 @@ namespace PurpleRice.Services.WebhookServices
                                                                 downloadedMedia.Content, 
                                                                 downloadedMedia.FileName, 
                                                                 mimeType);
+                                                            messageType = "image";
                                                             _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
                                                         }
                                                         else
@@ -3483,7 +3575,36 @@ namespace PurpleRice.Services.WebhookServices
                                                                 downloadedMedia.Content, 
                                                                 downloadedMedia.FileName, 
                                                                 mimeType);
+                                                            messageType = "document";
                                                             _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                        }
+                                                        
+                                                        // ✅ 創建 MessageValidation 記錄（用於前端匹配步驟名稱）
+                                                        if (!string.IsNullOrEmpty(savedFilePath))
+                                                        {
+                                                            try
+                                                            {
+                                                                var validation = new MessageValidation
+                                                                {
+                                                                    WorkflowExecutionId = executionId,
+                                                                    StepIndex = stepIndex,
+                                                                    UserWaId = messageData.WaId,
+                                                                    UserMessage = $"[Meta Flows] {fieldName}",
+                                                                    MessageType = messageType,
+                                                                    MediaId = mediaId,
+                                                                    MediaUrl = savedFilePath,
+                                                                    IsValid = true, // Meta Flows 提交的媒體默認為有效
+                                                                    CreatedAt = DateTime.UtcNow
+                                                                };
+                                                                
+                                                                _context.MessageValidations.Add(validation);
+                                                                await _context.SaveChangesAsync();
+                                                                _loggingService.LogInformation($"✅ 已創建 MessageValidation 記錄 - StepIndex: {stepIndex}, MediaUrl: {savedFilePath}");
+                                                            }
+                                                            catch (Exception validationEx)
+                                                            {
+                                                                _loggingService.LogWarning($"⚠️ 創建 MessageValidation 記錄時發生錯誤: {validationEx.Message}");
+                                                            }
                                                         }
                                                         
                                                         // 在 JSON 中同時保存文件路徑（可選，用於前端顯示）
@@ -3573,6 +3694,7 @@ namespace PurpleRice.Services.WebhookServices
                                                             if (executionId > 0)
                                                             {
                                                                 string savedFilePath = null;
+                                                                string messageType = null;
                                                                 
                                                                 // 根據 MIME 類型判斷是圖片還是文檔
                                                                 if (mimeType != null && mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -3583,6 +3705,7 @@ namespace PurpleRice.Services.WebhookServices
                                                                         downloadedMedia.Content, 
                                                                         downloadedMedia.FileName, 
                                                                         mimeType);
+                                                                    messageType = "image";
                                                                     _loggingService.LogInformation($"✅ 已保存圖片到執行目錄: {savedFilePath}");
                                                                 }
                                                                 else
@@ -3593,7 +3716,36 @@ namespace PurpleRice.Services.WebhookServices
                                                                         downloadedMedia.Content, 
                                                                         downloadedMedia.FileName, 
                                                                         mimeType);
+                                                                    messageType = "document";
                                                                     _loggingService.LogInformation($"✅ 已保存文檔到執行目錄: {savedFilePath}");
+                                                                }
+                                                                
+                                                                // ✅ 創建 MessageValidation 記錄（用於前端匹配步驟名稱）
+                                                                if (!string.IsNullOrEmpty(savedFilePath))
+                                                                {
+                                                                    try
+                                                                    {
+                                                                        var validation = new MessageValidation
+                                                                        {
+                                                                            WorkflowExecutionId = executionId,
+                                                                            StepIndex = stepIndex,
+                                                                            UserWaId = messageData.WaId,
+                                                                            UserMessage = $"[Meta Flows] {fieldName} (array element)",
+                                                                            MessageType = messageType,
+                                                                            MediaId = mediaId,
+                                                                            MediaUrl = savedFilePath,
+                                                                            IsValid = true, // Meta Flows 提交的媒體默認為有效
+                                                                            CreatedAt = DateTime.UtcNow
+                                                                        };
+                                                                        
+                                                                        _context.MessageValidations.Add(validation);
+                                                                        await _context.SaveChangesAsync();
+                                                                        _loggingService.LogInformation($"✅ 已創建 MessageValidation 記錄 - StepIndex: {stepIndex}, MediaUrl: {savedFilePath}");
+                                                                    }
+                                                                    catch (Exception validationEx)
+                                                                    {
+                                                                        _loggingService.LogWarning($"⚠️ 創建 MessageValidation 記錄時發生錯誤: {validationEx.Message}");
+                                                                    }
                                                                 }
                                                                 
                                                                 // 構建包含下載信息的對象，保留原始字段
@@ -3782,10 +3934,7 @@ namespace PurpleRice.Services.WebhookServices
                     {
                         _loggingService.LogInformation($"✅ 符合 AI Validator 處理條件，開始處理 Flow 回覆");
                         
-                        // 查找對應的 stepExecution
-                        var stepExecution = await _context.WorkflowStepExecutions
-                            .FirstOrDefaultAsync(s => s.Id == eFormInstance.WorkflowStepExecutionId);
-                        
+                        // 使用已經獲取的 stepExecution（在第 3299 行已聲明）
                         if (stepExecution != null)
                         {
                             // 從 Flow 回覆 JSON 中檢測圖像（支持多張圖片）

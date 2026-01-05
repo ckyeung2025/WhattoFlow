@@ -2920,6 +2920,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
       console.log('[WorkflowMonitor] Step index to name map:', stepIndexToNameMap);
       
       // 創建媒體URL到步驟索引的映射（通過消息驗證記錄）
+      // ✅ 現在 Meta Flows 的圖片也會創建 MessageValidation 記錄，所以統一通過這個映射匹配
       const mediaUrlToStepIndexMap = {};
       messageValidations.forEach(validation => {
         if (validation.mediaUrl) {
@@ -2963,7 +2964,7 @@ const InstanceDetailModal = ({ instance, onClose, onViewMessageSend, onViewMessa
           console.log(`[WorkflowMonitor] Matched via method 2 (full path without leading slash): stepIndex=${stepIndex}`);
         }
         // 方法3: 通過文件名匹配（如果路徑不完整）
-        else {
+        if (stepIndex === null) {
           const fileName = file.fileName;
           console.log(`[WorkflowMonitor] Trying method 3 (filename matching) for: ${fileName}`);
           for (const [url, idx] of Object.entries(mediaUrlToStepIndexMap)) {

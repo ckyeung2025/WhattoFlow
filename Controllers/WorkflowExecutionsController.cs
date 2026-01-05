@@ -485,6 +485,12 @@ namespace PurpleRice.Controllers
 
                 var mediaFiles = new List<object>();
 
+                // 獲取所有 eform instances（用於 Meta Flows 的 eform 節點）
+                var eformInstances = await _db.EFormInstances
+                    .Where(e => e.WorkflowExecutionId == id)
+                    .Select(e => new { e.Id, e.WorkflowStepExecutionId })
+                    .ToListAsync();
+
                 // 檢查多個可能的媒體文件目錄
                 var possibleDirectories = new[]
                 {
@@ -494,6 +500,15 @@ namespace PurpleRice.Controllers
                     Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Audio", id.ToString()),
                     Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Workflow_Media", id.ToString())
                 };
+
+                // 添加 eform instance 目錄
+                foreach (var eformInstance in eformInstances)
+                {
+                    possibleDirectories = possibleDirectories.Concat(new[]
+                    {
+                        Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "EFormInstances", eformInstance.Id.ToString())
+                    }).ToArray();
+                }
 
                 foreach (var directory in possibleDirectories)
                 {

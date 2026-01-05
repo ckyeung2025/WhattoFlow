@@ -55,7 +55,7 @@ namespace PurpleRice.Services
         }
 
         // 從等待節點繼續執行流程的方法
-        public async Task ContinueWorkflowFromWaitReply(WorkflowExecution execution, object inputData)
+        public async Task ContinueWorkflowFromWaitReply(WorkflowExecution execution, object inputData, Guid? formInstanceId = null)
         {
             try
             {
@@ -131,26 +131,39 @@ namespace PurpleRice.Services
                 // 根據流程狀態決定如何繼續
                 if (execution.Status == "WaitingForFormApproval")
                 {
-                    // 嘗試從執行記錄中獲取 formInstanceId（如果有的話）
-                    Guid? formInstanceId = null;
-                    using var scope = _serviceProvider.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                    // ✅ 修復：如果提供了 formInstanceId，直接使用它；否則查找最近提交的表單實例
+                    Guid? finalFormInstanceId = formInstanceId;
                     
-                    // 查找最近提交的 EFormInstance
-                    var recentFormInstance = await db.EFormInstances
-                        .Where(f => f.WorkflowExecutionId == execution.Id && 
-                                   f.Status == "Submitted" &&
-                                   f.UpdatedAt >= DateTime.UtcNow.AddMinutes(-5)) // 最近5分鐘內提交的
-                        .OrderByDescending(f => f.UpdatedAt)
-                        .FirstOrDefaultAsync();
-                    
-                    if (recentFormInstance != null)
+                    if (!finalFormInstanceId.HasValue)
                     {
-                        formInstanceId = recentFormInstance.Id;
-                        WriteLog($"找到最近提交的表單實例: {formInstanceId}");
+                        WriteLog($"未提供 formInstanceId，查找最近提交的表單實例");
+                        using var scope = _serviceProvider.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+                        
+                        // 查找最近提交的 EFormInstance（狀態可能是 Submitted、Approved 或 Rejected）
+                        var recentFormInstance = await db.EFormInstances
+                            .Where(f => f.WorkflowExecutionId == execution.Id && 
+                                       (f.Status == "Submitted" || f.Status == "Approved" || f.Status == "Rejected") &&
+                                       f.UpdatedAt >= DateTime.UtcNow.AddMinutes(-10)) // 最近10分鐘內更新的
+                            .OrderByDescending(f => f.UpdatedAt)
+                            .FirstOrDefaultAsync();
+                        
+                        if (recentFormInstance != null)
+                        {
+                            finalFormInstanceId = recentFormInstance.Id;
+                            WriteLog($"找到最近提交的表單實例: {finalFormInstanceId} (狀態: {recentFormInstance.Status})");
+                        }
+                        else
+                        {
+                            WriteLog($"警告: 找不到最近提交的表單實例");
+                        }
+                    }
+                    else
+                    {
+                        WriteLog($"使用提供的 formInstanceId: {finalFormInstanceId}");
                     }
                     
-                    await ContinueFromFormApproval(execution, flowData, adjacencyList, formInstanceId);
+                    await ContinueFromFormApproval(execution, flowData, adjacencyList, finalFormInstanceId);
                 }
                 else
                 {
@@ -3415,7 +3428,7 @@ namespace PurpleRice.Services
             return false;
         }
         
-        // 檢查節點是否已經執行過（簡化版：只檢查 sendEForm 節點的重複創建）
+        // 檢查節點是否已經執行過（檢查特定節點 ID，而不是所有同類型的節點）
         private async Task<bool> IsNodeAlreadyExecuted(int executionId, string nodeId, string nodeType)
         {
             // 檢查執行次數限制（防止死循環）
@@ -3424,20 +3437,40 @@ namespace PurpleRice.Services
                 return true;  // 超過執行次數限制
             }
             
-            // 特別檢查 sendEForm 節點，防止重複創建表單
-            if (nodeType == "sendEForm" || nodeType == "sendeform")
+            // ✅ 修復：檢查特定節點 ID 是否已經執行過，而不是所有同類型的節點
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+            
+            // 查找是否有相同節點 ID 的步驟執行記錄
+            var existingSteps = await db.WorkflowStepExecutions
+                .Where(s => s.WorkflowExecutionId == executionId && 
+                           s.StepType == nodeType &&
+                           !string.IsNullOrEmpty(s.InputJson))
+                .ToListAsync();
+            
+            foreach (var step in existingSteps)
             {
-                using var scope = _serviceProvider.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                
-                var existingEFormSteps = await db.WorkflowStepExecutions
-                    .Where(s => s.WorkflowExecutionId == executionId && s.StepType == "sendEForm")
-                    .CountAsync();
-                        
-                if (existingEFormSteps > 0)
+                try
                 {
-                    WriteLog($"發現重複的 sendEForm 節點: 已經有 {existingEFormSteps} 個 sendEForm 步驟執行過");
-                    return true;
+                    var inputData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(step.InputJson);
+                    
+                    string foundNodeId = null;
+                    if (inputData.TryGetValue("Id", out var idElement))
+                        foundNodeId = idElement.GetString();
+                    else if (inputData.TryGetValue("NodeId", out var nodeIdElement))
+                        foundNodeId = nodeIdElement.GetString();
+                    
+                    // 如果找到相同節點 ID 的步驟，且狀態不是 Failed，則認為已經執行過
+                    if (foundNodeId == nodeId && step.Status != "Failed")
+                    {
+                        WriteLog($"發現重複的節點 {nodeId}: 節點 {nodeId} 已經執行過（步驟 ID: {step.Id}, 狀態: {step.Status}）");
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"解析步驟 {step.Id} 的 InputJson 時發生錯誤: {ex.Message}");
+                    // 繼續檢查下一個步驟
                 }
             }
             
@@ -4726,8 +4759,13 @@ namespace PurpleRice.Services
                 
                 WriteLog($"🔍 [DEBUG] PV 注入後的 Flow 配置 - Header: '{flowHeader}', Body: '{flowBody}', CTA: '{flowCta}'");
                 
+                // 構建包含識別資訊的 flow_token
+                // 格式: WorkflowExecutionId_WorkflowStepExecutionId_EFormInstanceId
+                var flowToken = $"{execution.Id}_{stepExec.Id}_{instanceId}";
+                WriteLog($"🔍 [DEBUG] 構建 flow_token: {flowToken}");
+                
                 // 發送 Flow
-                var messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta);
+                var messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta, flowToken);
                 WriteLog($"🔍 [DEBUG] Flow 發送成功，消息 ID: {messageId}");
 
                 // 注意：不再單獨發送 "Flow sent" 消息，因為 Flow 消息本身已經發送
@@ -4751,7 +4789,7 @@ namespace PurpleRice.Services
     }
 
     // 發送 Flow 消息
-    private async Task<string> SendFlowMessageAsync(Company company, string to, string flowId, string flowMessageVersion, string flowHeader, string flowBody, string flowCta)
+    private async Task<string> SendFlowMessageAsync(Company company, string to, string flowId, string flowMessageVersion, string flowHeader, string flowBody, string flowCta, string flowToken = null)
     {
         try
         {
@@ -4761,9 +4799,13 @@ namespace PurpleRice.Services
             WriteLog($"🔍 [DEBUG] Header: {flowHeader}");
             WriteLog($"🔍 [DEBUG] Body: {flowBody}");
             WriteLog($"🔍 [DEBUG] CTA: {flowCta}");
+            WriteLog($"🔍 [DEBUG] Flow Token: {flowToken ?? "(將生成隨機 GUID)"}");
 
             var apiVersion = WhatsAppApiConfig.GetApiVersion();
             var url = $"https://graph.facebook.com/{apiVersion}/{company.WA_PhoneNo_ID}/messages";
+
+            // 如果沒有提供 flowToken，生成隨機 GUID（向後兼容）
+            var finalFlowToken = flowToken ?? Guid.NewGuid().ToString();
 
             // 構建 interactive 對象
             var interactiveObj = new Dictionary<string, object>
@@ -4776,7 +4818,7 @@ namespace PurpleRice.Services
                         { "name", "flow" },
                         { "parameters", new Dictionary<string, object>
                             {
-                                { "flow_token", Guid.NewGuid().ToString() }, // 生成臨時的 flow_token
+                                { "flow_token", finalFlowToken }, // 使用包含識別資訊的 token
                                 { "flow_id", flowId },
                                 { "flow_cta", flowCta },
                                 { "flow_message_version", flowMessageVersion } // 必需的參數：Flow 版本號

@@ -67,6 +67,9 @@ const DataSetManagementPage = () => {
   // 新增：Excel 工作表相關狀態
   const [sheetNames, setSheetNames] = useState([]);
   const [sheetLoading, setSheetLoading] = useState(false);
+  
+  // 追蹤同步方向，用於即時更新 TargetTableName 顯示
+  const [syncDirection, setSyncDirection] = useState('inbound');
 
   // 在組件頂部添加記錄分頁狀態
   const [recordsPagination, setRecordsPagination] = useState({
@@ -221,6 +224,8 @@ const DataSetManagementPage = () => {
     form.resetFields();
     dataSourceForm.resetFields();
     columnsForm.resetFields();
+    // 重置同步方向狀態
+    setSyncDirection('inbound');
     
     // 設置預設值
     setTimeout(() => {
@@ -238,13 +243,16 @@ const DataSetManagementPage = () => {
     setModalVisible(true);
     
     // 填充表單數據
+    const currentSyncDirection = record.syncDirection || 'inbound';
     form.setFieldsValue({
       name: record.name,
       description: record.description,
       isScheduled: record.isScheduled,
       updateIntervalMinutes: record.updateIntervalMinutes,
-      syncDirection: record.syncDirection || 'inbound'
+      syncDirection: currentSyncDirection
     });
+    // 同步更新狀態
+    setSyncDirection(currentSyncDirection);
     
     // 修正：使用 dataSource 而不是 dataSources
     if (record.dataSource) {
@@ -269,7 +277,8 @@ const DataSetManagementPage = () => {
               connectionType: 'preset',
               presetConnection: authConfig.presetName,
               sqlQuery: dataSource.sqlQuery,
-              sqlParameters: dataSource.sqlParameters
+              sqlParameters: dataSource.sqlParameters,
+              targetTableName: dataSource.targetTableName
             });
           } else if (authConfig.connectionType === 'custom') {
             dataSourceForm.setFieldsValue({
@@ -283,7 +292,8 @@ const DataSetManagementPage = () => {
               password: authConfig.password,
               additionalOptions: authConfig.additionalOptions,
               sqlQuery: dataSource.sqlQuery,
-              sqlParameters: dataSource.sqlParameters
+              sqlParameters: dataSource.sqlParameters,
+              targetTableName: dataSource.targetTableName
             });
           } else {
             // 向後兼容：舊的 databaseConnection 欄位
@@ -292,7 +302,8 @@ const DataSetManagementPage = () => {
               connectionType: 'preset',
               presetConnection: dataSource.databaseConnection,
               sqlQuery: dataSource.sqlQuery,
-              sqlParameters: dataSource.sqlParameters
+              sqlParameters: dataSource.sqlParameters,
+              targetTableName: dataSource.targetTableName
             });
           }
         } catch (error) {
@@ -303,7 +314,8 @@ const DataSetManagementPage = () => {
             connectionType: 'preset',
             presetConnection: dataSource.databaseConnection,
             sqlQuery: dataSource.sqlQuery,
-            sqlParameters: dataSource.sqlParameters
+            sqlParameters: dataSource.sqlParameters,
+            targetTableName: dataSource.targetTableName
           });
         }
       } else {
@@ -978,7 +990,6 @@ const DataSetManagementPage = () => {
                 format={(percent) => `${percent}%`}
                 style={{ marginBottom: '4px' }}
                 showInfo={true}
-                animation={true}
               />
               
               {/* 詳細統計信息 */}
@@ -1862,7 +1873,12 @@ const DataSetManagementPage = () => {
                 tooltip={t('dataSetManagement.syncDirectionTooltip')}
                 initialValue="inbound"
               >
-                <Select placeholder={t('dataSetManagement.syncDirectionPlaceholder')}>
+                <Select 
+                  placeholder={t('dataSetManagement.syncDirectionPlaceholder')}
+                  onChange={(value) => {
+                    setSyncDirection(value);
+                  }}
+                >
                   <Select.Option value="inbound">{t('dataSetManagement.syncDirectionInbound')}</Select.Option>
                   <Select.Option value="outbound">{t('dataSetManagement.syncDirectionOutbound')}</Select.Option>
                   <Select.Option value="bidirectional">{t('dataSetManagement.syncDirectionBidirectional')}</Select.Option>
@@ -2095,6 +2111,25 @@ const DataSetManagementPage = () => {
                             placeholder={t('dataSetManagement.sqlParametersPlaceholder')}
                           />
                         </Form.Item>
+                        
+                        {/* TargetTableName - 只在 outbound 或 bidirectional 時顯示 */}
+                        {(syncDirection === 'outbound' || syncDirection === 'bidirectional') && (
+                          <Form.Item
+                            name="targetTableName"
+                            label={t('dataSetManagement.targetTableName')}
+                            rules={[
+                              { 
+                                required: true, 
+                                message: t('dataSetManagement.targetTableNameRequired') 
+                              }
+                            ]}
+                            tooltip={t('dataSetManagement.targetTableNameTooltip')}
+                          >
+                            <Input 
+                              placeholder={t('dataSetManagement.targetTableNamePlaceholder')}
+                            />
+                          </Form.Item>
+                        )}
                       </>
                     );
                   }
