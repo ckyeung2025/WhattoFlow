@@ -1062,7 +1062,7 @@ namespace PurpleRice.Controllers
                 {
                     try
                     {
-                        var fullFlowData = JsonSerializer.Deserialize<MetaFlowResponse>(form.MetaFlowJson, new JsonSerializerOptions
+                        var fullFlowData = JsonSerializer.Deserialize<Models.MetaFlowResponse>(form.MetaFlowJson, new JsonSerializerOptions
                         {
                             PropertyNameCaseInsensitive = true
                         });
@@ -1093,6 +1093,174 @@ namespace PurpleRice.Controllers
                 return StatusCode(500, new { error = $"從 Meta API 獲取 Flow 失敗: {ex.Message}" });
             }
         }
+
+        /// <summary>
+        /// 為 MetaFlows 表單創建 Flow Template（用於 24 小時窗口外發送 Flow 消息）
+        /// </summary>
+        [HttpPost("{formId}/create-flow-template")]
+        public async Task<IActionResult> CreateFlowTemplate(
+            Guid formId, 
+            [FromBody] CreateFlowTemplateRequest request)
+        {
+            try
+            {
+                _loggingService.LogInformation($"開始為表單 {formId} 創建 Flow Template");
+                
+                var companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    _loggingService.LogWarning("無法識別用戶公司");
+                    return Unauthorized(new { error = "無法識別用戶公司" });
+                }
+                
+                // 獲取表單定義
+                var form = await _context.eFormDefinitions
+                    .FirstOrDefaultAsync(f => f.Id == formId && f.CompanyId == companyId.Value);
+                    
+                if (form == null)
+                {
+                    _loggingService.LogWarning($"找不到表單定義，ID: {formId}");
+                    return NotFound(new { error = "表單不存在" });
+                }
+                
+                if (form.FormType != "MetaFlows")
+                {
+                    return BadRequest(new { error = "只有 MetaFlows 類型的表單才能創建 Flow Template" });
+                }
+                
+                if (string.IsNullOrEmpty(form.MetaFlowId))
+                {
+                    return BadRequest(new { error = "表單還沒有 MetaFlowId，請先保存 Flow" });
+                }
+                
+                // ✅ 如果已經有 Flow Template ID，先刪除舊的 Template（如果狀態允許）
+                // 然後創建新的 Template，這樣可以確保使用最新的設置
+                bool canReuseTemplateName = true; // 是否可以重用模板名稱
+                
+                if (!string.IsNullOrEmpty(form.MetaFlowTemplateId) && request.ForceCreate != true)
+                {
+                    _loggingService.LogInformation($"表單已有 Flow Template ID: {form.MetaFlowTemplateId}，將刪除舊的並創建新的");
+                    
+                    // 嘗試刪除舊的 Template（如果狀態允許）
+                    // 注意：已審核通過的 Template 可能無法刪除，但我們仍然嘗試
+                    try
+                    {
+                        var oldTemplateId = form.MetaFlowTemplateId;
+                        var deleteResult = await _metaFlowsService.DeleteFlowTemplateAsync(
+                            companyId.Value,
+                            oldTemplateId
+                        );
+                        
+                        if (deleteResult)
+                        {
+                            _loggingService.LogInformation($"✅ 成功刪除舊的 Flow Template: {oldTemplateId}");
+                            canReuseTemplateName = true; // 可以重用名稱
+                        }
+                        else
+                        {
+                            _loggingService.LogWarning($"⚠️ 無法刪除舊的 Flow Template: {oldTemplateId}（可能已審核通過）");
+                            canReuseTemplateName = false; // 無法刪除，需要創建新的（使用不同的名稱）
+                            // 清除舊的 Template ID，以便創建新的
+                            form.MetaFlowTemplateId = null;
+                            form.MetaFlowTemplateName = null;
+                            form.MetaFlowTemplateStatus = null;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogWarning($"⚠️ 刪除舊的 Flow Template 時發生錯誤: {ex.Message}");
+                        canReuseTemplateName = false; // 發生錯誤，使用新名稱
+                        // 清除舊的 Template ID，以便創建新的
+                        form.MetaFlowTemplateId = null;
+                        form.MetaFlowTemplateName = null;
+                        form.MetaFlowTemplateStatus = null;
+                    }
+                }
+                
+                // 從 MetaFlowJson 中獲取第一個 screen id
+                string? firstScreenId = null;
+                if (!string.IsNullOrEmpty(form.MetaFlowJson))
+                {
+                    try
+                    {
+                        var flowJson = JsonDocument.Parse(form.MetaFlowJson);
+                        if (flowJson.RootElement.TryGetProperty("screens", out var screens) && screens.GetArrayLength() > 0)
+                        {
+                            var firstScreen = screens[0];
+                            if (firstScreen.TryGetProperty("id", out var screenIdProp))
+                            {
+                                firstScreenId = screenIdProp.GetString();
+                                _loggingService.LogInformation($"從 MetaFlowJson 獲取第一個 Screen ID: {firstScreenId}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogWarning($"解析 MetaFlowJson 獲取 Screen ID 失敗: {ex.Message}");
+                    }
+                }
+                
+                // 準備模板名稱（如果無法重用，添加時間戳）
+                string templateName = request.FlowName ?? form.Name;
+                if (!canReuseTemplateName)
+                {
+                    // 如果無法重用名稱（舊的 Template 無法刪除），添加時間戳確保唯一性
+                    var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                    templateName = $"{templateName}_{timestamp}";
+                    _loggingService.LogInformation($"無法重用模板名稱，使用新名稱: {templateName}");
+                }
+                
+                // 調用 Meta API 創建 Flow Template
+                var flowTemplateResponse = await _metaFlowsService.CreateFlowTemplateAsync(
+                    companyId.Value,
+                    form.MetaFlowId,
+                    templateName,
+                    request.Category ?? "LEAD_GENERATION",
+                    request.Language ?? "zh_TW",
+                    firstScreenId
+                );
+                
+                // 更新表單定義，保存 Flow Template ID
+                form.MetaFlowTemplateId = flowTemplateResponse.TemplateId;
+                form.MetaFlowTemplateName = flowTemplateResponse.TemplateName;
+                form.MetaFlowTemplateStatus = flowTemplateResponse.Status;
+                form.UpdatedAt = DateTime.UtcNow;
+                
+                // 獲取當前用戶ID
+                var userIdClaim = User.FindFirst("user_id");
+                if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+                {
+                    form.UpdatedUserId = userId;
+                }
+                
+                await _context.SaveChangesAsync();
+                
+                _loggingService.LogInformation($"✅ Flow Template 創建成功: {flowTemplateResponse.TemplateId}");
+                
+                return Ok(new
+                {
+                    success = true,
+                    flowTemplateId = flowTemplateResponse.TemplateId,
+                    flowTemplateName = flowTemplateResponse.TemplateName,
+                    status = flowTemplateResponse.Status,
+                    category = flowTemplateResponse.Category
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"創建 Flow Template 失敗: {ex.Message}", ex);
+                return StatusCode(500, new { error = $"創建 Flow Template 失敗: {ex.Message}" });
+            }
+        }
+    }
+
+    public class CreateFlowTemplateRequest
+    {
+        public string? FlowName { get; set; }
+        public string? FlowDescription { get; set; }
+        public string? Category { get; set; }
+        public string? Language { get; set; }
+        public bool? ForceCreate { get; set; } // 是否強制創建（即使已存在）
     }
 
     public class EFormBatchDeleteRequest

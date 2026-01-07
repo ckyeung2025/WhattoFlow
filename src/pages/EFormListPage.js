@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Space, Tag, message, Pagination, Card, Typography, Tooltip, Modal, Popconfirm, Form } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, SortAscendingOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, CopyOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, SortAscendingOutlined, FormOutlined, CheckCircleOutlined, StopOutlined, CopyOutlined, CheckCircleFilled, CloseCircleOutlined } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 // import dayjs from 'dayjs'; // 已替換為 TimezoneUtils
 import { TimezoneUtils } from '../utils/timezoneUtils';
@@ -165,10 +165,36 @@ const EFormListPage = () => {
   const baseColumns = React.useMemo(() => [
     { title: t('eform.name'), dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: true },
     { title: t('eform.description'), dataIndex: 'description', key: 'description', width: 200, ellipsis: true },
-    { title: t('eform.formType'), dataIndex: 'formType', key: 'formType', width: 120, sorter: true, render: v => {
-      if (v === 'MetaFlows') return <Tag color="blue">Meta Flows</Tag>;
-      return <Tag color="default">HTML</Tag>;
-    } },
+    { 
+      title: t('eform.formType'), 
+      dataIndex: 'formType', 
+      key: 'formType', 
+      width: 120, 
+      sorter: true, 
+      render: (v, record) => {
+        if (v === 'MetaFlows') {
+          // 檢查是否有 Flow Template
+          const hasTemplate = record.metaFlowTemplateId || record.meta_flow_template_id;
+          const templateStatus = record.metaFlowTemplateStatus || record.meta_flow_template_status;
+          
+          return (
+            <Space size="small">
+              <Tag color="blue">Meta Flows</Tag>
+              {hasTemplate ? (
+                <Tooltip title={templateStatus === 'APPROVED' ? '已創建 Flow Template (已審核通過)' : `已創建 Flow Template (狀態: ${templateStatus || 'PENDING'})`}>
+                  <CheckCircleFilled style={{ color: templateStatus === 'APPROVED' ? '#52c41a' : '#faad14', fontSize: '14px' }} />
+                </Tooltip>
+              ) : (
+                <Tooltip title="尚未創建 Flow Template">
+                  <CloseCircleOutlined style={{ color: '#d9d9d9', fontSize: '14px' }} />
+                </Tooltip>
+              )}
+            </Space>
+          );
+        }
+        return <Tag color="default">HTML</Tag>;
+      } 
+    },
     { title: t('eform.status'), dataIndex: 'status', key: 'status', width: 100, sorter: true, render: v => {
       if (v === 'A') return <Tag color="green">{t('eform.enabled')}</Tag>;
       if (v === 'I') return <Tag color="orange">{t('eform.disabled')}</Tag>;
@@ -298,6 +324,9 @@ const EFormListPage = () => {
           updated_at: f.updated_at || f.updatedAt,
           created_user_id: f.created_user_id || f.createdUserId,
           updated_user_id: f.updated_user_id || f.updatedUserId,
+          metaFlowTemplateId: f.metaFlowTemplateId || f.meta_flow_template_id,
+          metaFlowTemplateName: f.metaFlowTemplateName || f.meta_flow_template_name,
+          metaFlowTemplateStatus: f.metaFlowTemplateStatus || f.meta_flow_template_status,
         }));
         
         setData(filtered);

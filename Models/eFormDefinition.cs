@@ -72,6 +72,18 @@ namespace PurpleRice.Models
         [Column("meta_flow_metadata")]
         public string? MetaFlowMetadata { get; set; }
 
+        [Column("meta_flow_template_id")]
+        [StringLength(255)]
+        public string? MetaFlowTemplateId { get; set; }
+
+        [Column("meta_flow_template_name")]
+        [StringLength(255)]
+        public string? MetaFlowTemplateName { get; set; }
+
+        [Column("meta_flow_template_status")]
+        [StringLength(50)]
+        public string? MetaFlowTemplateStatus { get; set; }
+
         // 添加屬性來處理 JSON
         [NotMapped]
         public List<FieldDisplaySetting>? FieldDisplaySettingsList

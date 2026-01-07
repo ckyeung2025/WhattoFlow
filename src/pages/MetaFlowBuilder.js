@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Space, message, Typography, Input, Card } from 'antd';
-import { ArrowLeftOutlined, SaveOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Space, message, Typography, Input, Card, Checkbox, Tooltip } from 'antd';
+import { ArrowLeftOutlined, SaveOutlined, EyeOutlined, PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
   generateMetaFlowJson, 
@@ -108,6 +108,7 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
   const [flowDescription, setFlowDescription] = useState(initialSchema?.description || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false); // 是否保存為 Flow Template
   
   // Flow 數據狀態
   const [flowData, setFlowData] = useState({
@@ -496,6 +497,43 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
         }
         
         message.success('✅ 表單保存成功！');
+        
+        // ✅ 如果用戶選擇保存為 Flow Template，則創建 Flow Template
+        if (saveAsTemplate && result.metaFlowId && !result.metaFlowTemplateId) {
+          try {
+            console.log('📝 開始創建 Flow Template...');
+            const templateResponse = await fetch(`/api/eforms/${result.id}/create-flow-template`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                flowName: flowName,
+                category: 'LEAD_GENERATION',
+                language: 'zh_TW'
+              })
+            });
+            
+            if (templateResponse.ok) {
+              const templateResult = await templateResponse.json();
+              if (templateResult.flowTemplateId) {
+                console.log('✅ Flow Template 創建成功:', templateResult.flowTemplateId);
+                message.success(`✅ Flow Template 創建成功！Template ID: ${templateResult.flowTemplateId}`);
+              }
+            } else {
+              const errorData = await templateResponse.json().catch(() => ({ error: '未知錯誤' }));
+              console.warn('⚠️ Flow Template 創建失敗:', errorData);
+              message.warning('⚠️ Flow Template 創建失敗，但 Flow 已保存成功。您可以稍後手動創建。');
+            }
+          } catch (error) {
+            console.error('❌ 創建 Flow Template 時發生錯誤:', error);
+            message.warning('⚠️ Flow Template 創建失敗，但 Flow 已保存成功。您可以稍後手動創建。');
+          }
+        } else if (result.metaFlowTemplateId) {
+          console.log('ℹ️ Flow Template 已存在:', result.metaFlowTemplateId);
+        }
+        
         onSave && onSave();
       } else {
         message.error('❌ 保存失敗: 響應格式錯誤');
@@ -627,6 +665,20 @@ const MetaFlowBuilder = ({ initialSchema, onSave, onBack }) => {
               padding: '0'
             }}
           />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Checkbox
+              checked={saveAsTemplate}
+              onChange={(e) => setSaveAsTemplate(e.target.checked)}
+            >
+              保存為 Flow Template
+            </Checkbox>
+            <Tooltip 
+              title="Flow Template 可以在 24 小時窗口外發送消息。如果未勾選，將使用直接 Flow 發送（僅在 24 小時窗口內有效）。"
+              placement="bottom"
+            >
+              <QuestionCircleOutlined style={{ color: '#8c8c8c', cursor: 'help' }} />
+            </Tooltip>
+          </div>
           <Button
             icon={<EyeOutlined />}
             type="default"

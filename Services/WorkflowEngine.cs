@@ -1322,225 +1322,24 @@ namespace PurpleRice.Services
                     WriteLog($"📧 使用 Email 模式");
                     
                     var emailConfig = nodeData.EmailConfig;
-                    if (emailConfig == null || string.IsNullOrEmpty(emailConfig.ProviderKey))
-                    {
-                        WriteLog($"sendWhatsApp (Email 模式) 缺少必要參數: emailConfig.providerKey");
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameter: emailConfig.providerKey" });
-                        return false;
-                    }
-                    
-                    if (string.IsNullOrEmpty(emailConfig.Subject))
-                    {
-                        WriteLog($"sendWhatsApp (Email 模式) 缺少必要參數: emailConfig.subject");
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameter: emailConfig.subject" });
-                        return false;
-                    }
-                    
-                    if (string.IsNullOrEmpty(emailConfig.Body))
-                    {
-                        WriteLog($"sendWhatsApp (Email 模式) 缺少必要參數: emailConfig.body");
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "Missing required parameter: emailConfig.body" });
-                        return false;
-                    }
-                    
-                    WriteLog($"🔍 [DEBUG] 開始處理 Email 變數替換");
-                    // 替換 subject 和 body 中的變數
-                    var processedSubject = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Subject, execution.Id);
-                    var processedBody = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Body, execution.Id);
-                    
-                    WriteLog($"🔍 [DEBUG] Email Provider: {emailConfig.ProviderKey}");
-                    WriteLog($"🔍 [DEBUG] Subject: {processedSubject}");
-                    
-                    // 獲取發件人 email（從 API provider 設置中獲取）
-                    using var emailScope = _serviceProvider.CreateScope();
-                    var emailDb = emailScope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
-                    var apiProviderService = emailScope.ServiceProvider.GetRequiredService<PurpleRice.Services.ApiProviders.IApiProviderService>();
-                    
-                    var emailProvider = await apiProviderService.GetRuntimeProviderAsync(execution.WorkflowDefinition.CompanyId, emailConfig.ProviderKey);
-                    if (emailProvider == null)
-                    {
-                        WriteLog($"Email provider '{emailConfig.ProviderKey}' not found");
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = $"Email provider '{emailConfig.ProviderKey}' not found" });
-                        return false;
-                    }
-                    
-                    // 從設置中獲取發件人 email
-                    var settings = JsonSerializer.Deserialize<Dictionary<string, object>>(emailProvider.SettingsJson ?? "{}");
-                    var fromEmail = settings?.TryGetValue("fromEmail", out var fromEmailObj) == true 
-                        ? fromEmailObj?.ToString() 
-                        : null;
-                    
-                    if (string.IsNullOrEmpty(fromEmail))
-                    {
-                        WriteLog($"From email not configured in email provider settings");
-                        stepExec.OutputJson = JsonSerializer.Serialize(new { error = "From email not configured in email provider settings" });
-                        return false;
-                    }
-                    
-                    // 創建 WorkflowMessageSend 記錄
-                    var messageSendId = await _messageSendService.CreateMessageSendAsync(
-                        execution.Id,
-                        stepExec.Id,
-                        stepExec.Id.ToString(),
+                    var (successCount, skipCount, failCount, messageSendId) = await SendEmailNotificationsAsync(
+                        emailConfig,
+                        resolvedRecipients,
+                        execution,
+                        stepExec,
                         "sendWhatsApp",
-                        $"{processedSubject} - {processedBody.Substring(0, Math.Min(100, processedBody.Length))}...",
-                        null, // templateId
-                        null, // templateName
-                        "email",
-                        execution.WorkflowDefinition.CompanyId,
-                        "system"
+                        db
                     );
                     
-                    WriteLog($"📧 創建 Email 發送記錄，MessageSendId: {messageSendId}");
-                    
-                    // 添加所有收件人到 WorkflowMessageRecipients
-                    await _messageSendService.AddRecipientsAsync(messageSendId, resolvedRecipients, "system");
-                    
-                    // 發送郵件給所有解析到的收件人
-                    int successCount = 0;
-                    int skipCount = 0; // 跳過（無 email）
-                    int failCount = 0; // 發送失敗
-                    
-                    foreach (var recipient in resolvedRecipients)
+                    if (messageSendId == Guid.Empty)
                     {
-                        // 從收件人中提取 email
-                        string recipientEmail = null;
-                        
-                        // 嘗試從 contact 或 user 中獲取 email
-                        if (recipient.RecipientType == "User" || recipient.RecipientType == "Contact")
-                        {
-                            // 重用外部的 emailDb，不需要創建新的 scope
-                            if (recipient.RecipientType == "User" && !string.IsNullOrEmpty(recipient.RecipientId))
-                            {
-                                // 從 User 表中查找 email
-                                if (Guid.TryParse(recipient.RecipientId, out var userId))
-                                {
-                                    var user = await emailDb.Users
-                                        .FirstOrDefaultAsync(u => u.Id == userId);
-                                    if (user != null && !string.IsNullOrEmpty(user.Email))
-                                    {
-                                        recipientEmail = user.Email;
-                                    }
-                                }
-                            }
-                            else if (recipient.RecipientType == "Contact" && !string.IsNullOrEmpty(recipient.RecipientId))
-                            {
-                                // 從 ContactList 表中查找 email
-                                if (Guid.TryParse(recipient.RecipientId, out var contactId))
-                                {
-                                    var contact = await emailDb.ContactLists
-                                        .FirstOrDefaultAsync(c => c.Id == contactId);
-                                    if (contact != null && !string.IsNullOrEmpty(contact.Email))
-                                    {
-                                        recipientEmail = contact.Email;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // 如果沒有找到 email，嘗試從 PhoneNumber 判斷是否為 email 格式
-                        if (string.IsNullOrEmpty(recipientEmail) && !string.IsNullOrEmpty(recipient.PhoneNumber))
-                        {
-                            if (recipient.PhoneNumber.Contains("@"))
-                            {
-                                recipientEmail = recipient.PhoneNumber;
-                            }
-                        }
-                        
-                        // 獲取收件人記錄
-                        var recipientRecord = await db.WorkflowMessageRecipients
-                            .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.Id == recipient.Id);
-                        
-                        if (string.IsNullOrEmpty(recipientEmail))
-                        {
-                            WriteLog($"⚠️ [跳過] 無法獲取收件人 email，跳過: {recipient.RecipientName} ({recipient.PhoneNumber})");
-                            skipCount++;
-                            
-                            // 更新收件人狀態為失敗（無 email）
-                            if (recipientRecord != null)
-                            {
-                                await _messageSendService.UpdateRecipientStatusAsync(
-                                    recipientRecord.Id,
-                                    RecipientStatus.Failed,
-                                    null,
-                                    "No email address found for recipient"
-                                );
-                            }
-                            continue;
-                        }
-                        
-                        WriteLog($"🔍 [DEBUG] 發送郵件到: {recipientEmail}");
-                        
-                        try
-                        {
-                            var emailSent = await _emailService.SendEmailAsync(
-                                emailConfig.ProviderKey,
-                                execution.WorkflowDefinition.CompanyId,
-                                fromEmail,
-                                recipientEmail,
-                                processedSubject,
-                                processedBody,
-                                emailConfig.ReplyTo,
-                                db
-                            );
-                            
-                            if (emailSent)
-                            {
-                                successCount++;
-                                WriteLog($"✅ [成功] 郵件發送成功: {recipientEmail}");
-                                
-                                // 更新收件人狀態為已發送
-                                if (recipientRecord != null)
-                                {
-                                    await _messageSendService.UpdateRecipientStatusAsync(
-                                        recipientRecord.Id,
-                                        RecipientStatus.Sent
-                                    );
-                                }
-                            }
-                            else
-                            {
-                                failCount++;
-                                WriteLog($"❌ [失敗] 郵件發送失敗: {recipientEmail}");
-                                
-                                // 更新收件人狀態為失敗
-                                if (recipientRecord != null)
-                                {
-                                    await _messageSendService.UpdateRecipientStatusAsync(
-                                        recipientRecord.Id,
-                                        RecipientStatus.Failed,
-                                        null,
-                                        "Email sending failed"
-                                    );
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            failCount++;
-                            WriteLog($"❌ [失敗] 郵件發送異常: {recipientEmail} - {ex.Message}");
-                            
-                            // 更新收件人狀態為失敗
-                            if (recipientRecord != null)
-                            {
-                                await _messageSendService.UpdateRecipientStatusAsync(
-                                    recipientRecord.Id,
-                                    RecipientStatus.Failed,
-                                    null,
-                                    $"Email sending error: {ex.Message}"
-                                );
-                            }
-                        }
+                        // 配置錯誤，返回失敗
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                            error = "Email configuration error",
+                            success = false
+                        });
+                        return false;
                     }
-                    
-                    // 更新 WorkflowMessageSend 狀態
-                    var finalStatus = failCount == 0 && skipCount == 0 ? MessageSendStatus.Completed :
-                                     successCount == 0 ? MessageSendStatus.Failed :
-                                     MessageSendStatus.PartiallyFailed;
-                    
-                    await _messageSendService.UpdateMessageSendStatusAsync(messageSendId, finalStatus);
-                    
-                    WriteLog($"📧 Email 發送完成 - 成功: {successCount}, 跳過: {skipCount}, 失敗: {failCount}, 總計: {resolvedRecipients.Count}");
                     
                     stepExec.OutputJson = JsonSerializer.Serialize(new { 
                         success = failCount == 0 && skipCount == 0, 
@@ -1918,66 +1717,27 @@ namespace PurpleRice.Services
                     }
                     else if (!string.IsNullOrEmpty(emailConfig.Subject) && !string.IsNullOrEmpty(emailConfig.Body))
                     {
-                        // 處理 Email 變數替換
-                        var processedSubject = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Subject, execution.Id);
-                        var processedBody = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Body, execution.Id);
+                        // 解析收件人
+                        var emailRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                            recipientValue,
+                            recipientDetailsJson,
+                            execution.Id,
+                            execution.WorkflowDefinition.CompanyId
+                        );
                         
-                        // 獲取 API provider 和發件人 email
-                        using var emailScope = _serviceProvider.CreateScope();
-                        var apiProviderService = emailScope.ServiceProvider.GetRequiredService<PurpleRice.Services.ApiProviders.IApiProviderService>();
-                        var emailProvider = await apiProviderService.GetRuntimeProviderAsync(execution.WorkflowDefinition.CompanyId, emailConfig.ProviderKey);
+                        // 使用統一方法發送 email（不創建 WorkflowMessageSend 記錄，不阻止流程）
+                        var (successCount, skipCount, failCount, _) = await SendEmailNotificationsAsync(
+                            emailConfig,
+                            emailRecipients,
+                            execution,
+                            stepExec,
+                            "waitReply",
+                            db,
+                            null,
+                            false // 不創建記錄
+                        );
                         
-                        if (emailProvider != null)
-                        {
-                            var settings = JsonSerializer.Deserialize<Dictionary<string, object>>(emailProvider.SettingsJson ?? "{}");
-                            var fromEmail = settings?.TryGetValue("fromEmail", out var fromEmailObj) == true 
-                                ? fromEmailObj?.ToString() 
-                                : null;
-                            
-                            if (!string.IsNullOrEmpty(fromEmail))
-                            {
-                                // 解析收件人並發送 email
-                                var emailRecipients = await _recipientResolverService.ResolveRecipientsAsync(
-                                    recipientValue,
-                                    recipientDetailsJson,
-                                    execution.Id,
-                                    execution.WorkflowDefinition.CompanyId
-                                );
-                                
-                                int emailSuccessCount = 0;
-                                foreach (var emailRecipient in emailRecipients)
-                                {
-                                    string recipientEmail = null;
-                                    if (Guid.TryParse(emailRecipient.RecipientId, out var parsedUserId) && emailRecipient.RecipientType == "User")
-                                    {
-                                        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == parsedUserId);
-                                        recipientEmail = user?.Email;
-                                    }
-                                    else if (Guid.TryParse(emailRecipient.RecipientId, out var contactId) && emailRecipient.RecipientType == "Contact")
-                                    {
-                                        var contact = await db.ContactLists.FirstOrDefaultAsync(c => c.Id == contactId);
-                                        recipientEmail = contact?.Email;
-                                    }
-                                    
-                                    if (!string.IsNullOrEmpty(recipientEmail) && recipientEmail.Contains("@"))
-                                    {
-                                        var emailSent = await _emailService.SendEmailAsync(
-                                            emailConfig.ProviderKey,
-                                            execution.WorkflowDefinition.CompanyId,
-                                            fromEmail,
-                                            recipientEmail,
-                                            processedSubject,
-                                            processedBody,
-                                            emailConfig.ReplyTo,
-                                            db
-                                        );
-                                        if (emailSent) emailSuccessCount++;
-                                    }
-                                }
-                                
-                                WriteLog($"📧 waitReply Email 發送完成，成功: {emailSuccessCount}/{emailRecipients.Count}");
-                            }
-                        }
+                        WriteLog($"📧 waitReply Email 發送完成，成功: {successCount}, 跳過: {skipCount}, 失敗: {failCount}, 總計: {emailRecipients.Count}");
                     }
                 }
                 else if (messageMode == "template")
@@ -2195,162 +1955,27 @@ namespace PurpleRice.Services
                     if (emailConfig != null && !string.IsNullOrEmpty(emailConfig.ProviderKey) && 
                         !string.IsNullOrEmpty(emailConfig.Subject) && !string.IsNullOrEmpty(emailConfig.Body))
                     {
-                        // 處理 Email 變數替換
-                        var processedSubject = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Subject, execution.Id);
-                        var processedBody = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Body, execution.Id);
+                        // 解析收件人並發送 email
+                        var emailRecipients = await _recipientResolverService.ResolveRecipientsAsync(
+                            recipientValue,
+                            recipientDetailsJson,
+                            execution.Id,
+                            execution.WorkflowDefinition.CompanyId
+                        );
                         
-                        // 獲取 API provider 和發件人 email
-                        using var emailScope = _serviceProvider.CreateScope();
-                        var apiProviderService = emailScope.ServiceProvider.GetRequiredService<PurpleRice.Services.ApiProviders.IApiProviderService>();
-                        var emailProvider = await apiProviderService.GetRuntimeProviderAsync(execution.WorkflowDefinition.CompanyId, emailConfig.ProviderKey);
+                        // 使用統一方法發送 email
+                        var (successCount, skipCount, failCount, messageSendId) = await SendEmailNotificationsAsync(
+                            emailConfig,
+                            emailRecipients,
+                            execution,
+                            stepExec,
+                            "waitForQRCode",
+                            db
+                        );
                         
-                        if (emailProvider != null)
+                        if (messageSendId != Guid.Empty)
                         {
-                            var settings = JsonSerializer.Deserialize<Dictionary<string, object>>(emailProvider.SettingsJson ?? "{}");
-                            var fromEmail = settings?.TryGetValue("fromEmail", out var fromEmailObj) == true 
-                                ? fromEmailObj?.ToString() 
-                                : null;
-                            
-                            if (!string.IsNullOrEmpty(fromEmail))
-                            {
-                                // 解析收件人並發送 email
-                                var emailRecipients = await _recipientResolverService.ResolveRecipientsAsync(
-                                    recipientValue,
-                                    recipientDetailsJson,
-                                    execution.Id,
-                                    execution.WorkflowDefinition.CompanyId
-                                );
-                                
-                                // 創建 WorkflowMessageSend 記錄
-                                var messageSendId = await _messageSendService.CreateMessageSendAsync(
-                                    execution.Id,
-                                    stepExec.Id,
-                                    stepExec.Id.ToString(),
-                                    "waitForQRCode",
-                                    $"{processedSubject} - {processedBody.Substring(0, Math.Min(100, processedBody.Length))}...",
-                                    null,
-                                    null,
-                                    "email",
-                                    execution.WorkflowDefinition.CompanyId,
-                                    "system"
-                                );
-                                
-                                WriteLog($"📧 創建 waitForQRCode Email 發送記錄，MessageSendId: {messageSendId}");
-                                
-                                // 添加所有收件人到 WorkflowMessageRecipients
-                                await _messageSendService.AddRecipientsAsync(messageSendId, emailRecipients, "system");
-                                
-                                int emailSuccessCount = 0;
-                                int emailSkipCount = 0;
-                                int emailFailCount = 0;
-                                
-                                foreach (var emailRecipient in emailRecipients)
-                                {
-                                    string recipientEmail = null;
-                                    if (Guid.TryParse(emailRecipient.RecipientId, out var parsedUserId) && emailRecipient.RecipientType == "User")
-                                    {
-                                        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == parsedUserId);
-                                        recipientEmail = user?.Email;
-                                    }
-                                    else if (Guid.TryParse(emailRecipient.RecipientId, out var contactId) && emailRecipient.RecipientType == "Contact")
-                                    {
-                                        var contact = await db.ContactLists.FirstOrDefaultAsync(c => c.Id == contactId);
-                                        recipientEmail = contact?.Email;
-                                    }
-                                    
-                                    // 獲取收件人記錄
-                                    var recipientRecord = await db.WorkflowMessageRecipients
-                                        .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.Id == emailRecipient.Id);
-                                    
-                                    if (string.IsNullOrEmpty(recipientEmail) || !recipientEmail.Contains("@"))
-                                    {
-                                        WriteLog($"⚠️ [跳過] waitForQRCode 無法獲取收件人 email，跳過: {emailRecipient.RecipientName} ({emailRecipient.PhoneNumber})");
-                                        emailSkipCount++;
-                                        
-                                        // 更新收件人狀態為失敗（無 email）
-                                        if (recipientRecord != null)
-                                        {
-                                            await _messageSendService.UpdateRecipientStatusAsync(
-                                                recipientRecord.Id,
-                                                RecipientStatus.Failed,
-                                                null,
-                                                "No email address found for recipient"
-                                            );
-                                        }
-                                        continue;
-                                    }
-                                    
-                                    try
-                                    {
-                                        var emailSent = await _emailService.SendEmailAsync(
-                                            emailConfig.ProviderKey,
-                                            execution.WorkflowDefinition.CompanyId,
-                                            fromEmail,
-                                            recipientEmail,
-                                            processedSubject,
-                                            processedBody,
-                                            emailConfig.ReplyTo,
-                                            db
-                                        );
-                                        
-                                        if (emailSent)
-                                        {
-                                            emailSuccessCount++;
-                                            WriteLog($"✅ [成功] waitForQRCode 郵件發送成功: {recipientEmail}");
-                                            
-                                            // 更新收件人狀態為已發送
-                                            if (recipientRecord != null)
-                                            {
-                                                await _messageSendService.UpdateRecipientStatusAsync(
-                                                    recipientRecord.Id,
-                                                    RecipientStatus.Sent
-                                                );
-                                            }
-                                        }
-                                        else
-                                        {
-                                            emailFailCount++;
-                                            WriteLog($"❌ [失敗] waitForQRCode 郵件發送失敗: {recipientEmail}");
-                                            
-                                            // 更新收件人狀態為失敗
-                                            if (recipientRecord != null)
-                                            {
-                                                await _messageSendService.UpdateRecipientStatusAsync(
-                                                    recipientRecord.Id,
-                                                    RecipientStatus.Failed,
-                                                    null,
-                                                    "Email sending failed"
-                                                );
-                                            }
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        emailFailCount++;
-                                        WriteLog($"❌ [失敗] waitForQRCode 郵件發送異常: {recipientEmail} - {ex.Message}");
-                                        
-                                        // 更新收件人狀態為失敗
-                                        if (recipientRecord != null)
-                                        {
-                                            await _messageSendService.UpdateRecipientStatusAsync(
-                                                recipientRecord.Id,
-                                                RecipientStatus.Failed,
-                                                null,
-                                                $"Email sending error: {ex.Message}"
-                                            );
-                                        }
-                                    }
-                                }
-                                
-                                // 更新 WorkflowMessageSend 狀態
-                                var finalStatus = emailFailCount == 0 && emailSkipCount == 0 ? MessageSendStatus.Completed :
-                                                 emailSuccessCount == 0 ? MessageSendStatus.Failed :
-                                                 MessageSendStatus.PartiallyFailed;
-                                
-                                await _messageSendService.UpdateMessageSendStatusAsync(messageSendId, finalStatus);
-                                
-                                WriteLog($"📧 waitForQRCode Email 發送完成 - 成功: {emailSuccessCount}, 跳過: {emailSkipCount}, 失敗: {emailFailCount}, 總計: {emailRecipients.Count}");
-                            }
+                            WriteLog($"📧 waitForQRCode Email 發送完成 - 成功: {successCount}, 跳過: {skipCount}, 失敗: {failCount}, 總計: {emailRecipients.Count}");
                         }
                     }
                 }
@@ -2840,6 +2465,33 @@ namespace PurpleRice.Services
                     );
                     
                     WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
+                    
+                    // ✅ 檢查：如果沒有收件人，記錄詳細錯誤並返回失敗
+                    if (resolvedRecipients == null || !resolvedRecipients.Any())
+                    {
+                        WriteLog($"❌ [ERROR] sendEForm 節點未解析到任何收件人！");
+                        WriteLog($"❌ [ERROR] To 配置: '{nodeData.To}'");
+                        WriteLog($"❌ [ERROR] RecipientDetails: {(nodeData.RecipientDetails != null ? JsonSerializer.Serialize(nodeData.RecipientDetails) : "null")}");
+                        WriteLog($"❌ [ERROR] ExecutionId: {execution.Id}");
+                        
+                        stepExec.OutputJson = JsonSerializer.Serialize(new { 
+                            error = "No recipients resolved", 
+                            to = nodeData.To,
+                            recipientDetails = nodeData.RecipientDetails,
+                            executionId = execution.Id
+                        });
+                        stepExec.Status = "Error";
+                        await SaveStepExecution(stepExec);
+                        return false;
+                    }
+                    
+                    // 記錄每個收件人的詳細信息
+                    WriteLog($"🔍 [DEBUG] 收件人詳細信息:");
+                    for (int i = 0; i < resolvedRecipients.Count; i++)
+                    {
+                        var recipient = resolvedRecipients[i];
+                        WriteLog($"🔍 [DEBUG]   收件人 {i + 1}: {recipient.PhoneNumber} ({recipient.RecipientName}) - 類型: {recipient.RecipientType}");
+                    }
 
                     // 檢查是否為 MetaFlows 類型
                     if (eFormDefinition.FormType == "MetaFlows")
@@ -4287,12 +3939,24 @@ namespace PurpleRice.Services
         WorkflowStepExecution stepExec, 
         PurpleRiceDbContext db)
     {
-        WriteLog($"🔍 [DEBUG] 開始為 {resolvedRecipients.Count} 個收件人發送表單通知");
+        WriteLog($"🔍 [DEBUG] 開始為 {resolvedRecipients?.Count ?? 0} 個收件人發送表單通知");
+        
+        // ✅ 檢查：如果沒有收件人，記錄錯誤並返回
+        if (resolvedRecipients == null || !resolvedRecipients.Any())
+        {
+            WriteLog($"❌ [ERROR] SendFormNotificationsToRecipients: 沒有收件人可以發送通知！");
+            WriteLog($"❌ [ERROR] InstanceIds: {string.Join(", ", instanceIds)}");
+            WriteLog($"❌ [ERROR] ExecutionId: {execution.Id}");
+            WriteLog($"❌ [ERROR] StepExecutionId: {stepExec.Id}");
+            return;
+        }
         
         // 獲取所有表單實例
         var instances = await db.EFormInstances
             .Where(i => instanceIds.Contains(i.Id))
             .ToListAsync();
+        
+        WriteLog($"🔍 [DEBUG] 找到 {instances.Count} 個表單實例");
         
         // 根據訊息模式發送通知
         string messageMode = nodeData.MessageMode ?? "direct";
@@ -4543,6 +4207,266 @@ namespace PurpleRice.Services
     }
 
     // 輔助方法：為單一表單實例發送通知
+    /// <summary>
+    /// 統一發送 Email 通知的方法
+    /// </summary>
+    /// <param name="emailConfig">Email 配置</param>
+    /// <param name="resolvedRecipients">已解析的收件人列表</param>
+    /// <param name="execution">工作流程執行記錄</param>
+    /// <param name="stepExec">步驟執行記錄</param>
+    /// <param name="nodeType">節點類型（如 "sendWhatsApp", "sendEForm", "waitForQRCode" 等）</param>
+    /// <param name="db">數據庫上下文</param>
+    /// <param name="additionalBodyReplacements">額外的 body 替換字典（可選，用於替換 {formName}, {formUrl} 等）</param>
+    /// <param name="createMessageSendRecord">是否創建 WorkflowMessageSend 記錄（默認 true）</param>
+    /// <returns>發送結果（成功數量、跳過數量、失敗數量、消息發送記錄ID）</returns>
+    private async Task<(int successCount, int skipCount, int failCount, Guid messageSendId)> SendEmailNotificationsAsync(
+        EmailConfig emailConfig,
+        List<ResolvedRecipient> resolvedRecipients,
+        WorkflowExecution execution,
+        WorkflowStepExecution stepExec,
+        string nodeType,
+        PurpleRiceDbContext db,
+        Dictionary<string, string> additionalBodyReplacements = null,
+        bool createMessageSendRecord = true)
+    {
+        // 驗證 email 配置
+        if (emailConfig == null || string.IsNullOrEmpty(emailConfig.ProviderKey))
+        {
+            WriteLog($"❌ [ERROR] {nodeType} (Email 模式) 缺少必要參數: emailConfig.providerKey");
+            return (0, 0, 0, Guid.Empty);
+        }
+        
+        if (string.IsNullOrEmpty(emailConfig.Subject))
+        {
+            WriteLog($"❌ [ERROR] {nodeType} (Email 模式) 缺少必要參數: emailConfig.subject");
+            return (0, 0, 0, Guid.Empty);
+        }
+        
+        if (string.IsNullOrEmpty(emailConfig.Body))
+        {
+            WriteLog($"❌ [ERROR] {nodeType} (Email 模式) 缺少必要參數: emailConfig.body");
+            return (0, 0, 0, Guid.Empty);
+        }
+        
+        WriteLog($"🔍 [DEBUG] 開始處理 Email 變數替換");
+        // 替換 subject 和 body 中的變數
+        var processedSubject = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Subject, execution.Id);
+        var processedBody = await _variableReplacementService.ReplaceVariablesAsync(emailConfig.Body, execution.Id);
+        
+        // 應用額外的 body 替換（如 {formName}, {formUrl}）
+        if (additionalBodyReplacements != null)
+        {
+            foreach (var replacement in additionalBodyReplacements)
+            {
+                processedBody = processedBody
+                    .Replace($"{{{replacement.Key}}}", replacement.Value)
+                    .Replace($"${{{replacement.Key}}}", replacement.Value);
+            }
+        }
+        
+        WriteLog($"🔍 [DEBUG] Email Provider: {emailConfig.ProviderKey}");
+        WriteLog($"🔍 [DEBUG] Subject: {processedSubject}");
+        
+        // 獲取發件人 email（從 API provider 設置中獲取）
+        using var emailScope = _serviceProvider.CreateScope();
+        var emailDb = emailScope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
+        var apiProviderService = emailScope.ServiceProvider.GetRequiredService<PurpleRice.Services.ApiProviders.IApiProviderService>();
+        
+        var emailProvider = await apiProviderService.GetRuntimeProviderAsync(execution.WorkflowDefinition.CompanyId, emailConfig.ProviderKey);
+        if (emailProvider == null)
+        {
+            WriteLog($"❌ [ERROR] Email provider '{emailConfig.ProviderKey}' not found");
+            return (0, 0, 0, Guid.Empty);
+        }
+        
+        // 從設置中獲取發件人 email
+        var settings = JsonSerializer.Deserialize<Dictionary<string, object>>(emailProvider.SettingsJson ?? "{}");
+        var fromEmail = settings?.TryGetValue("fromEmail", out var fromEmailObj) == true 
+            ? fromEmailObj?.ToString() 
+            : null;
+        
+        if (string.IsNullOrEmpty(fromEmail))
+        {
+            WriteLog($"❌ [ERROR] From email not configured in email provider settings");
+            return (0, 0, 0, Guid.Empty);
+        }
+        
+        Guid messageSendId = Guid.Empty;
+        
+        // 創建 WorkflowMessageSend 記錄（如果需要）
+        if (createMessageSendRecord)
+        {
+            messageSendId = await _messageSendService.CreateMessageSendAsync(
+                execution.Id,
+                stepExec.Id,
+                stepExec.Id.ToString(),
+                nodeType,
+                $"{processedSubject} - {processedBody.Substring(0, Math.Min(100, processedBody.Length))}...",
+                null, // templateId
+                null, // templateName
+                "email",
+                execution.WorkflowDefinition.CompanyId,
+                "system"
+            );
+            
+            WriteLog($"📧 創建 Email 發送記錄，MessageSendId: {messageSendId}");
+            
+            // 添加所有收件人到 WorkflowMessageRecipients
+            await _messageSendService.AddRecipientsAsync(messageSendId, resolvedRecipients, "system");
+        }
+        
+        // 發送郵件給所有解析到的收件人
+        int successCount = 0;
+        int skipCount = 0;
+        int failCount = 0;
+        
+        foreach (var recipient in resolvedRecipients)
+        {
+            // 從收件人中提取 email
+            string recipientEmail = null;
+            
+            // 嘗試從 contact 或 user 中獲取 email
+            if (recipient.RecipientType == "User" || recipient.RecipientType == "Contact")
+            {
+                if (recipient.RecipientType == "User" && !string.IsNullOrEmpty(recipient.RecipientId))
+                {
+                    if (Guid.TryParse(recipient.RecipientId, out var userId))
+                    {
+                        var user = await emailDb.Users.FirstOrDefaultAsync(u => u.Id == userId);
+                        if (user != null && !string.IsNullOrEmpty(user.Email))
+                        {
+                            recipientEmail = user.Email;
+                        }
+                    }
+                }
+                else if (recipient.RecipientType == "Contact" && !string.IsNullOrEmpty(recipient.RecipientId))
+                {
+                    if (Guid.TryParse(recipient.RecipientId, out var contactId))
+                    {
+                        var contact = await emailDb.ContactLists.FirstOrDefaultAsync(c => c.Id == contactId);
+                        if (contact != null && !string.IsNullOrEmpty(contact.Email))
+                        {
+                            recipientEmail = contact.Email;
+                        }
+                    }
+                }
+            }
+            
+            // 如果沒有找到 email，嘗試從 PhoneNumber 判斷是否為 email 格式
+            if (string.IsNullOrEmpty(recipientEmail) && !string.IsNullOrEmpty(recipient.PhoneNumber))
+            {
+                if (recipient.PhoneNumber.Contains("@"))
+                {
+                    recipientEmail = recipient.PhoneNumber;
+                }
+            }
+            
+            // 獲取收件人記錄（如果創建了記錄）
+            WorkflowMessageRecipient recipientRecord = null;
+            if (createMessageSendRecord)
+            {
+                recipientRecord = await db.WorkflowMessageRecipients
+                    .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && r.Id == recipient.Id);
+            }
+            
+            if (string.IsNullOrEmpty(recipientEmail))
+            {
+                WriteLog($"⚠️ [跳過] 無法獲取收件人 email，跳過: {recipient.RecipientName} ({recipient.PhoneNumber})");
+                skipCount++;
+                
+                // 更新收件人狀態為失敗（無 email）
+                if (recipientRecord != null)
+                {
+                    await _messageSendService.UpdateRecipientStatusAsync(
+                        recipientRecord.Id,
+                        RecipientStatus.Failed,
+                        null,
+                        "No email address found for recipient"
+                    );
+                }
+                continue;
+            }
+            
+            WriteLog($"🔍 [DEBUG] 發送郵件到: {recipientEmail}");
+            
+            try
+            {
+                var emailSent = await _emailService.SendEmailAsync(
+                    emailConfig.ProviderKey,
+                    execution.WorkflowDefinition.CompanyId,
+                    fromEmail,
+                    recipientEmail,
+                    processedSubject,
+                    processedBody,
+                    emailConfig.ReplyTo,
+                    db
+                );
+                
+                if (emailSent)
+                {
+                    successCount++;
+                    WriteLog($"✅ [成功] 郵件發送成功: {recipientEmail}");
+                    
+                    // 更新收件人狀態為已發送
+                    if (recipientRecord != null)
+                    {
+                        await _messageSendService.UpdateRecipientStatusAsync(
+                            recipientRecord.Id,
+                            RecipientStatus.Sent
+                        );
+                    }
+                }
+                else
+                {
+                    failCount++;
+                    WriteLog($"❌ [失敗] 郵件發送失敗: {recipientEmail}");
+                    
+                    // 更新收件人狀態為失敗
+                    if (recipientRecord != null)
+                    {
+                        await _messageSendService.UpdateRecipientStatusAsync(
+                            recipientRecord.Id,
+                            RecipientStatus.Failed,
+                            null,
+                            "Email sending failed"
+                        );
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                failCount++;
+                WriteLog($"❌ [失敗] 郵件發送異常: {recipientEmail} - {ex.Message}");
+                WriteLog($"❌ [ERROR] 錯誤堆疊: {ex.StackTrace}");
+                
+                // 更新收件人狀態為失敗
+                if (recipientRecord != null)
+                {
+                    await _messageSendService.UpdateRecipientStatusAsync(
+                        recipientRecord.Id,
+                        RecipientStatus.Failed,
+                        null,
+                        $"Email sending error: {ex.Message}"
+                    );
+                }
+            }
+        }
+        
+        // 更新 WorkflowMessageSend 狀態（如果創建了記錄）
+        if (createMessageSendRecord)
+        {
+            var finalStatus = failCount == 0 && skipCount == 0 ? MessageSendStatus.Completed :
+                             successCount == 0 ? MessageSendStatus.Failed :
+                             MessageSendStatus.PartiallyFailed;
+            
+            await _messageSendService.UpdateMessageSendStatusAsync(messageSendId, finalStatus);
+        }
+        
+        WriteLog($"📧 Email 發送完成 - 成功: {successCount}, 跳過: {skipCount}, 失敗: {failCount}, 總計: {resolvedRecipients.Count}");
+        
+        return (successCount, skipCount, failCount, messageSendId);
+    }
+
     private async Task SendFormNotificationsForSingleInstance(
         EFormInstance eFormInstance,
         List<ResolvedRecipient> resolvedRecipients,
@@ -4552,6 +4476,18 @@ namespace PurpleRice.Services
         PurpleRiceDbContext db)
     {
         WriteLog($"🔍 [DEBUG] 為單一表單實例發送通知");
+        
+        // ✅ 檢查：如果沒有收件人，記錄錯誤並返回
+        if (resolvedRecipients == null || !resolvedRecipients.Any())
+        {
+            WriteLog($"❌ [ERROR] SendFormNotificationsForSingleInstance: 沒有收件人可以發送通知！");
+            WriteLog($"❌ [ERROR] 表單實例 ID: {eFormInstance.Id}");
+            WriteLog($"❌ [ERROR] ExecutionId: {execution.Id}");
+            WriteLog($"❌ [ERROR] StepExecutionId: {stepExec.Id}");
+            return;
+        }
+        
+        WriteLog($"🔍 [DEBUG] 準備為 {resolvedRecipients.Count} 個收件人發送通知");
         
         // 根據訊息模式發送通知
         string messageMode = nodeData.MessageMode ?? "direct";
@@ -4713,6 +4649,35 @@ namespace PurpleRice.Services
                 
                 WriteLog($"🔍 [DEBUG] EForm 通知模板訊息發送完成，ID: {messageSendId}");
             }
+        }
+        else if (messageMode == "email")
+        {
+            // === Email 模式 ===
+            WriteLog($"📧 sendEForm 使用 Email 模式");
+            
+            var emailConfig = nodeData.EmailConfig;
+            
+            // 準備額外的 body 替換（表單相關變數）
+            var additionalReplacements = new Dictionary<string, string>
+            {
+                { "formName", nodeData.FormName ?? "" },
+                { "formUrl", eFormInstance.FormUrl }
+            };
+            
+            // 使用統一方法發送 email
+            var (successCount, skipCount, failCount, emailMessageSendId) = await SendEmailNotificationsAsync(
+                emailConfig,
+                resolvedRecipients,
+                execution,
+                stepExec,
+                "sendEForm",
+                db,
+                additionalReplacements
+            );
+            
+            messageSendId = emailMessageSendId;
+            
+            WriteLog($"🔍 [DEBUG] EForm 通知發送完成，收件人數量: {resolvedRecipients.Count}");
         }
         else
         {
@@ -5021,6 +4986,34 @@ namespace PurpleRice.Services
 
         var parentInstanceId = Guid.NewGuid(); // 用於關聯同一批次的表單
         var instanceIds = new List<Guid>();
+        
+        // ✅ 為 MetaFlows 模式創建 WorkflowMessageSend 記錄
+        Guid messageSendId = Guid.Empty;
+        try
+        {
+            var flowMessage = $"MetaFlows: {nodeData.FormName ?? eFormDefinition.Name}";
+            messageSendId = await _messageSendService.CreateMessageSendAsync(
+                execution.Id,
+                stepExec.Id,
+                stepExec.Id.ToString(),
+                "sendEForm",
+                flowMessage,
+                null, // templateId
+                null, // templateName
+                "whatsapp_flow", // messageType
+                execution.WorkflowDefinition.CompanyId,
+                "system"
+            );
+            
+            WriteLog($"🔍 [DEBUG] MetaFlows 模式創建消息發送記錄，MessageSendId: {messageSendId}");
+            
+            // 添加所有收件人到 WorkflowMessageRecipients
+            await _messageSendService.AddRecipientsAsync(messageSendId, recipients, "system");
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"⚠️ [WARNING] 創建 MetaFlows 消息發送記錄失敗: {ex.Message}");
+        }
 
         // 為每個收件人創建 EFormInstance 並發送 Flow
         foreach (var recipient in recipients)
@@ -5100,9 +5093,56 @@ namespace PurpleRice.Services
                 var flowToken = $"{execution.Id}_{stepExec.Id}_{instanceId}";
                 WriteLog($"🔍 [DEBUG] 構建 flow_token: {flowToken}");
                 
-                // 發送 Flow
-                var messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta, flowToken);
-                WriteLog($"🔍 [DEBUG] Flow 發送成功，消息 ID: {messageId}");
+                // ✅ 根據表單定義中的設置決定使用 Flow Template 還是直接發送 Flow
+                // 如果表單定義中有 MetaFlowTemplateId，使用 Flow Template；否則使用直接發送
+                string messageId;
+                
+                // 查找表單定義，檢查是否有 Flow Template ID
+                // 注意：使用不同的變量名避免與方法參數 eFormDefinition 衝突
+                var flowDefinition = await db.eFormDefinitions
+                    .FirstOrDefaultAsync(f => f.MetaFlowId == flowId && 
+                                             f.CompanyId == execution.WorkflowDefinition.CompanyId);
+                
+                if (flowDefinition != null && !string.IsNullOrEmpty(flowDefinition.MetaFlowTemplateName))
+                {
+                    // ✅ 檢查 Template Name 是否為有效的 sanitized 名稱（只包含小寫字母和底線）
+                    // 如果包含非英文字符（如中文），說明是舊的錯誤數據，需要重新創建 Template 或使用直接 Flow
+                    var templateName = flowDefinition.MetaFlowTemplateName;
+                    var isValidTemplateName = System.Text.RegularExpressions.Regex.IsMatch(templateName, @"^[a-z0-9_]+$");
+                    
+                    if (isValidTemplateName)
+                    {
+                        // 使用 Flow Template 發送（用戶已選擇保存為 Template）
+                        // 注意：發送消息時需要使用 Template Name，而不是 Template ID
+                        WriteLog($"📤 [INFO] 使用 Flow Template 發送 Flow 消息 - Template Name: {templateName}");
+                        messageId = await SendFlowTemplateMessageAsync(company, formattedTo, templateName, flowToken);
+                        WriteLog($"🔍 [DEBUG] Flow Template 消息發送成功，消息 ID: {messageId}");
+                    }
+                    else
+                    {
+                        // Template Name 包含非英文字符，說明是舊的錯誤數據
+                        WriteLog($"⚠️ [WARN] Template Name 包含非英文字符（可能是舊的錯誤數據），無法使用 Flow Template 發送");
+                        WriteLog($"⚠️ [WARN] Template Name: {templateName}，請重新創建 Flow Template 以獲取正確的 Template Name");
+                        WriteLog($"📤 [INFO] 使用直接 Flow 消息發送（Template Name 格式錯誤）");
+                        messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta, flowToken);
+                        WriteLog($"🔍 [DEBUG] Flow 消息發送成功，消息 ID: {messageId}");
+                    }
+                }
+                else if (flowDefinition != null && !string.IsNullOrEmpty(flowDefinition.MetaFlowTemplateId))
+                {
+                    // 向後兼容：如果只有 Template ID 而沒有 Template Name，記錄警告
+                    WriteLog($"⚠️ [WARN] 發現 Template ID 但沒有 Template Name，無法使用 Flow Template 發送，將使用直接 Flow 發送");
+                    WriteLog($"📤 [INFO] 使用直接 Flow 消息發送（Template Name 缺失）");
+                    messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta, flowToken);
+                    WriteLog($"🔍 [DEBUG] Flow 消息發送成功，消息 ID: {messageId}");
+                }
+                else
+                {
+                    // 直接發送 Flow（用戶未選擇保存為 Template，或 Template 尚未創建）
+                    WriteLog($"📤 [INFO] 使用直接 Flow 消息發送（未配置 Flow Template）");
+                    messageId = await SendFlowMessageAsync(company, formattedTo, flowId, flowMessageVersion, flowHeader, flowBody, flowCta, flowToken);
+                    WriteLog($"🔍 [DEBUG] Flow 消息發送成功，消息 ID: {messageId}");
+                }
 
                 // 注意：不再單獨發送 "Flow sent" 消息，因為 Flow 消息本身已經發送
 
@@ -5111,16 +5151,92 @@ namespace PurpleRice.Services
                 // 或者可以通過 WorkflowStepExecution 關聯
                 eFormInstance.UserMessage = messageId; // 臨時使用 UserMessage 字段保存消息 ID
                 
+                // ✅ 更新收件人狀態為已發送
+                if (messageSendId != Guid.Empty)
+                {
+                    try
+                    {
+                        var recipientRecord = await db.WorkflowMessageRecipients
+                            .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && 
+                                                     r.PhoneNumber == recipient.PhoneNumber);
+                        
+                        if (recipientRecord != null)
+                        {
+                            await _messageSendService.UpdateRecipientStatusAsync(
+                                recipientRecord.Id,
+                                RecipientStatus.Sent
+                            );
+                            WriteLog($"🔍 [DEBUG] 已更新收件人 {recipient.PhoneNumber} 狀態為已發送");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog($"⚠️ [WARNING] 更新收件人狀態失敗: {ex.Message}");
+                    }
+                }
+                
                 WriteLog($"🔍 [DEBUG] 為收件人 {recipient.PhoneNumber} 發送 Flow 完成");
             }
             catch (Exception ex)
             {
                 WriteLog($"❌ [ERROR] 為收件人 {recipient.PhoneNumber} 發送 Flow 失敗: {ex.Message}");
+                
+                // ✅ 更新收件人狀態為失敗
+                if (messageSendId != Guid.Empty)
+                {
+                    try
+                    {
+                        var recipientRecord = await db.WorkflowMessageRecipients
+                            .FirstOrDefaultAsync(r => r.MessageSendId == messageSendId && 
+                                                     r.PhoneNumber == recipient.PhoneNumber);
+                        
+                        if (recipientRecord != null)
+                        {
+                            await _messageSendService.UpdateRecipientStatusAsync(
+                                recipientRecord.Id,
+                                RecipientStatus.Failed,
+                                null,
+                                ex.Message
+                            );
+                        }
+                    }
+                    catch (Exception updateEx)
+                    {
+                        WriteLog($"⚠️ [WARNING] 更新收件人失敗狀態時出錯: {updateEx.Message}");
+                    }
+                }
+                
                 // 繼續處理下一個收件人
             }
         }
 
         await db.SaveChangesAsync();
+        
+        // ✅ 更新 WorkflowMessageSend 狀態
+        if (messageSendId != Guid.Empty)
+        {
+            try
+            {
+                var sentCount = await db.WorkflowMessageRecipients
+                    .Where(r => r.MessageSendId == messageSendId && r.Status == "Sent")
+                    .CountAsync();
+                var failedCount = await db.WorkflowMessageRecipients
+                    .Where(r => r.MessageSendId == messageSendId && r.Status == "Failed")
+                    .CountAsync();
+                
+                var finalStatus = failedCount == 0 ? MessageSendStatus.Completed :
+                                 sentCount == 0 ? MessageSendStatus.Failed :
+                                 MessageSendStatus.PartiallyFailed;
+                
+                await _messageSendService.UpdateMessageSendStatusAsync(messageSendId, finalStatus);
+                WriteLog($"🔍 [DEBUG] MetaFlows 消息發送完成 - 已發送: {sentCount}, 失敗: {failedCount}, 總計: {recipients.Count}");
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"⚠️ [WARNING] 更新 MetaFlows 消息發送狀態失敗: {ex.Message}");
+            }
+        }
+        
         WriteLog($"🔍 [DEBUG] 已創建 {instanceIds.Count} 個表單實例並發送 Flow");
     }
 
@@ -5218,9 +5334,118 @@ namespace PurpleRice.Services
             WriteLog($"🔍 [DEBUG] Flow 消息發送成功，消息 ID: {messageId}");
             return messageId ?? "unknown";
         }
-        catch (Exception ex)
+            catch (Exception ex)
         {
             WriteLog($"❌ [ERROR] 發送 Flow 消息失敗: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 使用 Flow Template 發送 Flow 消息（用於 24 小時窗口外）
+    /// </summary>
+    private async Task<string> SendFlowTemplateMessageAsync(Company company, string to, string templateId, string flowToken = null)
+    {
+        try
+        {
+            WriteLog($"🔍 [DEBUG] 開始使用 Flow Template 發送消息");
+            WriteLog($"🔍 [DEBUG] 收件人: {to}");
+            WriteLog($"🔍 [DEBUG] Template ID: {templateId}");
+            WriteLog($"🔍 [DEBUG] Flow Token: {flowToken ?? "(將生成隨機 GUID)"}");
+
+            var apiVersion = WhatsAppApiConfig.GetApiVersion();
+            var url = $"https://graph.facebook.com/{apiVersion}/{company.WA_PhoneNo_ID}/messages";
+
+            // 如果沒有提供 flowToken，生成隨機 GUID（向後兼容）
+            var finalFlowToken = flowToken ?? Guid.NewGuid().ToString();
+
+            // 構建 Flow Template 消息 payload
+            // 根據 WhatsApp Business API 文檔，Flow Template 消息使用 template 類型
+            // Flow Template 的 components 中需要包含 flow 組件，並傳遞 flow_token
+            var payload = new Dictionary<string, object>
+            {
+                { "messaging_product", "whatsapp" },
+                { "recipient_type", "individual" },
+                { "to", to },
+                { "type", "template" },
+                { "template", new Dictionary<string, object>
+                    {
+                        { "name", templateId },
+                        { "language", new Dictionary<string, object>
+                            {
+                                { "code", "zh_TW" } // 默認使用繁體中文，可以從配置中獲取
+                            }
+                        },
+                        { "components", new[]
+                            {
+                                new Dictionary<string, object>
+                                {
+                                    { "type", "button" },
+                                    { "sub_type", "flow" },
+                                    { "index", "0" },
+                                    { "parameters", new[]
+                                        {
+                                            new Dictionary<string, object>
+                                            {
+                                                { "type", "action" },
+                                                { "action", new Dictionary<string, object>
+                                                    {
+                                                        { "flow_token", finalFlowToken }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            });
+
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow Template API URL: {url}");
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow Template API Payload: {jsonPayload}");
+
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+            var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+
+            var response = await httpClient.PostAsync(url, content);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow Template API Response Status: {response.StatusCode}");
+            WriteLog($"🔍 [DEBUG] WhatsApp Flow Template API Response Content: {responseContent}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"WhatsApp Flow Template API 請求失敗: {response.StatusCode} - {responseContent}");
+            }
+
+            // 解析響應獲取消息 ID
+            var responseJson = JsonSerializer.Deserialize<JsonElement>(responseContent);
+            string messageId = null;
+            if (responseJson.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0)
+            {
+                var firstMessage = messages[0];
+                if (firstMessage.TryGetProperty("id", out var idProp))
+                {
+                    messageId = idProp.GetString();
+                }
+            }
+
+            WriteLog($"🔍 [DEBUG] Flow Template 消息發送成功，消息 ID: {messageId}");
+            return messageId ?? "unknown";
+        }
+        catch (Exception ex)
+        {
+            WriteLog($"❌ [ERROR] 發送 Flow Template 消息失敗: {ex.Message}");
             throw;
         }
     }

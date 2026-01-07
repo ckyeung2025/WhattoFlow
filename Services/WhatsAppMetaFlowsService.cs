@@ -4,6 +4,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using PurpleRice.Data;
@@ -18,6 +20,8 @@ namespace PurpleRice.Services
         Task<MetaFlowResponse> GetFlowAsync(Guid companyId, string flowId);
         Task<bool> DeleteFlowAsync(Guid companyId, string flowId);
         Task<MetaFlowResponse> PublishFlowAsync(Guid companyId, string flowId);
+        Task<FlowTemplateCreateResponse> CreateFlowTemplateAsync(Guid companyId, string flowId, string templateName, string category = "LEAD_GENERATION", string language = "zh_TW", string? firstScreenId = null);
+        Task<bool> DeleteFlowTemplateAsync(Guid companyId, string templateId);
     }
 
     public class WhatsAppMetaFlowsService : IWhatsAppMetaFlowsService
@@ -951,6 +955,596 @@ namespace PurpleRice.Services
                 throw;
             }
         }
+
+        /// <summary>
+        /// 創建 Flow Template（用於 24 小時窗口外發送 Flow 消息）
+        /// 根據 WhatsApp Business API 文檔，Flow Template 是通過 message_templates API 創建的
+        /// </summary>
+        public async Task<FlowTemplateCreateResponse> CreateFlowTemplateAsync(
+            Guid companyId, 
+            string flowId, 
+            string templateName, 
+            string category = "LEAD_GENERATION", 
+            string language = "zh_TW",
+            string? firstScreenId = null)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📝 開始創建 Flow Template - Flow ID: {flowId}, Template Name: {templateName}");
+
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                // ✅ 轉換模板名稱：Meta API 要求模板名稱只能包含小寫英文字母和底線
+                // 將所有非小寫英文字母和底線的字符替換為底線，並轉為小寫
+                var sanitizedTemplateName = Regex.Replace(
+                    templateName ?? "flow_template",
+                    @"[^a-z_]", 
+                    "_", 
+                    RegexOptions.IgnoreCase
+                ).ToLowerInvariant();
+                
+                // 移除連續的底線
+                sanitizedTemplateName = Regex.Replace(sanitizedTemplateName, @"_+", "_");
+                
+                // 移除開頭和結尾的底線
+                sanitizedTemplateName = sanitizedTemplateName.Trim('_');
+                
+                // 確保名稱不為空
+                if (string.IsNullOrEmpty(sanitizedTemplateName))
+                {
+                    sanitizedTemplateName = $"flow_template_{flowId.Substring(Math.Max(0, flowId.Length - 8))}";
+                }
+                
+                // 確保名稱不超過 512 字符（Meta API 限制）
+                if (sanitizedTemplateName.Length > 512)
+                {
+                    sanitizedTemplateName = sanitizedTemplateName.Substring(0, 512);
+                }
+                
+                _loggingService.LogInformation($"📝 原始模板名稱: {templateName}");
+                _loggingService.LogInformation($"📝 轉換後模板名稱: {sanitizedTemplateName}");
+
+                // ✅ 從 MetaFlowJson 中提取 Header、Body、Footer 和 firstScreenId
+                string? headerText = null;
+                string? bodyText = null;
+                string? footerText = null;
+                
+                var eFormDefinition = await _context.eFormDefinitions
+                    .FirstOrDefaultAsync(f => f.MetaFlowId == flowId && f.CompanyId == companyId);
+                
+                if (eFormDefinition != null && !string.IsNullOrEmpty(eFormDefinition.MetaFlowJson))
+                {
+                    try
+                    {
+                        var flowJson = JsonSerializer.Deserialize<JsonElement>(eFormDefinition.MetaFlowJson);
+                        if (flowJson.TryGetProperty("screens", out var screens) && screens.GetArrayLength() > 0)
+                        {
+                            var firstScreen = screens[0];
+                            
+                            // 獲取 Screen ID
+                            if (string.IsNullOrEmpty(firstScreenId) && firstScreen.TryGetProperty("id", out var screenIdProp))
+                            {
+                                firstScreenId = screenIdProp.GetString();
+                                _loggingService.LogInformation($"📝 從 MetaFlowJson 獲取第一個 Screen ID: {firstScreenId}");
+                            }
+                            
+                            // 從 layout.children 中提取 Header、Body、Footer
+                            if (firstScreen.TryGetProperty("layout", out var layout) && 
+                                layout.TryGetProperty("children", out var children))
+                            {
+                                foreach (var child in children.EnumerateArray())
+                                {
+                                    if (child.TryGetProperty("type", out var childType))
+                                    {
+                                        var type = childType.GetString();
+                                        
+                                        // 提取 Header (TextHeading)
+                                        if (type == "TextHeading" && child.TryGetProperty("text", out var headerTextProp))
+                                        {
+                                            headerText = headerTextProp.GetString();
+                                            _loggingService.LogInformation($"📝 從 MetaFlowJson 獲取 Header: {headerText}");
+                                        }
+                                        
+                                        // 提取 Body (TextBody)
+                                        if (type == "TextBody" && child.TryGetProperty("text", out var bodyTextProp))
+                                        {
+                                            bodyText = bodyTextProp.GetString();
+                                            _loggingService.LogInformation($"📝 從 MetaFlowJson 獲取 Body: {bodyText}");
+                                        }
+                                        
+                                        // 提取 Footer (Footer)
+                                        if (type == "Footer" && child.TryGetProperty("label", out var footerLabelProp))
+                                        {
+                                            footerText = footerLabelProp.GetString();
+                                            _loggingService.LogInformation($"📝 從 MetaFlowJson 獲取 Footer: {footerText}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _loggingService.LogWarning($"⚠️ 解析 MetaFlowJson 失敗: {ex.Message}");
+                    }
+                }
+                
+                // 如果還是沒有，使用默認值
+                if (string.IsNullOrEmpty(firstScreenId))
+                {
+                    firstScreenId = "screen";
+                    _loggingService.LogInformation($"📝 使用默認 Screen ID: {firstScreenId}");
+                }
+                
+                // 設置默認值（如果沒有從 Flow 中提取到）
+                if (string.IsNullOrEmpty(bodyText))
+                {
+                    bodyText = "請按下面按鈕填寫資料";
+                    _loggingService.LogInformation($"📝 使用默認 Body 文字: {bodyText}");
+                }
+                
+                if (string.IsNullOrEmpty(footerText))
+                {
+                    footerText = "開啟表單";
+                    _loggingService.LogInformation($"📝 使用默認 Footer 文字: {footerText}");
+                }
+
+                // ✅ 在創建 Template 之前，先檢查是否存在相同名稱的 Template
+                // 如果存在，嘗試刪除它（避免 category 衝突錯誤）
+                try
+                {
+                    var checkUrl = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates?name={Uri.EscapeDataString(sanitizedTemplateName)}&language={language}";
+                    
+                    _httpClient.DefaultRequestHeaders.Clear();
+                    _httpClient.DefaultRequestHeaders.Authorization = 
+                        new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+                    
+                    _loggingService.LogInformation($"🔍 檢查已存在的 Template - URL: {checkUrl}");
+                    var checkResponse = await _httpClient.GetAsync(checkUrl);
+                    var checkContent = await checkResponse.Content.ReadAsStringAsync();
+                    
+                    _loggingService.LogInformation($"🔍 檢查響應狀態: {checkResponse.StatusCode}");
+                    _loggingService.LogDebug($"🔍 檢查響應內容: {checkContent}");
+                    
+                    if (checkResponse.IsSuccessStatusCode)
+                    {
+                        var checkResult = JsonSerializer.Deserialize<JsonElement>(checkContent);
+                        if (checkResult.TryGetProperty("data", out var data))
+                        {
+                            var dataCount = data.GetArrayLength();
+                            _loggingService.LogInformation($"🔍 找到 {dataCount} 個匹配的 Template");
+                            
+                            if (dataCount > 0)
+                            {
+                                // 找到相同名稱的 Template，嘗試刪除
+                                var existingTemplate = data[0];
+                                if (existingTemplate.TryGetProperty("id", out var existingId))
+                                {
+                                    var existingTemplateId = existingId.GetString();
+                                    var existingCategory = existingTemplate.TryGetProperty("category", out var catProp) ? catProp.GetString() : "未知";
+                                    _loggingService.LogInformation($"📝 發現已存在的 Template: {existingTemplateId}，Category: {existingCategory}，嘗試刪除");
+                                    
+                                    var deleteResult = await DeleteFlowTemplateAsync(companyId, existingTemplateId);
+                                    if (deleteResult)
+                                    {
+                                        _loggingService.LogInformation($"✅ 成功刪除已存在的 Template: {existingTemplateId}");
+                                    }
+                                    else
+                                    {
+                                        _loggingService.LogWarning($"⚠️ 無法刪除已存在的 Template: {existingTemplateId}（可能已審核通過），將使用新名稱創建");
+                                        // 如果無法刪除，添加時間戳確保名稱唯一
+                                        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                                        sanitizedTemplateName = $"{sanitizedTemplateName}_{timestamp}";
+                                        _loggingService.LogInformation($"📝 使用新模板名稱: {sanitizedTemplateName}");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                _loggingService.LogInformation($"🔍 沒有找到已存在的 Template，將創建新的");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogWarning($"⚠️ 檢查已存在的 Template 失敗: {checkResponse.StatusCode} - {checkContent}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogWarning($"⚠️ 檢查已存在的 Template 時發生錯誤: {ex.Message}，繼續創建新 Template");
+                }
+
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates";
+                
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                // ✅ 映射 category：Flow Template 的 category 必須是 UTILITY, MARKETING, 或 AUTHENTICATION
+                // Flow 的 category 可以是 LEAD_GENERATION，但 Template 需要映射
+                string templateCategory = category?.ToUpper() switch
+                {
+                    "LEAD_GENERATION" => "UTILITY", // LEAD_GENERATION 映射到 UTILITY
+                    "UTILITY" => "UTILITY",
+                    "MARKETING" => "MARKETING",
+                    "AUTHENTICATION" => "AUTHENTICATION",
+                    _ => "UTILITY" // 默認使用 UTILITY
+                };
+                
+                _loggingService.LogInformation($"📝 Flow Category: {category} -> Template Category: {templateCategory}");
+
+                // ✅ 構建 Flow Template 請求（正確格式）
+                // 根據 Meta API 文檔，Flow Template 需要使用 BUTTONS component，並在 buttons 中使用 type: "FLOW"
+                var components = new List<object>();
+                
+                // 添加 HEADER（如果有的話）
+                if (!string.IsNullOrEmpty(headerText))
+                {
+                    components.Add(new
+                    {
+                        type = "HEADER",
+                        format = "TEXT",
+                        text = headerText
+                    });
+                }
+                
+                // 添加 BODY（必填）
+                components.Add(new
+                {
+                    type = "BODY",
+                    text = bodyText
+                });
+                
+                // 添加 FOOTER（如果有的話）
+                if (!string.IsNullOrEmpty(footerText))
+                {
+                    components.Add(new
+                    {
+                        type = "FOOTER",
+                        text = footerText
+                    });
+                }
+                
+                // 添加 BUTTONS（必填，包含 FLOW button）
+                components.Add(new
+                {
+                    type = "BUTTONS",
+                    buttons = new object[]
+                    {
+                        new
+                        {
+                            type = "FLOW",
+                            text = footerText ?? "開啟表單", // 使用 Footer 文字作為按鈕文字
+                            flow_id = flowId,
+                            flow_action = "navigate",
+                            navigate_screen = firstScreenId
+                        }
+                    }
+                });
+                
+                var payload = new
+                {
+                    name = sanitizedTemplateName,
+                    category = templateCategory,
+                    language = language,
+                    components = components
+                };
+
+                var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                {
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                });
+
+                _loggingService.LogInformation($"📤 Flow Template 請求 URL: {url}");
+                _loggingService.LogInformation($"📤 Flow Template 請求 Payload: {jsonPayload}");
+
+                var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 Flow Template 響應狀態碼: {response.StatusCode}");
+                _loggingService.LogInformation($"📨 Flow Template 響應內容: {responseContent}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<MetaFlowErrorResponse>(responseContent, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (errorResponse?.Error != null)
+                        {
+                            var error = errorResponse.Error;
+                            _loggingService.LogError($"❌ Meta API 錯誤 - Code: {error.Code}, Type: {error.Type}, Message: {error.Message}");
+                            
+                            // ✅ 處理 category 衝突錯誤：如果錯誤信息建議使用 MARKETING，自動重試
+                            // 檢查 error.Message 或 error_user_msg（如果有的話）
+                            var errorMessage = error.Message ?? "";
+                            var errorUserMsg = error.ErrorUserMsg ?? "";
+                            var fullErrorText = $"{errorMessage} {errorUserMsg}";
+                            
+                            _loggingService.LogInformation($"🔍 錯誤詳情 - Message: {errorMessage}, ErrorUserMsg: {errorUserMsg}");
+                            
+                            if (error.Code == 100 && 
+                                (fullErrorText.Contains("category") || fullErrorText.Contains("類別")) &&
+                                (fullErrorText.Contains("MARKETING") || fullErrorText.Contains("無法變更此訊息範本的類別")))
+                            {
+                                _loggingService.LogWarning($"⚠️ 檢測到 category 衝突錯誤，嘗試使用 MARKETING category 重新創建");
+                                
+                                // 使用 MARKETING category 重新創建
+                                templateCategory = "MARKETING";
+                                payload = new
+                                {
+                                    name = sanitizedTemplateName,
+                                    category = templateCategory,
+                                    language = language,
+                                    components = components
+                                };
+                                
+                                jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                                {
+                                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                                });
+                                
+                                _loggingService.LogInformation($"📤 使用 MARKETING category 重新創建 Flow Template");
+                                _loggingService.LogInformation($"📤 Flow Template 請求 Payload: {jsonPayload}");
+                                
+                                content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                                response = await _httpClient.PostAsync(url, content);
+                                responseContent = await response.Content.ReadAsStringAsync();
+                                
+                                _loggingService.LogInformation($"📨 Flow Template 響應狀態碼: {response.StatusCode}");
+                                _loggingService.LogInformation($"📨 Flow Template 響應內容: {responseContent}");
+                                
+                                // 如果重試仍然失敗，檢查是否是語言版本被刪除的錯誤
+                                if (!response.IsSuccessStatusCode)
+                                {
+                                    try
+                                    {
+                                        var retryErrorResponse = JsonSerializer.Deserialize<MetaFlowErrorResponse>(responseContent, new JsonSerializerOptions
+                                        {
+                                            PropertyNameCaseInsensitive = true
+                                        });
+                                        
+                                        if (retryErrorResponse?.Error != null)
+                                        {
+                                            var retryError = retryErrorResponse.Error;
+                                            var retryErrorUserMsg = retryError.ErrorUserMsg ?? "";
+                                            
+                                            // 檢查是否是「語言已被刪除，無法新增」的錯誤
+                                            if (retryErrorUserMsg.Contains("無法新增") || retryErrorUserMsg.Contains("語言已被刪除"))
+                                            {
+                                                _loggingService.LogWarning($"⚠️ 檢測到語言版本被刪除的錯誤，生成新的唯一模板名稱");
+                                                
+                                                // 生成新的唯一模板名稱（添加時間戳）
+                                                var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                                                sanitizedTemplateName = $"{sanitizedTemplateName}_{timestamp}";
+                                                
+                                                _loggingService.LogInformation($"📝 使用新模板名稱: {sanitizedTemplateName}");
+                                                
+                                                // 使用新名稱重新創建
+                                                payload = new
+                                                {
+                                                    name = sanitizedTemplateName,
+                                                    category = templateCategory,
+                                                    language = language,
+                                                    components = components
+                                                };
+                                                
+                                                jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+                                                {
+                                                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                                                });
+                                                
+                                                _loggingService.LogInformation($"📤 使用新模板名稱重新創建 Flow Template");
+                                                _loggingService.LogInformation($"📤 Flow Template 請求 Payload: {jsonPayload}");
+                                                
+                                                content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                                                response = await _httpClient.PostAsync(url, content);
+                                                responseContent = await response.Content.ReadAsStringAsync();
+                                                
+                                                _loggingService.LogInformation($"📨 Flow Template 響應狀態碼: {response.StatusCode}");
+                                                _loggingService.LogInformation($"📨 Flow Template 響應內容: {responseContent}");
+                                                
+                                                // 如果仍然失敗，拋出異常
+                                                if (!response.IsSuccessStatusCode)
+                                                {
+                                                    throw new Exception($"創建 Flow Template 失敗（即使使用新名稱和 MARKETING category）: {retryError.Message} (Code: {retryError.Code})");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                throw new Exception($"創建 Flow Template 失敗（即使使用 MARKETING category）: {retryError.Message} (Code: {retryError.Code})");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            throw new Exception($"創建 Flow Template 失敗（即使使用 MARKETING category）: {response.StatusCode} - {responseContent}");
+                                        }
+                                    }
+                                    catch (JsonException)
+                                    {
+                                        throw new Exception($"創建 Flow Template 失敗（即使使用 MARKETING category）: {response.StatusCode} - {responseContent}");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // 其他錯誤，直接拋出異常
+                                throw new Exception($"創建 Flow Template 失敗: {error.Message} (Code: {error.Code})");
+                            }
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // 如果無法解析為錯誤響應，使用原始內容
+                    }
+                    
+                    // 如果上面的重試邏輯沒有處理，檢查是否仍然失敗
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        throw new Exception($"創建 Flow Template 失敗: {response.StatusCode} - {responseContent}");
+                    }
+                }
+
+                // 解析響應
+                var result = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                var templateId = result.TryGetProperty("id", out var idProp) 
+                    ? idProp.GetString() 
+                    : null;
+                var status = result.TryGetProperty("status", out var statusProp) 
+                    ? statusProp.GetString() 
+                    : "PENDING";
+                var responseCategory = result.TryGetProperty("category", out var categoryProp) 
+                    ? categoryProp.GetString() 
+                    : category;
+
+                if (string.IsNullOrEmpty(templateId))
+                {
+                    throw new Exception("Meta API 返回的 Flow Template ID 為空");
+                }
+
+                _loggingService.LogInformation($"✅ Flow Template 創建成功 - Template ID: {templateId}, Template Name: {sanitizedTemplateName}, Status: {status}");
+
+                return new FlowTemplateCreateResponse
+                {
+                    TemplateId = templateId,
+                    TemplateName = sanitizedTemplateName, // ✅ 返回實際使用的 sanitized 名稱，而不是原始名稱
+                    Status = status,
+                    Category = responseCategory
+                };
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 創建 Flow Template 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 刪除 Flow Template
+        /// </summary>
+        public async Task<bool> DeleteFlowTemplateAsync(Guid companyId, string templateId)
+        {
+            try
+            {
+                _loggingService.LogInformation($"🗑️ 開始刪除 Flow Template - Template ID: {templateId}");
+
+                var company = await _context.Companies.FindAsync(companyId);
+                if (company == null || string.IsNullOrEmpty(company.WA_Business_Account_ID))
+                {
+                    throw new Exception("未找到公司配置或 WhatsApp Business Account ID");
+                }
+
+                // Meta API 刪除 Template 的端點：DELETE /{WABA-ID}/message_templates/{template-id}
+                var url = $"https://graph.facebook.com/{GetMetaApiVersion()}/{company.WA_Business_Account_ID}/message_templates/{templateId}";
+                
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                _loggingService.LogInformation($"📡 請求 URL: {url}");
+
+                var response = await _httpClient.DeleteAsync(url);
+                var content = await response.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 Response Status: {response.StatusCode}");
+                _loggingService.LogDebug($"📨 Response Content: {content}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<MetaFlowErrorResponse>(content, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+
+                        if (errorResponse?.Error != null)
+                        {
+                            var error = errorResponse.Error;
+                            _loggingService.LogError($"❌ Meta API 錯誤 - Code: {error.Code}, Type: {error.Type}, Message: {error.Message}");
+                            
+                            // 如果 Template 已審核通過，可能無法刪除（這是正常的）
+                            if (error.Code == 100 || error.Message.Contains("cannot be deleted") || error.Message.Contains("approved"))
+                            {
+                                _loggingService.LogWarning($"⚠️ Flow Template 可能已審核通過，無法刪除: {error.Message}");
+                                return false; // 返回 false 表示無法刪除，但不拋出異常
+                            }
+                            
+                            throw new Exception($"刪除 Flow Template 失敗: {error.Message} (Code: {error.Code})");
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // 如果無法解析為錯誤響應，使用原始內容
+                    }
+
+                    throw new Exception($"刪除 Flow Template 失敗: {response.StatusCode} - {content}");
+                }
+
+                _loggingService.LogInformation($"✅ Flow Template 刪除成功 - Template ID: {templateId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 刪除 Flow Template 失敗: {ex.Message}", ex);
+                // 如果刪除失敗（例如已審核通過），返回 false 而不是拋出異常
+                // 這樣調用方可以繼續創建新的 Template
+                return false;
+            }
+        }
     }
+
+    #region Response Classes
+
+    public class MetaFlowResponse
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string Status { get; set; }
+        public string Version { get; set; }
+        public bool? Success { get; set; }
+        public List<string> Categories { get; set; }
+        public List<object> ValidationErrors { get; set; }
+        public DateTime? CreatedTime { get; set; }
+        public DateTime? UpdatedTime { get; set; }
+    }
+
+    public class MetaFlowErrorResponse
+    {
+        public MetaFlowError Error { get; set; }
+    }
+
+    public class MetaFlowError
+    {
+        public string Message { get; set; }
+        public string Type { get; set; }
+        public int Code { get; set; }
+        public int ErrorSubcode { get; set; }
+        public string FbtraceId { get; set; }
+        [JsonPropertyName("error_user_msg")]
+        public string ErrorUserMsg { get; set; }
+        [JsonPropertyName("error_user_title")]
+        public string ErrorUserTitle { get; set; }
+    }
+
+    public class FlowTemplateCreateResponse
+    {
+        public string TemplateId { get; set; }
+        public string TemplateName { get; set; }
+        public string Status { get; set; }
+        public string Category { get; set; }
+    }
+
+    #endregion
 }
 
