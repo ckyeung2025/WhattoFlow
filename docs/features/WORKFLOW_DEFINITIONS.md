@@ -15,7 +15,7 @@ WhattoFlow 系統的工作流定義模組是一個強大的業務流程設計和
 
 ### **2. 技術棧**
 - **前端**: React Flow + Ant Design + Monaco Editor
-- **後端**: .NET 8.0 Web API
+- **後端**: .NET 10.0 Web API
 - **數據庫**: SQL Server + Entity Framework
 - **實時協作**: SignalR WebSocket
 - **版本控制**: Git-like 版本管理

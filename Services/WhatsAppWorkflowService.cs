@@ -43,6 +43,138 @@ namespace PurpleRice.Services
         }
 
         /// <summary>
+        /// 上傳媒體文件到 Meta 並獲取 media_id（用於發送消息）
+        /// </summary>
+        /// <param name="company">公司對象</param>
+        /// <param name="mediaUrl">媒體文件 URL</param>
+        /// <param name="mediaType">媒體類型（image/video/document）</param>
+        /// <returns>media_id</returns>
+        private async Task<string> UploadMediaAndGetMediaIdAsync(Company company, string mediaUrl, string mediaType)
+        {
+            try
+            {
+                _loggingService.LogInformation($"📤 開始上傳媒體到 Meta 獲取 media_id - URL: {mediaUrl}, 類型: {mediaType}");
+
+                if (string.IsNullOrEmpty(company.WA_PhoneNo_ID))
+                {
+                    throw new Exception("未找到 WhatsApp Phone Number ID");
+                }
+
+                // 步驟1: 下載媒體文件
+                using var downloadClient = new HttpClient();
+                var mediaResponse = await downloadClient.GetAsync(mediaUrl);
+                if (!mediaResponse.IsSuccessStatusCode)
+                {
+                    throw new Exception($"無法下載媒體文件: {mediaResponse.StatusCode}");
+                }
+
+                var mediaBytes = await mediaResponse.Content.ReadAsByteArrayAsync();
+                var fileName = mediaUrl.Split('/').Last().Split('?').First(); // 獲取文件名
+                var fileExtension = Path.GetExtension(fileName).TrimStart('.');
+                
+                _loggingService.LogInformation($"✅ 下載媒體文件成功，大小: {mediaBytes.Length} bytes, 文件名: {fileName}");
+                _loggingService.LogInformation($"📤 準備上傳媒體 - Type: {mediaType}, MIME: 將根據類型確定");
+
+                // 步驟2: 確定 MIME 類型
+                string mimeType;
+                switch (mediaType.ToLower())
+                {
+                    case "image":
+                        mimeType = fileExtension.ToLower() switch
+                        {
+                            "jpg" or "jpeg" => "image/jpeg",
+                            "png" => "image/png",
+                            "gif" => "image/gif",
+                            "webp" => "image/webp",
+                            "bmp" => "image/bmp",
+                            _ => "image/jpeg"
+                        };
+                        break;
+                    case "video":
+                        mimeType = fileExtension.ToLower() switch
+                        {
+                            "mp4" => "video/mp4",
+                            "avi" => "video/x-msvideo",
+                            "mov" => "video/quicktime",
+                            "wmv" => "video/x-ms-wmv",
+                            "flv" => "video/x-flv",
+                            "webm" => "video/webm",
+                            "mkv" => "video/x-matroska",
+                            "m4v" => "video/x-m4v",
+                            "3gp" => "video/3gpp",
+                            _ => "video/mp4"
+                        };
+                        break;
+                    case "document":
+                        mimeType = fileExtension.ToLower() switch
+                        {
+                            "pdf" => "application/pdf",
+                            "doc" => "application/msword",
+                            "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            "txt" => "text/plain",
+                            "xls" => "application/vnd.ms-excel",
+                            "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            "ppt" => "application/vnd.ms-powerpoint",
+                            "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                            _ => "application/pdf"
+                        };
+                        break;
+                    default:
+                        mimeType = "application/octet-stream";
+                        break;
+                }
+
+                // 步驟3: 上傳到 Meta API 獲取 media_id
+                // POST /{PHONE_NUMBER_ID}/media
+                using var uploadClient = new HttpClient();
+                uploadClient.DefaultRequestHeaders.Authorization = 
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", company.WA_API_Key);
+
+                var uploadUrl = $"https://graph.facebook.com/{GetApiVersion()}/{company.WA_PhoneNo_ID}/media";
+                
+                var formData = new MultipartFormDataContent();
+                formData.Add(new StringContent("whatsapp"), "messaging_product");
+                formData.Add(new StringContent(mediaType.ToLower()), "type");
+                
+                var fileContent = new ByteArrayContent(mediaBytes);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
+                formData.Add(fileContent, "file", fileName);
+
+                _loggingService.LogInformation($"📤 上傳媒體到 Meta - URL: {uploadUrl}");
+                _loggingService.LogInformation($"📤 上傳參數: messaging_product=whatsapp, type={mediaType.ToLower()}, file={fileName}, Content-Type={mimeType}");
+
+                var uploadResponse = await uploadClient.PostAsync(uploadUrl, formData);
+                var uploadContent = await uploadResponse.Content.ReadAsStringAsync();
+
+                _loggingService.LogInformation($"📨 上傳響應: {uploadContent}");
+
+                if (!uploadResponse.IsSuccessStatusCode)
+                {
+                    throw new Exception($"上傳媒體失敗: {uploadResponse.StatusCode} - {uploadContent}");
+                }
+
+                // 解析響應獲取 media_id
+                var uploadResult = JsonSerializer.Deserialize<JsonElement>(uploadContent);
+                
+                if (uploadResult.TryGetProperty("id", out var mediaIdElement))
+                {
+                    var mediaId = mediaIdElement.GetString();
+                    _loggingService.LogInformation($"✅ 上傳成功，獲取 media_id: {mediaId}");
+                    return mediaId;
+                }
+                else
+                {
+                    throw new Exception($"上傳響應中未找到 'id' 字段: {uploadContent}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ 上傳媒體獲取 media_id 失敗: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 統一的 WhatsApp 消息發送方法
         /// </summary>
         /// <param name="to">收件人電話號碼</param>
@@ -111,7 +243,10 @@ namespace PurpleRice.Services
             Dictionary<string, string> variables = null,
             bool isMetaTemplate = false,
             string templateName = null,
-            string templateLanguage = null)  // 添加語言代碼參數
+            string templateLanguage = null,  // 添加語言代碼參數
+            string templateHeaderUrl = null,  // 添加 header URL 參數
+            string templateHeaderType = null,  // 添加 header 類型參數
+            string templateHeaderFilename = null)  // 添加 header filename 參數
         {
             try
             {
@@ -131,7 +266,7 @@ namespace PurpleRice.Services
                     }
                     
                     // 調用 Meta 模板發送方法
-                    return await SendMetaTemplateMessageAsync(to, templateName, variables, company, templateLanguage, dbContext);
+                    return await SendMetaTemplateMessageAsync(to, templateName, variables, company, templateLanguage, dbContext, templateHeaderUrl, templateHeaderType, templateHeaderFilename);
                 }
                 else
                 {
@@ -886,7 +1021,10 @@ namespace PurpleRice.Services
             Dictionary<string, string> variables,
             Company company,
             string languageCode = null,  // 添加語言代碼參數
-            PurpleRiceDbContext dbContext = null)  // 添加 dbContext 參數，用於從數據庫讀取 header_url
+            PurpleRiceDbContext dbContext = null,  // 添加 dbContext 參數，用於從數據庫讀取 header_url
+            string templateHeaderUrl = null,  // 添加 header URL 參數（可能包含變數）
+            string templateHeaderType = null,  // 添加 header 類型參數
+            string templateHeaderFilename = null)  // 添加 header filename 參數（可能包含變數）
         {
             try
             {
@@ -1061,8 +1199,59 @@ namespace PurpleRice.Services
                 string headerType = null;
                 string headerFilename = null;
                 
-                // 嘗試從變數中獲取 header_url（無論是否有靜態 header）
-                if (variables != null && variables.Any())
+                // 優先使用從節點數據傳入的 templateHeaderUrl（已包含變數占位符）
+                if (!string.IsNullOrEmpty(templateHeaderUrl))
+                {
+                    // 替換 URL 中的流程變數
+                    headerUrl = templateHeaderUrl;
+                    if (variables != null && variables.Any())
+                    {
+                        // 先替換數字鍵（如 "1", "2"），然後替換命名鍵（如 "InvoiceNo"）
+                        // 因為 URL 中可能同時包含 ${1} 和 ${InvoiceNo} 格式
+                        foreach (var kvp in variables)
+                        {
+                            // 替換 ${Key} 格式
+                            headerUrl = headerUrl.Replace($"${{{kvp.Key}}}", kvp.Value ?? "");
+                        }
+                        
+                        // 如果變數字典的鍵是數字（如 "1"），嘗試從 ProcessVariable 名稱映射
+                        // 這需要從 WorkflowEngine 傳遞額外的映射信息，但現在先處理常見情況
+                        // 例如：如果變數鍵是 "1" 且值對應 InvoiceNo，嘗試替換 ${InvoiceNo}
+                        // 注意：這是一個簡化處理，理想情況下應該從 WorkflowEngine 傳遞完整的變數映射
+                    }
+                    headerType = templateHeaderType?.ToLower();
+                    
+                    // 優先使用用戶在屬性頁輸入的 templateHeaderFilename
+                    if (!string.IsNullOrEmpty(templateHeaderFilename))
+                    {
+                        headerFilename = templateHeaderFilename;
+                        
+                        // 如果 headerFilename 包含變數，替換它
+                        if (variables != null && variables.Any())
+                        {
+                            var originalFilename = headerFilename;
+                            foreach (var kvp in variables)
+                            {
+                                headerFilename = headerFilename.Replace($"${{{kvp.Key}}}", kvp.Value ?? "");
+                            }
+                            _loggingService.LogInformation($"✅ 使用屬性頁輸入的 templateHeaderFilename: {originalFilename} -> {headerFilename} (已替換變數)");
+                        }
+                        else
+                        {
+                            _loggingService.LogInformation($"✅ 使用屬性頁輸入的 templateHeaderFilename: {headerFilename} (無變數)");
+                        }
+                    }
+                    else
+                    {
+                        _loggingService.LogInformation($"ℹ️ 屬性頁未輸入 templateHeaderFilename，將從 URL 或數據庫讀取");
+                    }
+                    
+                    userProvidedHeaderUrl = true;
+                    _loggingService.LogInformation($"✅ 使用節點數據中的 templateHeaderUrl: {headerUrl}, Type: {headerType}, Filename: {headerFilename ?? "未提供"}");
+                }
+                
+                // 如果沒有從節點數據獲取，嘗試從變數中獲取 header_url（無論是否有靜態 header）
+                if (string.IsNullOrEmpty(headerUrl) && variables != null && variables.Any())
                 {
                     // 檢查是否有 header 相關的變數
                     // 支持以下格式：
@@ -1138,9 +1327,15 @@ namespace PurpleRice.Services
                                 {
                                     headerUrl = templateRecord.HeaderUrl;
                                     headerType = string.IsNullOrEmpty(templateRecord.HeaderType) ? templateHeaderFormat.ToLower() : templateRecord.HeaderType;
-                                    headerFilename = string.IsNullOrEmpty(templateRecord.HeaderFilename) ? null : templateRecord.HeaderFilename;
                                     
-                                    _loggingService.LogInformation($"✅ 從數據庫讀取 Header URL: {headerUrl}, Type: {headerType}");
+                                    // 只有在用戶沒有提供 filename 時，才從數據庫讀取
+                                    if (string.IsNullOrEmpty(headerFilename) && !string.IsNullOrEmpty(templateRecord.HeaderFilename))
+                                    {
+                                        headerFilename = templateRecord.HeaderFilename;
+                                        _loggingService.LogInformation($"✅ 從數據庫讀取 Header Filename: {headerFilename}");
+                                    }
+                                    
+                                    _loggingService.LogInformation($"✅ 從數據庫讀取 Header URL: {headerUrl}, Type: {headerType}, Filename: {headerFilename ?? "使用用戶輸入或未提供"}");
                                     userProvidedHeaderUrl = false; // 標記為自動獲取
                                 }
                                 else
@@ -1284,46 +1479,215 @@ namespace PurpleRice.Services
                         
                         object headerParameter = null;
                         
-                        // 根據 header 類型構建參數
-                        switch (headerType.ToLower())
+                        // 先上傳媒體到 Meta 獲取 media_id
+                        try
                         {
-                            case "video":
-                                headerParameter = new
+                            _loggingService.LogInformation($"📤 開始上傳媒體獲取 media_id: URL={headerUrl}, Type={headerType}");
+                            string mediaId = await UploadMediaAndGetMediaIdAsync(company, headerUrl, headerType);
+                            
+                            // 處理文件名（優先級：用戶輸入 > URL 提取 > 智能生成 > 默認值）
+                            bool isUserProvidedFilename = !string.IsNullOrEmpty(templateHeaderFilename);
+                            
+                            // 如果用戶沒有在屬性頁輸入 filename，才從 URL 中提取
+                            if (string.IsNullOrEmpty(headerFilename) && !isUserProvidedFilename && Uri.TryCreate(headerUrl, UriKind.Absolute, out var uri))
+                            {
+                                var pathSegments = uri.Segments;
+                                if (pathSegments.Length > 0)
                                 {
-                                    type = "video",
-                                    video = new
+                                    var lastSegment = pathSegments[pathSegments.Length - 1];
+                                    // 移除查詢參數
+                                    var fileName = lastSegment.Split('?')[0];
+                                    if (!string.IsNullOrEmpty(fileName))
                                     {
-                                        link = headerUrl
+                                        headerFilename = fileName;
+                                        _loggingService.LogInformation($"📝 從 URL 提取文件名: {headerFilename}");
                                     }
-                                };
-                                _loggingService.LogInformation($"📹 構建 VIDEO Header: URL={headerUrl}");
-                                break;
+                                }
+                            }
+                            
+                            // 只有在用戶沒有提供 filename 或文件名確實有問題時，才進行優化
+                            if (!string.IsNullOrEmpty(headerFilename))
+                            {
+                                // 獲取文件擴展名
+                                var fileExtension = Path.GetExtension(headerFilename).ToLower();
                                 
-                            case "document":
-                                headerParameter = new
+                                // 如果文件名太長（超過 100 字符），即使是用戶提供的也要優化
+                                // 但如果是用戶提供的且長度合理，直接使用
+                                if (headerFilename.Length > 100)
                                 {
-                                    type = "document",
-                                    document = new
+                                    // 文件名太長，需要優化
+                                    string meaningfulName = null;
+                                    
+                                    // 嘗試從變數中提取有意義的名稱
+                                    if (variables != null && variables.Any())
                                     {
-                                        link = headerUrl,
-                                        filename = !string.IsNullOrEmpty(headerFilename) ? headerFilename : "document"
+                                        if (variables.TryGetValue("InvoiceNo", out var invoiceNo) && !string.IsNullOrEmpty(invoiceNo))
+                                        {
+                                            meaningfulName = $"Invoice_{invoiceNo}{fileExtension}";
+                                        }
+                                        else if (variables.TryGetValue("1", out var var1) && !string.IsNullOrEmpty(var1))
+                                        {
+                                            meaningfulName = $"Document_{var1}{fileExtension}";
+                                        }
                                     }
-                                };
-                                _loggingService.LogInformation($"📄 構建 DOCUMENT Header: URL={headerUrl}, Filename={headerFilename ?? "document"}");
-                                break;
+                                    
+                                    if (string.IsNullOrEmpty(meaningfulName))
+                                    {
+                                        meaningfulName = headerType.ToLower() switch
+                                        {
+                                            "image" => $"image{fileExtension}",
+                                            "video" => $"video{fileExtension}",
+                                            "document" => $"document{fileExtension}",
+                                            _ => $"file{fileExtension}"
+                                        };
+                                    }
+                                    
+                                    headerFilename = meaningfulName;
+                                    _loggingService.LogInformation($"📝 文件名過長（>100字符），已優化為: {headerFilename}");
+                                }
+                                // 如果是用戶提供的文件名，即使包含特殊字符也直接使用（用戶可能有意為之）
+                                else if (!isUserProvidedFilename && headerFilename.Contains("_") && headerFilename.Contains("-") && headerFilename.Length > 50)
+                                {
+                                    // 只有非用戶提供的文件名才進行此優化
+                                    string meaningfulName = null;
+                                    
+                                    if (variables != null && variables.Any())
+                                    {
+                                        if (variables.TryGetValue("InvoiceNo", out var invoiceNo) && !string.IsNullOrEmpty(invoiceNo))
+                                        {
+                                            meaningfulName = $"Invoice_{invoiceNo}{fileExtension}";
+                                        }
+                                        else if (variables.TryGetValue("1", out var var1) && !string.IsNullOrEmpty(var1))
+                                        {
+                                            meaningfulName = $"Document_{var1}{fileExtension}";
+                                        }
+                                    }
+                                    
+                                    if (!string.IsNullOrEmpty(meaningfulName))
+                                    {
+                                        headerFilename = meaningfulName;
+                                        _loggingService.LogInformation($"📝 自動提取的文件名包含特殊字符，已優化為: {headerFilename}");
+                                    }
+                                }
                                 
-                            case "image":
-                            default:
-                                headerParameter = new
+                                // 確保文件名有正確的擴展名（即使是用戶提供的）
+                                if (string.IsNullOrEmpty(fileExtension))
                                 {
-                                    type = "image",
-                                    image = new
+                                    var defaultExt = headerType.ToLower() switch
                                     {
-                                        link = headerUrl
+                                        "image" => ".jpg",
+                                        "video" => ".mp4",
+                                        "document" => ".pdf",
+                                        _ => ""
+                                    };
+                                    if (!string.IsNullOrEmpty(defaultExt) && !headerFilename.EndsWith(defaultExt, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        headerFilename = headerFilename + defaultExt;
+                                        _loggingService.LogInformation($"📝 添加文件擴展名: {headerFilename}");
                                     }
+                                }
+                            }
+                            
+                            // 如果仍然沒有文件名，使用默認值
+                            if (string.IsNullOrEmpty(headerFilename))
+                            {
+                                headerFilename = headerType.ToLower() switch
+                                {
+                                    "image" => "image.jpg",
+                                    "video" => "video.mp4",
+                                    "document" => "document.pdf",
+                                    _ => "file"
                                 };
-                                _loggingService.LogInformation($"🖼️ 構建 IMAGE Header: URL={headerUrl}");
-                                break;
+                                _loggingService.LogInformation($"📝 使用默認文件名: {headerFilename}");
+                            }
+                            
+                            // 使用 media_id 構建參數（而不是 URL）
+                            switch (headerType.ToLower())
+                            {
+                                case "video":
+                                    headerParameter = new
+                                    {
+                                        type = "video",
+                                        video = new
+                                        {
+                                            id = mediaId
+                                        }
+                                    };
+                                    _loggingService.LogInformation($"📹 構建 VIDEO Header: media_id={mediaId}");
+                                    break;
+                                    
+                                case "document":
+                                    headerParameter = new
+                                    {
+                                        type = "document",
+                                        document = new
+                                        {
+                                            id = mediaId,
+                                            filename = headerFilename
+                                        }
+                                    };
+                                    _loggingService.LogInformation($"📄 構建 DOCUMENT Header: media_id={mediaId}, Filename={headerFilename}");
+                                    break;
+                                    
+                                case "image":
+                                default:
+                                    headerParameter = new
+                                    {
+                                        type = "image",
+                                        image = new
+                                        {
+                                            id = mediaId
+                                        }
+                                    };
+                                    _loggingService.LogInformation($"🖼️ 構建 IMAGE Header: media_id={mediaId}");
+                                    break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _loggingService.LogError($"❌ 上傳媒體失敗，將使用 URL 方式: {ex.Message}", ex);
+                            
+                            // 如果上傳失敗，回退到使用 URL 方式
+                            switch (headerType.ToLower())
+                            {
+                                case "video":
+                                    headerParameter = new
+                                    {
+                                        type = "video",
+                                        video = new
+                                        {
+                                            link = headerUrl
+                                        }
+                                    };
+                                    _loggingService.LogInformation($"📹 構建 VIDEO Header (回退到 URL): URL={headerUrl}");
+                                    break;
+                                    
+                                case "document":
+                                    headerParameter = new
+                                    {
+                                        type = "document",
+                                        document = new
+                                        {
+                                            link = headerUrl,
+                                            filename = !string.IsNullOrEmpty(headerFilename) ? headerFilename : "document"
+                                        }
+                                    };
+                                    _loggingService.LogInformation($"📄 構建 DOCUMENT Header (回退到 URL): URL={headerUrl}, Filename={headerFilename ?? "document"}");
+                                    break;
+                                    
+                                case "image":
+                                default:
+                                    headerParameter = new
+                                    {
+                                        type = "image",
+                                        image = new
+                                        {
+                                            link = headerUrl
+                                        }
+                                    };
+                                    _loggingService.LogInformation($"🖼️ 構建 IMAGE Header (回退到 URL): URL={headerUrl}");
+                                    break;
+                            }
                         }
                         
                         if (headerParameter != null)
@@ -1335,7 +1699,7 @@ namespace PurpleRice.Services
                                 parameters = new[] { headerParameter }
                             });
                             
-                            _loggingService.LogInformation($"✅ Header Component 已添加: Type={headerType}, URL={headerUrl}");
+                            _loggingService.LogInformation($"✅ Header Component 已添加: Type={headerType}");
                         }
                 }
                 
@@ -1895,7 +2259,10 @@ namespace PurpleRice.Services
             string nodeType,
             PurpleRiceDbContext dbContext,
             bool isMetaTemplate = false,
-            string templateLanguage = null)  // 添加語言代碼參數
+            string templateLanguage = null,  // 添加語言代碼參數
+            string templateHeaderUrl = null,  // 添加 header URL 參數
+            string templateHeaderType = null,  // 添加 header 類型參數
+            string templateHeaderFilename = null)  // 添加 header filename 參數
         {
             try
             {
@@ -2012,7 +2379,10 @@ namespace PurpleRice.Services
                             variables,
                             isMetaTemplate,
                             templateName,
-                            templateLanguage);
+                            templateLanguage,
+                            templateHeaderUrl,
+                            templateHeaderType,
+                            templateHeaderFilename);
 
                         // 記錄成功（使用實際的 WhatsApp 訊息 ID）
                         whatsappMessageIds[recipient.Id] = whatsappMessageId;

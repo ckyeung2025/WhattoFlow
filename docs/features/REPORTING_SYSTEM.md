@@ -225,7 +225,7 @@ Authorization: Bearer {token}
 - **Axios**: HTTP 請求
 
 ### **後端技術**
-- **.NET 8.0 Web API**: RESTful API
+- **.NET 10.0 Web API**: RESTful API
 - **Entity Framework Core**: 數據訪問
 - **LINQ**: 數據查詢和聚合
 - **SQL Server**: 數據存儲

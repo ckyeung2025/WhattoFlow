@@ -609,6 +609,59 @@ const NodePropertyDrawer = ({
     console.log('🔍 NodePropertyDrawer - workflowId 傳遞檢查:', workflowId, 'type:', typeof workflowId);
   }, [workflowId]);
 
+  // 當選擇了模板但沒有 headerType 時，嘗試從數據庫或 components 中獲取
+  useEffect(() => {
+    if ((selectedNode?.data?.type === 'sendWhatsAppTemplate' || 
+         (selectedNode?.data?.type === 'sendWhatsApp' && selectedNode?.data?.messageMode === 'template')) && 
+        selectedNode?.data?.templateId && 
+        !selectedNode?.data?.templateHeaderType &&
+        selectedNode?.data?.isMetaTemplate) {
+      console.log('🔍 NodePropertyDrawer - 檢測到模板缺少 headerType，嘗試修復');
+      console.log('🔍 templateId:', selectedNode.data.templateId);
+      console.log('🔍 metaTemplates count:', metaTemplates?.length);
+      
+      // 嘗試從模板列表中查找該模板
+      const template = metaTemplates?.find(t => t.id === selectedNode.data.templateId);
+      console.log('🔍 找到模板:', template ? { id: template.id, name: template.name, hasComponents: !!template.components } : '未找到');
+      
+      if (template) {
+        // 如果模板對象有 headerType，直接使用
+        if (template.headerType || template.HeaderType) {
+          console.log('✅ 從模板對象獲取 headerType:', template.headerType || template.HeaderType);
+          handleNodeDataChange({ 
+            templateHeaderType: template.headerType || template.HeaderType,
+            templateHeaderUrl: template.headerUrl || template.HeaderUrl || null,
+            templateHeaderFilename: template.headerFilename || template.HeaderFilename || null
+          });
+          return;
+        }
+        
+        // 嘗試從 components 中解析
+        if (template.components) {
+          try {
+            console.log('🔍 嘗試從 components 解析, components:', template.components);
+            const headerComponent = template.components.find(c => 
+              c.type === 'HEADER' || c.Type === 'HEADER'
+            );
+            console.log('🔍 找到 headerComponent:', headerComponent);
+            if (headerComponent) {
+              const format = headerComponent.format || headerComponent.Format;
+              console.log('🔍 headerComponent format:', format);
+              if (format) {
+                const headerType = format.toLowerCase();
+                console.log('✅ 從 components 解析到 headerType:', headerType);
+                handleNodeDataChange({ templateHeaderType: headerType });
+                return;
+              }
+            }
+          } catch (error) {
+            console.warn('❌ 解析模板 components 失敗:', error);
+          }
+        }
+      }
+    }
+  }, [selectedNode?.data?.templateId, selectedNode?.data?.isMetaTemplate, selectedNode?.data?.templateHeaderType, metaTemplates, handleNodeDataChange]);
+
   // 當 selectedNode 改變時，更新 Form 的字段值
   useEffect(() => {
     console.log('🔍 NodePropertyDrawer - workflowId:', workflowId, 'type:', typeof workflowId);
@@ -1224,6 +1277,112 @@ const NodePropertyDrawer = ({
                   showProcessVariables={true}
                   enableEmailMode={true}
                 />
+
+                {/* 動態 Image/Document URL 配置 - 當使用模板模式且模板包含 image 或 document header 時顯示 */}
+                {selectedNode.data.templateId && 
+                 (selectedNode.data.messageMode === 'template' || selectedNode.data.messageMode === 'metaTemplate') &&
+                 (selectedNode.data.templateHeaderType === 'image' || selectedNode.data.templateHeaderType === 'document') && (
+                  <>
+                    <Divider />
+                    {/* Image Header 專用：圖片來源選擇 */}
+                    {selectedNode.data.templateHeaderType === 'image' && (
+                      <Form.Item 
+                        label={t('workflowDesigner.templateImageSource')}
+                      >
+                        <Radio.Group
+                          value={selectedNode.data.templateHeaderImageSource || 'url'}
+                          onChange={(e) => {
+                            handleNodeDataChange({ 
+                              templateHeaderImageSource: e.target.value,
+                              // 如果切換到 instance，清空 URL
+                              templateHeaderUrl: e.target.value === 'instance' ? '' : selectedNode.data.templateHeaderUrl
+                            });
+                          }}
+                        >
+                          <Radio value="url">{t('workflowDesigner.templateImageSourceUrl')}</Radio>
+                          <Radio value="instance">{t('workflowDesigner.templateImageSourceInstance')}</Radio>
+                        </Radio.Group>
+                        <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                          {t('workflowDesigner.templateImageSourceHelp')}
+                        </div>
+                      </Form.Item>
+                    )}
+                    {/* URL 輸入框 - 僅在選擇 URL 或 document 時顯示 */}
+                    {(selectedNode.data.templateHeaderType === 'document' || 
+                      (selectedNode.data.templateHeaderType === 'image' && (selectedNode.data.templateHeaderImageSource === 'url' || !selectedNode.data.templateHeaderImageSource))) && (
+                      <Form.Item 
+                        label={
+                          selectedNode.data.templateHeaderType === 'image' 
+                            ? t('workflowDesigner.templateImageUrl') 
+                            : t('workflowDesigner.templateDocumentUrl')
+                        }
+                      >
+                        <div style={{ marginBottom: 8 }}>
+                          <Input
+                            placeholder={
+                              selectedNode.data.templateHeaderType === 'image'
+                                ? t('workflowDesigner.templateImageUrlPlaceholder')
+                                : t('workflowDesigner.templateDocumentUrlPlaceholder')
+                            }
+                            value={selectedNode.data.templateHeaderUrl || ''}
+                            onChange={(e) => {
+                              handleNodeDataChange({ templateHeaderUrl: e.target.value });
+                            }}
+                            onFocus={() => setActiveFlowField('templateHeaderUrl')}
+                          />
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                            {t('workflowDesigner.templateHeaderUrlHelp')}
+                          </div>
+                        </div>
+                        {/* 流程變量插入支持 */}
+                        <ProcessVariablesDisplay
+                          processVariables={processVariables}
+                          form={form}
+                          t={t}
+                          targetFieldName="templateHeaderUrl"
+                          onInsert={(variableName) => {
+                            const currentValue = selectedNode.data.templateHeaderUrl || '';
+                            const newValue = currentValue + `\${${variableName}}`;
+                            handleNodeDataChange({ templateHeaderUrl: newValue });
+                          }}
+                          showLabel={true}
+                        />
+                      </Form.Item>
+                    )}
+                    
+                    {/* Document 專用：Filename 配置 */}
+                    {selectedNode.data.templateHeaderType === 'document' && (
+                      <Form.Item label={t('workflowDesigner.templateDocumentFilename')}>
+                        <div style={{ marginBottom: 8 }}>
+                          <Input
+                            placeholder={t('workflowDesigner.templateDocumentFilenamePlaceholder')}
+                            value={selectedNode.data.templateHeaderFilename || ''}
+                            onChange={(e) => {
+                              handleNodeDataChange({ templateHeaderFilename: e.target.value });
+                            }}
+                            onFocus={() => setActiveFlowField('templateHeaderFilename')}
+                          />
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                            {t('workflowDesigner.templateDocumentFilenameHelp')}
+                          </div>
+                        </div>
+                        {/* 流程變量插入支持 */}
+                        <ProcessVariablesDisplay
+                          processVariables={processVariables}
+                          form={form}
+                          t={t}
+                          targetFieldName="templateHeaderFilename"
+                          onInsert={(variableName) => {
+                            const currentValue = selectedNode.data.templateHeaderFilename || '';
+                            const newValue = currentValue + `\${${variableName}}`;
+                            handleNodeDataChange({ templateHeaderFilename: newValue });
+                          }}
+                          showLabel={true}
+                        />
+                      </Form.Item>
+                    )}
+                  </>
+                )}
               </>
             )}
 
@@ -1380,6 +1539,83 @@ const NodePropertyDrawer = ({
                     )}
                     
                   </Form.Item>
+                )}
+
+                {/* 動態 Image/Document URL 配置 - 當模板包含 image 或 document header 時顯示 */}
+                {selectedNode.data.templateId && (selectedNode.data.templateHeaderType === 'image' || selectedNode.data.templateHeaderType === 'document') && (
+                  <>
+                    <Divider />
+                    <Form.Item 
+                      label={
+                        selectedNode.data.templateHeaderType === 'image' 
+                          ? t('workflowDesigner.templateImageUrl') 
+                          : t('workflowDesigner.templateDocumentUrl')
+                      }
+                    >
+                      <div style={{ marginBottom: 8 }}>
+                        <Input
+                          placeholder={
+                            selectedNode.data.templateHeaderType === 'image'
+                              ? t('workflowDesigner.templateImageUrlPlaceholder')
+                              : t('workflowDesigner.templateDocumentUrlPlaceholder')
+                          }
+                          value={selectedNode.data.templateHeaderUrl || ''}
+                          onChange={(e) => {
+                            handleNodeDataChange({ templateHeaderUrl: e.target.value });
+                          }}
+                          onFocus={() => setActiveFlowField('templateHeaderUrl')}
+                        />
+                        <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                          {t('workflowDesigner.templateHeaderUrlHelp')}
+                        </div>
+                      </div>
+                      {/* 流程變量插入支持 */}
+                      <ProcessVariablesDisplay
+                        processVariables={processVariables}
+                        form={form}
+                        t={t}
+                        targetFieldName="templateHeaderUrl"
+                        onInsert={(variableName) => {
+                          const currentValue = selectedNode.data.templateHeaderUrl || '';
+                          const newValue = currentValue + `\${${variableName}}`;
+                          handleNodeDataChange({ templateHeaderUrl: newValue });
+                        }}
+                        showLabel={true}
+                      />
+                    </Form.Item>
+                    
+                    {/* Document 專用：Filename 配置 */}
+                    {selectedNode.data.templateHeaderType === 'document' && (
+                      <Form.Item label={t('workflowDesigner.templateDocumentFilename')}>
+                        <div style={{ marginBottom: 8 }}>
+                          <Input
+                            placeholder={t('workflowDesigner.templateDocumentFilenamePlaceholder')}
+                            value={selectedNode.data.templateHeaderFilename || ''}
+                            onChange={(e) => {
+                              handleNodeDataChange({ templateHeaderFilename: e.target.value });
+                            }}
+                            onFocus={() => setActiveFlowField('templateHeaderFilename')}
+                          />
+                          <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                            {t('workflowDesigner.templateDocumentFilenameHelp')}
+                          </div>
+                        </div>
+                        {/* 流程變量插入支持 */}
+                        <ProcessVariablesDisplay
+                          processVariables={processVariables}
+                          form={form}
+                          t={t}
+                          targetFieldName="templateHeaderFilename"
+                          onInsert={(variableName) => {
+                            const currentValue = selectedNode.data.templateHeaderFilename || '';
+                            const newValue = currentValue + `\${${variableName}}`;
+                            handleNodeDataChange({ templateHeaderFilename: newValue });
+                          }}
+                          showLabel={true}
+                        />
+                      </Form.Item>
+                    )}
+                  </>
                 )}
               </>
             )}

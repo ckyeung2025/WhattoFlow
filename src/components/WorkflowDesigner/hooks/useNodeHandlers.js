@@ -154,13 +154,77 @@ export const useNodeHandlers = (nodeTypes, setNodes, setEdges, setSelectedNode, 
         };
       } else {
         // 一般的模板選擇
+        console.log('🔍 handleSelectTemplate - 模板對象:', {
+          id: template.id,
+          name: template.name,
+          hasHeaderType: !!(template.headerType || template.HeaderType),
+          hasComponents: !!template.components,
+          hasContent: !!template.content,
+          isMetaTemplate
+        });
+        
+        // 嘗試從多個來源獲取 headerType
+        let headerType = template.headerType || template.HeaderType || null;
+        let headerUrl = template.headerUrl || template.HeaderUrl || null;
+        let headerFilename = template.headerFilename || template.HeaderFilename || null;
+        
+        console.log('🔍 初始 headerType:', headerType);
+        
+        // 如果沒有 headerType，嘗試從 components 中解析（Meta 模板）
+        if (!headerType && isMetaTemplate && template.components) {
+          try {
+            console.log('🔍 嘗試從 components 解析 headerType, components:', template.components);
+            const headerComponent = template.components.find(c => 
+              c.type === 'HEADER' || c.Type === 'HEADER'
+            );
+            console.log('🔍 找到 headerComponent:', headerComponent);
+            if (headerComponent) {
+              const format = headerComponent.format || headerComponent.Format;
+              console.log('🔍 headerComponent format:', format);
+              if (format) {
+                // 將 Meta API 的格式（IMAGE, VIDEO, DOCUMENT）轉換為小寫
+                headerType = format.toLowerCase();
+                console.log('✅ 從 components 解析到 headerType:', headerType);
+              }
+            }
+          } catch (error) {
+            console.warn('❌ 解析模板 components 失敗:', error);
+          }
+        }
+        
+        // 如果仍然沒有 headerType，嘗試從 Content JSON 中解析（內部模板）
+        if (!headerType && !isMetaTemplate && template.content) {
+          try {
+            const content = typeof template.content === 'string' 
+              ? JSON.parse(template.content) 
+              : template.content;
+            if (Array.isArray(content)) {
+              const headerComponent = content.find(c => 
+                c.type === 'HEADER' || c.Type === 'HEADER'
+              );
+              if (headerComponent && headerComponent.format) {
+                headerType = headerComponent.format.toLowerCase();
+                console.log('✅ 從 content 解析到 headerType:', headerType);
+              }
+            }
+          } catch (error) {
+            console.warn('❌ 解析模板 content 失敗:', error);
+          }
+        }
+        
+        console.log('🔍 最終 headerType:', headerType, 'headerUrl:', headerUrl, 'headerFilename:', headerFilename);
+        
         handleNodeDataChange({
           templateId: template.id,
           templateName: template.name,
           templateDescription: template.description,
           isMetaTemplate: isMetaTemplate,
           templateType: isMetaTemplate ? 'META' : 'INTERNAL',
-          templateLanguage: template.language || null  // 保存模板語言（Meta 模板必需）
+          templateLanguage: template.language || null,  // 保存模板語言（Meta 模板必需）
+          // 保存模板的 Header 信息（用於 image/document URL 配置）
+          templateHeaderType: headerType,
+          templateHeaderUrl: headerUrl,
+          templateHeaderFilename: headerFilename
         });
       }
     }

@@ -408,8 +408,8 @@ begin
   if RegQueryStringValue(HKEY_LOCAL_MACHINE,
     'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedhost', 'Version', Version) then
   begin
-    // 檢查版本是否 >= 8.0.0
-    if (CompareVersion(Version, '8.0.0') >= 0) then
+    // 檢查版本是否 >= 10.0.0
+    if (CompareVersion(Version, '10.0.0') >= 0) then
     begin
       Log('找到已安裝的 .NET Runtime (註冊表): ' + Version);
       Result := True;
@@ -451,7 +451,7 @@ begin
   Result := False;
   
   // 使用 Microsoft 官方的 dotnet-install.ps1 腳本
-  // 這個腳本會自動獲取並安裝最新版本的 ASP.NET Core Runtime 8.0.x
+  // 這個腳本會自動獲取並安裝最新版本的 ASP.NET Core Runtime 10.0.x
   // 官方腳本地址：https://dot.net/v1/dotnet-install.ps1
   DotNetInstallScript := ExpandConstant('{tmp}\dotnet-install.ps1');
   
@@ -489,7 +489,7 @@ begin
                 '是否打開瀏覽器手動下載 ASP.NET Core Runtime？',
                 mbConfirmation, MB_YESNO) = IDYES then
       begin
-        ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOW, ewNoWait, ResultCode);
+        ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/10.0', '', '', SW_SHOW, ewNoWait, ResultCode);
       end;
       Result := False;
       Exit;
@@ -505,18 +505,18 @@ begin
       Exit;
     end;
     
-    Log('腳本下載完成，開始安裝 ASP.NET Core Runtime（自動獲取最新 8.0.x 版本）...');
+    Log('腳本下載完成，開始安裝 ASP.NET Core Runtime（自動獲取最新 10.0.x 版本）...');
     
     // 顯示安裝提示
-    if MsgBox('正在安裝 ASP.NET Core Runtime 8.0（最新版本）...' + #13#10 + #13#10 +
-              '將自動下載並安裝最新版本的 ASP.NET Core Runtime 8.0.x。' + #13#10 +
+    if MsgBox('正在安裝 ASP.NET Core Runtime 10.0（最新版本）...' + #13#10 + #13#10 +
+              '將自動下載並安裝最新版本的 ASP.NET Core Runtime 10.0.x。' + #13#10 +
               '這可能需要幾分鐘時間，請稍候。' + #13#10 +
               '安裝過程中可能會顯示進度窗口。',
               mbInformation, MB_OK) = IDOK then
     begin
       // 使用 dotnet-install.ps1 腳本安裝 ASP.NET Core Runtime
       // -Runtime aspnetcore：指定安裝 ASP.NET Core Runtime
-      // -Channel 8.0：指定 8.0 通道（會自動獲取該通道的最新版本）
+      // -Channel 10.0：指定 10.0 通道（會自動獲取該通道的最新版本）
       // -InstallDir：安裝目錄（可選，默認安裝到用戶目錄）
       Log('執行 dotnet-install.ps1 安裝 ASP.NET Core Runtime...');
       
@@ -525,7 +525,7 @@ begin
         '& { ' +
         '  $ErrorActionPreference = ''Stop''; ' +
         '  try { ' +
-        '    & ''' + DotNetInstallScript + ''' -Runtime aspnetcore -Channel 8.0 -Architecture x64; ' +
+        '    & ''' + DotNetInstallScript + ''' -Runtime aspnetcore -Channel 10.0 -Architecture x64; ' +
         '    if ($LASTEXITCODE -eq 0) { ' +
         '      Write-Host ''Installation completed successfully''; ' +
         '      exit 0 ' +
@@ -567,7 +567,7 @@ begin
           Log('ASP.NET Core Runtime 安裝失敗，返回碼: ' + IntToStr(ResultCode));
           MsgBox('安裝 ASP.NET Core Runtime 時出現錯誤。' + #13#10 +
                  '返回碼: ' + IntToStr(ResultCode) + #13#10 + #13#10 +
-                 '請手動安裝 ASP.NET Core 8.0 Runtime 後再繼續。',
+                 '請手動安裝 ASP.NET Core 10.0 Runtime 後再繼續。',
                  mbError, MB_OK);
           Result := False;
         end;
@@ -592,7 +592,7 @@ begin
     Log('下載或安裝 ASP.NET Core Runtime 時發生異常: ' + GetExceptionMessage);
     MsgBox('下載或安裝 ASP.NET Core Runtime 時發生錯誤。' + #13#10 +
            '錯誤: ' + GetExceptionMessage + #13#10 + #13#10 +
-           '請手動安裝 ASP.NET Core 8.0 Runtime 後再繼續。',
+           '請手動安裝 ASP.NET Core 10.0 Runtime 後再繼續。',
            mbError, MB_OK);
     Result := False;
     
@@ -789,10 +789,10 @@ begin
   begin
     Log('.NET Runtime 未安裝，準備下載並安裝');
     
-    if MsgBox('檢測到系統未安裝 ASP.NET Core 8.0 Runtime。' + #13#10 + #13#10 +
-              '此應用程序需要 ASP.NET Core 8.0 Runtime 才能運行。' + #13#10 + #13#10 +
+    if MsgBox('檢測到系統未安裝 ASP.NET Core 10.0 Runtime。' + #13#10 + #13#10 +
+              '此應用程序需要 ASP.NET Core 10.0 Runtime 才能運行。' + #13#10 + #13#10 +
               '是否現在自動下載並安裝最新版本？' + #13#10 + #13#10 +
-              '點擊「是」將自動下載並安裝最新版本的 ASP.NET Core Runtime 8.0.x' + #13#10 +
+              '點擊「是」將自動下載並安裝最新版本的 ASP.NET Core Runtime 10.0.x' + #13#10 +
               '（約 70-80 MB，需要管理員權限和網絡連接）。' + #13#10 +
               '點擊「否」將取消安裝程序，請手動安裝後再運行。',
               mbConfirmation, MB_YESNO) = IDYES then
@@ -803,28 +803,28 @@ begin
       begin
         Log('ASP.NET Core Runtime 安裝失敗');
         if MsgBox('無法自動安裝 ASP.NET Core Runtime。' + #13#10 + #13#10 +
-                  '請手動安裝 ASP.NET Core 8.0 Runtime 後再運行安裝程序。' + #13#10 + #13#10 +
+                  '請手動安裝 ASP.NET Core 10.0 Runtime 後再運行安裝程序。' + #13#10 + #13#10 +
                   '是否現在打開下載頁面？',
                   mbConfirmation, MB_YESNO) = IDYES then
         begin
-          ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOW, ewNoWait, ErrorCode);
+          ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/10.0', '', '', SW_SHOW, ewNoWait, ErrorCode);
         end;
         Result := False;
         Exit;
       end;
       
       Log('ASP.NET Core Runtime 安裝成功，繼續安裝流程');
-      MsgBox('ASP.NET Core Runtime 8.0（最新版本）安裝完成！' + #13#10 +
+      MsgBox('ASP.NET Core Runtime 10.0（最新版本）安裝完成！' + #13#10 +
              '現在將繼續安裝 WhatoFlow。', mbInformation, MB_OK);
     end
     else
     begin
       Log('用戶選擇取消安裝');
-      if MsgBox('安裝程序需要 ASP.NET Core 8.0 Runtime。' + #13#10 + #13#10 +
+      if MsgBox('安裝程序需要 ASP.NET Core 10.0 Runtime。' + #13#10 + #13#10 +
                 '是否打開下載頁面手動安裝？',
                 mbConfirmation, MB_YESNO) = IDYES then
       begin
-        ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOW, ewNoWait, ErrorCode);
+        ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/10.0', '', '', SW_SHOW, ewNoWait, ErrorCode);
       end;
       Result := False;
       Exit;

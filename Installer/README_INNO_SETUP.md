@@ -17,13 +17,13 @@
 
 ### 開發環境
 - Windows 10/11 或 Windows Server 2019+
-- .NET 8.0 SDK
+- .NET 10.0 SDK
 - Node.js 18+
 - Inno Setup 6+ ([下載連結](https://jrsoftware.org/isdl.php))
 
 ### 目標系統
 - Windows 10/11 或 Windows Server 2019+
-- .NET 8.0 Runtime
+- .NET 10.0 Runtime
 - Node.js 18+
 - SQL Server 2019+
 

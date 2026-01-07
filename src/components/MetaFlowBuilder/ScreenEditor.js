@@ -216,6 +216,7 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
     const currentHeader = localScreen.data?.header || { type: 'header', format: 'TEXT' };
     updateData('header', {
       ...currentHeader,
+      format: 'TEXT', // 固定為 TEXT 格式
       [field]: value
     });
   };
@@ -233,45 +234,14 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
         <Card size="small" title={t('metaFlowBuilder.screenEditor.cardTitles.header')}>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <div>
-              <label>{t('metaFlowBuilder.screenEditor.labels.headerType')}</label>
-              <select
-                value={localScreen.data?.header?.format || 'TEXT'}
-                onChange={(e) => handleHeaderChange('format', e.target.value)}
-                style={{ width: '100%', marginTop: '4px', padding: '4px' }}
-              >
-                <option value="TEXT">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.text')}</option>
-                <option value="IMAGE">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.image')}</option>
-                <option value="VIDEO">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.video')}</option>
-                <option value="DOCUMENT">{t('metaFlowBuilder.screenEditor.selectOptions.headerTypes.document')}</option>
-              </select>
+              <label>{t('metaFlowBuilder.screenEditor.labels.headerText')}</label>
+              <Input
+                value={localScreen.data?.header?.text || ''}
+                onChange={(e) => handleHeaderChange('text', e.target.value)}
+                placeholder={t('metaFlowBuilder.screenEditor.placeholders.headerText')}
+                style={{ marginTop: '4px' }}
+              />
             </div>
-            {localScreen.data?.header?.format === 'TEXT' && (
-              <div>
-                <label>{t('metaFlowBuilder.screenEditor.labels.headerText')}</label>
-                <Input
-                  value={localScreen.data?.header?.text || ''}
-                  onChange={(e) => handleHeaderChange('text', e.target.value)}
-                  placeholder={t('metaFlowBuilder.screenEditor.placeholders.headerText')}
-                  style={{ marginTop: '4px' }}
-                />
-              </div>
-            )}
-            {(localScreen.data?.header?.format === 'IMAGE' || 
-              localScreen.data?.header?.format === 'VIDEO' || 
-              localScreen.data?.header?.format === 'DOCUMENT') && (
-              <div>
-                <label>{t('metaFlowBuilder.screenEditor.labels.mediaUrl')}</label>
-                <Input
-                  value={localScreen.data?.header?.media?.url || ''}
-                  onChange={(e) => handleHeaderChange('media', { 
-                    ...localScreen.data?.header?.media, 
-                    url: e.target.value 
-                  })}
-                  placeholder={t('metaFlowBuilder.screenEditor.placeholders.mediaUrl')}
-                  style={{ marginTop: '4px' }}
-                />
-              </div>
-            )}
             {localScreen.data?.header && (
               <Button
                 size="small"
@@ -284,7 +254,13 @@ const ScreenEditor = ({ screen, onUpdate, onComponentSelect, allScreens = [] }) 
             {!localScreen.data?.header && (
               <Button
                 size="small"
-                onClick={() => handleHeaderChange('format', 'TEXT')}
+                onClick={() => {
+                  updateData('header', {
+                    type: 'header',
+                    format: 'TEXT',
+                    text: ''
+                  });
+                }}
               >
                 {t('metaFlowBuilder.screenEditor.buttons.addHeader')}
               </Button>

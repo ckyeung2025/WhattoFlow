@@ -7,9 +7,9 @@ WhatoFlow 是一個企業級的工作流管理平台，專注於 WhatsApp 業務
 ## 🏗️ **系統架構**
 
 ### **後端技術棧**
-- **框架**: .NET 8.0 Web API
+- **框架**: .NET 10.0 Web API
 - **數據庫**: Microsoft SQL Server (MSSQL) + ERP 數據庫
-- **ORM**: Entity Framework Core 8.0
+- **ORM**: Entity Framework Core 10.0
 - **認證**: JWT Bearer Token
 - **日誌**: 自定義 LoggingService 支持文件日誌
 - **文檔處理**: LibreOffice 集成、OpenXML 支持、iTextSharp PDF 生成
@@ -124,7 +124,7 @@ WhatoFlow 是一個企業級的工作流管理平台，專注於 WhatsApp 業務
 ## 🚀 **部署與擴展**
 
 ### **部署要求**
-- .NET 8.0 Runtime
+- .NET 10.0 Runtime
 - SQL Server 2019+
 - LibreOffice (文檔轉換)
 - 足夠的磁盤空間 (文件上傳)

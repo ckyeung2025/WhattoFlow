@@ -14,7 +14,7 @@ WhattoFlow 系統的 WhatsApp 工作流模組是一個完整的 WhatsApp 業務�
 
 ### **2. 技術棧**
 - **前端**: React Flow + Ant Design
-- **後端**: .NET 8.0 Web API
+- **後端**: .NET 10.0 Web API
 - **數據庫**: SQL Server + Entity Framework
 - **集成**: Meta WhatsApp Business API
 

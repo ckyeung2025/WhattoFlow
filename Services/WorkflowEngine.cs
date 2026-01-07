@@ -54,6 +54,265 @@ namespace PurpleRice.Services
             _loggingService.LogInformation(message);
         }
 
+        // 從 nodeData 讀取 templateHeaderUrl 等字段
+        private (string url, string type, string filename) GetTemplateHeaderInfo(WorkflowNodeData nodeData, WorkflowStepExecution stepExec = null, WorkflowExecution execution = null)
+        {
+            string templateHeaderUrl = null;
+            string templateHeaderType = null;
+            string templateHeaderFilename = null;
+            string templateHeaderImageSource = null;
+            
+            try
+            {
+                WriteLog($"🔍 [DEBUG] 開始讀取 templateHeader 信息，nodeData.Json={(nodeData.Json != null ? "有值" : "null")}");
+                
+                // 方法0: 優先從 nodeData 的直接屬性讀取（如果 WorkflowNodeData 類有這些屬性）
+                if (!string.IsNullOrEmpty(nodeData.TemplateHeaderUrl))
+                {
+                    templateHeaderUrl = nodeData.TemplateHeaderUrl;
+                    templateHeaderType = nodeData.TemplateHeaderType;
+                    templateHeaderFilename = nodeData.TemplateHeaderFilename;
+                    templateHeaderImageSource = nodeData.TemplateHeaderImageSource;
+                    WriteLog($"🔍 [DEBUG] 從 nodeData 直接屬性讀取: URL={templateHeaderUrl}, Type={templateHeaderType}, Filename={templateHeaderFilename}, ImageSource={templateHeaderImageSource}");
+                }
+                
+                // 方法1: 如果直接屬性沒有，優先從 stepExec.InputJson 讀取（包含完整的節點數據）
+                if (stepExec != null && !string.IsNullOrEmpty(stepExec.InputJson))
+                {
+                    try
+                    {
+                        WriteLog($"🔍 [DEBUG] stepExec.InputJson 長度: {stepExec.InputJson.Length} 字符");
+                        var inputData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(stepExec.InputJson);
+                        if (inputData != null)
+                        {
+                            WriteLog($"🔍 [DEBUG] stepExec.InputJson 包含的鍵: {string.Join(", ", inputData.Keys)}");
+                            
+                            if (inputData.TryGetValue("Data", out var dataElement))
+                            {
+                                WriteLog($"🔍 [DEBUG] 找到 Data 字段，類型: {dataElement.ValueKind}");
+                                
+                                if (dataElement.ValueKind == JsonValueKind.Object)
+                                {
+                                    var dataDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(dataElement.GetRawText());
+                                    if (dataDict != null)
+                                    {
+                                        WriteLog($"🔍 [DEBUG] Data 字段包含的鍵: {string.Join(", ", dataDict.Keys.Take(30))}");
+                                        
+                                        if (dataDict.TryGetValue("templateHeaderUrl", out var urlElement) && urlElement.ValueKind != JsonValueKind.Null)
+                                        {
+                                            templateHeaderUrl = urlElement.GetString();
+                                            WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data 讀取到 templateHeaderUrl: {templateHeaderUrl}");
+                                        }
+                                        if (dataDict.TryGetValue("templateHeaderType", out var typeElement) && typeElement.ValueKind != JsonValueKind.Null)
+                                        {
+                                            templateHeaderType = typeElement.GetString();
+                                            WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data 讀取到 templateHeaderType: {templateHeaderType}");
+                                        }
+                                        if (dataDict.TryGetValue("templateHeaderFilename", out var filenameElement) && filenameElement.ValueKind != JsonValueKind.Null)
+                                        {
+                                            templateHeaderFilename = filenameElement.GetString();
+                                            WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data 讀取到 templateHeaderFilename: {templateHeaderFilename}");
+                                        }
+                                        if (dataDict.TryGetValue("templateHeaderImageSource", out var sourceElement) && sourceElement.ValueKind != JsonValueKind.Null)
+                                        {
+                                            templateHeaderImageSource = sourceElement.GetString();
+                                            WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data 讀取到 templateHeaderImageSource: {templateHeaderImageSource}");
+                                        }
+                                    }
+                                }
+                                else if (dataElement.ValueKind == JsonValueKind.String)
+                                {
+                                    // 如果 Data 是字符串，嘗試再次反序列化
+                                    var dataString = dataElement.GetString();
+                                    if (!string.IsNullOrEmpty(dataString))
+                                    {
+                                        var dataDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(dataString);
+                                        if (dataDict != null)
+                                        {
+                                            WriteLog($"🔍 [DEBUG] Data 字符串包含的鍵: {string.Join(", ", dataDict.Keys.Take(30))}");
+                                            
+                                            if (dataDict.TryGetValue("templateHeaderImageSource", out var sourceElement) && sourceElement.ValueKind != JsonValueKind.Null)
+                                            {
+                                                templateHeaderImageSource = sourceElement.GetString();
+                                                WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data (字符串) 讀取到 templateHeaderImageSource: {templateHeaderImageSource}");
+                                            }
+                                            if (dataDict.TryGetValue("templateHeaderType", out var typeElement) && typeElement.ValueKind != JsonValueKind.Null)
+                                            {
+                                                templateHeaderType = typeElement.GetString();
+                                                WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data (字符串) 讀取到 templateHeaderType: {templateHeaderType}");
+                                            }
+                                            if (dataDict.TryGetValue("templateHeaderUrl", out var urlElement) && urlElement.ValueKind != JsonValueKind.Null)
+                                            {
+                                                templateHeaderUrl = urlElement.GetString();
+                                                WriteLog($"🔍 [DEBUG] 從 stepExec.InputJson.Data (字符串) 讀取到 templateHeaderUrl: {templateHeaderUrl}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                WriteLog($"⚠️ stepExec.InputJson 中沒有找到 Data 字段");
+                            }
+                        }
+                    }
+                    catch (Exception ex1)
+                    {
+                        WriteLog($"⚠️ 從 stepExec.InputJson 讀取失敗: {ex1.Message}, StackTrace: {ex1.StackTrace}");
+                    }
+                }
+                
+                // 方法2: 嘗試從 nodeData.Json 字段讀取
+                if (string.IsNullOrEmpty(templateHeaderUrl) || string.IsNullOrEmpty(templateHeaderFilename) || string.IsNullOrEmpty(templateHeaderImageSource))
+                {
+                    if (nodeData.Json != null)
+                    {
+                        var jsonData = JsonSerializer.Deserialize<Dictionary<string, object>>(nodeData.Json);
+                        if (jsonData != null)
+                        {
+                            if (string.IsNullOrEmpty(templateHeaderUrl) && jsonData.TryGetValue("templateHeaderUrl", out var urlObj) && urlObj != null)
+                            {
+                                templateHeaderUrl = urlObj.ToString();
+                                WriteLog($"🔍 [DEBUG] 從 nodeData.Json 讀取到 templateHeaderUrl: {templateHeaderUrl}");
+                            }
+                            if (string.IsNullOrEmpty(templateHeaderType) && jsonData.TryGetValue("templateHeaderType", out var typeObj) && typeObj != null)
+                            {
+                                templateHeaderType = typeObj.ToString();
+                                WriteLog($"🔍 [DEBUG] 從 nodeData.Json 讀取到 templateHeaderType: {templateHeaderType}");
+                            }
+                            if (string.IsNullOrEmpty(templateHeaderFilename) && jsonData.TryGetValue("templateHeaderFilename", out var filenameObj) && filenameObj != null)
+                            {
+                                templateHeaderFilename = filenameObj.ToString();
+                                WriteLog($"🔍 [DEBUG] 從 nodeData.Json 讀取到 templateHeaderFilename: {templateHeaderFilename}");
+                            }
+                            if (string.IsNullOrEmpty(templateHeaderImageSource) && jsonData.TryGetValue("templateHeaderImageSource", out var sourceObj) && sourceObj != null)
+                            {
+                                templateHeaderImageSource = sourceObj.ToString();
+                                WriteLog($"🔍 [DEBUG] 從 nodeData.Json 讀取到 templateHeaderImageSource: {templateHeaderImageSource}");
+                            }
+                        }
+                    }
+                }
+                
+                // 方法3: 如果 Json 中沒有，嘗試將整個 nodeData 序列化為 JSON 然後讀取
+                // 因為這些字段可能直接作為 nodeData 的屬性存在
+                if (string.IsNullOrEmpty(templateHeaderUrl) || string.IsNullOrEmpty(templateHeaderFilename) || string.IsNullOrEmpty(templateHeaderImageSource))
+                {
+                    try
+                    {
+                        WriteLog($"🔍 [DEBUG] Json 中未找到，嘗試序列化整個 nodeData...");
+                        var nodeDataJson = JsonSerializer.Serialize(nodeData);
+                        WriteLog($"🔍 [DEBUG] nodeData 序列化後長度: {nodeDataJson.Length} 字符");
+                        
+                        var nodeDataDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(nodeDataJson);
+                        
+                        if (nodeDataDict != null)
+                        {
+                            WriteLog($"🔍 [DEBUG] nodeData 包含的鍵: {string.Join(", ", nodeDataDict.Keys.Take(20))}");
+                            
+                            if (string.IsNullOrEmpty(templateHeaderUrl) && nodeDataDict.TryGetValue("templateHeaderUrl", out var urlElement))
+                            {
+                                templateHeaderUrl = urlElement.GetString();
+                                WriteLog($"🔍 [DEBUG] 從序列化的 nodeData 讀取到 templateHeaderUrl: {templateHeaderUrl}");
+                            }
+                            if (string.IsNullOrEmpty(templateHeaderType) && nodeDataDict.TryGetValue("templateHeaderType", out var typeElement))
+                            {
+                                templateHeaderType = typeElement.GetString();
+                                WriteLog($"🔍 [DEBUG] 從序列化的 nodeData 讀取到 templateHeaderType: {templateHeaderType}");
+                            }
+                            if (string.IsNullOrEmpty(templateHeaderFilename) && nodeDataDict.TryGetValue("templateHeaderFilename", out var filenameElement))
+                            {
+                                templateHeaderFilename = filenameElement.GetString();
+                                WriteLog($"🔍 [DEBUG] 從序列化的 nodeData 讀取到 templateHeaderFilename: {templateHeaderFilename}");
+                            }
+                            if (string.IsNullOrEmpty(templateHeaderImageSource) && nodeDataDict.TryGetValue("templateHeaderImageSource", out var sourceElement))
+                            {
+                                templateHeaderImageSource = sourceElement.GetString();
+                                WriteLog($"🔍 [DEBUG] 從序列化的 nodeData 讀取到 templateHeaderImageSource: {templateHeaderImageSource}");
+                            }
+                        }
+                    }
+                    catch (Exception ex2)
+                    {
+                        WriteLog($"⚠️ 從 nodeData 序列化讀取 templateHeaderUrl 失敗: {ex2.Message}");
+                    }
+                }
+                
+                // 如果選擇使用流程實例圖片，且類型為 image，則從流程實例目錄讀取圖片
+                if (templateHeaderImageSource == "instance" && 
+                    templateHeaderType?.ToLower() == "image" && 
+                    (execution != null || (stepExec != null && stepExec.WorkflowExecutionId > 0)))
+                {
+                    try
+                    {
+                        int executionId = execution?.Id ?? stepExec.WorkflowExecutionId;
+                        WriteLog($"🖼️ 檢測到使用流程實例圖片，執行 ID: {executionId}");
+                        
+                        // 構建目錄路徑：Uploads\Whatsapp_Images\{executionId}
+                        var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "Uploads", "Whatsapp_Images", executionId.ToString());
+                        
+                        if (Directory.Exists(uploadsPath))
+                        {
+                            WriteLog($"📁 流程實例圖片目錄存在: {uploadsPath}");
+                            
+                            // 獲取所有圖片文件，排除 qr_scan_success_* 的文件
+                            var imageFiles = Directory.GetFiles(uploadsPath, "*.*", SearchOption.TopDirectoryOnly)
+                                .Where(f => {
+                                    var fileName = Path.GetFileName(f);
+                                    var ext = Path.GetExtension(fileName).ToLower();
+                                    // 只處理圖片文件
+                                    var isImage = ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".bmp" || ext == ".webp";
+                                    // 排除 qr_scan_success_* 的文件
+                                    var isExcluded = fileName.StartsWith("qr_scan_success_", StringComparison.OrdinalIgnoreCase);
+                                    return isImage && !isExcluded;
+                                })
+                                .OrderBy(f => new FileInfo(f).CreationTime) // 按創建時間排序，最早的在前
+                                .ToList();
+                            
+                            if (imageFiles.Any())
+                            {
+                                var selectedImage = imageFiles.First(); // 取最早的一張
+                                var fileName = Path.GetFileName(selectedImage);
+                                
+                                // 構建相對 URL：/Uploads/Whatsapp_Images/{executionId}/{fileName}
+                                templateHeaderUrl = $"/Uploads/Whatsapp_Images/{executionId}/{fileName}";
+                                
+                                WriteLog($"✅ 找到流程實例圖片: {templateHeaderUrl} (共 {imageFiles.Count} 張圖片，選擇最早的一張)");
+                            }
+                            else
+                            {
+                                WriteLog($"⚠️ 流程實例圖片目錄中沒有找到可用的圖片文件（已排除 qr_scan_success_* 文件）");
+                            }
+                        }
+                        else
+                        {
+                            WriteLog($"⚠️ 流程實例圖片目錄不存在: {uploadsPath}");
+                        }
+                    }
+                    catch (Exception ex3)
+                    {
+                        WriteLog($"⚠️ 讀取流程實例圖片失敗: {ex3.Message}");
+                    }
+                }
+                
+                // 記錄讀取結果
+                if (!string.IsNullOrEmpty(templateHeaderUrl) || !string.IsNullOrEmpty(templateHeaderFilename))
+                {
+                    WriteLog($"✅ 從節點數據讀取 Header 信息: URL={templateHeaderUrl ?? "null"}, Type={templateHeaderType ?? "null"}, Filename={templateHeaderFilename ?? "null"}, ImageSource={templateHeaderImageSource ?? "null"}");
+                }
+                else
+                {
+                    WriteLog($"⚠️ 未從節點數據讀取到 Header 信息");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLog($"⚠️ 讀取 templateHeaderUrl 失敗: {ex.Message}");
+            }
+            
+            return (templateHeaderUrl, templateHeaderType, templateHeaderFilename);
+        }
+
         // 從等待節點繼續執行流程的方法
         public async Task ContinueWorkflowFromWaitReply(WorkflowExecution execution, object inputData, Guid? formInstanceId = null)
         {
@@ -770,6 +1029,28 @@ namespace PurpleRice.Services
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PurpleRiceDbContext>();
 
+            // 檢查 nodeData 是否包含 templateHeaderImageSource
+            if (nodeData != null)
+            {
+                try
+                {
+                    var nodeDataJson = JsonSerializer.Serialize(nodeData);
+                    var nodeDataDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(nodeDataJson);
+                    if (nodeDataDict != null && nodeDataDict.TryGetValue("templateHeaderImageSource", out var imageSourceElement))
+                    {
+                        WriteLog($"🔍 [DEBUG] CreateStepExecution: nodeData 包含 templateHeaderImageSource: {imageSourceElement.GetString()}");
+                    }
+                    else
+                    {
+                        WriteLog($"⚠️ [DEBUG] CreateStepExecution: nodeData 不包含 templateHeaderImageSource，可用鍵: {string.Join(", ", nodeDataDict?.Keys.Take(30) ?? new string[0])}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WriteLog($"⚠️ [DEBUG] CreateStepExecution: 檢查 nodeData 失敗: {ex.Message}");
+                }
+            }
+            
             // 創建包含節點 ID 的完整輸入數據
             var inputData = new
             {
@@ -1303,6 +1584,9 @@ namespace PurpleRice.Services
                         processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
                     }
                     
+                    // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                    var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec, execution);
+                    
                     // 發送模板消息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                         nodeData.To, // 使用原始收件人值
@@ -1316,7 +1600,10 @@ namespace PurpleRice.Services
                         "sendWhatsApp", // 統一使用 sendWhatsApp
                         db,
                         nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                        nodeData.TemplateLanguage,  // 傳遞模板語言代碼
+                        templateHeaderUrl,  // 傳遞 header URL
+                        templateHeaderType,  // 傳遞 header 類型
+                        templateHeaderFilename  // 傳遞 header filename
                     );
                     
                     WriteLog($"🔍 [DEBUG] 模板消息發送記錄創建完成，ID: {messageSendId}");
@@ -1430,6 +1717,9 @@ namespace PurpleRice.Services
                     
                     WriteLog($"🔍 [DEBUG] 解析到 {resolvedRecipients.Count} 個收件人");
                     
+                    // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                    var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec);
+                    
                     // 發送模板消息給所有解析到的收件人
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                         nodeData.To, // 使用原始收件人值
@@ -1443,7 +1733,10 @@ namespace PurpleRice.Services
                         "sendWhatsAppTemplate",
                         db,
                         nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                        nodeData.TemplateLanguage,  // 傳遞模板語言代碼
+                        templateHeaderUrl,  // 傳遞 header URL
+                        templateHeaderType,  // 傳遞 header 類型
+                        templateHeaderFilename  // 傳遞 header filename
                     );
                     
                     WriteLog($"🔍 [DEBUG] 模板消息發送記錄創建完成，ID: {messageSendId}");
@@ -1704,6 +1997,9 @@ namespace PurpleRice.Services
                         processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
                     }
                     
+                    // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                    var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec);
+                    
                     // 發送模板訊息
                     WriteLog($"🔍 [DEBUG] waitReply 模板配置: TemplateName={nodeData.TemplateName}, IsMetaTemplate={nodeData.IsMetaTemplate}, TemplateLanguage={nodeData.TemplateLanguage ?? "null"}");
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
@@ -1718,7 +2014,10 @@ namespace PurpleRice.Services
                         "waitReply",
                         db,
                         nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                        nodeData.TemplateLanguage,  // 傳遞模板語言代碼
+                        templateHeaderUrl,  // 傳遞 header URL
+                        templateHeaderType,  // 傳遞 header 類型
+                        templateHeaderFilename  // 傳遞 header filename
                     );
                     
                     WriteLog($"🔍 [DEBUG] 等待提示模板訊息發送完成，ID: {messageSendId}");
@@ -2072,6 +2371,9 @@ namespace PurpleRice.Services
                         processedVariables = await ProcessTemplateVariablesAsync(nodeData.Variables, execution.Id);
                     }
                     
+                    // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                    var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec);
+                    
                     // 發送模板訊息
                     var messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                         recipientValue,
@@ -2085,7 +2387,10 @@ namespace PurpleRice.Services
                         "waitForQRCode",
                         db,
                         nodeData.IsMetaTemplate,  // 傳遞 Meta 模板標記
-                        nodeData.TemplateLanguage  // 傳遞模板語言代碼
+                        nodeData.TemplateLanguage,  // 傳遞模板語言代碼
+                        templateHeaderUrl,  // 傳遞 header URL
+                        templateHeaderType,  // 傳遞 header 類型
+                        templateHeaderFilename  // 傳遞 header filename
                     );
                     
                     WriteLog($"🔍 [DEBUG] QR Code 等待提示模板訊息發送完成，ID: {messageSendId}");
@@ -3150,6 +3455,19 @@ namespace PurpleRice.Services
                         // 即使值為空也要添加參數，Meta API 需要知道參數的存在
                         processedVariables[parameterName] = variableValue ?? "";
                         WriteLog($"🔍 [DEBUG] 添加模板參數: {parameterName} = '{variableValue ?? ""}'");
+                        
+                        // 同時添加 ProcessVariableName 到值的映射，以便在 URL 替換時使用
+                        // 例如：如果 parameterName 是 "1"，ProcessVariableName 是 "InvoiceNo"
+                        // 則同時添加 "1" -> "5149392" 和 "InvoiceNo" -> "5149392"
+                        if (varElement.TryGetProperty("processVariableName", out var processVarNameElement))
+                        {
+                            var processVarName = processVarNameElement.GetString();
+                            if (!string.IsNullOrEmpty(processVarName))
+                            {
+                                processedVariables[processVarName] = variableValue ?? "";
+                                WriteLog($"🔍 [DEBUG] 同時添加 ProcessVariableName 映射: {processVarName} = '{variableValue ?? ""}'");
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -4111,6 +4429,9 @@ namespace PurpleRice.Services
                             // recipientName 暫時保留（如果需要的話）
                             // processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
                         
+                        // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                        var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec);
+                        
                         // 發送模板訊息
                         messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                             recipient.PhoneNumber,
@@ -4124,7 +4445,10 @@ namespace PurpleRice.Services
                             "sendEForm",
                             db,
                             nodeData.IsMetaTemplate,
-                            nodeData.TemplateLanguage
+                            nodeData.TemplateLanguage,
+                            templateHeaderUrl,  // 傳遞 header URL
+                            templateHeaderType,  // 傳遞 header 類型
+                            templateHeaderFilename  // 傳遞 header filename
                         );
                         
                         WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 發送表單通知，ID: {messageSendId}");
@@ -4147,6 +4471,9 @@ namespace PurpleRice.Services
                             processedVariables["formName"] = nodeData.FormName ?? "";
                             processedVariables["recipientName"] = recipient.RecipientName ?? recipient.PhoneNumber;
                             
+                            // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                            var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec);
+                            
                             // 發送模板訊息
                             messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                                 recipient.PhoneNumber,
@@ -4160,7 +4487,10 @@ namespace PurpleRice.Services
                                 "sendEForm",
                                 db,
                                 nodeData.IsMetaTemplate,
-                                nodeData.TemplateLanguage
+                                nodeData.TemplateLanguage,
+                                templateHeaderUrl,  // 傳遞 header URL
+                                templateHeaderType,  // 傳遞 header 類型
+                                templateHeaderFilename  // 傳遞 header filename
                             );
                             
                             WriteLog($"🔍 [DEBUG] 為 {recipient.PhoneNumber} 發送表單通知，ID: {messageSendId}");
@@ -4359,6 +4689,9 @@ namespace PurpleRice.Services
                     processedVariables["formName"] = nodeData.FormName ?? "";
                 }
                 
+                // 從 nodeData 讀取 templateHeaderUrl 等字段（優先從 stepExec.InputJson 讀取）
+                var (templateHeaderUrl, templateHeaderType, templateHeaderFilename) = GetTemplateHeaderInfo(nodeData, stepExec);
+                
                 // 發送模板訊息
                 messageSendId = await _whatsAppWorkflowService.SendWhatsAppTemplateMessageWithTrackingAsync(
                     nodeData.To,
@@ -4372,7 +4705,10 @@ namespace PurpleRice.Services
                     "sendEForm",
                     db,
                     nodeData.IsMetaTemplate,
-                    nodeData.TemplateLanguage
+                    nodeData.TemplateLanguage,
+                    templateHeaderUrl,  // 傳遞 header URL
+                    templateHeaderType,  // 傳遞 header 類型
+                    templateHeaderFilename  // 傳遞 header filename
                 );
                 
                 WriteLog($"🔍 [DEBUG] EForm 通知模板訊息發送完成，ID: {messageSendId}");
@@ -4960,6 +5296,19 @@ namespace PurpleRice.Services
         
         [System.Text.Json.Serialization.JsonPropertyName("templateLanguage")]
         public string TemplateLanguage { get; set; } // Meta 模板的語言代碼（如 zh_TW, zh_HK, en_US）
+        
+        // Template Header 相關屬性（用於 image/document/video header）
+        [System.Text.Json.Serialization.JsonPropertyName("templateHeaderType")]
+        public string TemplateHeaderType { get; set; } // "image", "document", "video"
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateHeaderUrl")]
+        public string TemplateHeaderUrl { get; set; } // Header 媒體的 URL
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateHeaderFilename")]
+        public string TemplateHeaderFilename { get; set; } // Document header 的文件名
+        
+        [System.Text.Json.Serialization.JsonPropertyName("templateHeaderImageSource")]
+        public string TemplateHeaderImageSource { get; set; } // "url" 或 "instance"（僅用於 image header）
         
         [System.Text.Json.Serialization.JsonPropertyName("variables")]
         public Dictionary<string, string> Variables { get; set; }

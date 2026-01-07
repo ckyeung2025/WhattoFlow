@@ -13,7 +13,7 @@ WhattoFlow 系統的工作流執行模組是一個強大的工作流引擎，負
 - **執行狀態管理**: 運行、等待、完成、錯誤等狀態
 
 ### **2. 技術棧**
-- **後端**: .NET 8.0 + Entity Framework
+- **後端**: .NET 10.0 + Entity Framework
 - **數據庫**: SQL Server
 - **日誌**: LoggingService
 - **異步處理**: Task-based 異步編程

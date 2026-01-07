@@ -2,141 +2,141 @@
 setlocal enabledelayedexpansion
 
 echo ====================================
-echo WhatoFlow Windows Service 安裝程式
-echo （包含前端 React 建置）
+echo WhatoFlow Windows Service ���b��ʽ
+echo ������ǰ�� React ���ã�
 echo ====================================
 echo.
 
-REM 設定變數
+REM �O��׃��
 set SERVICE_NAME=WhatoFlowService
 set SERVICE_DISPLAY_NAME=WhatoFlow Web Service
-set SERVICE_DESCRIPTION=WhatoFlow 應用程式服務
+set SERVICE_DESCRIPTION=WhatoFlow ���ó�ʽ����
 set INSTALL_DIR=%~dp0..
 set PUBLISH_DIR=%INSTALL_DIR%publish
 set EXE_NAME=WhatoFlow.exe
 
-REM 檢查是否以管理員權限執行
+REM �z���Ƿ��Թ���T���ވ���
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [錯誤] 請以管理員權限執行此腳本！
-    echo 右鍵點擊此檔案，選擇「以系統管理員身分執行」
+    echo [�e�`] Ո�Թ���T���ވ��д��_����
+    echo ���I�c���˙n�����x����ϵ�y����T���ֈ��С�
     pause
     exit /b 1
 )
 
-echo [步驟 1/8] 檢查 .NET 8.0 Runtime 是否已安裝...
+echo [���E 1/8] �z�� .NET 10.0 Runtime �Ƿ��Ѱ��b...
 where dotnet >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [錯誤] 未找到 .NET CLI，請先安裝 .NET 8.0 Runtime 或 SDK
-    echo 下載連結: https://dotnet.microsoft.com/download/dotnet/8.0
+    echo [�e�`] δ�ҵ� .NET CLI��Ո�Ȱ��b .NET 10.0 Runtime �� SDK
+    echo ���d�B�Y: https://dotnet.microsoft.com/download/dotnet/10.0
     pause
     exit /b 1
 )
 
-dotnet --version | findstr /R "^8\." >nul
+dotnet --version | findstr /R "^10\." >nul
 if %errorLevel% neq 0 (
-    echo [警告] 偵測到的 .NET 版本可能不是 8.0
-    echo 繼續執行...
+    echo [����] �ɜy���� .NET �汾���ܲ��� 10.0
+    echo �^�m����...
 )
-echo [完成] .NET Runtime 檢查通過
+echo [���] .NET Runtime �z��ͨ�^
 echo.
 
-echo [步驟 2/8] 檢查 Node.js 是否已安裝...
+echo [���E 2/8] �z�� Node.js �Ƿ��Ѱ��b...
 where node >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [錯誤] 未找到 Node.js，請先安裝 Node.js 18 或更高版本
-    echo 下載連結: https://nodejs.org/
+    echo [�e�`] δ�ҵ� Node.js��Ո�Ȱ��b Node.js 18 ����߰汾
+    echo ���d�B�Y: https://nodejs.org/
     pause
     exit /b 1
 )
 
 for /f "tokens=*" %%v in ('node --version') do set NODE_VERSION=%%v
-echo [完成] Node.js 版本: %NODE_VERSION%
+echo [���] Node.js �汾: %NODE_VERSION%
 echo.
 
-echo [步驟 3/8] 安裝前端依賴套件...
+echo [���E 3/8] ���bǰ����ه�׼�...
 cd /d "%INSTALL_DIR%"
 if not exist "%INSTALL_DIR%node_modules" (
-    echo [執行] npm install...
+    echo [����] npm install...
     call npm install
     if %errorLevel% neq 0 (
-        echo [錯誤] npm install 失敗
+        echo [�e�`] npm install ʧ��
         pause
         exit /b 1
     )
-    echo [完成] 前端依賴安裝成功
+    echo [���] ǰ����ه���b�ɹ�
 ) else (
-    echo [略過] node_modules 已存在，跳過安裝
+    echo [���^] node_modules �Ѵ��ڣ����^���b
 )
 echo.
 
-echo [步驟 4/8] 建置前端 React 應用程式...
-echo [執行] npm run build...
+echo [���E 4/8] ����ǰ�� React ���ó�ʽ...
+echo [����] npm run build...
 cd /d "%INSTALL_DIR%"
 call npm run build
 if %errorLevel% neq 0 (
-    echo [錯誤] 前端建置失敗
+    echo [�e�`] ǰ�˽���ʧ��
     pause
     exit /b 1
 )
-echo [完成] 前端建置成功
+echo [���] ǰ�˽��óɹ�
 echo.
 
-echo [步驟 5/8] 檢查服務是否已存在...
+echo [���E 5/8] �z������Ƿ��Ѵ���...
 sc query %SERVICE_NAME% >nul 2>&1
 if %errorLevel% equ 0 (
-    echo [發現] 服務已存在，正在停止並刪除舊服務...
+    echo [�l�F] �����Ѵ��ڣ�����ֹͣ�K�h���f����...
     sc stop %SERVICE_NAME% >nul 2>&1
     timeout /t 3 /nobreak >nul
     sc delete %SERVICE_NAME%
     if %errorLevel% neq 0 (
-        echo [錯誤] 無法刪除舊服務，請手動處理
+        echo [�e�`] �o���h���f���գ�Ո�ք�̎��
         pause
         exit /b 1
     )
-    echo [完成] 舊服務已刪除
+    echo [���] �f�����фh��
 ) else (
-    echo [完成] 服務不存在，將建立新服務
+    echo [���] ���ղ����ڣ��������·���
 )
 echo.
 
-echo [步驟 6/8] 發佈應用程式...
+echo [���E 6/8] �l�ё��ó�ʽ...
 if exist "%PUBLISH_DIR%" (
-    echo [清理] 刪除舊的發佈目錄...
+    echo [����] �h���f�İl��Ŀ�...
     rmdir /s /q "%PUBLISH_DIR%"
 )
 
 cd /d "%INSTALL_DIR%"
 dotnet publish PurpleRice.csproj -c Release -o "%PUBLISH_DIR%" --self-contained false
 if %errorLevel% neq 0 (
-    echo [錯誤] 發佈失敗
+    echo [�e�`] �l��ʧ��
     pause
     exit /b 1
 )
-echo [完成] 應用程式發佈成功
+echo [���] ���ó�ʽ�l�ѳɹ�
 echo.
 
-REM 複製前端建置結果到發佈目錄的 wwwroot
-echo [步驟 7/8] 複製前端建置檔案到發佈目錄...
+REM �}�uǰ�˽��ýY�����l��Ŀ䛵� wwwroot
+echo [���E 7/8] �}�uǰ�˽��Ùn�����l��Ŀ�...
 if exist "%INSTALL_DIR%build" (
     if exist "%PUBLISH_DIR%\wwwroot" (
-        echo [清理] 刪除舊的 wwwroot 目錄...
+        echo [����] �h���f�� wwwroot Ŀ�...
         rmdir /s /q "%PUBLISH_DIR%\wwwroot"
     )
-    echo [複製] 複製 build 目錄到 wwwroot...
+    echo [�}�u] �}�u build Ŀ䛵� wwwroot...
     xcopy /E /I /Y "%INSTALL_DIR%build\*" "%PUBLISH_DIR%\wwwroot\" >nul
     if %errorLevel% equ 0 (
-        echo [完成] 前端檔案複製成功
+        echo [���] ǰ�˙n���}�u�ɹ�
     ) else (
-        echo [警告] 前端檔案複製時出現問題，繼續執行...
+        echo [����] ǰ�˙n���}�u�r���F���}���^�m����...
     )
 ) else (
-    echo [警告] 未找到 build 目錄，請確認前端建置是否成功
+    echo [����] δ�ҵ� build Ŀ䛣�Ո�_�Jǰ�˽����Ƿ�ɹ�
 )
 echo.
 
-REM 建立必要的目錄
-echo [步驟 8/8] 建立必要的目錄結構...
+REM ������Ҫ��Ŀ�
+echo [���E 8/8] ������Ҫ��Ŀ䛽Y��...
 if not exist "%PUBLISH_DIR%\logs" mkdir "%PUBLISH_DIR%\logs"
 if not exist "%PUBLISH_DIR%\Uploads" mkdir "%PUBLISH_DIR%\Uploads"
 if not exist "%PUBLISH_DIR%\Uploads\Customer" mkdir "%PUBLISH_DIR%\Uploads\Customer"
@@ -146,34 +146,30 @@ if not exist "%PUBLISH_DIR%\Uploads\avatars" mkdir "%PUBLISH_DIR%\Uploads\avatar
 if not exist "%PUBLISH_DIR%\Uploads\company_logo" mkdir "%PUBLISH_DIR%\Uploads\company_logo"
 if not exist "%PUBLISH_DIR%\Uploads\excel" mkdir "%PUBLISH_DIR%\Uploads\excel"
 if not exist "%PUBLISH_DIR%\Uploads\Whatsapp_Images" mkdir "%PUBLISH_DIR%\Uploads\Whatsapp_Images"
-echo [完成] 目錄結構建立完成
+echo [���] Ŀ䛽Y���������
 echo.
 
-REM 註冊 Windows Service
-echo [註冊] 註冊 Windows Service...
-sc create %SERVICE_NAME% ^
-    binPath="%PUBLISH_DIR%\%EXE_NAME%" ^
-    DisplayName="%SERVICE_DISPLAY_NAME%" ^
-    Description="%SERVICE_DESCRIPTION%" ^
-    start=auto
+REM �]�� Windows Service
+echo [�]��] �]�� Windows Service...
+sc create %SERVICE_NAME% binPath= "%PUBLISH_DIR%\%EXE_NAME%" DisplayName= "%SERVICE_DISPLAY_NAME%" start= auto
 
 if %errorLevel% neq 0 (
-    echo [錯誤] 服務註冊失敗
+    echo [�e�`] �����]��ʧ��
     pause
     exit /b 1
 )
-echo [完成] 服務註冊成功
+echo [���] �����]�Գɹ�
 echo.
 
-REM 設定服務描述
+REM �O����������
 sc description %SERVICE_NAME% "%SERVICE_DESCRIPTION%"
 
-REM 啟動服務
-echo [啟動] 啟動服務...
+REM ���ӷ���
+echo [����] ���ӷ���...
 sc start %SERVICE_NAME%
 if %errorLevel% neq 0 (
-    echo [錯誤] 服務啟動失敗，請檢查日誌
-    echo 您可以使用以下命令檢查服務狀態：
+    echo [�e�`] ���Ն���ʧ����Ո�z�����I
+    echo ������ʹ����������z����ՠ�B��
     echo   sc query %SERVICE_NAME%
     pause
     exit /b 1
@@ -182,26 +178,25 @@ if %errorLevel% neq 0 (
 timeout /t 2 /nobreak >nul
 sc query %SERVICE_NAME% | findstr /C:"RUNNING" >nul
 if %errorLevel% equ 0 (
-    echo [完成] 服務啟動成功！
+    echo [���] ���Ն��ӳɹ���
 ) else (
-    echo [警告] 服務可能未正常啟動，請檢查狀態
+    echo [����] ���տ���δ�������ӣ�Ո�z���B
 )
 echo.
 
 echo ====================================
-echo 安裝完成！
+echo ���b��ɣ�
 echo ====================================
-echo 服務名稱: %SERVICE_NAME%
-echo 服務路徑: %PUBLISH_DIR%
-echo 執行檔: %EXE_NAME%
+echo �������Q: %SERVICE_NAME%
+echo ����·��: %PUBLISH_DIR%
+echo ���Йn: %EXE_NAME%
 echo.
-echo 常用命令：
-echo   查詢狀態: sc query %SERVICE_NAME%
-echo   停止服務: sc stop %SERVICE_NAME%
-echo   啟動服務: sc start %SERVICE_NAME%
-echo   刪除服務: sc delete %SERVICE_NAME%
+echo �������
+echo   ��ԃ��B: sc query %SERVICE_NAME%
+echo   ֹͣ����: sc stop %SERVICE_NAME%
+echo   ���ӷ���: sc start %SERVICE_NAME%
+echo   �h������: sc delete %SERVICE_NAME%
 echo.
-echo 前端檔案位置: %PUBLISH_DIR%\wwwroot
+echo ǰ�˙n��λ��: %PUBLISH_DIR%\wwwroot
 echo.
 pause
-

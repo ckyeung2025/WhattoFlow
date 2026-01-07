@@ -15,7 +15,7 @@ set "PROJECT_DIR=%CD%"
 set "PUBLISH_DIR=%INSTALLER_DIR%publish"
 
 REM Step 1: Check .NET SDK
-echo [Step 1/7] Checking .NET SDK...
+echo [Step 1/8] Checking .NET SDK...
 where dotnet >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] .NET SDK not found
@@ -27,7 +27,7 @@ echo [OK] .NET SDK found
 echo.
 
 REM Step 2: Check Node.js
-echo [Step 2/7] Checking Node.js...
+echo [Step 2/8] Checking Node.js...
 where node >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Node.js not found
@@ -46,21 +46,35 @@ echo [OK] Node.js found
 echo.
 
 REM Step 3: Check Inno Setup
-echo [Step 3/7] Checking Inno Setup...
-REM Hardcoded path for testing
-set "INNO_SETUP_PATH=C:\GIT\WhattoFlow\Installer\Inno Setup 6\ISCC.exe"
+echo [Step 3/8] Checking Inno Setup...
+REM Try to find Inno Setup in common locations
+set "INNO_SETUP_PATH="
+set "INNO_PATH1=%INSTALLER_DIR%Inno Setup 6\ISCC.exe"
+set "INNO_PATH2=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+set "INNO_PATH3=C:\Program Files\Inno Setup 6\ISCC.exe"
 
-if not exist "!INNO_SETUP_PATH!" (
-    echo [ERROR] Inno Setup not found at: !INNO_SETUP_PATH!
+if exist "!INNO_PATH1!" (
+    set "INNO_SETUP_PATH=!INNO_PATH1!"
+) else if exist "!INNO_PATH2!" (
+    set "INNO_SETUP_PATH=!INNO_PATH2!"
+) else if exist "!INNO_PATH3!" (
+    set "INNO_SETUP_PATH=!INNO_PATH3!"
+) else (
+    echo [ERROR] Inno Setup not found
+    echo [ERROR] Please ensure Inno Setup 6 is installed
+    echo [ERROR] Expected locations:
+    echo   !INNO_PATH1!
+    echo   !INNO_PATH2!
+    echo   !INNO_PATH3!
     pause
     exit /b 1
 )
 
-echo [OK] Inno Setup found
+echo [OK] Inno Setup found at: !INNO_SETUP_PATH!
 echo.
 
 REM Step 4: Clean previous publish
-echo [Step 4/7] Cleaning previous publish directory...
+echo [Step 4/8] Cleaning previous publish directory...
 if exist "%PUBLISH_DIR%" (
     rmdir /s /q "%PUBLISH_DIR%" 2>nul
 )
@@ -69,9 +83,14 @@ echo [OK] Cleaned publish directory
 echo.
 
 REM Step 5: Publish .NET application
-echo [Step 5/7] Publishing .NET application...
+echo [Step 5/8] Publishing .NET application...
 cd /d "%PROJECT_DIR%"
-dotnet publish -c Release -o "%PUBLISH_DIR%" --self-contained false
+dotnet clean -c Release
+REM Restore with runtime identifier to include all necessary assets
+dotnet restore -r win-x64
+REM Use self-contained to avoid dependency on system .NET runtime
+REM This ensures all DLLs including Microsoft.Data.SqlClient are included
+dotnet publish -c Release -o "%PUBLISH_DIR%" --self-contained true -r win-x64
 if errorlevel 1 (
     echo [ERROR] .NET publish failed
     pause
@@ -81,7 +100,7 @@ echo [OK] .NET application published
 echo.
 
 REM Step 6: Build React frontend
-echo [Step 6/7] Building React frontend...
+echo [Step 6/8] Building React frontend...
 if exist "%PROJECT_DIR%\build" (
     rmdir /s /q "%PROJECT_DIR%\build" 2>nul
 )
@@ -106,6 +125,7 @@ if exist "%PROJECT_DIR%\build" (
 ) else (
     echo [WARN] Build directory not found
 )
+echo.
 
 REM Step 7: Sync version from .csproj to .iss
 echo [Step 7/8] Syncing version from PurpleRice.csproj to WhatoFlow.Setup.iss...
