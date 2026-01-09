@@ -9,14 +9,31 @@ const TextAreaEditor = ({ formData, onFormChange }) => {
   // 使用內部狀態來管理表單數據
   const [localFormData, setLocalFormData] = useState({});
   const textareaRef = useRef(null);
-  const isInitialized = useRef(false);
+  // 追蹤當前組件的唯一標識，用於檢測組件切換
+  const currentComponentId = useRef(null);
   
-  // 當 formData 變化時，更新內部狀態（只在初始化時執行一次）
+  // 當 formData 變化時，更新內部狀態
+  // 使用組件的 name 作為唯一標識來檢測組件切換
   useEffect(() => {
-    if (formData && Object.keys(formData).length > 0 && !isInitialized.current) {
-      console.log(' TextAreaEditor 初始化 formData:', formData);
-      setLocalFormData(formData);
-      isInitialized.current = true;
+    if (formData && Object.keys(formData).length > 0) {
+      // 使用 name 作為組件的唯一標識（如果沒有 name，使用其他唯一字段）
+      const componentId = formData.name || formData.id || '';
+      
+      // 如果組件改變了（name 不同），重置並更新狀態
+      if (currentComponentId.current !== componentId) {
+        console.log('🔄 TextAreaEditor 檢測到組件切換，更新 formData:', formData);
+        setLocalFormData(formData);
+        currentComponentId.current = componentId;
+      } else {
+        // 如果組件相同，直接更新（因為 formData 已經改變了）
+        console.log('🔄 TextAreaEditor 檢測到數據變化，更新 formData:', formData);
+        setLocalFormData(formData);
+      }
+    } else if (formData && Object.keys(formData).length === 0) {
+      // 如果 formData 為空對象，可能是組件切換的過渡狀態，重置
+      console.log('⚠️ TextAreaEditor 接收到空的 formData，重置狀態');
+      setLocalFormData({});
+      currentComponentId.current = null;
     }
   }, [formData]);
   

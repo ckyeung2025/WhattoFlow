@@ -859,7 +859,13 @@ const zhSC = {
     passwordMinLength: "密码长度至少为 6 个字符",
     company: "公司",
     selectCompany: "请选择公司",
-    companyRequired: "请选择公司"
+    companyRequired: "请选择公司",
+    phoneDuplicate: "手机号码已存在，请使用其他号码",
+    userCreateSuccess: "用户信息创建成功",
+    userUpdateSuccess: "用户信息更新成功",
+    roleUpdateSuccess: "角色更新成功",
+    roleUpdateFailed: "角色更新失败",
+    userCreateSuccessButRoleFailed: "用户创建成功，但角色设置失败，请稍后手动设置"
   },
   
   // 公司编辑

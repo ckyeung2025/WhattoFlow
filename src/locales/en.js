@@ -627,7 +627,13 @@ const en = {
     passwordMinLength: "Password must be at least 6 characters",
     company: "Company",
     selectCompany: "Select Company",
-    companyRequired: "Please select a company"
+    companyRequired: "Please select a company",
+    phoneDuplicate: "Phone number already exists, please use another number",
+    userCreateSuccess: "User information created successfully",
+    userUpdateSuccess: "User information updated successfully",
+    roleUpdateSuccess: "Role updated successfully",
+    roleUpdateFailed: "Role update failed",
+    userCreateSuccessButRoleFailed: "User created successfully, but role setup failed. Please set it manually later"
   },
   
   // Company edit

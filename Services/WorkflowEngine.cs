@@ -54,6 +54,44 @@ namespace PurpleRice.Services
             _loggingService.LogInformation(message);
         }
 
+        /// <summary>
+        /// 將相對 URL 路徑轉換為實際的文件系統路徑
+        /// </summary>
+        /// <param name="mediaUrl">相對 URL 路徑（如 /Uploads/Whatsapp_Images/123/file.jpg）</param>
+        /// <returns>實際的文件系統路徑</returns>
+        private string ConvertMediaUrlToFilePath(string mediaUrl)
+        {
+            if (string.IsNullOrWhiteSpace(mediaUrl))
+            {
+                return mediaUrl;
+            }
+
+            // 檢查是否以 / 開頭（相對 URL 路徑）或是否包含驅動器符號（Windows 絕對路徑）
+            // 在 Windows 上，Path.IsPathRooted("/path") 會返回 true，但這不是真正的絕對路徑
+            var isAbsolutePath = System.IO.Path.IsPathRooted(mediaUrl) && 
+                                (mediaUrl.Length > 1 && mediaUrl[1] == ':' || // Windows 驅動器路徑 (C:\...)
+                                 mediaUrl.StartsWith("\\\\")); // UNC 路徑 (\\server\...)
+            
+            if (isAbsolutePath)
+            {
+                WriteLog($"🔍 [WorkflowEngine] 路徑已是絕對路徑，直接返回: '{mediaUrl}'");
+                return mediaUrl;
+            }
+
+            // 移除前導斜線並轉換為文件系統路徑
+            var pathWithoutLeadingSlash = mediaUrl.TrimStart('/');
+            
+            // 將正斜線轉換為系統路徑分隔符
+            var normalizedPath = pathWithoutLeadingSlash.Replace('/', System.IO.Path.DirectorySeparatorChar);
+            
+            // 組合當前目錄和路徑
+            var fullPath = System.IO.Path.Combine(Directory.GetCurrentDirectory(), normalizedPath);
+            
+            WriteLog($"🔍 [WorkflowEngine] 路徑轉換: '{mediaUrl}' -> '{fullPath}'");
+            
+            return fullPath;
+        }
+
         // 從 nodeData 讀取 templateHeaderUrl 等字段
         private (string url, string type, string filename) GetTemplateHeaderInfo(WorkflowNodeData nodeData, WorkflowStepExecution stepExec = null, WorkflowExecution execution = null)
         {
@@ -2534,7 +2572,10 @@ namespace PurpleRice.Services
                         
                         // 設置為等待 Flow 回覆狀態
                         execution.Status = "WaitingForFormApproval";
+                        execution.IsWaiting = true;
+                        execution.WaitingSince = DateTime.UtcNow;
                         stepExec.Status = "Waiting";
+                        stepExec.IsWaiting = true;
                         stepExec.OutputJson = JsonSerializer.Serialize(new { 
                             success = true, 
                             message = "MetaFlows sent successfully, waiting for responses",
@@ -2614,7 +2655,10 @@ namespace PurpleRice.Services
                         
                         // 設置為等待表單審批狀態
                         execution.Status = "WaitingForFormApproval";
+                        execution.IsWaiting = true;
+                        execution.WaitingSince = DateTime.UtcNow;
                         stepExec.Status = "Waiting";
+                        stepExec.IsWaiting = true;
                         stepExec.OutputJson = JsonSerializer.Serialize(new { 
                             success = true, 
                             message = "Manual Fill forms sent successfully, waiting for submissions",
@@ -2745,11 +2789,37 @@ namespace PurpleRice.Services
                                     
                                     WriteLog($"🔍 [DEBUG] 最終使用的 userMessage 長度: {userMessage?.Length ?? 0}");
                                     
+                                    // 📎 獲取媒體文件信息（如果有）
+                                    var mediaUrl = latestMessage.MediaUrl;
+                                    var mediaType = latestMessage.MessageType;
+                                    
+                                    if (!string.IsNullOrWhiteSpace(mediaUrl))
+                                    {
+                                        WriteLog($"📎 [DEBUG] 檢測到媒體文件: MediaUrl={mediaUrl}, MessageType={mediaType}");
+                                        
+                                        // 將相對 URL 路徑轉換為實際的文件系統路徑
+                                        var actualFilePath = ConvertMediaUrlToFilePath(mediaUrl);
+                                        WriteLog($"📎 [DEBUG] 轉換後的文件路徑: {actualFilePath}");
+                                        
+                                        // 檢查文件是否存在
+                                        if (!System.IO.File.Exists(actualFilePath))
+                                        {
+                                            WriteLog($"⚠️ [WARNING] 媒體文件不存在: {actualFilePath}");
+                                            mediaUrl = null; // 如果文件不存在，清除 mediaUrl
+                                        }
+                                        else
+                                        {
+                                            mediaUrl = actualFilePath; // 使用實際路徑
+                                        }
+                                    }
+                                    
                                     filledHtmlCode = await _eFormService.FillFormWithAIAsync(
                                         execution.WorkflowDefinition.CompanyId,
                                         nodeData.AiProviderKey,
                                         eFormDefinition.HtmlCode,
-                                        userMessage);
+                                        userMessage,
+                                        mediaUrl,
+                                        mediaType);
                                 }
                                 WriteLog($"🔍 [DEBUG] 整合等待用戶回覆模式，用戶回覆數量: {userMessages.Count}");
                                 break;
@@ -2974,7 +3044,10 @@ namespace PurpleRice.Services
                         
                         // 設置為等待表單審批狀態
                         execution.Status = "WaitingForFormApproval";
+                        execution.IsWaiting = true;
+                        execution.WaitingSince = DateTime.UtcNow;
                         stepExec.Status = "Waiting";
+                        stepExec.IsWaiting = true;
                         stepExec.OutputJson = JsonSerializer.Serialize(new { 
                             success = true, 
                             message = "EForm sent successfully, waiting for approval",

@@ -444,12 +444,35 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
   // 處理 AI 生成成功
   const handleAiSuccess = (htmlContent, formName) => {
+    // 🔍 記錄接收到的 HTML 內容（前 500 字符）
+    const contentPreview = htmlContent?.length > 500 
+      ? htmlContent.substring(0, 500) + '...' 
+      : htmlContent;
+    console.log('📥 [EFormDesigner] handleAiSuccess 接收到的 HTML 內容（前 500 字符）:', contentPreview);
+    
+    // 🔍 檢查是否包含 Markdown 代碼塊標記
+    if (htmlContent?.includes('```')) {
+      console.warn('⚠️ [EFormDesigner] handleAiSuccess 檢測到 Markdown 代碼塊標記 ```');
+      const codeBlockIndex = htmlContent.indexOf('```');
+      const contextBefore = codeBlockIndex > 50 
+        ? htmlContent.substring(codeBlockIndex - 50, 50) 
+        : htmlContent.substring(0, codeBlockIndex);
+      const contextAfter = htmlContent.substring(codeBlockIndex, Math.min(100, htmlContent.length - codeBlockIndex));
+      console.warn('⚠️ [EFormDesigner] 代碼塊標記上下文:', {
+        before: '...' + contextBefore,
+        marker: contextAfter
+      });
+    }
+    
     setHtmlContent(htmlContent);
     if (formName) {
       setFormName(formName);
     }
     if (grapesEditor) {
+      // 🔍 記錄設置到 GrapesJS 之前的內容
+      console.log('📤 [EFormDesigner] 準備設置到 GrapesJS，內容長度:', htmlContent?.length);
       grapesEditor.setComponents(htmlContent);
+      console.log('✅ [EFormDesigner] 已設置到 GrapesJS');
     }
   };
 
@@ -513,7 +536,26 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
 
   // 保存表單
   const handleSave = async () => {
-    if (!htmlContent.trim()) {
+    // 在保存前，直接從編輯器獲取最新的 HTML 內容
+    let latestHtmlContent = htmlContent;
+    
+    if (grapesEditor && isEditorReady) {
+      try {
+        // 強制從編輯器獲取最新的 HTML 和 CSS
+        const html = grapesEditor.getHtml();
+        const css = grapesEditor.getCss();
+        latestHtmlContent = `<style>${css}</style>${html}`;
+        console.log('💾 保存時從編輯器獲取最新內容，長度:', latestHtmlContent.length);
+        
+        // 同時更新 state，保持同步
+        setHtmlContent(latestHtmlContent);
+      } catch (error) {
+        console.warn('⚠️ 從編輯器獲取內容時出錯，使用 state 中的內容:', error);
+        // 如果出錯，使用 state 中的內容作為備用
+      }
+    }
+    
+    if (!latestHtmlContent.trim()) {
       message.warning('請先設計表單內容');
       return;
     }
@@ -523,7 +565,7 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
       const formData = {
         name: formName,
         description: formDescription,
-        htmlCode: htmlContent,
+        htmlCode: latestHtmlContent, // 使用從編輯器獲取的最新內容
         status: 'A', // Active
         RStatus: 'A', // Active - 修正字段名以匹配後端模型
         fieldDisplaySettings: fieldDisplaySettings.length > 0 ? JSON.stringify(fieldDisplaySettings) : null
@@ -726,12 +768,6 @@ const EFormDesigner = ({ initialSchema, onSave, onBack }) => {
                 style={{ width: '100%' }}
               >
                 📑 {t('eformDesigner.createFromPdfFile')}
-              </Button>
-              <Button 
-                onClick={() => openUploadModal('image')}
-                style={{ width: '100%' }}
-              >
-                🖼️ {t('eformDesigner.uploadImage')}
               </Button>
             </Space>
           </div>

@@ -482,10 +482,10 @@ const CompanyUserAdminPage = () => {
         [userId]: roleIds
       }));
       
-      message.success('角色更新成功');
+      message.success(t('companyUserAdmin.roleUpdateSuccess'));
     } catch (e) {
       console.error('更新用戶角色失敗:', e);
-      message.error('角色更新失敗');
+      message.error(t('companyUserAdmin.roleUpdateFailed'));
     }
   };
 
@@ -687,6 +687,24 @@ const CompanyUserAdminPage = () => {
       const token = localStorage.getItem('token');
       const isNewUser = !editingUser || !editingUser.id;
       
+      // 檢查 phone 是否與其他用戶重複
+      if (values.phone && values.phone.trim()) {
+        const phoneToCheck = values.phone.trim();
+        const duplicateUser = users.find(user => {
+          // 排除當前編輯的用戶
+          if (!isNewUser && user.id === editingUser.id) {
+            return false;
+          }
+          // 檢查 phone 是否相同（不區分大小寫，去除空格）
+          return user.phone && user.phone.trim().toLowerCase() === phoneToCheck.toLowerCase();
+        });
+        
+        if (duplicateUser) {
+          message.error(t('companyUserAdmin.phoneDuplicate'));
+          return;
+        }
+      }
+      
       // 時區轉換處理
       const normalizedTimezone = normalizeGMTOffsetString(
         values.timezone || editingUser?.timezone || getBrowserTimezone()
@@ -762,11 +780,11 @@ const CompanyUserAdminPage = () => {
           console.log('新增用戶的角色已保存');
         } catch (error) {
           console.error('保存新增用戶的角色失敗:', error);
-          message.warning('用戶創建成功，但角色設置失敗，請稍後手動設置');
+          message.warning(t('companyUserAdmin.userCreateSuccessButRoleFailed'));
         }
       }
       
-      message.success(`用戶信息${isNewUser ? '創建' : '更新'}成功`);
+      message.success(isNewUser ? t('companyUserAdmin.userCreateSuccess') : t('companyUserAdmin.userUpdateSuccess'));
       setUserEditModalVisible(false);
       setUploadedAvatarUrl(null); // 重置上傳狀態
       setEditingUser(null); // 清除編輯狀態

@@ -883,7 +883,13 @@ const zhTC = {
     confirmPasswordPlaceholder: "請再次輸入密碼",
     confirmPasswordRequired: "請再次輸入密碼以確認",
     passwordMismatch: "兩次輸入的密碼不一致",
-    passwordMinLength: "密碼長度至少為 6 個字符"
+    passwordMinLength: "密碼長度至少為 6 個字符",
+    phoneDuplicate: "手機號碼已存在，請使用其他號碼",
+    userCreateSuccess: "用戶信息創建成功",
+    userUpdateSuccess: "用戶信息更新成功",
+    roleUpdateSuccess: "角色更新成功",
+    roleUpdateFailed: "角色更新失敗",
+    userCreateSuccessButRoleFailed: "用戶創建成功，但角色設置失敗，請稍後手動設置"
   },
   companyEdit: {
     uploadLogo: "點擊上傳公司頭像",

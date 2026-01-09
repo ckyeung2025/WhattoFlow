@@ -679,6 +679,147 @@ namespace PurpleRice.Controllers
         }
 
         /// <summary>
+        /// AI 生成表單（帶圖片）
+        /// </summary>
+        [HttpPost("ai-generate-with-image")]
+        public async Task<IActionResult> GenerateFormWithAIImage(IFormFile file, string prompt = "", bool includeCurrentHtml = false, string? currentHtml = null, string? providerKey = null)
+        {
+            try
+            {
+                _loggingService.LogInformation($"🤖 [GenerateFormWithAIImage] 開始 AI 生成表單（帶圖片）");
+                
+                var companyId = GetCurrentCompanyId();
+                if (companyId == Guid.Empty)
+                {
+                    _loggingService.LogWarning("❌ [GenerateFormWithAIImage] 無法取得公司資訊");
+                    return Unauthorized(new { success = false, error = "無法識別公司資訊" });
+                }
+
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { success = false, error = "請上傳圖片文件" });
+                }
+
+                // 檢查文件類型
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
+                var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                if (!allowedExtensions.Contains(fileExtension))
+                {
+                    return BadRequest(new { success = false, error = "不支持的文件類型，只允許圖片文件" });
+                }
+
+                // 將圖片轉換為 base64
+                byte[] imageBytes;
+                using (var memoryStream = new MemoryStream())
+                {
+                    await file.CopyToAsync(memoryStream);
+                    imageBytes = memoryStream.ToArray();
+                }
+
+                var base64Image = Convert.ToBase64String(imageBytes);
+                var mimeType = file.ContentType ?? "image/jpeg";
+                if (string.IsNullOrEmpty(mimeType) || !mimeType.StartsWith("image/"))
+                {
+                    mimeType = fileExtension switch
+                    {
+                        ".png" => "image/png",
+                        ".gif" => "image/gif",
+                        ".bmp" => "image/bmp",
+                        ".webp" => "image/webp",
+                        _ => "image/jpeg"
+                    };
+                }
+
+                _loggingService.LogInformation($"📸 [GenerateFormWithAIImage] 圖片已轉換為 base64，大小: {base64Image.Length} bytes, MIME: {mimeType}");
+
+                // 構建提示
+                var userPrompt = string.IsNullOrWhiteSpace(prompt) 
+                    ? "請仔細分析這張表單圖片，識別所有表單字段（如輸入框、下拉選單、單選按鈕、複選框、按鈕等），然後生成對應的 HTML 表單代碼。生成的 HTML 應該包含完整的表單結構、樣式和交互功能。" 
+                    : prompt.Trim();
+
+                if (includeCurrentHtml && !string.IsNullOrWhiteSpace(currentHtml))
+                {
+                    userPrompt = $"用戶需求：{userPrompt}\n\n當前 HTML 內容：\n{currentHtml}\n\n請基於以上內容和圖片進行修改和優化。";
+                    _loggingService.LogInformation($"📤 [GenerateFormWithAIImage] 包含當前 HTML，長度: {currentHtml.Length}");
+                }
+
+                // 構建多模態消息內容（JSON 格式）
+                var multimodalContent = new
+                {
+                    mediaArray = new[]
+                    {
+                        new
+                        {
+                            base64 = base64Image,
+                            mimeType = mimeType
+                        }
+                    },
+                    prompt = userPrompt
+                };
+
+                var serializedContent = JsonConvert.SerializeObject(multimodalContent);
+
+                _loggingService.LogInformation($"📤 [GenerateFormWithAIImage] 構建多模態內容，提示: {userPrompt.Substring(0, Math.Min(100, userPrompt.Length))}...");
+
+                var systemPrompt = _configuration["Fill-Form-Prompt:DefaultSystemPrompt"] ?? string.Empty;
+
+                var messages = new[]
+                {
+                    new AiMessage("user", serializedContent)
+                };
+
+                var aiResult = await _aiCompletionClient.SendChatAsync(
+                    companyId,
+                    providerKey,
+                    systemPrompt,
+                    messages);
+
+                if (!aiResult.Success || string.IsNullOrWhiteSpace(aiResult.Content))
+                {
+                    var providerLabel = string.IsNullOrWhiteSpace(aiResult.ProviderKey) ? providerKey ?? "(unspecified)" : aiResult.ProviderKey;
+                    _loggingService.LogWarning($"❌ [GenerateFormWithAIImage] AI 生成失敗，Provider: {providerLabel}, 錯誤: {aiResult.ErrorMessage ?? "Unknown"}");
+                    return StatusCode(500, new { success = false, error = aiResult.ErrorMessage ?? "AI 生成失敗" });
+                }
+
+                // 🔍 記錄 AI 返回的原始內容（前 500 字符）
+                var rawContentPreview = aiResult.Content.Length > 500 
+                    ? aiResult.Content.Substring(0, 500) + "..." 
+                    : aiResult.Content;
+                _loggingService.LogInformation($"📥 [GenerateFormWithAIImage] AI 返回原始內容（前 500 字符）:\n{rawContentPreview}");
+                
+                // 🔍 檢查是否包含 Markdown 代碼塊標記
+                if (aiResult.Content.Contains("```"))
+                {
+                    _loggingService.LogWarning($"⚠️ [GenerateFormWithAIImage] 檢測到 Markdown 代碼塊標記 ```，將進行清理");
+                    var codeBlockIndex = aiResult.Content.IndexOf("```");
+                    var contextBefore = codeBlockIndex > 50 ? aiResult.Content.Substring(codeBlockIndex - 50, 50) : aiResult.Content.Substring(0, codeBlockIndex);
+                    var contextAfter = aiResult.Content.Substring(codeBlockIndex, Math.Min(100, aiResult.Content.Length - codeBlockIndex));
+                    _loggingService.LogWarning($"⚠️ [GenerateFormWithAIImage] 代碼塊標記上下文:\n前文: ...{contextBefore}\n標記: {contextAfter}");
+                }
+
+                // 清理 Markdown 代碼塊標記
+                var cleanedHtmlContent = ExtractHtmlFromResponse(aiResult.Content);
+                _loggingService.LogInformation($"✅ [GenerateFormWithAIImage] 清理後的 HTML 內容長度: {cleanedHtmlContent.Length}");
+
+                var formName = ExtractFormNameFromPrompt(userPrompt) ?? "AI 生成的表單（從圖片）";
+
+                return Ok(new
+                {
+                    success = true,
+                    htmlContent = cleanedHtmlContent,
+                    formName,
+                    message = "AI 已成功從圖片生成表單"
+                });
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError($"❌ [GenerateFormWithAIImage] 發生錯誤: {ex.Message}", ex);
+                return StatusCode(500, new { success = false, error = $"AI 生成表單失敗: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
         /// AI 生成表單
         /// </summary>
         [HttpPost("ai-generate")]
@@ -732,12 +873,32 @@ namespace PurpleRice.Controllers
                     return StatusCode(500, new { success = false, error = aiResult.ErrorMessage ?? "AI 生成失敗" });
                 }
 
+                // 🔍 記錄 AI 返回的原始內容（前 500 字符）
+                var rawContentPreview = aiResult.Content.Length > 500 
+                    ? aiResult.Content.Substring(0, 500) + "..." 
+                    : aiResult.Content;
+                _loggingService.LogInformation($"📥 [GenerateFormWithAI] AI 返回原始內容（前 500 字符）:\n{rawContentPreview}");
+                
+                // 🔍 檢查是否包含 Markdown 代碼塊標記
+                if (aiResult.Content.Contains("```"))
+                {
+                    _loggingService.LogWarning($"⚠️ [GenerateFormWithAI] 檢測到 Markdown 代碼塊標記 ```，將進行清理");
+                    var codeBlockIndex = aiResult.Content.IndexOf("```");
+                    var contextBefore = codeBlockIndex > 50 ? aiResult.Content.Substring(codeBlockIndex - 50, 50) : aiResult.Content.Substring(0, codeBlockIndex);
+                    var contextAfter = aiResult.Content.Substring(codeBlockIndex, Math.Min(100, aiResult.Content.Length - codeBlockIndex));
+                    _loggingService.LogWarning($"⚠️ [GenerateFormWithAI] 代碼塊標記上下文:\n前文: ...{contextBefore}\n標記: {contextAfter}");
+                }
+
+                // 清理 Markdown 代碼塊標記
+                var cleanedHtmlContent = ExtractHtmlFromResponse(aiResult.Content);
+                _loggingService.LogInformation($"✅ [GenerateFormWithAI] 清理後的 HTML 內容長度: {cleanedHtmlContent.Length}");
+
                 var formName = ExtractFormNameFromPrompt(request.Prompt) ?? "AI 生成的表單";
 
                 return Ok(new
                 {
                     success = true,
-                    htmlContent = aiResult.Content,
+                    htmlContent = cleanedHtmlContent,
                     formName,
                     message = "AI 已成功生成表單"
                 });
